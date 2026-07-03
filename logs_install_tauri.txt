@@ -1,0 +1,9 @@
+D:\projects\NurChat_desktop>where npmwhere npxwhere node
+C:\Windows\System32\node
+C:\Windows\System32\node.exe
+D:\node-v22.14.0-win-x64\node-v22.14.0-win-x64\node.exe
+ИНФОРМАЦИЯ: не удалось найти "npmwhere".
+ИНФОРМАЦИЯ: не удалось найти "npxwhere".
+
+D:\projects\NurChat_desktop>
+

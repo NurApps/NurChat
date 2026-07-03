@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+__pycache__
+*.pyc
+.venv
+.kilo
+.sixth
+.continue
+node_modules
+*.md
+test_*.py

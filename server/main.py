@@ -1,0 +1,199 @@
+import os
+import sys
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from contextlib import asynccontextmanager
+
+import uvicorn
+from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from shared.rate_limiter import limiter
+
+from server.core.database import create_tables
+
+# Импорты routes
+from server.routes import auth, calls, chat, contacts_groups, files, forward, legal, p2p
+from server.utils.file_cleanup import file_cleanup_service
+from server.utils.logger import logger
+from server.ws.chat_manager import handle_websocket_connection
+from server.ws.notifications import handle_notifications_websocket
+from server.ws.p2p_manager import p2p_manager
+from server.ws.signaling import call_manager
+from shared.config import settings
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting NurChat Server...")
+
+    # Создаем таблицы БД
+    create_tables()
+    logger.info("Database tables created")
+
+    # Запускаем сервис очистки файлов
+    file_cleanup_service.start_cleanup_scheduler()
+    logger.info("File cleanup service started")
+
+    yield
+
+    # Shutdown
+    file_cleanup_service.stop_cleanup_scheduler()
+    logger.info("NurChat Server stopped")
+
+app = FastAPI(
+    title="NurChat API",
+    description="Анонимный мессенджер нового поколения от NurApps",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Rate limiting (защита от брутфорса)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS
+_cors_origins = [
+    "http://localhost:5173",
+    "http://localhost:8000",
+    "tauri://localhost",
+    "https://tauri.localhost",
+]
+if settings.DEBUG:
+    _cors_origins.append("*")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Роуты
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
+app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])
+app.include_router(files.router, prefix="/api/files", tags=["Files"])
+app.include_router(forward.router, prefix="/api/forward", tags=["Forward"])
+app.include_router(legal.router, prefix="/api/legal", tags=["Legal"])
+app.include_router(contacts_groups.router, prefix="/api/contacts-groups", tags=["Contacts and Groups"])
+app.include_router(p2p.router, prefix="/api/p2p", tags=["P2P"])
+
+# WebSocket для чатов
+@app.websocket("/ws/chat/{user_id}")
+async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+    if token:
+        from server.core.security import security as sec, AuthenticationError
+        try:
+            sec.verify_token(token)
+        except AuthenticationError:
+            await websocket.close(code=4001)
+            return
+    await handle_websocket_connection(websocket, user_id)
+
+# WebSocket для звонков
+@app.websocket("/ws/calls/{user_id}")
+async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+    if token:
+        from server.core.security import security as sec, AuthenticationError
+        try:
+            sec.verify_token(token)
+        except AuthenticationError:
+            await websocket.close(code=4001)
+            return
+    await call_manager.handle_signaling(websocket, user_id)
+
+# WebSocket для P2P signalling и relay
+@app.websocket(settings.P2P_SIGNALING_PATH + "/{user_id}")
+async def websocket_p2p_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+    if token:
+        from server.core.security import security as sec, AuthenticationError
+        try:
+            sec.verify_token(token)
+        except AuthenticationError:
+            await websocket.close(code=4001)
+            return
+    await p2p_manager.handle_connection(websocket, user_id)
+
+# WebSocket для уведомлений
+@app.websocket("/ws/notifications/{user_id}")
+async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str):
+    await handle_notifications_websocket(websocket, user_id)
+
+# Статические файлы
+app.mount("/media", StaticFiles(directory="media"), name="media")
+
+# Health check
+@app.get("/health")
+async def health_check():
+    db_ok = False
+    redis_ok = False
+    try:
+        from sqlalchemy import text
+        from server.core.database import SessionLocal
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        db_ok = True
+    except Exception as e:
+        logger.warning("Database health check failed: %s", e)
+    try:
+        from server.core.redis_manager import get_redis
+        r = get_redis()
+        if r:
+            r.ping()
+            redis_ok = True
+    except Exception as e:
+        logger.debug("Redis health check failed: %s", e)
+    return {
+        "status": "healthy" if db_ok else "degraded",
+        "database": "connected" if db_ok else "error",
+        "redis": "connected" if redis_ok else "disconnected",
+        "service": "NurChat Server",
+        "version": "1.0.0"
+    }
+
+# Prometheus metrics
+if settings.ENABLE_METRICS:
+    from prometheus_client import generate_latest, REGISTRY, Counter, Histogram, Gauge
+
+    http_requests = Counter("nurchat_http_requests_total", "Total HTTP requests", ["method", "endpoint"])
+    http_duration = Histogram("nurchat_http_request_duration_seconds", "HTTP request duration", ["endpoint"])
+    active_connections = Gauge("nurchat_ws_active_connections", "Active WebSocket connections")
+
+    @app.middleware("http")
+    async def metrics_middleware(request, call_next):
+        http_requests.labels(method=request.method, endpoint=request.url.path).inc()
+        with http_duration.labels(endpoint=request.url.path).time():
+            response = await call_next(request)
+        return response
+
+    @app.get("/metrics")
+    async def metrics():
+        from starlette.responses import Response
+        return Response(content=generate_latest(REGISTRY), media_type="text/plain; version=0.0.4; charset=utf-8")
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Welcome to NurChat API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
+    }
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app",
+        host=settings.SERVER_HOST,
+        port=settings.SERVER_PORT,
+        reload=settings.DEBUG,
+        log_level="info"
+    )

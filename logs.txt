@@ -1,0 +1,215 @@
+←[32mINFO←[0m:     Will watch for changes in these directories: ['d:\\projects\\NurChat_desktop']
+←[32mINFO←[0m:     Uvicorn running on ←[1mhttp://0.0.0.0:8000←[0m (Press CTRL+C to quit)
+←[32mINFO←[0m:     Started reloader process [←[36m←[1m3580←[0m] using ←[36m←[1mWatchFiles←[0m
+←[32mINFO←[0m:     Started server process [←[36m5988←[0m]
+←[32mINFO←[0m:     Waiting for application startup.
+2026-07-01 10:39:54 - nurchat - INFO - Starting NurChat Server...
+Таблицы базы данных созданы.
+2026-07-01 10:39:54 - nurchat - INFO - Database tables created
+2026-07-01 10:39:54 - nurchat - INFO - File cleanup scheduler started
+2026-07-01 10:39:54 - nurchat - INFO - File cleanup service started
+←[32mINFO←[0m:     Application startup complete.
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mOPTIONS /api/auth/register HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:12 - nurchat - INFO - New user registered: gfjrdigrhfgnjfj (hgfhfgjhrj uouloi;) (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mPOST /api/auth/register HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mOPTIONS /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1321 - "←[1mOPTIONS /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:12 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:1321 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:12 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:1321 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mOPTIONS /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1321 - "←[1mOPTIONS /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1321 - "←[1mOPTIONS /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mOPTIONS /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1321 - "←[1mOPTIONS /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mOPTIONS /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:12 - nurchat - INFO - Getting contacts for user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:1321 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:12 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:12 - nurchat - INFO - Getting group invites for user: user_a005f0b01b7983ca0af9a36408a98ea4 with status: pending
+←[32mINFO←[0m:     127.0.0.1:1321 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:12 - nurchat - INFO - Getting contacts for user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:12 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:1321 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:12 - nurchat - INFO - Getting group invites for user: user_a005f0b01b7983ca0af9a36408a98ea4 with status: pending
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mOPTIONS /api/auth/users HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1321 - "←[1mOPTIONS /api/auth/users HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mGET /api/auth/users HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mGET /api/auth/users HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:19 - nurchat - INFO - Creating chat for user: user_a005f0b01b7983ca0af9a36408a98ea4
+2026-07-01 10:41:19 - nurchat - INFO - Chat created: chat_914935ca704b345c494e234964a1491d with 2 participants
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mPOST /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:19 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mOPTIONS /api/chat/chats/chat_914935ca704b345c494e234964a1491d/messages?skip=0&limit=50 HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:20 - nurchat - INFO - Getting messages for chat chat_914935ca704b345c494e234964a1491d by user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:1320 - "←[1mGET /api/chat/chats/chat_914935ca704b345c494e234964a1491d/messages?skip=0&limit=50 HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1326 - "←[1mOPTIONS /api/files/upload HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:36 - nurchat - INFO - File upload started by user: user_a005f0b01b7983ca0af9a36408a98ea4, filename: voice_1782888096108.webm
+2026-07-01 10:41:36 - nurchat - INFO - File uploaded successfully: file_06eef0225fd540df205a5fe92639eccc by user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:1326 - "←[1mPOST /api/files/upload HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1326 - "←[1mOPTIONS /api/chat/chats/chat_914935ca704b345c494e234964a1491d/messages HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:36 - nurchat - INFO - Sending message to chat chat_914935ca704b345c494e234964a1491d by user: user_a005f0b01b7983ca0af9a36408a98ea4
+2026-07-01 10:41:36 - nurchat - INFO - Message sent successfully: msg_ce70e87d2e88c2f98669f0b23f45e3a2 in chat chat_914935ca704b345c494e234964a1491d
+←[32mINFO←[0m:     127.0.0.1:1326 - "←[1mPOST /api/chat/chats/chat_914935ca704b345c494e234964a1491d/messages HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:41:36 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:1326 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:1352 - "←[1mGET /api/files/download/file_06eef0225fd540df205a5fe92639eccc HTTP/1.1←[0m" ←[31m401 Unauthorized←[0m
+2026-07-01 10:48:43 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16629 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:44 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:16629 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:44 - nurchat - INFO - Getting contacts for user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:16630 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:44 - nurchat - INFO - Getting group invites for user: user_a005f0b01b7983ca0af9a36408a98ea4 with status: pending
+←[32mINFO←[0m:     127.0.0.1:16629 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:44 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16630 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:44 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:16629 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:44 - nurchat - INFO - Getting contacts for user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:16630 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:45 - nurchat - INFO - Getting group invites for user: user_a005f0b01b7983ca0af9a36408a98ea4 with status: pending
+←[32mINFO←[0m:     127.0.0.1:16629 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:47 - nurchat - INFO - Getting messages for chat chat_914935ca704b345c494e234964a1491d by user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:16629 - "←[1mGET /api/chat/chats/chat_914935ca704b345c494e234964a1491d/messages?skip=0&limit=50 HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:48 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16629 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:50 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:16629 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:50 - nurchat - INFO - Getting contacts for user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:16635 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:50 - nurchat - INFO - Getting group invites for user: user_a005f0b01b7983ca0af9a36408a98ea4 with status: pending
+←[32mINFO←[0m:     127.0.0.1:16636 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:50 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16637 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:50 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:16629 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:50 - nurchat - INFO - Getting contacts for user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:16635 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:50 - nurchat - INFO - Getting group invites for user: user_a005f0b01b7983ca0af9a36408a98ea4 with status: pending
+←[32mINFO←[0m:     127.0.0.1:16636 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:51 - nurchat - INFO - Getting messages for chat chat_914935ca704b345c494e234964a1491d by user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:16636 - "←[1mGET /api/chat/chats/chat_914935ca704b345c494e234964a1491d/messages?skip=0&limit=50 HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:52 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16636 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:52 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16636 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:52 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16636 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:16638 - "←[1mOPTIONS /api/auth/profile/update HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:58 - nurchat - INFO - Profile updated for user: gfjrdigrhfgnjfj
+←[32mINFO←[0m:     127.0.0.1:16638 - "←[1mPOST /api/auth/profile/update HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:48:59 - nurchat - INFO - Profile updated for user: gfjrdigrhfgnjfj
+←[32mINFO←[0m:     127.0.0.1:16638 - "←[1mPOST /api/auth/profile/update HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:00 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:16638 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:00 - nurchat - INFO - Getting contacts for user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:16638 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:00 - nurchat - INFO - Getting group invites for user: user_a005f0b01b7983ca0af9a36408a98ea4 with status: pending
+←[32mINFO←[0m:     127.0.0.1:16638 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:00 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16638 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:00 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:16638 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:00 - nurchat - INFO - Getting contacts for user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:16638 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:00 - nurchat - INFO - Getting group invites for user: user_a005f0b01b7983ca0af9a36408a98ea4 with status: pending
+←[32mINFO←[0m:     127.0.0.1:16638 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:06 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16650 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:06 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16650 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:06 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16650 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:10 - nurchat - INFO - Getting contacts for user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:16651 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:10 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:16650 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:10 - nurchat - INFO - Getting group invites for user: user_a005f0b01b7983ca0af9a36408a98ea4 with status: pending
+←[32mINFO←[0m:     127.0.0.1:16652 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:10 - nurchat - DEBUG - User info requested: gfjrdigrhfgnjfj (ID: user_a005f0b01b7983ca0af9a36408a98ea4)
+←[32mINFO←[0m:     127.0.0.1:16653 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:10 - nurchat - INFO - Getting contacts for user: user_a005f0b01b7983ca0af9a36408a98ea4
+←[32mINFO←[0m:     127.0.0.1:16651 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:10 - nurchat - INFO - Getting group invites for user: user_a005f0b01b7983ca0af9a36408a98ea4 with status: pending
+←[32mINFO←[0m:     127.0.0.1:16652 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:49:10 - nurchat - INFO - Getting chats for user: user_a005f0b01b7983ca0af9a36408a98ea4, search: None
+←[32mINFO←[0m:     127.0.0.1:16650 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mOPTIONS /api/auth/register HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:13 - nurchat - INFO - New user registered: fhgeuirg (tyjtyk yului;oi) (ID: user_b276821c0b742b5d898e2e5e2fdaee9d)
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mPOST /api/auth/register HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mOPTIONS /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26895 - "←[1mOPTIONS /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:13 - nurchat - DEBUG - User info requested: fhgeuirg (ID: user_b276821c0b742b5d898e2e5e2fdaee9d)
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:13 - nurchat - DEBUG - User info requested: fhgeuirg (ID: user_b276821c0b742b5d898e2e5e2fdaee9d)
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mGET /api/auth/me HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26895 - "←[1mOPTIONS /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mOPTIONS /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26895 - "←[1mOPTIONS /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mOPTIONS /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26895 - "←[1mOPTIONS /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mOPTIONS /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:13 - nurchat - INFO - Getting chats for user: user_b276821c0b742b5d898e2e5e2fdaee9d, search: None
+←[32mINFO←[0m:     127.0.0.1:26895 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:13 - nurchat - INFO - Getting contacts for user: user_b276821c0b742b5d898e2e5e2fdaee9d
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:13 - nurchat - INFO - Getting group invites for user: user_b276821c0b742b5d898e2e5e2fdaee9d with status: pending
+←[32mINFO←[0m:     127.0.0.1:26895 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:13 - nurchat - INFO - Getting chats for user: user_b276821c0b742b5d898e2e5e2fdaee9d, search: None
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:13 - nurchat - INFO - Getting contacts for user: user_b276821c0b742b5d898e2e5e2fdaee9d
+←[32mINFO←[0m:     127.0.0.1:26895 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:13 - nurchat - INFO - Getting group invites for user: user_b276821c0b742b5d898e2e5e2fdaee9d with status: pending
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mGET /api/contacts-groups/groups/invites HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mOPTIONS /api/auth/users HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26895 - "←[1mOPTIONS /api/auth/users HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mGET /api/auth/users HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mGET /api/auth/users HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:21 - nurchat - INFO - Adding contact user_a005f0b01b7983ca0af9a36408a98ea4 for user: user_b276821c0b742b5d898e2e5e2fdaee9d
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mPOST /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:21 - nurchat - INFO - Getting contacts for user: user_b276821c0b742b5d898e2e5e2fdaee9d
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mGET /api/contacts-groups/contacts HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:23 - nurchat - INFO - Creating chat for user: user_b276821c0b742b5d898e2e5e2fdaee9d
+2026-07-01 10:51:23 - nurchat - INFO - Chat created: chat_230ef1cf73d08364c8c2be5b1c382268 with 2 participants
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mPOST /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:23 - nurchat - INFO - Getting chats for user: user_b276821c0b742b5d898e2e5e2fdaee9d, search: None
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mOPTIONS /api/chat/chats/chat_230ef1cf73d08364c8c2be5b1c382268/messages?skip=0&limit=50 HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:25 - nurchat - INFO - Getting messages for chat chat_230ef1cf73d08364c8c2be5b1c382268 by user: user_b276821c0b742b5d898e2e5e2fdaee9d
+←[32mINFO←[0m:     127.0.0.1:26894 - "←[1mGET /api/chat/chats/chat_230ef1cf73d08364c8c2be5b1c382268/messages?skip=0&limit=50 HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:34 - nurchat - INFO - File upload started by user: user_b276821c0b742b5d898e2e5e2fdaee9d, filename: WIN_20260128_18_48_14_Pro.jpg
+2026-07-01 10:51:34 - nurchat - INFO - File uploaded successfully: file_d3b279406f6d46498ce5ab8497b25c46 by user: user_b276821c0b742b5d898e2e5e2fdaee9d
+←[32mINFO←[0m:     127.0.0.1:26900 - "←[1mPOST /api/files/upload HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26900 - "←[1mOPTIONS /api/chat/chats/chat_230ef1cf73d08364c8c2be5b1c382268/messages HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:34 - nurchat - INFO - Sending message to chat chat_230ef1cf73d08364c8c2be5b1c382268 by user: user_b276821c0b742b5d898e2e5e2fdaee9d
+2026-07-01 10:51:34 - nurchat - INFO - Message sent successfully: msg_873252b89b6ebab7a2568cb88b322b8f in chat chat_230ef1cf73d08364c8c2be5b1c382268
+←[32mINFO←[0m:     127.0.0.1:26900 - "←[1mPOST /api/chat/chats/chat_230ef1cf73d08364c8c2be5b1c382268/messages HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:34 - nurchat - INFO - Getting chats for user: user_b276821c0b742b5d898e2e5e2fdaee9d, search: None
+←[32mINFO←[0m:     127.0.0.1:26900 - "←[1mGET /api/chat/chats HTTP/1.1←[0m" ←[32m200 OK←[0m
+←[32mINFO←[0m:     127.0.0.1:26916 - "←[1mGET /api/files/download/file_d3b279406f6d46498ce5ab8497b25c46 HTTP/1.1←[0m" ←[31m401 Unauthorized←[0m
+←[32mINFO←[0m:     127.0.0.1:26901 - "←[1mOPTIONS /api/chat/messages/msg_873252b89b6ebab7a2568cb88b322b8f HTTP/1.1←[0m" ←[32m200 OK←[0m
+2026-07-01 10:51:40 - nurchat - INFO - Deleting message msg_873252b89b6ebab7a2568cb88b322b8f by user: user_b276821c0b742b5d898e2e5e2fdaee9d, delete_for_all: False
+←[32mINFO←[0m:     127.0.0.1:26901 - "←[1mDELETE /api/chat/messages/msg_873252b89b6ebab7a2568cb88b322b8f HTTP/1.1←[0m" ←[32m200 OK←[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

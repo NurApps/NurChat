@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build / Output
+dist/
+build/
+out/
+src-tauri/target/
+src-tauri/WixTools/
+src-tauri/Frameworks/
+*.tsbuildinfo
+.production/
+
+# Environment / Secrets
+.env
+.env.local
+.env.*.local
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Media / User content
+media/
+logs/
+assets/emoji/*.ttf
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.kilo/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Testing / Coverage
+coverage/
+.nyc_output/
+.pytest_cache/
+
+# Rust / Cargo
+Cargo.lock
+
+# Misc
+*.log
+.ruff_cache/
+pip-log.txt

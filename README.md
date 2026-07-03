@@ -2,7 +2,7 @@
 
 ![NurChat Logo](assets/nurchat_logo/nurchat_logo.jpg)
 
-Современный анонимный десктопный мессенджер с end-to-end шифрованием, построенный на Tauri v2 (React + Rust) и FastAPI.
+NurChat — современный анонимный десктопный мессенджер с end-to-end шифрованием, построенный на Tauri v2 (React + Rust) и FastAPI. Проект [NurApps](https://github.com/salihhhh014) — исламский стартап.
 
 ## Возможности
 

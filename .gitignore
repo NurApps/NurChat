@@ -21,6 +21,12 @@ src-tauri/Frameworks/
 .env
 .env.local
 .env.*.local
+token.txt
+*.txt
+!requirements.txt
+!README.md
+!AGENTS.md
+!LICENSE
 
 # Databases
 *.db
@@ -57,3 +63,5 @@ Cargo.lock
 *.log
 .ruff_cache/
 pip-log.txt
+devUrl
+npx

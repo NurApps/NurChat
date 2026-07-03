@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/salihhhh014/NurChat_desktop_beta/actions/workflows/ci.yml/badge.svg)](https://github.com/salihhhh014/NurChat_desktop_beta/actions/workflows/ci.yml)
 
-NurChat — современный анонимный мессенджер с end-to-end шифрованием. Проект [NurApps](https://github.com/salihhhh014) — исламский стартап.
+NurChat — современный анонимный мессенджер с end-to-end шифрованием. Проект [NurApps](https://t.me/NurApps) — исламский стартап.
 
 > **Статус:** Сейчас доступен только десктоп (Windows, macOS, Linux). Мобильная версия (Android + iOS) в разработке — скоро!
 

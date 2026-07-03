@@ -188,7 +188,7 @@ class P2PEncryption:
     @staticmethod
     def sign_message(content: str, signing_private_hex: str) -> str:
         """Sign plaintext content with Ed25519. Returns base64 signature."""
-        sk = nacl.signing.SigningKey(bytes.fromhex(signing_private_hex), encoder=HexEncoder)
+        sk = nacl.signing.SigningKey(bytes.fromhex(signing_private_hex))
         signed = sk.sign(content.encode("utf-8"))
         return base64.b64encode(signed.signature).decode("utf-8")
 
@@ -196,7 +196,7 @@ class P2PEncryption:
     def verify_signature(content: str, signature_b64: str, signing_public_hex: str) -> bool:
         """Verify Ed25519 signature. Returns True if valid."""
         try:
-            vk = nacl.signing.VerifyKey(bytes.fromhex(signing_public_hex), encoder=HexEncoder)
+            vk = nacl.signing.VerifyKey(bytes.fromhex(signing_public_hex))
             sig_bytes = base64.b64decode(signature_b64)
             vk.verify(content.encode("utf-8"), sig_bytes)
             return True

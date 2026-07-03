@@ -2,7 +2,11 @@
 
 ![NurChat Logo](assets/nurchat_logo/nurchat_logo.jpg)
 
-NurChat — современный анонимный десктопный мессенджер с end-to-end шифрованием, построенный на Tauri v2 (React + Rust) и FastAPI. Проект [NurApps](https://github.com/salihhhh014) — исламский стартап.
+[![CI](https://github.com/salihhhh014/NurChat_desktop_beta/actions/workflows/ci.yml/badge.svg)](https://github.com/salihhhh014/NurChat_desktop_beta/actions/workflows/ci.yml)
+
+NurChat — современный анонимный мессенджер с end-to-end шифрованием. Проект [NurApps](https://github.com/salihhhh014) — исламский стартап.
+
+> **Статус:** Сейчас доступен только десктоп (Windows, macOS, Linux). Мобильная версия (Android + iOS) в разработке — скоро!
 
 ## Возможности
 
@@ -78,6 +82,16 @@ DATABASE_URL=sqlite:///./nurchat.db
 ENCRYPTION_KEY=
 ```
 
+## Тестирование
+
+```bash
+# E2E шифрование (не требует сервер)
+pytest test/test_crypto.py -v
+
+# Функциональные тесты (требует запущенный сервер)
+python test/functional_tests.py
+```
+
 ## Структура проекта
 
 ```
@@ -98,6 +112,17 @@ NurChat_desktop/
 ├── media/                  # Хранилище медиа-файлов
 └── test/                   # Тесты
 ```
+
+## Roadmap
+
+- [x] Десктопное приложение (Tauri v2)
+- [x] E2E шифрование (X25519 + SecretBox)
+- [x] Групповые чаты
+- [x] Голосовые/видеозвонки (WebRTC)
+- [x] P2P/IPFS интеграция
+- [ ] **Мобильная версия (Android + iOS)**
+- [ ] Синхронизация устройств
+- [ ] Стикеры и GIF
 
 ## Лицензия
 

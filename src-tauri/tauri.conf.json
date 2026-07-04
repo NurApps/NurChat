@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "NurChat",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.nurapps.nurchat",
   "build": {
 "beforeDevCommand": "npm --prefix frontend run dev",
 "beforeBuildCommand": "npm --prefix frontend run build",

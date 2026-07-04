@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from server.core.database import SessionLocal
 from server.core.models import Contact, User
-from server.core.security import encryption, pwd_context, security
+from server.core.security import encryption, hash_password, security
 
 test_contacts = [
     {
@@ -63,7 +63,7 @@ def create_test_contacts():
                 continue
 
             # Хэшируем пароль
-            hashed_password = pwd_context.hash(contact_data["password"])
+            hashed_password = hash_password(contact_data["password"])
 
             # Генерируем ключи для E2E шифрования
             keypair = encryption.generate_keypair()

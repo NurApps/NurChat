@@ -21,7 +21,7 @@ function App() {
           <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
           <Route path="/legal" element={<AuthGuard><LegalPage /></AuthGuard>} />
           <Route path="/p2p" element={<AuthGuard><P2PStatusPage /></AuthGuard>} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/chat" replace />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

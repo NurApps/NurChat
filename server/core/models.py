@@ -65,6 +65,7 @@ class ChatParticipant(Base):
     joined_at = Column(DateTime(timezone=True), server_default=func.now())
     is_pinned = Column(Boolean, default=False)  # Закреплён ли чат для пользователя
     is_muted = Column(Boolean, default=False)  # Отключены ли уведомления для пользователя
+    is_admin = Column(Boolean, default=False)  # Является ли пользователь админом группы
 
     chat = relationship("Chat", back_populates="participants")
     user = relationship("User", back_populates="chats")

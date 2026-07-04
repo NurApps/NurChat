@@ -1,15 +1,44 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 
-import { WS_BASE } from "../config"
+import { WS_BASE, BASE_URL } from "../config"
 
-const SIGNALING_URL = `${WS_BASE}/calls`
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ]
 
 type CallStatus = "connecting" | "ringing" | "active" | "ended" | "missed" | "rejected" | "failed"
+
+async function getToken() {
+  const token = localStorage.getItem("token")
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
+  })()
+  return { token, user }
+}
+
+async function registerCallDB(targetUserId: string, callType: string): Promise<string | null> {
+  const { token } = await getToken()
+  if (!token) return null
+  try {
+    const res = await fetch(`${BASE_URL}/api/calls/start-call`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ target_user_id: targetUserId, call_type: callType }),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      console.error("[CALL] start-call failed:", text)
+      return null
+    }
+    const data = await res.json()
+    return data.call_id || null
+  } catch (err) {
+    console.error("[CALL] start-call error:", err)
+    return null
+  }
+}
 
 export default function CallPage() {
   const navigate = useNavigate()
@@ -23,8 +52,8 @@ export default function CallPage() {
   const [speakerOn, setSpeakerOn] = useState(true)
   const [timer, setTimer] = useState(0)
   const [callId, setCallId] = useState("")
+  const [mediaError, setMediaError] = useState<string | null>(null)
 
-  // Resolve target name from contacts/users
   const [targetName, setTargetName] = useState(targetUserId || "Пользователь")
   const avatarChar = targetName[0]?.toUpperCase() || "?"
 
@@ -35,6 +64,9 @@ export default function CallPage() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const ringingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const statusRef = useRef<CallStatus>("connecting")
+  const connectedRef = useRef(false)
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60)
@@ -44,6 +76,7 @@ export default function CallPage() {
 
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current)
+    if (ringingTimerRef.current) clearTimeout(ringingTimerRef.current)
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     pcRef.current?.close()
     wsRef.current?.close()
@@ -59,6 +92,7 @@ export default function CallPage() {
   }, [])
 
   const createPeerConnection = useCallback((isInitiator: boolean) => {
+    if (pcRef.current) return pcRef.current
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
     pcRef.current = pc
 
@@ -77,11 +111,16 @@ export default function CallPage() {
 
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState
+      console.log("[CALL] PC state:", state)
       if (state === "connected") {
         setStatus("active")
+        statusRef.current = "active"
       } else if (state === "failed" || state === "disconnected") {
-        setStatus("failed")
-        setTimeout(() => navigate("/chat"), 1500)
+        if (statusRef.current === "active") {
+          setStatus("failed")
+          statusRef.current = "failed"
+          setTimeout(() => navigate("/chat"), 1500)
+        }
       }
     }
 
@@ -103,28 +142,56 @@ export default function CallPage() {
 
   const startMedia = useCallback(async () => {
     try {
-      const constraints: MediaStreamConstraints = {
-        audio: true,
-        video: callType === "video",
+      const hasDevices = await navigator.mediaDevices.enumerateDevices()
+      const hasAudio = hasDevices.some(d => d.kind === "audioinput")
+      const hasVideo = hasDevices.some(d => d.kind === "videoinput")
+
+      if (!hasAudio && callType === "audio") {
+        setMediaError("Нет доступа к микрофону. Проверьте разрешения.")
+        setStatus("failed")
+        statusRef.current = "failed"
+        return null
       }
+      if (callType === "video" && !hasVideo) {
+        setMediaError("Нет доступа к камере. Проверьте разрешения.")
+        setStatus("failed")
+        statusRef.current = "failed"
+        return null
+      }
+
+      const constraints: MediaStreamConstraints = {
+        audio: hasAudio || false,
+        video: callType === "video" ? (hasVideo || false) : false,
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       localStreamRef.current = stream
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
       }
       return stream
-    } catch (err) {
-      console.error("Media access error:", err)
+    } catch (err: any) {
+      console.error("[CALL] Media access error:", err)
+      const name = err?.name || ""
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setMediaError("Доступ к камере/микрофону запрещён. Разрешите доступ в настройках.")
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setMediaError("Камера или микрофон не найдены.")
+      } else if (name === "NotReadableError") {
+        setMediaError("Камера/микрофон заняты другим приложением.")
+      } else {
+        setMediaError("Не удалось получить доступ к камере/микрофону.")
+      }
       setStatus("failed")
+      statusRef.current = "failed"
       return null
     }
   }, [callType])
 
-  // Resolve target user name
   useEffect(() => {
     if (targetUserId) {
       import("../services/api").then(({ api }) => {
-        api.getAllUsers().then((users) => {
+        api.getAllUsers().then((users: any[]) => {
           const target = users.find((u: any) => u.id === targetUserId)
           if (target) setTargetName(target.username || target.first_name || "Пользователь")
         }).catch(() => {})
@@ -132,40 +199,74 @@ export default function CallPage() {
     }
   }, [targetUserId])
 
-  const connectSignaling = useCallback(() => {
+  // Подключение к звонку
+  useEffect(() => {
+    if (connectedRef.current) return
+    connectedRef.current = true
+
     const currentUser = (() => {
-      try {
-        return JSON.parse(localStorage.getItem("user") || "null")
-      } catch {
-        return null
-      }
+      try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
     })()
     const token = localStorage.getItem("token")
 
     if (!currentUser || !token) {
       setStatus("failed")
+      statusRef.current = "failed"
+      setMediaError("Не авторизован")
       return
     }
 
-    const ws = new WebSocket(`${SIGNALING_URL}/${currentUser.id}?token=${encodeURIComponent(token)}`)
+    // Сначала регистрируем звонок в БД через REST (чтобы было логирование)
+    registerCallDB(targetUserId, callType).then((registeredCallId) => {
+      if (registeredCallId) {
+        console.log("[CALL] Registered in DB:", registeredCallId)
+      } else {
+        console.warn("[CALL] Could not register call in DB, proceeding with WS only")
+      }
+    })
+
+    const wsUrl = `${WS_BASE}/calls/${currentUser.id}?token=${encodeURIComponent(token)}`
+    console.log("[CALL] Connecting to:", wsUrl.replace(token, "***"))
+    const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
-    ws.onopen = async () => {
+    ws.onopen = () => {
+      console.log("[CALL] WS connected")
       const generatedCallId = `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
       setCallId(generatedCallId)
 
-      sendSignaling({
+      ws.send(JSON.stringify({
         type: "call-request",
         call_id: generatedCallId,
         target_user_id: targetUserId,
         call_type: callType,
-      })
+      }))
       setStatus("ringing")
+      statusRef.current = "ringing"
+
+      // Таймаут ожидания ответа — 30 секунд
+      ringingTimerRef.current = setTimeout(() => {
+        if (statusRef.current === "ringing") {
+          console.log("[CALL] Ringing timeout")
+          sendSignaling({ type: "call-timeout", call_id: generatedCallId })
+          setStatus("missed")
+          statusRef.current = "missed"
+          cleanup()
+          setTimeout(() => navigate("/chat"), 1500)
+        }
+      }, 30000)
     }
 
     ws.onmessage = async (event) => {
       try {
         const msg = JSON.parse(event.data)
+        console.log("[CALL] WS message:", msg.type)
+
+        // При любом ответе отменяем таймаут
+        if (ringingTimerRef.current && (msg.type === "call-accepted" || msg.type === "call-rejected" || msg.type === "call-failed" || msg.type === "call-request-sent")) {
+          clearTimeout(ringingTimerRef.current)
+          ringingTimerRef.current = null
+        }
 
         switch (msg.type) {
           case "call-request-sent":
@@ -175,20 +276,23 @@ export default function CallPage() {
             const incomingCallId = msg.call_id
             setCallId(incomingCallId)
             setStatus("ringing")
+            statusRef.current = "ringing"
 
             const stream = await startMedia()
             if (!stream) return
 
             createPeerConnection(false)
 
-            sendSignaling({
+            ws.send(JSON.stringify({
               type: "call-accept",
               call_id: incomingCallId,
-            })
+            }))
             break
           }
 
           case "call-accepted": {
+            clearTimeout(ringingTimerRef.current!)
+            ringingTimerRef.current = null
             const stream = await startMedia()
             if (!stream) return
             createPeerConnection(true)
@@ -197,24 +301,29 @@ export default function CallPage() {
 
           case "call-rejected":
             setStatus("rejected")
+            statusRef.current = "rejected"
             cleanup()
             setTimeout(() => navigate("/chat"), 1500)
             break
 
           case "call-ended":
             setStatus("ended")
+            statusRef.current = "ended"
             cleanup()
             setTimeout(() => navigate("/chat"), 500)
             break
 
           case "call-failed":
             setStatus("failed")
+            statusRef.current = "failed"
+            setMediaError(msg.message || msg.reason || "Собеседник недоступен")
             cleanup()
             setTimeout(() => navigate("/chat"), 1500)
             break
 
           case "call-timeout":
             setStatus("missed")
+            statusRef.current = "missed"
             cleanup()
             setTimeout(() => navigate("/chat"), 1500)
             break
@@ -225,7 +334,7 @@ export default function CallPage() {
               await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
               const answer = await pc.createAnswer()
               await pc.setLocalDescription(answer)
-              sendSignaling({ type: "answer", sdp: answer })
+              ws.send(JSON.stringify({ type: "answer", sdp: answer }))
             }
             break
           }
@@ -247,26 +356,29 @@ export default function CallPage() {
           }
         }
       } catch (err) {
-        console.error("Signaling message error:", err)
+        console.error("[CALL] Signaling message error:", err)
       }
     }
 
-    ws.onerror = () => {
+    ws.onerror = (ev: Event) => {
+      console.error("[CALL] WS error:", ev)
       setStatus("failed")
+      statusRef.current = "failed"
+      setMediaError("Ошибка подключения к серверу звонков. Проверьте, запущен ли сервер.")
     }
 
-    ws.onclose = () => {
-      if (status === "active" || status === "ringing") {
+    ws.onclose = (ev: CloseEvent) => {
+      console.log("[CALL] WS closed:", ev.code, ev.reason)
+      const currentStatus = statusRef.current
+      if (currentStatus === "active" || currentStatus === "ringing") {
         setStatus("failed")
+        statusRef.current = "failed"
         setTimeout(() => navigate("/chat"), 1500)
       }
     }
-  }, [targetUserId, callType, startMedia, createPeerConnection, sendSignaling, navigate, cleanup, status])
 
-  useEffect(() => {
-    connectSignaling()
     return cleanup
-  }, [connectSignaling, cleanup])
+  }, [])
 
   useEffect(() => {
     if (status === "active") {
@@ -280,6 +392,7 @@ export default function CallPage() {
   const endCall = useCallback(() => {
     sendSignaling({ type: "call-end", call_id: callId })
     setStatus("ended")
+    statusRef.current = "ended"
     cleanup()
     setTimeout(() => navigate("/chat"), 500)
   }, [sendSignaling, callId, navigate, cleanup])
@@ -303,7 +416,6 @@ export default function CallPage() {
   const toggleSpeaker = useCallback(() => {
     setSpeakerOn((prev) => {
       const next = !prev
-      // Mute/unmute remote audio
       const remoteVideo = remoteVideoRef.current
       if (remoteVideo && remoteVideo.srcObject) {
         const stream = remoteVideo.srcObject as MediaStream
@@ -314,6 +426,7 @@ export default function CallPage() {
   }, [])
 
   const statusText = () => {
+    if (mediaError) return mediaError
     switch (status) {
       case "connecting": return "Установка соединения..."
       case "ringing": return "Звоним..."
@@ -321,7 +434,7 @@ export default function CallPage() {
       case "ended": return "Звонок завершён"
       case "missed": return "Пропущенный звонок"
       case "rejected": return "Звонок отклонён"
-      case "failed": return "Ошибка соединения"
+      case "failed": return mediaError || "Ошибка соединения"
     }
   }
 

@@ -61,12 +61,6 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes
 }
 
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-}
-
 // ─── DH Key Agreement ───
 
 /**
@@ -99,24 +93,6 @@ async function deriveChatKey(
   return new Uint8Array(hash)
 }
 
-/**
- * Derive group key from encrypted group key using SealedBox.
- */
-function decryptGroupKey(
-  encryptedKeyBase64: string,
-  privateKeyHex: string,
-): Uint8Array {
-  const privateKey = hexToBytes(privateKeyHex)
-  const keyPair = nacl.box.keyPair.fromSecretKey(privateKey)
-  const encrypted = base64Decode(encryptedKeyBase64)
-  const decrypted = nacl.box.open.after(
-    encrypted.subnacl(16), // skip 16-byte nonce prefix
-    encrypted.subarray(0, 16),
-    keyPair.publicKey,
-  )
-  if (!decrypted) throw new Error("Failed to decrypt group key")
-  return new Uint8Array(decrypted)
-}
 
 // ─── Encrypt / Decrypt ───
 
@@ -148,8 +124,8 @@ export async function encryptMessage(
     hexToBytes(myKeys.signingPrivateHex),
   )
   return {
-    ciphertext: base64Encode(ciphertextWithNonce.buffer),
-    signature: base64Encode(signature.buffer),
+    ciphertext: base64Encode(ciphertextWithNonce.buffer as ArrayBuffer),
+    signature: base64Encode(signature.buffer as ArrayBuffer),
     timestamp: Date.now(),
     senderId,
   }
@@ -170,14 +146,14 @@ export async function decryptMessage(
       senderPublicKeyHex,
       chatId,
     )
-    const ciphertextBytes = base64Decode(envelope.ciphertext)
-    const nonce = ciphertextBytes.subnacl(0, nacl.secretbox.nonceLength)
-    const ciphertext = ciphertextBytes.subnacl(nacl.secretbox.nonceLength)
+    const ciphertextBytes = new Uint8Array(base64Decode(envelope.ciphertext))
+    const nonce = ciphertextBytes.subarray(0, nacl.secretbox.nonceLength)
+    const ciphertext = ciphertextBytes.subarray(nacl.secretbox.nonceLength)
     const plaintext = nacl.secretbox.open(ciphertext, nonce, symmetricKey)
     if (!plaintext) return null
     // Verify signature
     const messageBytes = new Uint8Array(plaintext)
-    const signatureBytes = base64Decode(envelope.signature)
+    const signatureBytes = new Uint8Array(base64Decode(envelope.signature))
     const valid = nacl.sign.detached.verify(
       messageBytes,
       signatureBytes,
@@ -209,8 +185,8 @@ export function encryptGroupMessage(
     hexToBytes(myKeys.signingPrivateHex),
   )
   return {
-    ciphertext: base64Encode(ciphertextWithNonce.buffer),
-    signature: base64Encode(signature.buffer),
+    ciphertext: base64Encode(ciphertextWithNonce.buffer as ArrayBuffer),
+    signature: base64Encode(signature.buffer as ArrayBuffer),
     timestamp: Date.now(),
     senderId,
   }
@@ -224,9 +200,9 @@ export function decryptGroupMessage(
   groupKey: Uint8Array,
 ): string | null {
   try {
-    const ciphertextBytes = base64Decode(envelope.ciphertext)
-    const nonce = ciphertextBytes.subnacl(0, nacl.secretbox.nonceLength)
-    const ciphertext = ciphertextBytes.subnacl(nacl.secretbox.nonceLength)
+    const ciphertextBytes = new Uint8Array(base64Decode(envelope.ciphertext))
+    const nonce = ciphertextBytes.subarray(0, nacl.secretbox.nonceLength)
+    const ciphertext = ciphertextBytes.subarray(nacl.secretbox.nonceLength)
     const plaintext = nacl.secretbox.open(ciphertext, nonce, groupKey)
     return plaintext ? new TextDecoder().decode(new Uint8Array(plaintext)) : null
   } catch {

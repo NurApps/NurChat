@@ -1,4 +1,5 @@
 from datetime import datetime
+from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -12,6 +13,9 @@ from server.ws.chat_manager import connection_manager
 from server.ws.notifications import notification_manager
 
 router = APIRouter()
+
+class GroupRenameRequest(BaseModel):
+    name: str
 
 
 @router.get("/contacts", response_model=list[schemas.ContactResponse])
@@ -295,3 +299,174 @@ async def decline_group_invite(
         logger.error(f"Decline group invite error: {e}")
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+
+
+# ─── Group Management ───
+
+@router.put("/groups/{group_id}/rename")
+async def rename_group(
+    group_id: str,
+    body: schemas.GroupRenameRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    user_id = token["sub"]
+    chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group == True).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    participant = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == group_id,
+        models.ChatParticipant.user_id == user_id,
+        models.ChatParticipant.is_admin == True
+    ).first()
+    if not participant:
+        raise HTTPException(status_code=403, detail="Только админ может переименовать группу")
+    chat.name = body.name
+    db.commit()
+    return {"message": "Группа переименована", "name": chat.name}
+
+
+@router.post("/groups/{group_id}/participants/{target_user_id}")
+async def add_participant(
+    group_id: str,
+    target_user_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    user_id = token["sub"]
+    chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group == True).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    caller = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == group_id,
+        models.ChatParticipant.user_id == user_id
+    ).first()
+    if not caller:
+        raise HTTPException(status_code=403, detail="Вы не участник группы")
+    target = db.query(models.User).filter(models.User.id == target_user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    existing = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == group_id,
+        models.ChatParticipant.user_id == target_user_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Пользователь уже в группе")
+    new_participant = models.ChatParticipant(chat_id=group_id, user_id=target_user_id)
+    db.add(new_participant)
+    db.commit()
+    return {"message": f"Пользователь {target_user_id} добавлен в группу"}
+
+
+@router.delete("/groups/{group_id}/participants/{target_user_id}")
+async def remove_participant(
+    group_id: str,
+    target_user_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    user_id = token["sub"]
+    chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group == True).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    caller = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == group_id,
+        models.ChatParticipant.user_id == user_id,
+        models.ChatParticipant.is_admin == True
+    ).first()
+    if not caller and user_id != target_user_id:
+        raise HTTPException(status_code=403, detail="Только админ может удалять участников")
+    if user_id == target_user_id and not caller:
+        target_participant = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == group_id,
+            models.ChatParticipant.user_id == target_user_id
+        ).first()
+        if target_participant:
+            db.delete(target_participant)
+            db.commit()
+            return {"message": "Вы вышли из группы"}
+    target_participant = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == group_id,
+        models.ChatParticipant.user_id == target_user_id
+    ).first()
+    if not target_participant:
+        raise HTTPException(status_code=404, detail="Пользователь не в группе")
+    db.delete(target_participant)
+    db.commit()
+    return {"message": f"Пользователь {target_user_id} удалён из группы"}
+
+
+@router.post("/groups/{group_id}/leave")
+async def leave_group(
+    group_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    user_id = token["sub"]
+    participant = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == group_id,
+        models.ChatParticipant.user_id == user_id
+    ).first()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Вы не в этой группе")
+    db.delete(participant)
+    db.commit()
+    return {"message": "Вы вышли из группы"}
+
+
+@router.put("/groups/{group_id}/admin/{target_user_id}")
+async def set_admin(
+    group_id: str,
+    target_user_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    user_id = token["sub"]
+    caller = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == group_id,
+        models.ChatParticipant.user_id == user_id,
+        models.ChatParticipant.is_admin == True
+    ).first()
+    if not caller:
+        raise HTTPException(status_code=403, detail="Только админ может назначать админов")
+    target = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == group_id,
+        models.ChatParticipant.user_id == target_user_id
+    ).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Пользователь не в группе")
+    target.is_admin = not target.is_admin
+    db.commit()
+    action = "назначен админом" if target.is_admin else "снят с админа"
+    return {"message": f"Пользователь {target_user_id} {action}", "is_admin": target.is_admin}
+
+
+@router.get("/groups/{group_id}/members")
+async def get_group_members(
+    group_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    user_id = token["sub"]
+    caller = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == group_id,
+        models.ChatParticipant.user_id == user_id
+    ).first()
+    if not caller:
+        raise HTTPException(status_code=403, detail="Вы не участник группы")
+    participants = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == group_id
+    ).all()
+    members = []
+    for p in participants:
+        user = db.query(models.User).filter(models.User.id == p.user_id).first()
+        if user:
+            members.append({
+                "id": user.id,
+                "username": user.username,
+                "first_name": user.first_name,
+                "avatar_path": user.avatar_path,
+                "is_admin": p.is_admin,
+                "joined_at": p.joined_at.isoformat() if p.joined_at else None,
+            })
+    return members

@@ -1,11 +1,11 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 from jose import JWTError, jwt
 from nacl import public
-from passlib.context import CryptContext
 
 from shared.config import settings
 from shared.exceptions import AuthenticationError
@@ -18,7 +18,13 @@ SECRET_KEY = settings.ENCRYPTION_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 дней
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 class SecurityManager:
     """Менеджер безопасности для аутентификации и шифрования"""

@@ -20,6 +20,7 @@ import CreateChatModal from "../components/CreateChatModal"
 import ForwardModal from "../components/ForwardModal"
 import NotificationToast from "../components/NotificationToast"
 import UserProfileModal from "../components/UserProfileModal"
+import GroupSettings from "../components/GroupSettings"
 import type { ChatResponse, ContactResponse, GroupInviteResponse, UserResponse, MessageResponse } from "../types"
 
 function getCurrentUser(): UserResponse {
@@ -53,6 +54,7 @@ export default function ChatPage() {
   const [showForward, setShowForward] = useState<string | null>(null)
   const [mentionQuery, setMentionQuery] = useState("")
   const [mentionIndex, setMentionIndex] = useState(-1)
+  const [p2pConnected, setP2pConnected] = useState<Set<string>>(new Set())
   const [uploading, setUploading] = useState(false)
   const [recording, setRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
@@ -65,7 +67,8 @@ export default function ChatPage() {
   const [toast, setToast] = useState<{ id: string; title: string; body: string; chatId?: string } | null>(null)
   const [incomingCall, setIncomingCall] = useState<{ callId: string; callerId: string; callerName: string; callType: string } | null>(null)
   const [profileUser, setProfileUser] = useState<UserResponse | null>(null)
-  const [e2eKeys, setE2eKeys] = useState<E2EKeys | null>(loadE2EKeys)
+  const [showGroupSettings, setShowGroupSettings] = useState(false)
+  const [e2eKeys] = useState<E2EKeys | null>(loadE2EKeys)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -97,7 +100,7 @@ export default function ChatPage() {
 
   const handleWsEvent = useCallback(async (msg: any) => {
     const event = msg.event
-    const data = msg.data || {}
+    let data = msg.data || {}
 
     switch (event) {
       case "typing": {
@@ -178,6 +181,17 @@ export default function ChatPage() {
           setMessages((prev) => prev.map((m) =>
             m.id === data.message_id ? { ...m, content: data.new_content } : m
           ))
+        }
+        break
+      }
+      case "reaction_update": {
+        if (data.message_id && data.reactions) {
+          const grouped: Record<string, string[]> = {}
+          for (const r of data.reactions) {
+            if (!grouped[r.emoji]) grouped[r.emoji] = []
+            grouped[r.emoji].push(r.user_id)
+          }
+          setReactions((prev) => ({ ...prev, [data.message_id]: grouped }))
         }
         break
       }
@@ -271,9 +285,64 @@ export default function ChatPage() {
     }
   }, [])
 
+  // Track P2P peer connections for status indicator
+  useEffect(() => {
+    const unsub = p2pClient.on((event) => {
+      if (event.type === "peer_connected" && event.data?.user_id) {
+        setP2pConnected((prev) => {
+          const next = new Set(prev)
+          next.add(event.data.user_id)
+          return next
+        })
+      } else if (event.type === "peer_disconnected" && event.data?.user_id) {
+        setP2pConnected((prev) => {
+          const next = new Set(prev)
+          next.delete(event.data.user_id)
+          return next
+        })
+      }
+    })
+    return unsub
+  }, [])
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
+
+  // P2P DataChannel message listener
+  useEffect(() => {
+    const unsub = p2pClient.on((event) => {
+      if (event.type === "message_received" && event.data) {
+        const d = event.data
+        const senderId = d.sender_id || d.user_id
+        // Only process if we're in a chat with this sender
+        if (selectedChat && senderId && selectedChat.participants.some(p => p.id === senderId)) {
+          const msgId = d.message_id || d.id || `p2p_${Date.now()}`
+          // Check if we already have this message (avoid duplicates)
+          setMessages((prev) => {
+            if (prev.some(m => m.id === msgId)) return prev
+            const peer = selectedChat.participants.find(p => p.id === senderId)
+            return [...prev, {
+              id: msgId,
+              chat_id: selectedChat.id,
+              user_id: senderId,
+              content: d.content || "[encrypted]",
+              message_type: "text",
+              created_at: d.timestamp || d.created_at || new Date().toISOString(),
+              user: peer || currentUser,
+              username: peer?.username || "Пользователь",
+              first_name: peer?.first_name || "",
+              is_read: true,
+              is_deleted: false,
+              encrypted_content: d.encrypted_content,
+              reactions: {},
+            }]
+          })
+        }
+      }
+    })
+    return unsub
+  }, [selectedChat])
 
   useEffect(() => {
     if (selectedChat) {
@@ -282,6 +351,28 @@ export default function ChatPage() {
       setSearchResults([])
     }
   }, [selectedChat])
+
+  const decryptMessages = useCallback(async (msgs: MessageResponse[], chat: ChatResponse): Promise<MessageResponse[]> => {
+    if (!e2eKeys) return msgs
+    if (!isE2EEnabled(chat.participants, e2eKeys)) return msgs
+    const peer = chat.participants.find(p => p.id !== currentUser.id)
+    if (!peer?.public_key) return msgs
+    const results: MessageResponse[] = []
+    for (const msg of msgs) {
+      if (msg.encrypted_content) {
+        try {
+          const envelope = JSON.parse(msg.encrypted_content)
+          const plain = await decryptMessage(envelope, e2eKeys, peer.public_key, chat.id)
+          results.push({ ...msg, content: plain || "[не удалось расшифровать]" })
+        } catch {
+          results.push({ ...msg, content: "[ошибка расшифровки]" })
+        }
+      } else {
+        results.push(msg)
+      }
+    }
+    return results
+  }, [e2eKeys, currentUser.id])
 
   const handleSelectChat = useCallback((chatId: string) => {
     const chat = chats.find((c) => c.id === chatId)
@@ -294,8 +385,16 @@ export default function ChatPage() {
         .then((msgs) => decryptMessages(msgs, chat))
         .then(setMessages)
         .catch((e) => console.error("Load messages failed:", e))
+
+      // Initiate P2P DataChannel for private chats (2 participants, no group)
+      if (!chat.is_group && chat.participants.length === 2) {
+        const peer = chat.participants.find(p => p.id !== currentUser.id)
+        if (peer && peer.id !== currentUser.id) {
+          p2pClient.initiateDirectConnection(peer.id)
+        }
+      }
     }
-  }, [chats, decryptMessages])
+  }, [chats, decryptMessages, currentUser])
 
   const handlePin = useCallback(async (chatId: string) => {
     try { await api.pinChat(chatId, true); loadChats() } catch (e) { console.error("Pin chat failed:", e) }
@@ -418,11 +517,43 @@ export default function ChatPage() {
       }
     }
 
-    try {
-      const msg = await api.sendMessage(selectedChat.id, content, "text", undefined, encryptedContent, signature)
-      setMessages((prev) => [...prev, msg])
-      loadChats()
-    } catch (e) { console.error("Send message failed:", e) }
+    // Try P2P DataChannel for private chats (2 participants, no group)
+    let sentViaP2P = false
+    if (!selectedChat.is_group && selectedChat.participants.length === 2) {
+      const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
+      if (peer && p2pClient.directPeers.has(peer.id)) {
+        const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`
+        const payload = encryptedContent || content
+        const sent = p2pClient.sendDirectMessage(peer.id, msgId, payload)
+        if (sent) {
+          sentViaP2P = true
+          const localMsg: MessageResponse = {
+            id: msgId,
+            chat_id: selectedChat.id,
+            user_id: currentUser.id,
+            content: encryptedContent ? text : content, // Show original text locally
+            message_type: "text",
+            created_at: new Date().toISOString(),
+            user: currentUser,
+            is_read: true,
+            is_deleted: false,
+            encrypted_content: encryptedContent,
+            signature: signature,
+            reactions: {},
+          }
+          setMessages((prev) => [...prev, localMsg])
+        }
+      }
+    }
+
+    // Fallback to HTTP API
+    if (!sentViaP2P) {
+      try {
+        const msg = await api.sendMessage(selectedChat.id, content, "text", undefined, encryptedContent, signature)
+        setMessages((prev) => [...prev, msg])
+        loadChats()
+      } catch (e) { console.error("Send message failed:", e) }
+    }
     setInput("")
     setReplyTo(null)
     setMentionQuery("")
@@ -632,29 +763,6 @@ export default function ChatPage() {
     setProfileUser(user)
   }, [])
 
-  // Decrypt E2E messages if keys available
-  const decryptMessages = useCallback(async (msgs: MessageResponse[], chat: ChatResponse): Promise<MessageResponse[]> => {
-    if (!e2eKeys) return msgs
-    if (!isE2EEnabled(chat.participants, e2eKeys)) return msgs
-    const peer = chat.participants.find(p => p.id !== currentUser.id)
-    if (!peer?.public_key) return msgs
-    const results: MessageResponse[] = []
-    for (const msg of msgs) {
-      if (msg.encrypted_content) {
-        try {
-          const envelope = JSON.parse(msg.encrypted_content)
-          const plain = await decryptMessage(envelope, e2eKeys, peer.public_key, chat.id)
-          results.push({ ...msg, content: plain || "[не удалось расшифровать]" })
-        } catch {
-          results.push({ ...msg, content: "[ошибка расшифровки]" })
-        }
-      } else {
-        results.push(msg)
-      }
-    }
-    return results
-  }, [e2eKeys, currentUser.id])
-
   const mentionCandidates = mentionQuery && selectedChat
     ? selectedChat.participants.filter(
         (p) => p.id !== currentUser.id && p.username.toLowerCase().includes(mentionQuery.toLowerCase())
@@ -834,9 +942,15 @@ export default function ChatPage() {
                       ? `печатает${typingNames.length > 1 ? "ют" : ""} ${typingNames.join(", ")}...`
                       : isSelectedGroup
                         ? `${selectedChat.participants.length} участников`
-                        : onlineUsers[selectedChat.participants.find((p) => p.id !== currentUser.id)?.id || ""]
-                          ? "в сети"
-                          : "не в сети"}
+                        : (() => {
+                            const peer = selectedChat.participants.find((p) => p.id !== currentUser.id)
+                            const peerId = peer?.id || ""
+                            const isOnline = onlineUsers[peerId]
+                            const isP2P = p2pConnected.has(peerId)
+                            if (isOnline && isP2P) return "P2P · в сети"
+                            if (isOnline) return "в сети"
+                            return "не в сети"
+                          })()}
                   </span>
                 </div>
                 <div className="ch-actions">
@@ -844,8 +958,8 @@ export default function ChatPage() {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   </button>
                   {isSelectedGroup && (
-                    <button className="ch-btn" title="Пригласить">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
+                    <button className="ch-btn" title="Настройки группы" onClick={() => setShowGroupSettings(true)}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
                     </button>
                   )}
                   {!isSelectedGroup && (
@@ -1038,6 +1152,14 @@ export default function ChatPage() {
         <UserProfileModal
           user={profileUser}
           onClose={() => setProfileUser(null)}
+        />
+      )}
+      {showGroupSettings && selectedChat && selectedChat.is_group && (
+        <GroupSettings
+          chat={selectedChat}
+          currentUser={currentUser}
+          onClose={() => setShowGroupSettings(false)}
+          onUpdated={() => { loadChats(); }}
         />
       )}
     </div>

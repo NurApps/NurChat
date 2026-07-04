@@ -17,11 +17,6 @@ def generate_call_id():
     """Генерация ID звонка"""
     return f"call_{secrets.token_hex(16)}"
 
-@router.websocket("/ws/calls/{user_id}")
-async def calls_websocket_endpoint(websocket: WebSocket, user_id: str):
-    """WebSocket endpoint для звонков в NurChat"""
-    await call_manager.handle_signaling(websocket, user_id)
-
 @router.post("/start-call", response_model=schemas.CallResponse)
 async def start_call(
     call_data: schemas.CallStartRequest,

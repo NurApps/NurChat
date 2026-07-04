@@ -71,6 +71,27 @@ def create_tables():
     except Exception as e:
         print(f"Ошибка при обновлении first_name: {e}")
 
+    # Ensure is_deleted and deleted_for_all are not NULL in messages table
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("UPDATE messages SET is_deleted = 0 WHERE is_deleted IS NULL"))
+            conn.execute(text("UPDATE messages SET deleted_for_all = 0 WHERE deleted_for_all IS NULL"))
+            conn.commit()
+    except Exception as e:
+        pass
+
+    # Add is_admin to chat_participants if missing
+    try:
+        inspector2 = inspect(engine)
+        if "chat_participants" in inspector2.get_table_names():
+            cp_cols = [c['name'] for c in inspector2.get_columns('chat_participants')]
+            if "is_admin" not in cp_cols:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE chat_participants ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
+                    conn.commit()
+    except Exception:
+        pass
+
     import sys
     if sys.stdout.encoding != 'utf-8':
         print("Tables created successfully.")

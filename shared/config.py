@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     LOG_TO_FILE: bool = True
 
     model_config = SettingsConfigDict(
-        env_file=Path(__file__).resolve().parent.parent.parent / ".env",
+        env_file=Path(__file__).resolve().parent.parent / ".env",
         case_sensitive=False,
         extra="ignore",
     )

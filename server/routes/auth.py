@@ -6,14 +6,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from sqlalchemy.orm import Session
 from server.core import models, schemas
 from server.core.database import get_db
-from server.core.security import encryption, pwd_context, security, verify_token_dependency
+from server.core.security import encryption, hash_password, verify_password, security, verify_token_dependency
 from server.utils.logger import logger
 from shared.rate_limiter import limiter
 
 router = APIRouter()
 
 
-@router.post("/register", response_model=schemas.Token)
+@router.post("/register")
 @limiter.limit("5/minute")
 async def register(
     request: Request,
@@ -56,7 +56,7 @@ async def register(
                     detail="Если есть латинские буквы, их должно быть минимум 4"
                 )
 
-        hashed_password = pwd_context.hash(user_data.password)
+        hashed_password = hash_password(user_data.password)
 
         keypair = encryption.generate_keypair()
 
@@ -142,7 +142,7 @@ async def login(
                 detail="Неверный username"
             )
 
-        if not pwd_context.verify(user_data.password, user.hashed_password):
+        if not verify_password(user_data.password, user.hashed_password):
             logger.warning(f"Login attempt with wrong password for username: {user_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

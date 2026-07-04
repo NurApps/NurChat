@@ -92,6 +92,25 @@ export const api = {
   declineGroupInvite: (inviteId: string) =>
     request<void>("PUT", `/api/contacts-groups/groups/invites/${inviteId}/decline`),
 
+  // Group management
+  renameGroup: (groupId: string, name: string) =>
+    request<any>("PUT", `/api/contacts-groups/groups/${groupId}/rename`, { name }),
+
+  addGroupParticipant: (groupId: string, userId: string) =>
+    request<any>("POST", `/api/contacts-groups/groups/${groupId}/participants/${userId}`),
+
+  removeGroupParticipant: (groupId: string, userId: string) =>
+    request<any>("DELETE", `/api/contacts-groups/groups/${groupId}/participants/${userId}`),
+
+  leaveGroup: (groupId: string) =>
+    request<any>("POST", `/api/contacts-groups/groups/${groupId}/leave`),
+
+  setGroupAdmin: (groupId: string, userId: string) =>
+    request<any>("PUT", `/api/contacts-groups/groups/${groupId}/admin/${userId}`),
+
+  getGroupMembers: (groupId: string) =>
+    request<any[]>("GET", `/api/contacts-groups/groups/${groupId}/members`),
+
   createChat: (name: string, participantIds: string[], isGroup: boolean) =>
     request<any>("POST", "/api/chat/chats", { name, participant_ids: participantIds, is_group: isGroup }),
 
@@ -159,6 +178,9 @@ export const api = {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   },
+
+  getStorageInfo: () =>
+    request<{ total: number; files: number }>("GET", "/api/files/storage-info"),
 
   // P2P
   generateP2PKeys: () =>

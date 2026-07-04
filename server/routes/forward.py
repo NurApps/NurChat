@@ -22,7 +22,7 @@ async def forward_message(
         joinedload(models.Message.user)
     ).filter(
         models.Message.id == forward_data.message_id,
-        not models.Message.is_deleted
+        models.Message.is_deleted == False
     ).first()
 
     if not original_message:
@@ -88,7 +88,7 @@ async def get_message_info(
         joinedload(models.Message.user)
     ).filter(
         models.Message.id == message_id,
-        not models.Message.is_deleted
+        models.Message.is_deleted == False
     ).first()
 
     if not message:

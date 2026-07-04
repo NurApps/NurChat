@@ -67,6 +67,10 @@ class ChatResponse(ChatBase):
     is_pinned: bool = False  # Закреплён ли чат
     is_muted: bool = False  # Отключены ли уведомления
 
+
+class GroupRenameRequest(BaseSchema):
+    name: str = Field(..., min_length=1, max_length=100)
+
 # Message
 class MessageBase(BaseSchema):
     id: str

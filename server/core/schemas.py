@@ -28,7 +28,8 @@ from shared.schemas import (
     UserCreate,
     UserUpdate,
     UserResponse,
-    MessageCreate
+    MessageCreate,
+    GroupRenameRequest
 )
 
 # Обновляем ссылки для рекурсивных типов

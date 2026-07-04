@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import { saveKeys as saveE2EKeys } from "../services/e2e"
@@ -7,6 +7,7 @@ const TG_BLUE = "#2AABEE"
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const [checking, setChecking] = useState(true)
   const [mode, setMode] = useState<"login" | "register">("login")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
@@ -15,6 +16,24 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+
+  // Auto-login: если токен есть и валиден — сразу в чат
+  useEffect(() => {
+    const token = localStorage.getItem("token")
+    if (!token) {
+      setChecking(false)
+      return
+    }
+    api.getCurrentUser()
+      .then((user) => {
+        localStorage.setItem("user", JSON.stringify(user))
+        navigate("/chat", { replace: true })
+      })
+      .catch(() => {
+        api.clearToken()
+        setChecking(false)
+      })
+  }, [navigate])
 
   const toggleMode = () => {
     setMode(mode === "login" ? "register" : "login")
@@ -78,6 +97,14 @@ export default function LoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checking) {
+    return (
+      <div className="auth-loading">
+        <div className="spinner" />
+      </div>
+    )
   }
 
   const isRegister = mode === "register"

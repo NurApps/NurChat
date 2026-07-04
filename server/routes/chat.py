@@ -89,7 +89,8 @@ async def create_chat(
         for uid in chat_data.participant_ids:
             exists = db.query(models.User).filter(models.User.id == uid).first()
             if exists:
-                db.add(models.ChatParticipant(chat_id=chat_id, user_id=uid))
+                is_creator = (uid == user_id and chat_data.is_group)
+                db.add(models.ChatParticipant(chat_id=chat_id, user_id=uid, is_admin=is_creator))
                 added += 1
             else:
                 logger.warning(f"User {uid} does not exist, skipping")
@@ -126,7 +127,7 @@ async def get_chat_messages(
             raise ChatNotFoundError("Чат не найден или доступ запрещен")
         if limit > 100:
             limit = 100
-        messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.chat_id == chat_id, not models.Message.is_deleted).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
+        messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.chat_id == chat_id, models.Message.is_deleted == False).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
         messages.reverse()
         processed_messages = []
         for msg in messages:
@@ -492,7 +493,7 @@ async def export_chat(
         participant = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat_id, models.ChatParticipant.user_id == user_id).first()
         if not participant:
             raise HTTPException(status_code=404, detail="Чат не найден")
-        messages = db.query(models.Message).filter(models.Message.chat_id == chat_id, not models.Message.is_deleted).order_by(models.Message.created_at.asc()).all()
+        messages = db.query(models.Message).filter(models.Message.chat_id == chat_id, models.Message.is_deleted == False).order_by(models.Message.created_at.asc()).all()
         chat = db.query(models.Chat).filter(models.Chat.id == chat_id).first()
         if format == "json":
             export_data = {
@@ -553,14 +554,14 @@ async def search_messages(
             # Return all messages — client will search after decryption
             messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(
                 models.Message.chat_id == chat_id,
-                not models.Message.is_deleted
+                models.Message.is_deleted == False
             ).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
             return [schemas.MessageResponse.model_validate(m) for m in messages]
 
         messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(
             models.Message.chat_id == chat_id,
             models.Message.content.ilike(f"%{q}%"),
-            not models.Message.is_deleted
+            models.Message.is_deleted == False
         ).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
         return [schemas.MessageResponse.model_validate(m) for m in messages]
     except HTTPException:
@@ -603,7 +604,19 @@ async def toggle_reaction(
         reactions = db.query(models.MessageReaction).options(joinedload(models.MessageReaction.user)).filter(
             models.MessageReaction.message_id == message_id
         ).all()
-        return [schemas.ReactionResponse.model_validate(r) for r in reactions]
+        result = [schemas.ReactionResponse.model_validate(r) for r in reactions]
+
+        # Broadcast reaction update via WebSocket
+        try:
+            await connection_manager.broadcast_to_chat(
+                {"event": "reaction_update", "data": {"message_id": message_id, "reactions": [r.model_dump(mode="json") for r in result]}},
+                message.chat_id,
+                exclude_user=user_id
+            )
+        except Exception as ws_err:
+            logger.warning(f"Failed to broadcast reaction: {ws_err}")
+
+        return result
     except MessageNotFoundError:
         raise
     except Exception as e:

@@ -1,6 +1,7 @@
 import { useState } from "react"
 import type { MessageResponse, UserResponse } from "../types"
 import { api } from "../services/api"
+import MediaViewer from "./MediaViewer"
 
 interface Props {
   message: MessageResponse
@@ -54,7 +55,7 @@ function parseLinks(text: string): Array<{ type: "text" | "link"; value: string;
 }
 
 export default function MessageBubble({
-  message, isMyMessage, isRead = false, status,
+  message, currentUser, isMyMessage, isRead = false, status,
   reactions = {}, onDelete, onForward, onReply, onEdit, onReaction, onViewProfile,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -64,7 +65,7 @@ export default function MessageBubble({
   const content = message.content
   const time = formatTime(message.created_at)
   const isReply = content.startsWith("↩️ Ответ ")
-  const peerId = "self"
+  const peerId = currentUser.id
 
   const senderName = message.user?.username || "User"
   const avatarChar = senderName[0]?.toUpperCase() || "?"
@@ -163,13 +164,7 @@ export default function MessageBubble({
     )
   }
 
-  const handleDownload = async (fileId: string, filename: string) => {
-    try {
-      await api.downloadFile(fileId, filename)
-    } catch (e) {
-      console.error("Download failed:", e)
-    }
-  }
+  const [mediaViewer, setMediaViewer] = useState<{ type: "image" | "video" | "document"; url: string; filename?: string } | null>(null)
 
   const renderFileContent = () => {
     const mt = message.message_type
@@ -178,9 +173,14 @@ export default function MessageBubble({
       return (
         <div className="msg-file">
           {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
-          <a href={fileUrl} target="_blank" rel="noopener noreferrer">
-            <img src={fileUrl} alt={content} className="msg-image" loading="lazy" />
-          </a>
+          <img
+            src={fileUrl}
+            alt={content}
+            className="msg-image"
+            loading="lazy"
+            onClick={() => setMediaViewer({ type: "image", url: fileUrl, filename: content || undefined })}
+            style={{ cursor: "pointer" }}
+          />
         </div>
       )
     }
@@ -200,20 +200,50 @@ export default function MessageBubble({
     }
     if (mt === "video" && fileUrl) {
       return (
-        <div className="msg-file">
-          <video controls src={fileUrl} className="msg-video" />
+        <div className="msg-file" onClick={() => setMediaViewer({ type: "video", url: fileUrl, filename: content || undefined })} style={{ cursor: "pointer" }}>
+          <video src={fileUrl} className="msg-video" preload="metadata" />
+          <div className="msg-video-play">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+          </div>
         </div>
       )
     }
-    const icon = mt === "image" ? "🖼️" : mt === "video" ? "🎬" : mt === "audio" ? "🎵" : mt === "voice" ? "🎤" : "📄"
+    const fileIcons: Record<string, React.ReactNode> = {
+      image: (
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--tg-blue)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+        </svg>
+      ),
+      video: (
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+        </svg>
+      ),
+      audio: (
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4ecdc4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+        </svg>
+      ),
+      voice: (
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e9b949" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
+        </svg>
+      ),
+      file: (
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" />
+        </svg>
+      ),
+    }
+    const icon = fileIcons[mt] || fileIcons.file
     return (
-      <div className="msg-file">
+      <div className="msg-file" onClick={() => fileUrl && message.file_id && setMediaViewer({ type: "document", url: fileUrl, filename: content || undefined })} style={{ cursor: fileUrl ? "pointer" : undefined }}>
         {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
         <span className="msg-file-icon">{icon}</span>
         {message.file_id ? (
-          <button className="msg-link msg-download-btn" onClick={() => handleDownload(message.file_id!, content || "file")}>
+          <span className="msg-link msg-download-btn">
             {content || "Скачать файл"}
-          </button>
+          </span>
         ) : (
           <p className="msg-text">{content || "Файл"}</p>
         )}
@@ -257,9 +287,9 @@ export default function MessageBubble({
   }
 
   const bubble = (
-    <div className={`msg-bubble ${isMyMessage ? "mine" : "other"} ${message.is_deleted ? "deleted" : ""}`}>
+    <div className={`msg-bubble ${isMyMessage ? "mine" : "other"} ${(message.is_deleted || message.deleted_for_all) ? "deleted" : ""}`}>
       <div className="msg-bubble-inner">
-        {message.is_deleted ? (
+        {(message.is_deleted || message.deleted_for_all) ? (
           <p className="msg-text deleted"><em>Сообщение удалено</em></p>
         ) : editing ? (
           renderContent()
@@ -277,8 +307,9 @@ export default function MessageBubble({
     </div>
   )
 
-  if (message.is_deleted) {
+  if (message.is_deleted || message.deleted_for_all) {
     return (
+      <>
       <div className={`msg-row ${isMyMessage ? "my-row" : "other-row"}`}>
         {!isMyMessage && (
           <div className="msg-avatar" style={{ background: avatarColor }}>{avatarChar}</div>
@@ -286,6 +317,15 @@ export default function MessageBubble({
         {bubble}
         {isMyMessage && <div className="msg-spacer" />}
       </div>
+      {mediaViewer && (
+        <MediaViewer
+          type={mediaViewer.type}
+          url={mediaViewer.url}
+          filename={mediaViewer.filename}
+          onClose={() => setMediaViewer(null)}
+        />
+      )}
+      </>
     )
   }
 
@@ -304,6 +344,7 @@ export default function MessageBubble({
 
   if (!isMyMessage) {
     return (
+      <>
       <div className="msg-row other-row">
         <div
           className="msg-avatar clickable"
@@ -326,10 +367,20 @@ export default function MessageBubble({
         </div>
         <div className="msg-spacer" />
       </div>
+      {mediaViewer && (
+        <MediaViewer
+          type={mediaViewer.type}
+          url={mediaViewer.url}
+          filename={mediaViewer.filename}
+          onClose={() => setMediaViewer(null)}
+        />
+      )}
+      </>
     )
   }
 
   return (
+    <>
     <div className="msg-row my-row">
       <div className="msg-spacer" />
       <div className="msg-menu-area">
@@ -345,5 +396,14 @@ export default function MessageBubble({
       </div>
       {bubble}
     </div>
+    {mediaViewer && (
+      <MediaViewer
+        type={mediaViewer.type}
+        url={mediaViewer.url}
+        filename={mediaViewer.filename}
+        onClose={() => setMediaViewer(null)}
+      />
+    )}
+    </>
   )
 }

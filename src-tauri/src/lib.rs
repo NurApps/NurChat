@@ -93,6 +93,29 @@ async fn init_p2p(state: State<'_, AppState>, listen_port: Option<u16>) -> Resul
     Ok(port)
 }
 
+#[tauri::command]
+async fn download_and_open_file(url: String, token: String, filename: String) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let resp = client.get(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| format!("Download failed: {e}"))?;
+
+    let bytes = resp.bytes().await.map_err(|e| format!("Read failed: {e}"))?;
+
+    let mut temp = std::env::temp_dir();
+    temp.push("nurchat_files");
+    std::fs::create_dir_all(&temp).ok();
+    temp.push(&filename);
+    std::fs::write(&temp, &bytes).map_err(|e| format!("Write failed: {e}"))?;
+
+    let path_str = temp.to_string_lossy().to_string();
+    open::that(&temp).map_err(|e| format!("Open failed: {e}"))?;
+
+    Ok(path_str)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -100,6 +123,7 @@ pub fn run() {
             ipfs: RwLock::new(None),
             p2p: RwLock::new(None),
         })
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             ipfs_add_file,
             ipfs_cat,
@@ -111,6 +135,7 @@ pub fn run() {
             p2p_get_peers,
             p2p_get_peer_count,
             init_p2p,
+            download_and_open_file,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

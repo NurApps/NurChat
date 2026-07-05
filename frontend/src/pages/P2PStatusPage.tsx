@@ -29,6 +29,7 @@ export default function P2PStatusPage() {
   const [searching, setSearching] = useState(false)
   const [p2pConnected, setP2pConnected] = useState(false)
   const [ipfsOnline, setIpfsOnline] = useState<boolean | null>(null)
+  const [ipfsEnabled, setIpfsEnabled] = useState(true)
   const [ipfsMessage, setIpfsMessage] = useState("")
   const [msg, setMsg] = useState("")
 
@@ -49,6 +50,7 @@ export default function P2PStatusPage() {
     })
 
     api.getIPFSStatus().then((status) => {
+      setIpfsEnabled(status.enabled)
       setIpfsOnline(status.online)
       setIpfsMessage(status.message)
     }).catch(() => {
@@ -156,11 +158,16 @@ export default function P2PStatusPage() {
           </div>
           <div className="profile-field">
             <span className="profile-field-label">IPFS</span>
-            <span className="profile-field-value" style={{ color: ipfsOnline ? "#4CAF50" : "#9E9E9E" }}>
-              {ipfsOnline === null ? "Проверка..." : ipfsOnline ? "Онлайн" : "Недоступен"}
+            <span className="profile-field-value" style={{ color: !ipfsEnabled ? "#666" : ipfsOnline ? "#4CAF50" : "#9E9E9E" }}>
+              {!ipfsEnabled ? "Отключён" : ipfsOnline === null ? "Проверка..." : ipfsOnline ? "Онлайн" : "Недоступен"}
             </span>
           </div>
-          {ipfsMessage && (
+          {!ipfsEnabled && (
+            <p style={{ fontSize: 11, color: "#888", margin: "4px 0 0" }}>
+              Доступен через <a href="https://docs.ipfs.tech/install/" target="_blank" rel="noopener noreferrer" style={{ color: "#2AABEE" }}>IPFS Kubo</a> (опционально)
+            </p>
+          )}
+          {ipfsEnabled && ipfsMessage && (
             <p style={{ fontSize: 11, color: "#888", margin: "4px 0 0" }}>{ipfsMessage}</p>
           )}
         </div>

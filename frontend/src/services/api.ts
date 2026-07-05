@@ -226,6 +226,22 @@ export const api = {
   unpinIPFS: (hash: string) =>
     request<{ success: boolean; hash: string; message: string }>("DELETE", `/api/ipfs/pin/${hash}`),
 
+  // IPFS Manager
+  getIPFSManagerStatus: () =>
+    request<{ installed: boolean; running: boolean; message: string; version?: string }>("GET", "/api/ipfs/manager/status"),
+
+  installIPFS: () =>
+    request<{ success: boolean; message: string }>("POST", "/api/ipfs/manager/install"),
+
+  startIPFS: () =>
+    request<{ success: boolean; message: string }>("POST", "/api/ipfs/manager/start"),
+
+  stopIPFS: () =>
+    request<{ success: boolean; message: string }>("POST", "/api/ipfs/manager/stop"),
+
+  uninstallIPFS: () =>
+    request<{ success: boolean; message: string }>("DELETE", "/api/ipfs/manager/uninstall"),
+
   // E2E Group Keys
   setGroupKey: (chatId: string, encryptedKeys: Record<string, string>) =>
     request<void>("POST", `/api/chat/chats/${chatId}/group-key`, { encrypted_keys: encryptedKeys }),

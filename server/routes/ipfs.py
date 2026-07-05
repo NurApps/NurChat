@@ -67,3 +67,42 @@ async def unpin_file(ipfs_hash: str, token: dict = Depends(verify_token_dependen
     except Exception as e:
         logger.error("IPFS unpin error: %s", e)
         return {"success": False, "message": str(e)}
+
+
+# ─── IPFS Manager (auto-install/start) ───
+
+
+@router.get("/manager/status")
+async def ipfs_manager_status(token: dict = Depends(verify_token_dependency)):
+    """Статус IPFS: установлен, запущен, версия"""
+    from server.core.ipfs_manager import get_status
+    return get_status()
+
+
+@router.post("/manager/install")
+async def ipfs_manager_install(token: dict = Depends(verify_token_dependency)):
+    """Скачать и установить Kubo"""
+    from server.core.ipfs_manager import install_kubo
+    result = await install_kubo()
+    return result
+
+
+@router.post("/manager/start")
+async def ipfs_manager_start(token: dict = Depends(verify_token_dependency)):
+    """Запустить IPFS демон"""
+    from server.core.ipfs_manager import start_daemon
+    return start_daemon()
+
+
+@router.post("/manager/stop")
+async def ipfs_manager_stop(token: dict = Depends(verify_token_dependency)):
+    """Остановить IPFS демон"""
+    from server.core.ipfs_manager import stop_daemon
+    return stop_daemon()
+
+
+@router.delete("/manager/uninstall")
+async def ipfs_manager_uninstall(token: dict = Depends(verify_token_dependency)):
+    """Удалить IPFS"""
+    from server.core.ipfs_manager import uninstall
+    return uninstall()

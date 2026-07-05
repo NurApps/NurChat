@@ -29,6 +29,7 @@ export default function P2PStatusPage() {
   const [searching, setSearching] = useState(false)
   const [p2pConnected, setP2pConnected] = useState(false)
   const [ipfsOnline, setIpfsOnline] = useState<boolean | null>(null)
+  const [ipfsMessage, setIpfsMessage] = useState("")
   const [msg, setMsg] = useState("")
 
   useEffect(() => {
@@ -47,8 +48,13 @@ export default function P2PStatusPage() {
       if (event.type === "disconnected") setP2pConnected(false)
     })
 
-    // Check IPFS status via health endpoint
-    api.testConnection().then(() => setIpfsOnline(true)).catch(() => setIpfsOnline(false))
+    api.getIPFSStatus().then((status) => {
+      setIpfsOnline(status.online)
+      setIpfsMessage(status.message)
+    }).catch(() => {
+      setIpfsOnline(false)
+      setIpfsMessage("Ошибка подключения к серверу")
+    })
 
     return unsub
   }, [])
@@ -90,7 +96,7 @@ export default function P2PStatusPage() {
     setSearching(true)
     try {
       const results = await api.searchP2PPeers(peerQuery.trim())
-      setPeers(results)
+      setPeers(results as P2PPeer[])
     } catch (e: any) {
       console.error("Peer search failed:", e)
       setPeers([])
@@ -154,6 +160,9 @@ export default function P2PStatusPage() {
               {ipfsOnline === null ? "Проверка..." : ipfsOnline ? "Онлайн" : "Недоступен"}
             </span>
           </div>
+          {ipfsMessage && (
+            <p style={{ fontSize: 11, color: "#888", margin: "4px 0 0" }}>{ipfsMessage}</p>
+          )}
         </div>
 
         {/* P2P Actions */}

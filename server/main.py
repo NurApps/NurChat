@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 
@@ -18,7 +19,7 @@ from shared.rate_limiter import limiter
 from server.core.database import create_tables
 
 # Импорты routes
-from server.routes import auth, calls, chat, contacts_groups, files, forward, legal, p2p
+from server.routes import auth, calls, chat, contacts_groups, files, forward, legal, p2p, ipfs, bookmarks, pins, stats
 from server.utils.file_cleanup import file_cleanup_service
 from server.utils.logger import logger
 from server.ws.chat_manager import handle_websocket_connection
@@ -85,6 +86,10 @@ app.include_router(forward.router, prefix="/api/forward", tags=["Forward"])
 app.include_router(legal.router, prefix="/api/legal", tags=["Legal"])
 app.include_router(contacts_groups.router, prefix="/api/contacts-groups", tags=["Contacts and Groups"])
 app.include_router(p2p.router, prefix="/api/p2p", tags=["P2P"])
+app.include_router(ipfs.router, prefix="/api/ipfs", tags=["IPFS"])
+app.include_router(bookmarks.router, prefix="/api/bookmarks", tags=["Bookmarks"])
+app.include_router(pins.router, tags=["Pinned Messages"])
+app.include_router(stats.router, tags=["Statistics"])
 
 # WebSocket для чатов
 @app.websocket("/ws/chat/{user_id}")

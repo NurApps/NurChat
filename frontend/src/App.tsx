@@ -8,6 +8,7 @@ import SettingsPage from "./pages/SettingsPage"
 import ProfilePage from "./pages/ProfilePage"
 import LegalPage from "./pages/LegalPage"
 import P2PStatusPage from "./pages/P2PStatusPage"
+import StatsPage from "./pages/StatsPage"
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
           <Route path="/legal" element={<AuthGuard><LegalPage /></AuthGuard>} />
           <Route path="/p2p" element={<AuthGuard><P2PStatusPage /></AuthGuard>} />
+          <Route path="/stats" element={<AuthGuard><StatsPage /></AuthGuard>} />
           <Route path="*" element={<Navigate to="/chat" replace />} />
         </Routes>
       </BrowserRouter>

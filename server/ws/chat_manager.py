@@ -226,7 +226,7 @@ class ChatManager:
         if not call_id:
             return
         from server.ws.signaling import call_manager
-        await call_manager.handle_call_accept(user_id, {"call_id": call_id})
+        await call_manager._handle_call_accept(user_id, {"call_id": call_id})
 
     async def _handle_call_reject_from_chat(self, user_id: str, data: dict):
         """Отклонение звонка из чата → перенаправление в call_manager"""
@@ -234,7 +234,7 @@ class ChatManager:
         if not call_id:
             return
         from server.ws.signaling import call_manager
-        await call_manager.handle_call_reject(user_id, {"call_id": call_id, "reason": "rejected"})
+        await call_manager._handle_call_reject(user_id, {"call_id": call_id, "reason": "rejected"})
 
     async def _handle_new_message(self, user_id: str, data: dict):
         """Обработка нового сообщения"""

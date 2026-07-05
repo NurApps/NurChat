@@ -29,6 +29,8 @@ export interface MessageResponse {
   deleted_for_all?: boolean
   forwarded_from?: string
   reactions?: Record<string, string[]>
+  expires_at?: string
+  is_pinned?: boolean
 }
 
 export interface ReactionResponse {
@@ -50,6 +52,10 @@ export interface ChatResponse {
   unread_count?: number
   is_pinned?: boolean
   is_muted?: boolean
+  is_secret?: boolean
+  secret_ttl?: number
+  disappears_after_seconds?: number
+  pinned_messages?: MessageResponse[]
 }
 
 export interface ContactResponse {

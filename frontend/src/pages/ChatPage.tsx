@@ -9,6 +9,7 @@ import {
   isE2EEnabled,
   type E2EKeys,
 } from "../services/e2e"
+import { getGroupKeyForChat, encryptGroupMessage, decryptGroupMessage } from "../services/groupE2E"
 import TopBar from "../components/TopBar"
 import ChatListItem from "../components/ChatListItem"
 import ContactListItem from "../components/ContactListItem"
@@ -19,8 +20,15 @@ import AddContactModal from "../components/AddContactModal"
 import CreateChatModal from "../components/CreateChatModal"
 import ForwardModal from "../components/ForwardModal"
 import NotificationToast from "../components/NotificationToast"
+import { sendDesktopNotification, initNotifications } from "../services/notifications"
+import BookmarksList from "../components/BookmarksList"
 import UserProfileModal from "../components/UserProfileModal"
 import GroupSettings from "../components/GroupSettings"
+import GlobalSearch from "../components/GlobalSearch"
+import FileManager from "../components/FileManager"
+import StickerPicker from "../components/StickerPicker"
+import LinkPreview from "../components/LinkPreview"
+import { clearPin } from "../services/pinLock"
 import type { ChatResponse, ContactResponse, GroupInviteResponse, UserResponse, MessageResponse } from "../types"
 
 function getCurrentUser(): UserResponse {
@@ -31,7 +39,21 @@ function getCurrentUser(): UserResponse {
   }
 }
 
-type Tab = "chats" | "contacts" | "invites"
+const DRAFTS_KEY = "nurchat_drafts"
+function getDraft(chatId: string): string {
+  try { return (JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}") as Record<string, string>)[chatId] || "" } catch { return "" }
+}
+function saveDraft(chatId: string, text: string) {
+  try {
+    const drafts = JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}") as Record<string, string>
+    if (text) drafts[chatId] = text; else delete drafts[chatId]
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts))
+  } catch {}
+}
+function removeDraft(chatId: string) { saveDraft(chatId, "") }
+export function getDraftForChat(chatId: string): string { return getDraft(chatId) }
+
+type Tab = "chats" | "contacts" | "invites" | "bookmarks" | "files"
 
 import { WS_BASE, avatarUrl } from "../config"
 
@@ -69,13 +91,22 @@ export default function ChatPage() {
   const [profileUser, setProfileUser] = useState<UserResponse | null>(null)
   const [showGroupSettings, setShowGroupSettings] = useState(false)
   const [e2eKeys] = useState<E2EKeys | null>(loadE2EKeys)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
+  const [errorToast, setErrorToast] = useState<string | null>(null)
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false)
+  const [showStickers, setShowStickers] = useState(false)
+  const [pinnedMessage, setPinnedMessage] = useState<MessageResponse | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null) as React.MutableRefObject<ReturnType<typeof setTimeout> | null>
   const chatIdRef = useRef<string | null>(null)
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadChats = useCallback(async () => {
     try {
@@ -155,6 +186,7 @@ export default function ChatPage() {
           const sender = data.username || "Пользователь"
           const preview = (data.content || "").slice(0, 50)
           setToast({ id: data.id, title: sender, body: preview, chatId: data.chat_id })
+          sendDesktopNotification(sender, preview, data.chat_id)
         }
         break
       }
@@ -270,6 +302,7 @@ export default function ChatPage() {
     loadChats()
     loadContacts()
     loadInvites()
+    initNotifications()
   }, [loadChats, loadContacts, loadInvites])
 
   // P2P auto-connect
@@ -285,7 +318,7 @@ export default function ChatPage() {
     }
   }, [])
 
-  // Track P2P peer connections for status indicator
+  // Track P2P peer connections for status indicator + auto-initiate DataChannel
   useEffect(() => {
     const unsub = p2pClient.on((event) => {
       if (event.type === "peer_connected" && event.data?.user_id) {
@@ -300,13 +333,25 @@ export default function ChatPage() {
           next.delete(event.data.user_id)
           return next
         })
+      } else if (event.type === "peer_found" && event.data?.user_id) {
+        if (selectedChat && !selectedChat.is_group && selectedChat.participants.length === 2) {
+          const peer = selectedChat.participants.find(p => p.id === event.data.user_id)
+          if (peer) {
+            p2pClient.initiateDirectConnection(peer.id)
+          }
+        }
       }
     })
     return unsub
-  }, [])
+  }, [selectedChat])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    const container = messagesContainerRef.current
+    if (!container) return
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150
+    if (isNearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
   }, [messages])
 
   // P2P DataChannel message listener
@@ -358,12 +403,32 @@ export default function ChatPage() {
     const peer = chat.participants.find(p => p.id !== currentUser.id)
     if (!peer?.public_key) return msgs
     const results: MessageResponse[] = []
+
+    // Try to get group key for group chats
+    let groupKey: CryptoKey | null = null
+    if (chat.is_group) {
+      try {
+        groupKey = await getGroupKeyForChat(chat.id)
+      } catch {}
+    }
+
     for (const msg of msgs) {
       if (msg.encrypted_content) {
         try {
           const envelope = JSON.parse(msg.encrypted_content)
-          const plain = await decryptMessage(envelope, e2eKeys, peer.public_key, chat.id)
-          results.push({ ...msg, content: plain || "[не удалось расшифровать]" })
+          // Group E2E
+          if (envelope.group_encrypted && groupKey) {
+            try {
+              const plain = await decryptGroupMessage(envelope.group_encrypted, groupKey)
+              results.push({ ...msg, content: plain || "[не удалось расшифровать]" })
+            } catch {
+              results.push({ ...msg, content: "[ошибка расшифровки группы]" })
+            }
+          } else {
+            // 1-on-1 E2E
+            const plain = await decryptMessage(envelope, e2eKeys, peer.public_key, chat.id)
+            results.push({ ...msg, content: plain || "[не удалось расшифровать]" })
+          }
         } catch {
           results.push({ ...msg, content: "[ошибка расшифровки]" })
         }
@@ -377,14 +442,32 @@ export default function ChatPage() {
   const handleSelectChat = useCallback((chatId: string) => {
     const chat = chats.find((c) => c.id === chatId)
     if (chat) {
+      // Save draft for current chat before switching
+      if (selectedChat) saveDraft(selectedChat.id, input)
       setSelectedChat(chat)
       setMessages([])
       setReplyTo(null)
       setShowEmoji(false)
-      api.getChatMessages(chatId)
+      setShowStickers(false)
+      setHasMore(true)
+      // Restore draft for new chat
+      setInput(getDraft(chatId))
+      api.getChatMessages(chatId, 0, 50)
         .then((msgs) => decryptMessages(msgs, chat))
-        .then(setMessages)
-        .catch((e) => console.error("Load messages failed:", e))
+        .then((decrypted) => {
+          setMessages(decrypted)
+          setHasMore(decrypted.length >= 50)
+        })
+        .catch((e) => {
+          console.error("Load messages failed:", e)
+        })
+      // Load pinned messages
+      api.getPinnedMessages(chatId)
+        .then((pins) => {
+          if (pins.length > 0) setPinnedMessage(pins[0].message)
+          else setPinnedMessage(null)
+        })
+        .catch(() => setPinnedMessage(null))
 
       // Initiate P2P DataChannel for private chats (2 participants, no group)
       if (!chat.is_group && chat.participants.length === 2) {
@@ -396,8 +479,55 @@ export default function ChatPage() {
     }
   }, [chats, decryptMessages, currentUser])
 
+  const loadMoreMessages = useCallback(async () => {
+    if (!selectedChat || loadingMore || !hasMore) return
+    setLoadingMore(true)
+    const container = messagesContainerRef.current
+    const prevScrollHeight = container?.scrollHeight || 0
+
+    try {
+      const older = await api.getChatMessages(selectedChat.id, messages.length, 50)
+      const decrypted = await decryptMessages(older, selectedChat)
+      setMessages((prev) => [...decrypted, ...prev])
+      setHasMore(older.length >= 50)
+      if (container) {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight - prevScrollHeight
+        })
+      }
+    } catch (e) {
+      console.error("Load more messages failed:", e)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [selectedChat, messages.length, loadingMore, hasMore, decryptMessages])
+
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+    const handleScroll = () => {
+      if (container.scrollTop < 80 && !loadingMore && hasMore && selectedChat) {
+        loadMoreMessages()
+      }
+    }
+    container.addEventListener("scroll", handleScroll, { passive: true })
+    return () => container.removeEventListener("scroll", handleScroll)
+  }, [loadingMore, hasMore, selectedChat, loadMoreMessages])
+
+  // Save draft on page unload
+  useEffect(() => {
+    const handleUnload = () => {
+      if (selectedChat && input) saveDraft(selectedChat.id, input)
+    }
+    window.addEventListener("beforeunload", handleUnload)
+    return () => window.removeEventListener("beforeunload", handleUnload)
+  }, [selectedChat, input])
+
   const handlePin = useCallback(async (chatId: string) => {
-    try { await api.pinChat(chatId, true); loadChats() } catch (e) { console.error("Pin chat failed:", e) }
+    try { await api.pinChat(chatId, true); loadChats() } catch (e) {
+      setErrorToast("Не удалось закрепить чат")
+      console.error("Pin chat failed:", e)
+    }
   }, [loadChats])
 
   const handleMute = useCallback(async (chatId: string) => {
@@ -405,11 +535,35 @@ export default function ChatPage() {
       const chat = chats.find((c) => c.id === chatId)
       await api.muteChat(chatId, !chat?.is_muted)
       loadChats()
-    } catch (e) { console.error("Mute chat failed:", e) }
+    } catch (e) {
+      setErrorToast("Не удалось изменить уведомления")
+      console.error("Mute chat failed:", e)
+    }
   }, [chats, loadChats])
 
+  const handleExportChat = useCallback(async () => {
+    if (!selectedChat) return
+    try {
+      const data = await api.exportChat(selectedChat.id, "json")
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `chat_${selectedChat.name || selectedChat.id}_${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      setToast({ id: "export", title: "Экспорт", body: "Экспорт завершён" })
+    } catch (e) {
+      setErrorToast("Не удалось экспортировать чат")
+      console.error("Export chat failed:", e)
+    }
+  }, [selectedChat])
+
   const handleRemoveContact = useCallback(async (contactId: string) => {
-    try { await api.removeContact(contactId); loadContacts() } catch (e) { console.error("Remove contact failed:", e) }
+    try { await api.removeContact(contactId); loadContacts() } catch (e) {
+      setErrorToast("Не удалось удалить контакт")
+      console.error("Remove contact failed:", e)
+    }
   }, [loadContacts])
 
   const handleStartChat = useCallback(async (userId: string) => {
@@ -419,7 +573,10 @@ export default function ChatPage() {
       setSelectedChat(chat)
       setTab("chats")
       setMessages([])
-    } catch (e) { console.error("Start chat failed:", e) }
+    } catch (e) {
+      setErrorToast("Не удалось создать чат")
+      console.error("Start chat failed:", e)
+    }
   }, [loadChats])
 
   const handleDeleteChat = useCallback(async (chatId: string) => {
@@ -427,31 +584,65 @@ export default function ChatPage() {
       await api.deleteChat(chatId)
       if (selectedChat?.id === chatId) { setSelectedChat(null); setMessages([]) }
       loadChats()
-    } catch (e) { console.error("Delete chat failed:", e) }
+    } catch (e) {
+      setErrorToast("Не удалось удалить чат")
+      console.error("Delete chat failed:", e)
+    }
   }, [loadChats, selectedChat])
 
+  const handlePinMessage = useCallback(async (messageId: string) => {
+    if (!selectedChat) return
+    try {
+      const pins = await api.getPinnedMessages(selectedChat.id)
+      const isPinned = pins.some(p => p.message_id === messageId)
+      if (isPinned) {
+        await api.unpinMessage(selectedChat.id, messageId)
+      } else {
+        await api.pinMessage(selectedChat.id, messageId)
+      }
+      // Refresh pinned
+      const updatedPins = await api.getPinnedMessages(selectedChat.id)
+      setPinnedMessage(updatedPins.length > 0 ? updatedPins[0].message : null)
+    } catch (e) {
+      setErrorToast("Не удалось закрепить сообщение")
+      console.error("Pin message failed:", e)
+    }
+  }, [selectedChat])
+
   const handleAcceptInvite = useCallback(async (inviteId: string) => {
-    try { await api.acceptGroupInvite(inviteId); loadInvites(); loadChats() } catch (e) { console.error("Accept invite failed:", e) }
+    try { await api.acceptGroupInvite(inviteId); loadInvites(); loadChats() } catch (e) {
+      setErrorToast("Не удалось принять приглашение")
+      console.error("Accept invite failed:", e)
+    }
   }, [loadChats, loadInvites])
 
   const handleDeclineInvite = useCallback(async (inviteId: string) => {
-    try { await api.declineGroupInvite(inviteId); loadInvites() } catch (e) { console.error("Decline invite failed:", e) }
+    try { await api.declineGroupInvite(inviteId); loadInvites() } catch (e) {
+      setErrorToast("Не удалось отклонить приглашение")
+      console.error("Decline invite failed:", e)
+    }
   }, [loadInvites])
 
   const handleAddContact = useCallback(async (userId: string) => {
-    try { await api.addContact(userId); setShowAddContact(false); loadContacts() } catch (e) { console.error("Add contact failed:", e) }
+    try { await api.addContact(userId); setShowAddContact(false); loadContacts() } catch (e) {
+      setErrorToast("Не удалось добавить контакт")
+      console.error("Add contact failed:", e)
+    }
   }, [loadContacts])
 
-  const handleCreateChat = useCallback(async (participantIds: string[], name: string | null) => {
+  const handleCreateChat = useCallback(async (participantIds: string[], name: string | null, isSecret?: boolean, secretTtl?: number) => {
     try {
       const isGroup = participantIds.length > 1
-      const chat = await api.createChat(name || "", participantIds, isGroup)
+      const chat = await api.createChat(name || "", participantIds, isGroup, isSecret || false, secretTtl || 0)
       setShowCreateChat(false)
       loadChats()
       setSelectedChat(chat)
       setTab("chats")
       setMessages([])
-    } catch (e) { console.error("Create chat failed:", e) }
+    } catch (e) {
+      setErrorToast("Не удалось создать чат")
+      console.error("Create chat failed:", e)
+    }
   }, [loadChats])
 
   const insertMention = useCallback((username: string) => {
@@ -474,6 +665,11 @@ export default function ChatPage() {
       sendTyping(true)
       typingTimerRef.current = setTimeout(() => sendTyping(false), 3000)
     }
+    // Debounced draft save
+    if (selectedChat) {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+      draftTimerRef.current = setTimeout(() => saveDraft(selectedChat.id, value), 500)
+    }
     // @mentions
     const cursorPos = inputRef.current?.selectionStart || value.length
     const beforeCursor = value.slice(0, cursorPos)
@@ -488,7 +684,7 @@ export default function ChatPage() {
     }
     setMentionQuery("")
     setMentionIndex(-1)
-  }, [sendTyping])
+  }, [sendTyping, selectedChat])
 
   const handleSend = useCallback(async () => {
     const text = input.trim()
@@ -517,31 +713,46 @@ export default function ChatPage() {
       }
     }
 
+    // Group E2E: encrypt with group key if available
+    if (!encryptedContent && selectedChat.is_group) {
+      try {
+        const groupKey = await getGroupKeyForChat(selectedChat.id)
+        if (groupKey) {
+          const encrypted = await encryptGroupMessage(content, groupKey)
+          encryptedContent = JSON.stringify({ group_encrypted: encrypted })
+          content = "[encrypted]"
+        }
+      } catch (e) {
+        console.error("Group E2E encrypt failed:", e)
+      }
+    }
+
     // Try P2P DataChannel for private chats (2 participants, no group)
     let sentViaP2P = false
     if (!selectedChat.is_group && selectedChat.participants.length === 2) {
       const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
-      if (peer && p2pClient.directPeers.has(peer.id)) {
+      if (peer) {
         const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`
         const payload = encryptedContent || content
-        const sent = p2pClient.sendDirectMessage(peer.id, msgId, payload)
+        const sent = p2pClient.sendMessageOrQueue(peer.id, msgId, payload)
+        sentViaP2P = true
+        const localMsg: MessageResponse = {
+          id: msgId,
+          chat_id: selectedChat.id,
+          user_id: currentUser.id,
+          content: encryptedContent ? text : content,
+          message_type: "text",
+          created_at: new Date().toISOString(),
+          user: currentUser,
+          is_read: true,
+          is_deleted: false,
+          encrypted_content: encryptedContent,
+          signature: signature,
+          reactions: {},
+        }
+        setMessages((prev) => [...prev, localMsg])
         if (sent) {
-          sentViaP2P = true
-          const localMsg: MessageResponse = {
-            id: msgId,
-            chat_id: selectedChat.id,
-            user_id: currentUser.id,
-            content: encryptedContent ? text : content, // Show original text locally
-            message_type: "text",
-            created_at: new Date().toISOString(),
-            user: currentUser,
-            is_read: true,
-            is_deleted: false,
-            encrypted_content: encryptedContent,
-            signature: signature,
-            reactions: {},
-          }
-          setMessages((prev) => [...prev, localMsg])
+          loadChats()
         }
       }
     }
@@ -559,6 +770,7 @@ export default function ChatPage() {
     setMentionQuery("")
     setMentionIndex(-1)
     sendTyping(false)
+    if (selectedChat) removeDraft(selectedChat.id)
   }, [input, selectedChat, replyTo, currentUser, loadChats, sendTyping])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -640,7 +852,10 @@ export default function ChatPage() {
     try {
       await api.forwardMessage(messageId, targetChatIds)
       setShowForward(null)
-    } catch (e) { console.error("Forward message failed:", e) }
+    } catch (e) {
+      setErrorToast("Не удалось переслать сообщение")
+      console.error("Forward message failed:", e)
+    }
   }, [])
 
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
@@ -649,7 +864,10 @@ export default function ChatPage() {
       setMessages((prev) => prev.map((m) =>
         m.id === messageId ? { ...m, content: newContent } : m
       ))
-    } catch (e) { console.error("Edit message failed:", e) }
+    } catch (e) {
+      setErrorToast("Не удалось отредактировать сообщение")
+      console.error("Edit message failed:", e)
+    }
   }, [])
 
   const handleDeleteMessage = useCallback(async (messageId: string, deleteForAll = false) => {
@@ -662,8 +880,29 @@ export default function ChatPage() {
       } else {
         setMessages((prev) => prev.filter((m) => m.id !== messageId))
       }
-    } catch (e) { console.error("Delete message failed:", e) }
+    } catch (e) {
+      setErrorToast("Не удалось удалить сообщение")
+      console.error("Delete message failed:", e)
+    }
   }, [])
+
+  const handleBookmark = useCallback(async (messageId: string) => {
+    const chatId = selectedChat?.id
+    if (!chatId) return
+    const isBookmarked = bookmarkedIds.has(messageId)
+    try {
+      if (isBookmarked) {
+        await api.removeBookmark(messageId)
+        setBookmarkedIds((prev) => { const next = new Set(prev); next.delete(messageId); return next })
+      } else {
+        await api.addBookmark(messageId, chatId)
+        setBookmarkedIds((prev) => new Set(prev).add(messageId))
+      }
+    } catch (e) {
+      setErrorToast(isBookmarked ? "Не удалось убрать из избранного" : "Не удалось добавить в избранное")
+      console.error("Bookmark failed:", e)
+    }
+  }, [selectedChat, bookmarkedIds])
 
   const handleSearchMessages = useCallback(async () => {
     if (!searchQuery.trim() || !selectedChat) return
@@ -733,21 +972,20 @@ export default function ChatPage() {
   }, [mediaRecorder])
 
   const handleProfile = useCallback(() => { navigate("/profile") }, [navigate])
-  const handleLogout = useCallback(() => { api.clearToken(); navigate("/login", { replace: true }) }, [navigate])
-  const handleSwitchAccount = useCallback(() => { api.clearToken(); navigate("/login", { replace: true }) }, [navigate])
+  const handleLogout = useCallback(() => { api.clearToken(); clearPin(); navigate("/login", { replace: true }) }, [navigate])
+  const handleSwitchAccount = useCallback(() => { api.clearToken(); clearPin(); navigate("/login", { replace: true }) }, [navigate])
   const handleSettings = useCallback(() => { navigate("/settings") }, [navigate])
   const handleLegal = useCallback(() => { navigate("/legal") }, [navigate])
   const handleP2P = useCallback(() => { navigate("/p2p") }, [navigate])
 
   const handleAcceptCall = useCallback(() => {
     if (!incomingCall) return
-    // Отправляем принятие через chat WS
     wsRef.current?.send(JSON.stringify({
       event: "call_accept",
       data: { call_id: incomingCall.callId }
     }))
     setIncomingCall(null)
-    navigate(`/call/${incomingCall.callerId}/${incomingCall.callType}`)
+    navigate(`/call/${incomingCall.callerId}/${incomingCall.callType}?call_id=${incomingCall.callId}`)
   }, [incomingCall, navigate])
 
   const handleRejectCall = useCallback(() => {
@@ -817,6 +1055,16 @@ export default function ChatPage() {
         if (chatId) handleSelectChat(chatId)
       }} />
 
+      {/* Error toast */}
+      {errorToast && (
+        <div className="error-toast" onClick={() => setErrorToast(null)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+          </svg>
+          <span>{errorToast}</span>
+        </div>
+      )}
+
       {/* Incoming call banner */}
       {incomingCall && (
         <div className="incoming-call-banner">
@@ -846,10 +1094,20 @@ export default function ChatPage() {
         {/* Sidebar */}
         <div className="chat-sidebar">
           <div className="sidebar-tabs">
-            <button className={`sidebar-tab ${tab === "chats" ? "active" : ""}`} onClick={() => setTab("chats")}>Чаты</button>
-            <button className={`sidebar-tab ${tab === "contacts" ? "active" : ""}`} onClick={() => setTab("contacts")}>Контакты</button>
-            <button className={`sidebar-tab ${tab === "invites" ? "active" : ""}`} onClick={() => setTab("invites")}>
-              Приглашения
+            <button className={`sidebar-tab ${tab === "chats" ? "active" : ""}`} onClick={() => setTab("chats")} title="Чаты">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+            </button>
+            <button className={`sidebar-tab ${tab === "contacts" ? "active" : ""}`} onClick={() => setTab("contacts")} title="Контакты">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+            </button>
+            <button className={`sidebar-tab ${tab === "bookmarks" ? "active" : ""}`} onClick={() => setTab("bookmarks")} title="Избранное">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+            </button>
+            <button className={`sidebar-tab ${tab === "files" ? "active" : ""}`} onClick={() => setTab("files")} title="Файлы">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+            </button>
+            <button className={`sidebar-tab ${tab === "invites" ? "active" : ""}`} onClick={() => setTab("invites")} title="Приглашения">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
               {invites.length > 0 && <span className="tab-badge">{invites.length}</span>}
             </button>
           </div>
@@ -859,7 +1117,7 @@ export default function ChatPage() {
           </div>
           <div className="sidebar-list-header">
             <span className="sidebar-list-title">
-              {tab === "chats" ? "Чаты" : tab === "contacts" ? "Контакты" : "Приглашения"}
+              {tab === "chats" ? "Чаты" : tab === "contacts" ? "Контакты" : tab === "files" ? "Файлы" : "Приглашения"}
             </span>
             {(tab === "chats" || tab === "contacts") && (
               <button
@@ -896,6 +1154,19 @@ export default function ChatPage() {
                 {invites.map((invite) => (
                   <GroupInviteItem key={invite.id} invite={invite} onAccept={handleAcceptInvite} onDecline={handleDeclineInvite} />
                 ))}
+              </div>
+            )}
+            {tab === "bookmarks" && (
+              <div className="list-scroll">
+                <BookmarksList onSelectMessage={(chatId) => {
+                  const chat = chats.find(c => c.id === chatId)
+                  if (chat) { setSelectedChat(chat); setTab("chats") }
+                }} />
+              </div>
+            )}
+            {tab === "files" && (
+              <div className="list-scroll">
+                <FileManager onClose={() => setTab("chats")} />
               </div>
             )}
           </div>
@@ -947,7 +1218,9 @@ export default function ChatPage() {
                             const peerId = peer?.id || ""
                             const isOnline = onlineUsers[peerId]
                             const isP2P = p2pConnected.has(peerId)
+                            const isConnecting = p2pClient.connectingPeers.has(peerId)
                             if (isOnline && isP2P) return "P2P · в сети"
+                            if (isOnline && isConnecting) return "P2P · подключение..."
                             if (isOnline) return "в сети"
                             return "не в сети"
                           })()}
@@ -955,6 +1228,9 @@ export default function ChatPage() {
                 </div>
                 <div className="ch-actions">
                   <button className="ch-btn" title="Поиск по сообщениям" onClick={() => setSearchQuery("")}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                  </button>
+                  <button className="ch-btn" title="Глобальный поиск" onClick={() => setShowGlobalSearch(true)}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   </button>
                   {isSelectedGroup && (
@@ -978,14 +1254,40 @@ export default function ChatPage() {
                       </button>
                     </>
                   )}
-                  <button className="ch-btn" title="Ещё">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" /></svg>
+                  <button className="ch-btn" title="Экспорт чата" onClick={handleExportChat}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                   </button>
                 </div>
               </div>
 
+              {/* Secret chat banner */}
+              {selectedChat?.is_secret && (
+                <div className="secret-chat-banner">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                  <span>Секретный чат · сообщения исчезают через {selectedChat.disappears_after_seconds}с</span>
+                </div>
+              )}
+
               {/* Messages */}
-              <div className="chat-messages">
+              <div className="chat-messages" ref={messagesContainerRef}>
+                {/* Pinned message banner */}
+                {pinnedMessage && (
+                  <div className="pinned-banner" onClick={() => {
+                    const el = document.getElementById(`msg-${pinnedMessage.id}`)
+                    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
+                  }}>
+                    <span className="pinned-banner-icon">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L12 22" /><path d="M17 7L12 2L7 7" /></svg>
+                    </span>
+                    <div className="pinned-banner-text">
+                      <div className="pinned-banner-title">Закреплённое сообщение</div>
+                      <div className="pinned-banner-preview">{pinnedMessage.content || "Медиа"}</div>
+                    </div>
+                    <button className="pinned-banner-close" onClick={(e) => { e.stopPropagation(); setPinnedMessage(null) }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                    </button>
+                  </div>
+                )}
                 {/* Search mode */}
                 {searchQuery && (
                   <div className="search-bar">
@@ -1020,6 +1322,9 @@ export default function ChatPage() {
                     onReaction={handleReaction}
                     onEdit={handleEditMessage}
                     onViewProfile={handleViewProfile}
+                    onBookmark={handleBookmark}
+                    isBookmarked={bookmarkedIds.has(msg.id)}
+                    highlightQuery={searchQuery}
                   />
                 ))}
                   </div>
@@ -1028,6 +1333,12 @@ export default function ChatPage() {
                   <p className="search-no-results">Ничего не найдено</p>
                 )}
 
+                {!searchQuery && loadingMore && (
+                  <div className="messages-loading">
+                    <div className="messages-spinner" />
+                    <span>Загрузка...</span>
+                  </div>
+                )}
                 {!searchQuery && messages.map((msg) => (
                   <MessageBubble
                     key={msg.id}
@@ -1042,6 +1353,9 @@ export default function ChatPage() {
                     onReaction={handleReaction}
                     onEdit={handleEditMessage}
                     onViewProfile={handleViewProfile}
+                    onBookmark={handleBookmark}
+                    isBookmarked={bookmarkedIds.has(msg.id)}
+                    onPin={handlePinMessage}
                   />
                 ))}
                 <div ref={messagesEndRef} />
@@ -1060,6 +1374,15 @@ export default function ChatPage() {
                 </div>
               )}
 
+              {/* Link preview */}
+              {(() => {
+                const urlMatch = input.match(/https?:\/\/[^\s]+/)
+                if (urlMatch && !input.includes("\n")) {
+                  return <div style={{ padding: "0 12px" }}><LinkPreview url={urlMatch[0]} /></div>
+                }
+                return null
+              })()}
+
               {/* Input area */}
               <div className="chat-input-area" style={{ position: "relative" }}>
                 {mentionCandidates.length > 0 && (
@@ -1073,8 +1396,11 @@ export default function ChatPage() {
                   </div>
                 )}
                 <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
-                <button className="input-btn" title="Эмодзи" onClick={() => setShowEmoji(!showEmoji)} {...{disabled: recording || uploading}}>
+                <button className="input-btn" title="Эмодзи" onClick={() => setShowEmoji(!showEmoji)} disabled={recording || uploading}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
+                </button>
+                <button className="input-btn" title="Стикеры" onClick={() => setShowStickers(!showStickers)} disabled={recording || uploading}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="10" r="1.5" fill="currentColor" /><circle cx="15" cy="10" r="1.5" fill="currentColor" /><path d="M9 15c1 1 5 1 6 0" /></svg>
                 </button>
                 <button className="input-btn" title="Прикрепить файл" disabled={recording || uploading} onClick={handleFilePick}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
@@ -1111,15 +1437,20 @@ export default function ChatPage() {
                     </button>
                   )
                 )}
+                {/* Emoji picker */}
+                {showEmoji && (
+                  <EmojiPicker
+                    onSelect={handleEmojiSelect}
+                    onClose={() => setShowEmoji(false)}
+                  />
+                )}
+                {/* Sticker picker */}
+                {showStickers && (
+                  <StickerPicker
+                    onSelect={(sticker) => { setInput((prev) => prev + sticker); setShowStickers(false); inputRef.current?.focus() }}
+                  />
+                )}
               </div>
-
-              {/* Emoji picker */}
-              {showEmoji && (
-                <EmojiPicker
-                  onSelect={handleEmojiSelect}
-                  onClose={() => setShowEmoji(false)}
-                />
-              )}
             </div>
           )}
         </div>
@@ -1144,6 +1475,7 @@ export default function ChatPage() {
       {showForward && (
         <ForwardModal
           messageId={showForward}
+          sourceChatId={selectedChat?.id}
           onForward={handleForward}
           onClose={() => setShowForward(null)}
         />
@@ -1160,6 +1492,17 @@ export default function ChatPage() {
           currentUser={currentUser}
           onClose={() => setShowGroupSettings(false)}
           onUpdated={() => { loadChats(); }}
+        />
+      )}
+      {showGlobalSearch && (
+        <GlobalSearch
+          chats={chats}
+          onSelect={(chatId: string, _messageId: string) => {
+            const chat = chats.find(c => c.id === chatId)
+            if (chat) { setSelectedChat(chat); setTab("chats") }
+            setShowGlobalSearch(false)
+          }}
+          onClose={() => setShowGlobalSearch(false)}
         />
       )}
     </div>

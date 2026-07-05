@@ -20,8 +20,10 @@ from shared.schemas import (
     P2PIdentityResponse,
     P2PPeerResponse,
     P2PPendingResponse,
+    PinnedMessageResponse,
     ReactionCreate,
     ReactionResponse,
+    StatsResponse,
     StorageInfo,
     Token,
     UserBase,
@@ -40,3 +42,4 @@ CallResponse.model_rebuild()
 ContactResponse.model_rebuild()
 GroupInviteResponse.model_rebuild()
 BlockedUserResponse.model_rebuild()
+PinnedMessageResponse.model_rebuild()

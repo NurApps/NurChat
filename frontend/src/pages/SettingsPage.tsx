@@ -172,6 +172,7 @@ export default function SettingsPage() {
   const handleLogout = () => {
     if (!confirm("Выйти из аккаунта?")) return
     api.clearToken()
+    clearPin()
     navigate("/login", { replace: true })
   }
 
@@ -180,6 +181,7 @@ export default function SettingsPage() {
     if (!confirm("Точно удалить аккаунт?")) return
     try {
       api.clearToken()
+      clearPin()
       navigate("/login", { replace: true })
     } catch {
       setMsg("Ошибка удаления")
@@ -462,7 +464,7 @@ export default function SettingsPage() {
               <div className="settings-group">
                 <h3 className="settings-group-title">Сессии</h3>
                 <p className="settings-info-text">Вы вошли как @{user.username} на этом устройстве.</p>
-                <button className="settings-action-btn danger" onClick={() => { api.clearToken(); navigate("/login", { replace: true }) }}>
+                <button className="settings-action-btn danger" onClick={() => { api.clearToken(); clearPin(); navigate("/login", { replace: true }) }}>
                   Выйти из всех устройств
                 </button>
               </div>

@@ -20,11 +20,14 @@ class CallManager:
         self.active_calls: dict[str, dict] = {}  # {call_id: call_data}
         self.user_calls: dict[str, str] = {}     # {user_id: call_id}
         self.call_websockets: dict[str, WebSocket] = {}  # {user_id: websocket}
+        self.pending_messages: dict[str, list[dict]] = {}  # {user_id: [messages]}
 
     async def handle_signaling(self, websocket: WebSocket, user_id: str):
         """Обработка WebRTC сигналов"""
         await websocket.accept()
         self.call_websockets[user_id] = websocket
+
+        await self._flush_pending_messages(user_id)
 
         logger.info(f"User {user_id} connected to signaling WebSocket")
 
@@ -43,6 +46,8 @@ class CallManager:
                     await self._handle_ice_candidate(user_id, data)
                 elif message_type == "call-request":
                     await self._handle_call_request(user_id, data)
+                elif message_type == "call-join":
+                    await self._handle_call_join(user_id, data)
                 elif message_type == "call-accept":
                     await self._handle_call_accept(user_id, data)
                 elif message_type == "call-reject":
@@ -62,6 +67,24 @@ class CallManager:
         finally:
             if user_id in self.call_websockets:
                 del self.call_websockets[user_id]
+
+    async def _handle_call_join(self, user_id: str, data: dict):
+        """Обработка присоединения к существующему звонку (callee)"""
+        call_id = data.get("call_id")
+        if not call_id:
+            return
+
+        call = self.active_calls.get(call_id)
+        if not call:
+            await self._send_to_user(user_id, {
+                "type": "call-failed",
+                "call_id": call_id,
+                "reason": "call_not_found",
+                "message": "Звонок не найден"
+            })
+            return
+
+        logger.info(f"User {user_id} joined call {call_id}")
 
     async def _handle_call_request(self, user_id: str, data: dict):
         """Обработка запроса на звонок"""
@@ -347,7 +370,23 @@ class CallManager:
                 if user_id in self.call_websockets:
                     del self.call_websockets[user_id]
                 return False
-        return False
+        else:
+            if user_id not in self.pending_messages:
+                self.pending_messages[user_id] = []
+            self.pending_messages[user_id].append(message)
+            logger.debug(f"Buffered message for {user_id} (not on calls WS yet)")
+            return True
+
+    async def _flush_pending_messages(self, user_id: str):
+        """Отправка буферизированных сообщений при подключении"""
+        if user_id in self.pending_messages:
+            messages = self.pending_messages.pop(user_id)
+            for msg in messages:
+                if user_id in self.call_websockets:
+                    try:
+                        await self.call_websockets[user_id].send_json(msg)
+                    except Exception:
+                        break
 
     async def _save_call_to_db(self, call_id: str, action: str, reason: str = None, duration: float = None, ended_by: str = None):
         call = self.active_calls.get(call_id)

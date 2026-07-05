@@ -49,6 +49,8 @@ class Chat(Base):
     id = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=True)  # Для групповых чатов
     is_group = Column(Boolean, default=False)
+    is_secret = Column(Boolean, default=False)  # Секретный чат (эфемерные сообщения)
+    disappears_after_seconds = Column(Integer, default=0)  # 0 = отключено
     group_key = Column(Text, nullable=True)  # E2E: зашифрованный group key (JSON: {user_id: sealed_box_b64})
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -85,6 +87,7 @@ class Message(Base):
     forwarded_from = Column(String, nullable=True)  # ID оригинального сообщения
     is_deleted = Column(Boolean, default=False)
     deleted_for_all = Column(Boolean, default=False)
+    expires_at = Column(DateTime(timezone=True), nullable=True)  # Auto-destruct timer
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="messages")
@@ -216,3 +219,31 @@ class P2PBackup(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", foreign_keys=[user_id])
+
+
+class Bookmark(Base):
+    __tablename__ = "bookmarks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), index=True)
+    message_id = Column(String, ForeignKey("messages.id"), index=True)
+    chat_id = Column(String, ForeignKey("chats.id"), index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+    message = relationship("Message")
+    chat = relationship("Chat")
+
+
+class PinnedMessage(Base):
+    __tablename__ = "pinned_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    chat_id = Column(String, ForeignKey("chats.id"), index=True)
+    message_id = Column(String, ForeignKey("messages.id"), index=True)
+    pinned_by = Column(String, ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    chat = relationship("Chat")
+    message = relationship("Message")
+    pinned_by_user = relationship("User", foreign_keys=[pinned_by])

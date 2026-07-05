@@ -49,6 +49,8 @@ class ChatBase(BaseSchema):
 class ChatCreate(BaseSchema):
     name: Optional[str] = Field(None, max_length=100, description="Chat name must be up to 100 characters long")
     is_group: bool = False
+    is_secret: bool = False
+    disappears_after_seconds: int = 0
     participant_ids: List[str] = Field(..., min_items=1, max_items=100, description="Chat must have 1-100 participants")
 
     @field_validator('name')
@@ -66,6 +68,8 @@ class ChatResponse(ChatBase):
     unread_count: int = 0
     is_pinned: bool = False  # Закреплён ли чат
     is_muted: bool = False  # Отключены ли уведомления
+    is_secret: bool = False
+    disappears_after_seconds: int = 0
 
 
 class GroupRenameRequest(BaseSchema):
@@ -85,6 +89,7 @@ class MessageCreate(BaseSchema):
     forwarded_from: Optional[str] = Field(None, max_length=100)
     encrypted_content: Optional[str] = None  # E2E: JSON envelope (ciphertext, timestamp, senderId)
     signature: Optional[str] = None  # E2E: Ed25519 signature (base64)
+    expires_at: Optional[datetime] = None  # Auto-destruct time
 
     @field_validator('content')
     @classmethod
@@ -272,6 +277,25 @@ class ReactionCreate(BaseSchema):
 
 class ReactionResponse(ReactionBase):
     user: UserResponse
+
+# Pinned Messages
+class PinnedMessageResponse(BaseSchema):
+    id: int
+    chat_id: str
+    message_id: str
+    pinned_by: str
+    created_at: datetime
+    message: MessageResponse
+    pinned_by_user: UserResponse
+
+# Statistics
+class StatsResponse(BaseSchema):
+    total_messages: int
+    total_chats: int
+    total_files: int
+    messages_by_day: List[dict]
+    top_contacts: List[dict]
+    message_types_breakdown: dict
 
 # Обновляем ссылки для рекурсивных типов
 MessageResponse.model_rebuild()

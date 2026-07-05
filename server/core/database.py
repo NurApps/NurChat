@@ -97,3 +97,32 @@ def create_tables():
         print("Tables created successfully.")
     else:
         print("Таблицы базы данных созданы.")
+
+    # Add new columns for existing tables
+    try:
+        inspector = inspect(engine)
+
+        # Add expires_at to messages if missing
+        if "messages" in inspector.get_table_names():
+            msg_cols = [c['name'] for c in inspector.get_columns('messages')]
+            if "expires_at" not in msg_cols:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE messages ADD COLUMN expires_at TIMESTAMP"))
+                    conn.commit()
+                    print("Added expires_at column to messages table")
+
+        # Add is_secret, disappears_after_seconds to chats if missing
+        if "chats" in inspector.get_table_names():
+            chat_cols = [c['name'] for c in inspector.get_columns('chats')]
+            if "is_secret" not in chat_cols:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE chats ADD COLUMN is_secret BOOLEAN DEFAULT 0"))
+                    conn.commit()
+                    print("Added is_secret column to chats table")
+            if "disappears_after_seconds" not in chat_cols:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE chats ADD COLUMN disappears_after_seconds INTEGER DEFAULT 0"))
+                    conn.commit()
+                    print("Added disappears_after_seconds column to chats table")
+    except Exception as e:
+        print(f"Error adding new columns: {e}")

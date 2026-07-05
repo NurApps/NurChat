@@ -4,17 +4,20 @@ import type { ChatResponse } from "../types"
 
 interface Props {
   messageId: string
+  sourceChatId?: string
   onForward: (messageId: string, targetChatIds: string[]) => void
   onClose: () => void
 }
 
-export default function ForwardModal({ messageId, onForward, onClose }: Props) {
+export default function ForwardModal({ messageId, sourceChatId, onForward, onClose }: Props) {
   const [chats, setChats] = useState<ChatResponse[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    api.getForwardChats().then(setChats).catch(() => setChats([]))
-  }, [])
+    api.getForwardChats()
+      .then((all) => setChats(sourceChatId ? all.filter(c => c.id !== sourceChatId) : all))
+      .catch(() => setChats([]))
+  }, [sourceChatId])
 
   const toggle = (id: string) => {
     setSelected((prev) => {

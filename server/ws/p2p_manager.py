@@ -26,20 +26,46 @@ class P2PManager:
         self.active_connections[user_id] = websocket
         logger.info(f"P2P user {user_id} connected")
 
+        await self._notify_peers_online(user_id)
+
         try:
             while True:
                 data = await websocket.receive_json()
                 await self.handle_message(user_id, data)
         except WebSocketDisconnect:
-            await self.disconnect(user_id)
+            pass
         except Exception as exc:
             logger.error(f"P2P websocket error for {user_id}: {exc}")
+        finally:
             await self.disconnect(user_id)
 
     async def disconnect(self, user_id: str):
         self.active_connections.pop(user_id, None)
         self.peer_info.pop(user_id, None)
+        await self._notify_peers_offline(user_id)
         logger.info(f"P2P user {user_id} disconnected")
+
+    async def _notify_peers_online(self, user_id: str):
+        for peer_id, ws in self.active_connections.items():
+            if peer_id != user_id:
+                try:
+                    await ws.send_json({
+                        "type": "p2p-peer-online",
+                        "data": {"user_id": user_id},
+                    })
+                except Exception:
+                    pass
+
+    async def _notify_peers_offline(self, user_id: str):
+        for peer_id, ws in self.active_connections.items():
+            if peer_id != user_id:
+                try:
+                    await ws.send_json({
+                        "type": "p2p-peer-offline",
+                        "data": {"user_id": user_id},
+                    })
+                except Exception:
+                    pass
 
     async def handle_message(self, user_id: str, data: dict):
         message_type = data.get("type")

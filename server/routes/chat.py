@@ -13,7 +13,7 @@ from shared.exceptions import ChatNotFoundError, MessageNotFoundError
 if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, or_
 
@@ -83,7 +83,7 @@ async def create_chat(
         chat_id = security.generate_chat_id()
         now = datetime.now(timezone.utc)
 
-        chat = models.Chat(id=chat_id, name=chat_data.name, is_group=chat_data.is_group)
+        chat = models.Chat(id=chat_id, name=chat_data.name, is_group=chat_data.is_group, is_secret=chat_data.is_secret, disappears_after_seconds=chat_data.disappears_after_seconds)
         db.add(chat)
         added = 0
         for uid in chat_data.participant_ids:
@@ -100,7 +100,7 @@ async def create_chat(
             if db.query(models.User).filter(models.User.id == uid).first():
                 connection_manager.add_user_to_chat(user_id=uid, chat_id=chat_id)
         logger.info(f"Chat created: {chat_id} with {added} participants")
-        return schemas.ChatResponse(id=chat.id, name=chat.name, is_group=chat.is_group, created_at=chat.created_at, participants=[], last_message=None)
+        return schemas.ChatResponse(id=chat.id, name=chat.name, is_group=chat.is_group, is_secret=chat.is_secret, disappears_after_seconds=chat.disappears_after_seconds, created_at=chat.created_at, participants=[], last_message=None)
     except HTTPException:
         raise
     except Exception as e:
@@ -175,6 +175,7 @@ async def send_message(
             content=message_content, message_type=message_data.message_type,
             file_id=message_data.file_id, forwarded_from=message_data.forwarded_from,
             encrypted_content=encrypted_content, signature=signature,
+            expires_at=getattr(message_data, 'expires_at', None),
         )
         db.add(message)
         db.commit()
@@ -258,6 +259,38 @@ async def mark_message_as_read(
         logger.error(f"Mark message as read error: {e}")
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+
+
+@router.get("/messages/{message_id}/read-count")
+async def get_read_count(
+    message_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    try:
+        user_id = token["sub"]
+        message = db.query(models.Message).filter(models.Message.id == message_id).first()
+        if not message:
+            raise HTTPException(status_code=404, detail="Сообщение не найдено")
+        participant = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == message.chat_id,
+            models.ChatParticipant.user_id == user_id
+        ).first()
+        if not participant:
+            raise HTTPException(status_code=403, detail="Нет доступа")
+        total = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == message.chat_id
+        ).count()
+        read_count = db.query(models.MessageReadStatus).filter(
+            models.MessageReadStatus.message_id == message_id,
+            models.MessageReadStatus.is_read == True
+        ).count()
+        return {"read_count": read_count, "total_participants": total}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get read count error: {e}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 
 @router.delete("/messages/{message_id}")
@@ -707,3 +740,160 @@ async def get_group_key(
         raise HTTPException(status_code=404, detail="No group key for this user")
 
     return {"encrypted_key": my_encrypted_key, "chat_id": chat_id}
+
+
+# ─── Global Search ───
+
+@router.get("/search-global")
+async def search_global(
+    q: str,
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    try:
+        user_id = token["sub"]
+        logger.info(f"Global search by user {user_id}: {q}")
+
+        if limit > 100:
+            limit = 100
+
+        user_chat_ids = [
+            chat_id for (chat_id,) in db.query(models.ChatParticipant.chat_id)
+            .filter(models.ChatParticipant.user_id == user_id)
+            .all()
+        ]
+
+        if not user_chat_ids:
+            return []
+
+        messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(
+            models.Message.chat_id.in_(user_chat_ids),
+            models.Message.content.ilike(f"%{q}%"),
+            models.Message.is_deleted == False
+        ).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
+
+        return [schemas.MessageResponse.model_validate(m) for m in messages]
+    except Exception as e:
+        logger.error(f"Global search error: {e}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+
+
+# ─── Mark Chat as Read ───
+
+@router.post("/chats/{chat_id}/read")
+async def mark_chat_as_read(
+    chat_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    try:
+        user_id = token["sub"]
+        logger.info(f"Marking all messages in chat {chat_id} as read for user {user_id}")
+
+        participant = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == chat_id,
+            models.ChatParticipant.user_id == user_id
+        ).first()
+        if not participant:
+            raise HTTPException(status_code=404, detail="Чат не найден")
+
+        unread_statuses = db.query(models.MessageReadStatus).join(models.Message).filter(
+            models.Message.chat_id == chat_id,
+            models.MessageReadStatus.user_id == user_id,
+            models.MessageReadStatus.is_read == False
+        ).all()
+
+        count = 0
+        for status in unread_statuses:
+            status.is_read = True
+            status.read_at = func.now()
+            count += 1
+
+        db.commit()
+        return {"message": f"Отмечено {count} сообщений как прочитанные", "count": count}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Mark chat as read error: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+
+
+# ─── Send Message with expires_at ───
+
+@router.post("/chats/{chat_id}/messages-ephemeral", response_model=schemas.MessageResponse)
+async def send_ephemeral_message(
+    chat_id: str,
+    content: str,
+    expires_in_seconds: int,
+    message_type: str = "text",
+    file_id: str | None = None,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    try:
+        user_id = token["sub"]
+        logger.info(f"Sending ephemeral message to chat {chat_id} by user {user_id}")
+
+        participant = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == chat_id,
+            models.ChatParticipant.user_id == user_id
+        ).first()
+        if not participant:
+            raise HTTPException(status_code=404, detail="Чат не найден")
+
+        if not content.strip():
+            raise HTTPException(status_code=400, detail="Содержимое сообщения не может быть пустым")
+
+        message_id = security.generate_message_id()
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)
+
+        message = models.Message(
+            id=message_id, chat_id=chat_id, user_id=user_id,
+            content=content, message_type=message_type,
+            file_id=file_id, expires_at=expires_at,
+        )
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+
+        message_full = db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.id == message_id).first()
+        if message_full:
+            participants = db.query(models.ChatParticipant).filter(
+                models.ChatParticipant.chat_id == chat_id,
+                models.ChatParticipant.user_id != user_id
+            ).all()
+            target_user_ids = [p.user_id for p in participants]
+            for uid in target_user_ids:
+                read_status = models.MessageReadStatus(message_id=message_id, user_id=uid, is_read=False)
+                db.add(read_status)
+            db.commit()
+
+            try:
+                message_event = {
+                    "event": "message",
+                    "data": {
+                        "id": message_id, "chat_id": chat_id,
+                        "content": message_full.content,
+                        "message_type": message_full.message_type,
+                        "file_id": message_full.file_id,
+                        "user_id": message_full.user_id,
+                        "username": message_full.user.username if message_full.user else "Unknown",
+                        "expires_at": expires_at.isoformat(),
+                        "timestamp": message_full.created_at.isoformat() if message_full.created_at else None,
+                    }
+                }
+                await connection_manager.broadcast_to_chat(message_event, chat_id, exclude_user=user_id)
+            except Exception as ws_error:
+                logger.error(f"Failed to broadcast ephemeral message: {ws_error}")
+
+            return schemas.MessageResponse.model_validate(message_full)
+        raise HTTPException(status_code=500, detail="Не удалось создать сообщение")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Send ephemeral message error: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")

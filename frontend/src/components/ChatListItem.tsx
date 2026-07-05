@@ -1,5 +1,7 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import type { ChatResponse, UserResponse } from "../types"
+import { getAvatarColor } from "../utils/avatar"
+import { getDraftForChat } from "../pages/ChatPage"
 
 interface Props {
   chat: ChatResponse
@@ -8,19 +10,6 @@ interface Props {
   onPin?: (chatId: string) => void
   onMute?: (chatId: string) => void
   onDelete?: (chatId: string) => void
-}
-
-const AVATAR_COLORS = [
-  "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4",
-  "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F",
-]
-
-function getAvatarColor(name: string): string {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
 function getDisplayName(chat: ChatResponse, currentUser: UserResponse): string {
@@ -50,7 +39,8 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
   const avatarChar = displayName[0]?.toUpperCase() || "?"
   const avatarColor = getAvatarColor(displayName)
   const lastTime = getLastMessageTime(chat)
-  const lastPreview = getLastMessagePreview(chat)
+  const [draft] = useState(() => getDraftForChat(chat.id))
+  const lastPreview = draft || getLastMessagePreview(chat)
 
   const other = chat.participants.find((p) => p.id !== currentUser.id)
   const isOnline = !chat.is_group && (other?.is_online ?? false)
@@ -59,6 +49,18 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
   const isMuted = chat.is_muted || false
 
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [menuOpen])
 
   return (
     <div className="chat-list-item" onClick={() => onClick(chat.id)}>
@@ -90,7 +92,7 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
             <span className="cli-name">{displayName}</span>
           </div>
           <span className="cli-time">{lastTime}</span>
-          <div className="cli-menu-wrapper">
+          <div className="cli-menu-wrapper" ref={menuRef}>
             <button
               className="cli-menu-btn"
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
@@ -119,7 +121,7 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
           </div>
         </div>
         <div className="cli-bottom-row">
-          <span className="cli-preview">{lastPreview}</span>
+          <span className={`cli-preview ${draft ? "draft-indicator" : ""}`}>{lastPreview}</span>
           {unread > 0 && (
             <span className="cli-badge">{unread >= 100 ? "99+" : unread}</span>
           )}

@@ -4,7 +4,7 @@ import type { UserResponse } from "../types"
 
 interface Props {
   currentUserId: string
-  onCreate: (participantIds: string[], name: string | null) => void
+  onCreate: (participantIds: string[], name: string | null, isSecret?: boolean, secretTtl?: number) => void
   onClose: () => void
 }
 
@@ -15,6 +15,8 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [showNameInput, setShowNameInput] = useState(false)
   const [groupName, setGroupName] = useState("")
+  const [isSecret, setIsSecret] = useState(false)
+  const [secretTtl, setSecretTtl] = useState(60)
 
   useEffect(() => {
     api.getAllUsers()
@@ -42,7 +44,7 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
       return
     }
     const name = selectedIds.length > 1 ? groupName.trim() || null : null
-    onCreate(selectedIds, name)
+    onCreate(selectedIds, name, isSecret, secretTtl)
   }
 
   if (showNameInput) {
@@ -134,6 +136,28 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
               ))
             )}
           </div>
+
+          {selectedIds.length === 1 && (
+            <div className="secret-chat-option">
+              <label className="secret-toggle">
+                <input type="checkbox" checked={isSecret} onChange={(e) => setIsSecret(e.target.checked)} />
+                <span className="secret-toggle-label">Секретный чат</span>
+              </label>
+              {isSecret && (
+                <div className="secret-ttl-row">
+                  <span>Сообщения исчезают через:</span>
+                  <select value={secretTtl} onChange={(e) => setSecretTtl(Number(e.target.value))}>
+                    <option value={10}>10 сек</option>
+                    <option value={30}>30 сек</option>
+                    <option value={60}>1 мин</option>
+                    <option value={300}>5 мин</option>
+                    <option value={900}>15 мин</option>
+                    <option value={3600}>1 час</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="modal-footer">

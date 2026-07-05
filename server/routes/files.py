@@ -292,3 +292,24 @@ async def cleanup_expired_files(
         logger.error(f"Manual cleanup error: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка очистки: {str(e)}")
+
+
+@router.get("/all", response_model=list[schemas.FileResponse])
+async def get_all_user_files(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    try:
+        user_id = token["sub"]
+        logger.info(f"Getting all files for user: {user_id}")
+
+        if limit > 500:
+            limit = 500
+
+        files = db.query(models.File).filter(models.File.user_id == user_id).order_by(models.File.uploaded_at.desc()).offset(skip).limit(limit).all()
+        return [schemas.FileResponse.model_validate(f) for f in files]
+    except Exception as e:
+        logger.error(f"Get all user files error: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")

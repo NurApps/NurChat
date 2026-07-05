@@ -1,7 +1,9 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import type { MessageResponse, UserResponse } from "../types"
 import { api } from "../services/api"
+import { getAvatarColor } from "../utils/avatar"
 import MediaViewer from "./MediaViewer"
+import VoiceMessage from "./VoiceMessage"
 
 interface Props {
   message: MessageResponse
@@ -16,20 +18,13 @@ interface Props {
   onEdit?: (id: string, content: string) => void
   onReaction?: (msgId: string, emoji: string, add: boolean) => void
   onViewProfile?: (user: UserResponse) => void
+  onBookmark?: (messageId: string) => void
+  isBookmarked?: boolean
+  onPin?: (messageId: string) => void
+  highlightQuery?: string
 }
 
 const REACTION_LIST = ["👍", "❤️", "😂", "😮", "😢", "😡"]
-
-const AVATAR_COLORS = [
-  "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4",
-  "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F",
-]
-
-function getAvatarColor(name: string): string {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
-}
 
 function formatTime(ts: string): string {
   try {
@@ -37,6 +32,17 @@ function formatTime(ts: string): string {
   } catch {
     return ""
   }
+}
+
+function highlightText(text: string, query: string): React.ReactNode[] {
+  if (!query.trim()) return [text]
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"))
+  return parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase()
+      ? <mark key={i} className="search-highlight">{part}</mark>
+      : part
+  )
 }
 
 function parseLinks(text: string): Array<{ type: "text" | "link"; value: string; href?: string }> {
@@ -57,15 +63,37 @@ function parseLinks(text: string): Array<{ type: "text" | "link"; value: string;
 export default function MessageBubble({
   message, currentUser, isMyMessage, isRead = false, status,
   reactions = {}, onDelete, onForward, onReply, onEdit, onReaction, onViewProfile,
+  onBookmark, isBookmarked = false, onPin, highlightQuery,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(message.content)
   const [showDeleteOptions, setShowDeleteOptions] = useState(false)
+  const [readCount, setReadCount] = useState<{ read: number; total: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const content = message.content
   const time = formatTime(message.created_at)
   const isReply = content.startsWith("↩️ Ответ ")
   const peerId = currentUser.id
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+        setShowDeleteOptions(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [menuOpen])
+
+  useEffect(() => {
+    if (!isMyMessage) return
+    api.getReadCount(message.id).then((data) => {
+      setReadCount({ read: data.read_count, total: data.total_participants - 1 })
+    }).catch(() => {})
+  }, [isMyMessage, message.id])
 
   const senderName = message.user?.username || "User"
   const avatarChar = senderName[0]?.toUpperCase() || "?"
@@ -92,7 +120,11 @@ export default function MessageBubble({
   const renderStatusIcon = () => {
     if (status === "sending") return <span className="msg-status sending">⏳</span>
     if (status === "failed") return <span className="msg-status failed">✗</span>
-    if (isRead) return <span className="msg-status read">✓✓</span>
+    if (isRead || (readCount && readCount.read > 0)) return (
+      <span className="msg-status read" title={readCount ? `${readCount.read}/${readCount.total} прочитали` : "Прочитано"}>
+        ✓✓{readCount && readCount.total > 1 && <span className="msg-read-count">{readCount.read}/{readCount.total}</span>}
+      </span>
+    )
     if (status === "delivered") return <span className="msg-status delivered">✓✓</span>
     return <span className="msg-status sent">✓</span>
   }
@@ -130,7 +162,7 @@ export default function MessageBubble({
           p.type === "link" ? (
             <a key={i} href={p.href} target="_blank" rel="noopener noreferrer" className="msg-link">{p.value}</a>
           ) : (
-            <span key={i}>{p.value}</span>
+            <span key={i}>{highlightQuery ? highlightText(p.value, highlightQuery) : p.value}</span>
           )
         )}
       </p>
@@ -187,7 +219,7 @@ export default function MessageBubble({
     if (mt === "voice" && fileUrl) {
       return (
         <div className="msg-file">
-          <audio controls src={fileUrl} className="msg-audio" />
+          <VoiceMessage src={fileUrl} />
         </div>
       )
     }
@@ -298,6 +330,11 @@ export default function MessageBubble({
             {renderContent()}
             <div className="msg-footer">
               <span className="msg-time">{time}</span>
+              {message.expires_at && (
+                <span className="msg-ephemeral" title={`Исчезнет ${new Date(message.expires_at).toLocaleString("ru-RU")}`}>
+                  <span className="msg-ephemeral-icon">⏱</span>
+                </span>
+              )}
               {isMyMessage && renderStatusIcon()}
             </div>
             {renderReactionBar()}
@@ -335,11 +372,15 @@ export default function MessageBubble({
         { label: "Редактировать", action: () => { setEditText(message.content); setEditing(true); setMenuOpen(false) } },
         { label: "Ответить", action: () => onReply?.(message.id) },
         { label: "Переслать", action: () => onForward?.(message.id) },
+        { label: isBookmarked ? "Убрать из избранного" : "В избранное", action: () => onBookmark?.(message.id) },
+        { label: "Закрепить", action: () => onPin?.(message.id) },
         { label: "Удалить", action: () => setShowDeleteOptions(true) },
       ]
     : [
         { label: "Копировать", action: () => navigator.clipboard.writeText(content) },
         { label: "Переслать", action: () => onForward?.(message.id) },
+        { label: isBookmarked ? "Убрать из избранного" : "В избранное", action: () => onBookmark?.(message.id) },
+        { label: "Закрепить", action: () => onPin?.(message.id) },
       ]
 
   if (!isMyMessage) {
@@ -354,7 +395,7 @@ export default function MessageBubble({
           {avatarChar}
         </div>
         {bubble}
-        <div className="msg-menu-area">
+        <div className="msg-menu-area" ref={menuRef}>
           <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
           {menuOpen && !showDeleteOptions && (
             <div className="msg-dropdown">
@@ -383,7 +424,7 @@ export default function MessageBubble({
     <>
     <div className="msg-row my-row">
       <div className="msg-spacer" />
-      <div className="msg-menu-area">
+      <div className="msg-menu-area" ref={menuRef}>
         <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
         {menuOpen && !showDeleteOptions && (
           <div className="msg-dropdown right">

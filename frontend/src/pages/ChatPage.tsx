@@ -10,6 +10,7 @@ import {
   type E2EKeys,
 } from "../services/e2e"
 import { getGroupKeyForChat, encryptGroupMessage, decryptGroupMessage } from "../services/groupE2E"
+import { checkKeyStatus } from "../services/keyVerification"
 import TopBar from "../components/TopBar"
 import ChatListItem from "../components/ChatListItem"
 import ContactListItem from "../components/ContactListItem"
@@ -92,6 +93,7 @@ const [uploadProgress, setUploadProgress] = useState(0)
   const [profileUser, setProfileUser] = useState<UserResponse | null>(null)
   const [showGroupSettings, setShowGroupSettings] = useState(false)
   const [e2eKeys] = useState<E2EKeys | null>(loadE2EKeys)
+  const [keyWarning, setKeyWarning] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
@@ -443,6 +445,20 @@ const [uploadProgress, setUploadProgress] = useState(0)
   const handleSelectChat = useCallback((chatId: string) => {
     const chat = chats.find((c) => c.id === chatId)
     if (chat) {
+      // Check for key changes
+      setKeyWarning(null)
+      if (chat.participants.length === 2) {
+        const peer = chat.participants.find((p) => p.id !== currentUser.id)
+        if (peer?.public_key) {
+          const status = checkKeyStatus(peer.id, peer.public_key)
+          if (status === "changed") {
+            setKeyWarning(`Ключи пользователя ${peer.username || peer.first_name} изменились. Возможно, это подмена.`)
+          } else if (status === "new") {
+            setKeyWarning(`Новый ключ пользователя ${peer.username || peer.first_name}. Рекомендуется проверить.`)
+          }
+        }
+      }
+
       // Save draft for current chat before switching
       if (selectedChat) saveDraft(selectedChat.id, input)
       setSelectedChat(chat)
@@ -1265,6 +1281,33 @@ const [uploadProgress, setUploadProgress] = useState(0)
                   </button>
                 </div>
               </div>
+
+              {/* Key change warning */}
+              {keyWarning && (
+                <div style={{
+                  background: "rgba(255,152,0,0.1)",
+                  borderBottom: "1px solid rgba(255,152,0,0.3)",
+                  padding: "8px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 12,
+                  color: "#ff9800",
+                }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  <span>{keyWarning}</span>
+                  <button
+                    onClick={() => setKeyWarning(null)}
+                    style={{ marginLeft: "auto", background: "none", border: "none", color: "#ff9800", cursor: "pointer", padding: 4 }}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
 
               {/* Secret chat banner */}
               {selectedChat?.is_secret && (

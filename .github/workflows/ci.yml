@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -47,3 +48,48 @@ jobs:
       - name: TypeScript check
         working-directory: frontend
         run: npx tsc --noEmit
+
+  build-windows:
+    runs-on: windows-latest
+    needs: [test, lint]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli
+
+      - name: Build .exe
+        working-directory: src-tauri
+        run: cargo tauri build
+
+      - name: Upload .exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NurChat-windows-x64
+          path: src-tauri/target/release/bundle/nsis/NurChat_*.exe
+          if-no-files-found: warn
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NurChat-windows-x64-msi
+          path: src-tauri/target/release/bundle/msi/NurChat_*.msi
+          if-no-files-found: warn

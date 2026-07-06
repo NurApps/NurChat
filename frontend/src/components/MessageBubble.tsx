@@ -18,6 +18,7 @@ interface Props {
   onEdit?: (id: string, content: string) => void
   onReaction?: (msgId: string, emoji: string, add: boolean) => void
   onViewProfile?: (user: UserResponse) => void
+  onShowInfo?: (id: string) => void
   onBookmark?: (messageId: string) => void
   isBookmarked?: boolean
   onPin?: (messageId: string) => void
@@ -63,7 +64,7 @@ function parseLinks(text: string): Array<{ type: "text" | "link"; value: string;
 export default function MessageBubble({
   message, currentUser, isMyMessage, isRead = false, status,
   reactions = {}, onDelete, onForward, onReply, onEdit, onReaction, onViewProfile,
-  onBookmark, isBookmarked = false, onPin, highlightQuery,
+  onBookmark, isBookmarked = false, onPin, highlightQuery, onShowInfo,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -329,7 +330,9 @@ export default function MessageBubble({
           <>
             {renderContent()}
             <div className="msg-footer">
-              <span className="msg-time">{time}</span>
+              <span className="msg-time" title={new Date(message.created_at).toLocaleString("ru-RU")}>
+                {time}
+              </span>
               {message.expires_at && (
                 <span className="msg-ephemeral" title={`Исчезнет ${new Date(message.expires_at).toLocaleString("ru-RU")}`}>
                   <span className="msg-ephemeral-icon">⏱</span>
@@ -374,6 +377,7 @@ export default function MessageBubble({
         { label: "Переслать", action: () => onForward?.(message.id) },
         { label: isBookmarked ? "Убрать из избранного" : "В избранное", action: () => onBookmark?.(message.id) },
         { label: "Закрепить", action: () => onPin?.(message.id) },
+        { label: "Информация", action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
         { label: "Удалить", action: () => setShowDeleteOptions(true) },
       ]
     : [
@@ -381,6 +385,7 @@ export default function MessageBubble({
         { label: "Переслать", action: () => onForward?.(message.id) },
         { label: isBookmarked ? "Убрать из избранного" : "В избранное", action: () => onBookmark?.(message.id) },
         { label: "Закрепить", action: () => onPin?.(message.id) },
+        { label: "Информация", action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
       ]
 
   if (!isMyMessage) {

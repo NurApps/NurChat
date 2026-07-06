@@ -69,16 +69,16 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
+      - name: Install root dependencies
+        run: npm install
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm install
 
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
-
       - name: Build .exe
+        run: npx tauri build
         working-directory: src-tauri
-        run: cargo tauri build
 
       - name: Upload .exe artifact
         uses: actions/upload-artifact@v4

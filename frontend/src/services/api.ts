@@ -197,6 +197,22 @@ export const api = {
   getStorageInfo: () =>
     request<{ total: number; files: number }>("GET", "/api/files/storage-info"),
 
+  // Calls
+  getCallHistory: (skip = 0, limit = 50) =>
+    request<{ calls: Array<{
+      id: number
+      call_id: string
+      caller_id: string
+      callee_id: string
+      call_type: string
+      started_at: string
+      ended_at?: string
+      duration?: number
+      ended_by?: string
+      caller?: { id: string; username: string; first_name: string }
+      callee?: { id: string; username: string; first_name: string }
+    }>; total: number }>("GET", `/api/calls/call-history?skip=${skip}&limit=${limit}`),
+
   // P2P
   generateP2PKeys: () =>
     request<{ private_key: string; public_key: string; signing_private_key: string; signing_public_key: string }>("POST", "/api/p2p/keys/generate"),
@@ -318,4 +334,15 @@ export const api = {
   isAuthenticated: () => {
     return !!getToken()
   },
+
+  // Audit logs
+  getAuditLogs: (skip = 0, limit = 100) =>
+    request<{ logs: Array<{
+      id: number
+      action: string
+      action_label: string
+      details?: Record<string, unknown>
+      ip_address?: string
+      created_at?: string
+    }>; actions: Record<string, string> }>("GET", `/api/audit/audit-logs?skip=${skip}&limit=${limit}`),
 }

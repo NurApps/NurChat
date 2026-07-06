@@ -468,6 +468,20 @@ export default function SettingsPage() {
                   Выйти из всех устройств
                 </button>
               </div>
+              <div className="settings-group">
+                <h3 className="settings-group-title">Дополнительно</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <button className="settings-action-btn" onClick={() => navigate("/backup")}>
+                    Бэкапы и восстановление
+                  </button>
+                  <button className="settings-action-btn" onClick={() => navigate("/calls")}>
+                    История звонков
+                  </button>
+                  <button className="settings-action-btn" onClick={() => navigate("/audit")}>
+                    История действий
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

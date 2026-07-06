@@ -78,6 +78,7 @@ export default function ChatPage() {
   const [mentionIndex, setMentionIndex] = useState(-1)
   const [p2pConnected, setP2pConnected] = useState<Set<string>>(new Set())
   const [uploading, setUploading] = useState(false)
+const [uploadProgress, setUploadProgress] = useState(0)
   const [recording, setRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
@@ -922,17 +923,22 @@ export default function ChatPage() {
     const file = e.target.files?.[0]
     if (!file || !selectedChat) return
     setUploading(true)
+    setUploadProgress(0)
     try {
       const fileType = file.type.startsWith("image/") ? "image"
         : file.type.startsWith("video/") ? "video"
         : file.type.startsWith("audio/") ? "audio"
         : "file"
-      const uploaded = await api.uploadFile(file, fileType)
+      const uploaded = await api.uploadFile(file, fileType, (p) => setUploadProgress(p))
       const msg = await api.sendMessage(selectedChat.id, file.name, fileType, uploaded.id)
       setMessages((prev) => [...prev, msg])
       loadChats()
-    } catch (e) { console.error("File upload failed:", e) }
+    } catch (e) {
+      console.error("File upload failed:", e)
+      setErrorToast("Ошибка загрузки файла")
+    }
     setUploading(false)
+    setUploadProgress(0)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }, [selectedChat, loadChats])
 
@@ -1406,7 +1412,27 @@ export default function ChatPage() {
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
                 </button>
                 {uploading ? (
-                  <div className="chat-input-uploading">Загрузка...</div>
+                  <div className="chat-input-uploading">
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+                      <span>Загрузка...</span>
+                      <div style={{
+                        flex: 1,
+                        height: 4,
+                        background: "var(--input-bg)",
+                        borderRadius: 2,
+                        overflow: "hidden",
+                      }}>
+                        <div style={{
+                          height: "100%",
+                          width: `${uploadProgress}%`,
+                          background: "var(--tg-blue)",
+                          borderRadius: 2,
+                          transition: "width 0.2s",
+                        }} />
+                      </div>
+                      <span style={{ fontSize: 12, color: "var(--tg-blue)" }}>{uploadProgress}%</span>
+                    </div>
+                  </div>
                 ) : recording ? (
                   <div className="chat-input-recording">
                     <span className="recording-dot" />

@@ -136,6 +136,16 @@ export const api = {
   searchMessages: (chatId: string, query: string) =>
     request<MessageResponse[]>("GET", `/api/chat/chats/${chatId}/search?q=${encodeURIComponent(query)}`),
 
+  // Blocked users
+  getBlockedUsers: () =>
+    request<Array<{ id: number; user_id: string; blocked_user_id: string; created_at: string }>>("GET", "/api/chat/block"),
+
+  blockUser: (userId: string) =>
+    request<{ message: string }>("POST", `/api/chat/block/${userId}`),
+
+  unblockUser: (userId: string) =>
+    request<{ message: string }>(`DELETE`, `/api/chat/block/${userId}`),
+
   // Export
   exportChat: (chatId: string, format: string = "json") =>
     request<{ chat_name: string; export_date: string; messages: { id: string; sender: string; content: string; type: string; timestamp: string }[] }>(
@@ -157,11 +167,35 @@ export const api = {
     request<ChatResponse[]>("GET", "/api/forward/chats/available-for-forward"),
 
   // Files
-  uploadFile: async (file: File, fileType: string): Promise<FileUploadResponse> => {
+  uploadFile: async (file: File, fileType: string, onProgress?: (percent: number) => void): Promise<FileUploadResponse> => {
     const token = getToken()
     const form = new FormData()
     form.append("file", file)
     form.append("file_type", fileType)
+
+    // Use XMLHttpRequest for progress tracking
+    if (onProgress) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open("POST", `${BASE_URL}/api/files/upload`)
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            onProgress(Math.round((e.loaded / e.total) * 100))
+          }
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(JSON.parse(xhr.responseText))
+          } else {
+            reject(new ApiError(xhr.status, xhr.responseText || xhr.statusText))
+          }
+        }
+        xhr.onerror = () => reject(new ApiError(0, "Network error"))
+        xhr.send(form)
+      })
+    }
+
     const res = await fetch(`${BASE_URL}/api/files/upload`, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},

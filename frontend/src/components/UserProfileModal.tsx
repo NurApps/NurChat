@@ -1,7 +1,9 @@
+import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { avatarUrl } from "../config"
 import type { UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
+import SafetyNumberModal from "./SafetyNumberModal"
 
 interface Props {
   user: UserResponse
@@ -25,6 +27,7 @@ function formatLastSeen(ts?: string): string {
 
 export default function UserProfileModal({ user, onClose }: Props) {
   const navigate = useNavigate()
+  const [showSafetyNumber, setShowSafetyNumber] = useState(false)
   const name = user.first_name || user.username || "Пользователь"
   const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username
   const avatarChar = name[0]?.toUpperCase() || "?"
@@ -95,7 +98,24 @@ export default function UserProfileModal({ user, onClose }: Props) {
             </svg>
             Написать
           </button>
+          {user.public_key && (
+            <button className="upm-action-btn" onClick={() => setShowSafetyNumber(true)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              Проверить ключ
+            </button>
+          )}
         </div>
+
+        {showSafetyNumber && user.public_key && (
+          <SafetyNumberModal
+            theirPublicKey={user.public_key}
+            theirUsername={user.username || user.first_name || "пользователь"}
+            onClose={() => setShowSafetyNumber(false)}
+          />
+        )}
       </div>
     </div>
   )

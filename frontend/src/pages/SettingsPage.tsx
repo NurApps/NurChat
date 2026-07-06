@@ -480,6 +480,9 @@ export default function SettingsPage() {
                   <button className="settings-action-btn" onClick={() => navigate("/audit")}>
                     История действий
                   </button>
+                  <button className="settings-action-btn" onClick={() => navigate("/blocked")}>
+                    Заблокированные
+                  </button>
                 </div>
               </div>
             </div>

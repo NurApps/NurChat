@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { ThemeProvider } from "./context/ThemeContext"
 import AuthGuard from "./components/AuthGuard"
+import OfflineBanner from "./components/OfflineBanner"
 import LoginPage from "./pages/LoginPage"
 import ChatPage from "./pages/ChatPage"
 import CallPage from "./pages/CallPage"
@@ -12,10 +13,12 @@ import StatsPage from "./pages/StatsPage"
 import CallHistoryPage from "./pages/CallHistoryPage"
 import AuditLogPage from "./pages/AuditLogPage"
 import BackupPage from "./pages/BackupPage"
+import BlockedUsersPage from "./pages/BlockedUsersPage"
 
 function App() {
   return (
     <ThemeProvider>
+      <OfflineBanner />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -24,11 +27,12 @@ function App() {
           <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
           <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
           <Route path="/legal" element={<AuthGuard><LegalPage /></AuthGuard>} />
-<Route path="/p2p" element={<AuthGuard><P2PStatusPage /></AuthGuard>} />
-<Route path="/stats" element={<AuthGuard><StatsPage /></AuthGuard>} />
-<Route path="/calls" element={<AuthGuard><CallHistoryPage /></AuthGuard>} />
-<Route path="/audit" element={<AuthGuard><AuditLogPage /></AuthGuard>} />
-<Route path="/backup" element={<AuthGuard><BackupPage /></AuthGuard>} />
+          <Route path="/p2p" element={<AuthGuard><P2PStatusPage /></AuthGuard>} />
+          <Route path="/stats" element={<AuthGuard><StatsPage /></AuthGuard>} />
+          <Route path="/calls" element={<AuthGuard><CallHistoryPage /></AuthGuard>} />
+          <Route path="/audit" element={<AuthGuard><AuditLogPage /></AuthGuard>} />
+          <Route path="/backup" element={<AuthGuard><BackupPage /></AuthGuard>} />
+<Route path="/blocked" element={<AuthGuard><BlockedUsersPage /></AuthGuard>} />
           <Route path="*" element={<Navigate to="/chat" replace />} />
         </Routes>
       </BrowserRouter>

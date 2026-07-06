@@ -37,6 +37,7 @@ token.txt
 media/
 logs/
 assets/emoji/*.ttf
+ipfs_bin/
 
 # IDE / Editor
 .vscode/

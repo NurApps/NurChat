@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import { p2pClient } from "../services/p2p"
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts"
 import {
   loadKeys as loadE2EKeys,
   encryptMessage,
@@ -29,6 +30,7 @@ import GlobalSearch from "../components/GlobalSearch"
 import FileManager from "../components/FileManager"
 import StickerPicker from "../components/StickerPicker"
 import LinkPreview from "../components/LinkPreview"
+import MessageInfoModal from "../components/MessageInfoModal"
 import { clearPin } from "../services/pinLock"
 import type { ChatResponse, ContactResponse, GroupInviteResponse, UserResponse, MessageResponse } from "../types"
 
@@ -99,6 +101,7 @@ const [uploadProgress, setUploadProgress] = useState(0)
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set())
   const [errorToast, setErrorToast] = useState<string | null>(null)
   const [showGlobalSearch, setShowGlobalSearch] = useState(false)
+const [showMessageInfo, setShowMessageInfo] = useState<string | null>(null)
   const [showStickers, setShowStickers] = useState(false)
   const [pinnedMessage, setPinnedMessage] = useState<MessageResponse | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -469,6 +472,9 @@ const [uploadProgress, setUploadProgress] = useState(0)
       setHasMore(true)
       // Restore draft for new chat
       setInput(getDraft(chatId))
+      // Mark as read
+      api.markAsRead(chatId).catch(() => {})
+      loadChats()
       api.getChatMessages(chatId, 0, 50)
         .then((msgs) => decryptMessages(msgs, chat))
         .then((decrypted) => {
@@ -575,6 +581,23 @@ const [uploadProgress, setUploadProgress] = useState(0)
       console.error("Export chat failed:", e)
     }
   }, [selectedChat])
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onSearch: () => setShowGlobalSearch(true),
+    onNewChat: () => setShowAddContact(true),
+    onExport: handleExportChat,
+    onEscape: () => {
+      setShowEmoji(false)
+      setShowStickers(false)
+      setShowAddContact(false)
+      setShowCreateChat(false)
+      setShowForward(null)
+      setShowGlobalSearch(false)
+      setShowGroupSettings(false)
+      setProfileUser(null)
+    },
+  })
 
   const handleRemoveContact = useCallback(async (contactId: string) => {
     try { await api.removeContact(contactId); loadContacts() } catch (e) {
@@ -936,23 +959,30 @@ const [uploadProgress, setUploadProgress] = useState(0)
   }, [])
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !selectedChat) return
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0 || !selectedChat) return
     setUploading(true)
     setUploadProgress(0)
-    try {
-      const fileType = file.type.startsWith("image/") ? "image"
-        : file.type.startsWith("video/") ? "video"
-        : file.type.startsWith("audio/") ? "audio"
-        : "file"
-      const uploaded = await api.uploadFile(file, fileType, (p) => setUploadProgress(p))
-      const msg = await api.sendMessage(selectedChat.id, file.name, fileType, uploaded.id)
-      setMessages((prev) => [...prev, msg])
-      loadChats()
-    } catch (e) {
-      console.error("File upload failed:", e)
-      setErrorToast("Ошибка загрузки файла")
+    let completed = 0
+    for (const file of files) {
+      try {
+        const fileType = file.type.startsWith("image/") ? "image"
+          : file.type.startsWith("video/") ? "video"
+          : file.type.startsWith("audio/") ? "audio"
+          : "file"
+        const uploaded = await api.uploadFile(file, fileType, (p) => {
+          const totalProgress = ((completed + p) / files.length) * 100
+          setUploadProgress(totalProgress)
+        })
+        const msg = await api.sendMessage(selectedChat.id, file.name, fileType, uploaded.id)
+        setMessages((prev) => [...prev, msg])
+        completed++
+      } catch (err) {
+        console.error("File upload failed:", file.name, err)
+        setErrorToast(`Ошибка загрузки ${file.name}`)
+      }
     }
+    loadChats()
     setUploading(false)
     setUploadProgress(0)
     if (fileInputRef.current) fileInputRef.current.value = ""
@@ -1374,6 +1404,7 @@ const [uploadProgress, setUploadProgress] = useState(0)
                     onBookmark={handleBookmark}
                     isBookmarked={bookmarkedIds.has(msg.id)}
                     highlightQuery={searchQuery}
+                    onShowInfo={setShowMessageInfo}
                   />
                 ))}
                   </div>
@@ -1405,6 +1436,7 @@ const [uploadProgress, setUploadProgress] = useState(0)
                     onBookmark={handleBookmark}
                     isBookmarked={bookmarkedIds.has(msg.id)}
                     onPin={handlePinMessage}
+                    onShowInfo={setShowMessageInfo}
                   />
                 ))}
                 <div ref={messagesEndRef} />
@@ -1444,7 +1476,7 @@ const [uploadProgress, setUploadProgress] = useState(0)
                     ))}
                   </div>
                 )}
-                <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
+                <input ref={fileInputRef} type="file" hidden multiple onChange={handleFileChange} />
                 <button className="input-btn" title="Эмодзи" onClick={() => setShowEmoji(!showEmoji)} disabled={recording || uploading}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
                 </button>
@@ -1572,6 +1604,12 @@ const [uploadProgress, setUploadProgress] = useState(0)
             setShowGlobalSearch(false)
           }}
           onClose={() => setShowGlobalSearch(false)}
+        />
+      )}
+      {showMessageInfo && (
+        <MessageInfoModal
+          messageId={showMessageInfo}
+          onClose={() => setShowMessageInfo(null)}
         />
       )}
     </div>

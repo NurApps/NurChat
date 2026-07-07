@@ -82,9 +82,9 @@ jobs:
 
       - name: Prepare sidecar binary
         run: |
-          mkdir -p src-tauri/binaries
-          cp dist/nurchat-server.exe src-tauri/binaries/nurchat-server-x86_64-pc-windows-msvc.exe
-        shell: bash
+          if not exist "src-tauri\binaries" mkdir "src-tauri\binaries"
+          copy "dist\nurchat-server.exe" "src-tauri\binaries\nurchat-server-x86_64-pc-windows-msvc.exe"
+          dir "src-tauri\binaries\"
 
       - name: Install root dependencies
         run: npm install

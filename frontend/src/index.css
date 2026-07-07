@@ -1,6 +1,14 @@
 @font-face {
+  font-family: 'Apple Color Emoji';
+  src: url('/fonts/AppleColorEmoji.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: 'Noto Color Emoji';
-  src: url('https://fonts.gstatic.com/s/notocoloremoji/v15/twKj6D2kPOWborqp371KMBKGS3MaHCLB.woff2') format('woff2');
+  src: url('/fonts/NotoColorEmoji.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;

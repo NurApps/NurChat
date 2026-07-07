@@ -80,14 +80,15 @@ jobs:
 
       - name: Build server sidecar
         shell: cmd
-        run: pyinstaller server.spec --clean --noconfirm
-
-      - name: Prepare sidecar binary
-        shell: cmd
         run: |
+          pyinstaller server.spec --clean --noconfirm --log-level DEBUG
+          echo === dist contents ===
+          dir dist
+          echo === binaries dir ===
           if not exist "src-tauri\binaries" mkdir "src-tauri\binaries"
           copy "dist\nurchat-server.exe" "src-tauri\binaries\nurchat-server-x86_64-pc-windows-msvc.exe"
-          dir "src-tauri\binaries\"
+          echo === final check ===
+          dir "src-tauri\binaries"
 
       - name: Install root dependencies
         shell: cmd

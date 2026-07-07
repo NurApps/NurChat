@@ -98,6 +98,12 @@ jobs:
         working-directory: frontend
         run: npm install
 
+      - name: Download Apple Color Emoji font
+        shell: cmd
+        run: |
+          if not exist "frontend\public\fonts" mkdir "frontend\public\fonts"
+          curl -L -o "frontend\public\fonts\AppleColorEmoji.ttf" "https://github.com/samuelngs/apple-emoji-ttf/releases/download/macos-26-20260613-f1fc560b/AppleColorEmoji-Windows.ttf"
+
       - name: Build Tauri app
         shell: cmd
         run: npx tauri build

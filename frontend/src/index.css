@@ -1,12 +1,4 @@
 @font-face {
-  font-family: 'Apple Color Emoji';
-  src: url('/fonts/AppleColorEmoji.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
   font-family: 'Noto Color Emoji';
   src: url('/fonts/NotoColorEmoji.woff2') format('woff2');
   font-weight: normal;
@@ -3154,7 +3146,7 @@ body {
 .reply-text,
 .reaction-bar,
 .reaction-btn {
-  font-family: "Apple Color Emoji", "Noto Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
+  font-family: "Noto Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
 }
 
 /* ─── Animations ─── */

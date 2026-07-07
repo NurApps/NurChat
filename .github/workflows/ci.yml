@@ -69,6 +69,23 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build server sidecar
+        run: pyinstaller server.spec --clean --noconfirm
+
+      - name: Prepare sidecar binary
+        run: |
+          mkdir -p src-tauri/binaries
+          cp dist/nurchat-server.exe src-tauri/binaries/nurchat-server-x86_64-pc-windows-msvc.exe
+        shell: bash
+
       - name: Install root dependencies
         run: npm install
 
@@ -76,7 +93,7 @@ jobs:
         working-directory: frontend
         run: npm install
 
-      - name: Build .exe
+      - name: Build Tauri app
         run: npx tauri build
         working-directory: src-tauri
 

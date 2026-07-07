@@ -4,7 +4,7 @@ mod p2p;
 use ipfs::{IpfsClient, IpfsAddResult};
 use p2p::{P2PNode, P2PConfig, P2PPeerInfo};
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{Manager, State};
 use tokio::sync::RwLock;
 
 struct AppState {
@@ -139,6 +139,10 @@ pub fn run() {
             download_and_open_file,
         ])
         .setup(|app| {
+            // Start server sidecar
+            let sidecar_command = app.shell().sidecar("nurchat-server").unwrap();
+            let (mut _rx, _child) = sidecar_command.spawn().expect("Failed to start server sidecar");
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

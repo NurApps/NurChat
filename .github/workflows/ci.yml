@@ -78,28 +78,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Python dependencies
-        shell: cmd
-        run: pip install -r requirements.txt pyinstaller
-
-      - name: Build server sidecar
-        shell: cmd
-        run: |
-          pyinstaller server.spec --clean --noconfirm
-          if not exist "dist\nurchat-server.exe" (
-            echo ERROR: nurchat-server.exe not found in dist
-            dir dist
-            exit /b 1
-          )
-          if not exist "src-tauri\binaries" mkdir "src-tauri\binaries"
-          copy "dist\nurchat-server.exe" "src-tauri\binaries\nurchat-server-x86_64-pc-windows-msvc.exe"
-          if not exist "src-tauri\binaries\nurchat-server-x86_64-pc-windows-msvc.exe" (
-            echo ERROR: sidecar binary not copied
-            exit /b 1
-          )
-          echo Sidecar built successfully
-          dir "src-tauri\binaries"
-
       - name: Install root dependencies
         shell: cmd
         run: npm install

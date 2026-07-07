@@ -80,16 +80,21 @@ jobs:
         run: npx tauri build
         working-directory: src-tauri
 
-      - name: Upload .exe artifact
+      - name: Upload .exe installer
         uses: actions/upload-artifact@v4
         with:
-          name: NurChat-windows-x64
+          name: NurChat-windows-x64-setup
           path: src-tauri/target/release/bundle/nsis/NurChat_*.exe
           if-no-files-found: warn
 
-      - name: Upload MSI artifact
+      - name: Download WebView2 bootstrapper
+        run: |
+          curl -L -o WebView2Setup.exe "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+        shell: bash
+
+      - name: Upload WebView2 bootstrapper
         uses: actions/upload-artifact@v4
         with:
-          name: NurChat-windows-x64-msi
-          path: src-tauri/target/release/bundle/msi/NurChat_*.msi
+          name: WebView2Setup
+          path: WebView2Setup.exe
           if-no-files-found: warn

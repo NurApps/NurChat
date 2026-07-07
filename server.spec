@@ -1,12 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 a = Analysis(
-    ['../server/main.py'],
-    pathex=['..'],
+    ['server/main.py'],
+    pathex=['.'],
     binaries=[],
     datas=[
-        ('../shared', 'shared'),
-        ('../.env', '.'),
+        ('shared', 'shared'),
     ],
     hiddenimports=[
         'server.core.models',
@@ -73,5 +72,5 @@ exe = EXE(
     strip=False,
     upx=True,
     console=True,
-    icon='../src-tauri/icons/icon.ico',
+    icon='src-tauri/icons/icon.ico',
 )

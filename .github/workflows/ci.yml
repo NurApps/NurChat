@@ -85,13 +85,19 @@ jobs:
       - name: Build server sidecar
         shell: cmd
         run: |
-          pyinstaller server.spec --clean --noconfirm --log-level DEBUG
-          echo === dist contents ===
-          dir dist
-          echo === binaries dir ===
+          pyinstaller server.spec --clean --noconfirm
+          if not exist "dist\nurchat-server.exe" (
+            echo ERROR: nurchat-server.exe not found in dist
+            dir dist
+            exit /b 1
+          )
           if not exist "src-tauri\binaries" mkdir "src-tauri\binaries"
           copy "dist\nurchat-server.exe" "src-tauri\binaries\nurchat-server-x86_64-pc-windows-msvc.exe"
-          echo === final check ===
+          if not exist "src-tauri\binaries\nurchat-server-x86_64-pc-windows-msvc.exe" (
+            echo ERROR: sidecar binary not copied
+            exit /b 1
+          )
+          echo Sidecar built successfully
           dir "src-tauri\binaries"
 
       - name: Install root dependencies

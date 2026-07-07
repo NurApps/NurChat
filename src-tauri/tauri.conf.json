@@ -44,8 +44,7 @@
       },
       "nsis": {
         "installMode": "both",
-        "startMenuShortcut": true,
-        "desktopShortcut": true
+        "languages": ["Russian", "English"]
       }
     }
   }

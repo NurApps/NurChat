@@ -23,6 +23,8 @@ class ConnectionManager:
         self.active_connections: dict[str, WebSocket] = {}
         # user_chats: {user_id: [chat_ids]}
         self.user_chats: dict[str, list[str]] = {}
+        # chat_users: {chat_id: set(user_ids)} — reverse index for O(1) lookup
+        self.chat_users: dict[str, set[str]] = {}
 
     async def connect(self, websocket: WebSocket, user_id: str):
         """Подключение пользователя к WebSocket"""
@@ -44,6 +46,10 @@ class ConnectionManager:
         """Отключение пользователя"""
         if user_id in self.active_connections:
             del self.active_connections[user_id]
+            # Clean up reverse index
+            for cid in self.user_chats.get(user_id, []):
+                if cid in self.chat_users:
+                    self.chat_users[cid].discard(user_id)
             # Обновляем статус оффлайн
             self._update_user_online_status_sync(user_id, False)
             self._notify_user_offline(user_id)
@@ -60,8 +66,14 @@ class ConnectionManager:
                 models.ChatParticipant.user_id == user_id
             ).all()
 
-            self.user_chats[user_id] = [chat.chat_id for chat in user_chats]
-            logger.debug(f"Loaded {len(self.user_chats[user_id])} chats for user {user_id}")
+            chat_ids = [chat.chat_id for chat in user_chats]
+            self.user_chats[user_id] = chat_ids
+            # Update reverse index
+            for cid in chat_ids:
+                if cid not in self.chat_users:
+                    self.chat_users[cid] = set()
+                self.chat_users[cid].add(user_id)
+            logger.debug(f"Loaded {len(chat_ids)} chats for user {user_id}")
         except Exception as e:
             logger.error(f"Error loading chats for user {user_id}: {e}")
             self.user_chats[user_id] = []
@@ -131,14 +143,14 @@ class ConnectionManager:
         return False
 
     async def broadcast_to_chat(self, message: dict, chat_id: str, exclude_user: str = None):
-        """Отправка сообщения всем участникам чата"""
+        """Отправка сообщения всем участникам чата — O(K) where K = users in chat"""
         sent_to = []
-        for user_id, websocket in self.active_connections.items():
+        members = self.chat_users.get(chat_id, set())
+        for user_id in members:
             if user_id == exclude_user:
                 continue
-
-            # Проверяем, что пользователь в этом чате
-            if user_id in self.user_chats and chat_id in self.user_chats[user_id]:
+            websocket = self.active_connections.get(user_id)
+            if websocket:
                 try:
                     await websocket.send_json(message)
                     sent_to.append(user_id)
@@ -173,12 +185,19 @@ class ConnectionManager:
 
         if chat_id not in self.user_chats[user_id]:
             self.user_chats[user_id].append(chat_id)
+            # Update reverse index
+            if chat_id not in self.chat_users:
+                self.chat_users[chat_id] = set()
+            self.chat_users[chat_id].add(user_id)
             logger.debug(f"User {user_id} added to chat {chat_id}")
 
     def remove_user_from_chat(self, user_id: str, chat_id: str):
         """Удаление пользователя из списка чатов"""
         if user_id in self.user_chats and chat_id in self.user_chats[user_id]:
             self.user_chats[user_id].remove(chat_id)
+            # Update reverse index
+            if chat_id in self.chat_users:
+                self.chat_users[chat_id].discard(user_id)
             logger.debug(f"User {user_id} removed from chat {chat_id}")
 
     def is_user_online(self, user_id: str) -> bool:

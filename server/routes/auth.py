@@ -216,12 +216,21 @@ async def get_current_user(
 @router.get("/users", response_model=list[schemas.UserResponse])
 async def get_all_users(
     db: Session = Depends(get_db),
-    token: dict = Depends(verify_token_dependency)
+    token: dict = Depends(verify_token_dependency),
+    q: str = "",
+    offset: int = 0,
+    limit: int = 50,
 ):
-    """Получение списка всех пользователей"""
+    """Получение списка пользователей с пагинацией и поиском"""
     try:
         current_user_id = token["sub"]
-        users = db.query(models.User).filter(models.User.id != current_user_id).all()
+        query = db.query(models.User).filter(models.User.id != current_user_id)
+        if q:
+            query = query.filter(
+                models.User.username.ilike(f"%{q}%") |
+                models.User.first_name.ilike(f"%{q}%")
+            )
+        users = query.offset(offset).limit(min(limit, 100)).all()
         return [schemas.UserResponse.model_validate(user) for user in users]
     except Exception as e:
         logger.error(f"Get all users error: {e}")

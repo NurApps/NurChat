@@ -44,7 +44,18 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
+    # Shutdown: close all WebSocket connections gracefully
+    from server.ws.chat_manager import connection_manager
+    for user_id, ws in list(connection_manager.active_connections.items()):
+        try:
+            await ws.close(code=1001, reason="Server shutting down")
+        except Exception:
+            pass
+    connection_manager.active_connections.clear()
+    connection_manager.user_chats.clear()
+    connection_manager.chat_users.clear()
+    logger.info("All WebSocket connections closed")
+
     file_cleanup_service.stop_cleanup_scheduler()
     logger.info("NurChat Server stopped")
 

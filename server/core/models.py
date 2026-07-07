@@ -260,3 +260,15 @@ class PinnedMessage(Base):
     chat = relationship("Chat")
     message = relationship("Message")
     pinned_by_user = relationship("User", foreign_keys=[pinned_by])
+
+
+class KeyRotationLog(Base):
+    __tablename__ = "key_rotation_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), index=True)
+    old_public_key = Column(Text, nullable=True)
+    new_public_key = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")

@@ -74,6 +74,9 @@ export const api = {
   editMessage: (messageId: string, content: string) =>
     request<MessageResponse>("PUT", `/api/chat/messages/${messageId}/edit?new_content=${encodeURIComponent(content)}`),
 
+  rotateKey: (newPublicKey: string) =>
+    request<{ status: string; old_key: string }>("POST", "/api/auth/profile/rotate-key", { new_public_key: newPublicKey }),
+
   // Contacts (server: /api/contacts-groups prefix)
   getContacts: () =>
     request<ContactResponse[]>("GET", "/api/contacts-groups/contacts"),

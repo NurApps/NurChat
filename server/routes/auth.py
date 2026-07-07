@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 from server.core import models, schemas
 from server.core.database import get_db
@@ -383,3 +383,30 @@ async def delete_avatar(
         logger.error(f"Delete avatar error: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+
+
+@router.post("/profile/rotate-key")
+async def rotate_key(
+    new_public_key: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """Ротация E2E ключа — сохраняет старый ключ в лог и обновляет на новый"""
+    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    old_key = user.public_key
+
+    # Log rotation
+    log = models.KeyRotationLog(
+        user_id=user.id,
+        old_public_key=old_key,
+        new_public_key=new_public_key,
+    )
+    db.add(log)
+
+    user.public_key = new_public_key
+    db.commit()
+
+    return {"status": "ok", "old_key": old_key}

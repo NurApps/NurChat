@@ -17,6 +17,7 @@ import ChatListItem from "../components/ChatListItem"
 import ContactListItem from "../components/ContactListItem"
 import GroupInviteItem from "../components/GroupInviteItem"
 import MessageBubble from "../components/MessageBubble"
+import VirtualizedMessageList from "../components/VirtualizedMessageList"
 import EmojiPicker from "../components/EmojiPicker"
 import AddContactModal from "../components/AddContactModal"
 import CreateChatModal from "../components/CreateChatModal"
@@ -115,7 +116,7 @@ export default function ChatPage() {
 
   // Messages hook
   const {
-    messages, setMessages, loadingMore, hasMore, containerRef: messagesContainerRef, endRef: messagesEndRef,
+    messages, setMessages, loadingMore, hasMore, containerRef: messagesContainerRef, endRef: messagesEndRef, listRef,
     loadMessages, loadMore, addMessage, updateMessage, setHasMore,
   } = useChatMessages({ currentUser, e2eKeys })
 
@@ -791,13 +792,24 @@ export default function ChatPage() {
                   <div className="messages-loading"><div className="messages-spinner" /><span>Загрузка...</span></div>
                 )}
 
-                {!searchQuery && messages.map((msg) => (
-                  <MessageBubble key={msg.id} message={msg} currentUser={currentUser} isMyMessage={msg.user_id === currentUser.id}
-                    isRead={msg.is_read} reactions={msg.reactions} onReply={(id) => handleReply(id, messages)}
-                    onDelete={handleDeleteMessage} onForward={(id) => setShowForward(id)} onReaction={handleReaction}
-                    onEdit={handleEditMessage} onViewProfile={handleViewProfile} onBookmark={handleBookmark}
-                    isBookmarked={bookmarkedIds.has(msg.id)} onPin={handlePinMessage} onShowInfo={setShowMessageInfo} />
-                ))}
+                {!searchQuery && messages.length > 0 && (
+                  <VirtualizedMessageList
+                    messages={messages}
+                    currentUser={currentUser}
+                    reactions={messages.reduce((acc, m) => { if (m.reactions) acc[m.id] = m.reactions; return acc }, {} as Record<string, Record<string, string[]>>)}
+                    bookmarkedIds={bookmarkedIds}
+                    listRef={listRef}
+                    onReply={(id) => handleReply(id, messages)}
+                    onDelete={handleDeleteMessage}
+                    onForward={(id) => setShowForward(id)}
+                    onReaction={handleReaction}
+                    onEdit={handleEditMessage}
+                    onViewProfile={handleViewProfile}
+                    onBookmark={handleBookmark}
+                    onPin={handlePinMessage}
+                    onShowInfo={setShowMessageInfo}
+                  />
+                )}
                 <div ref={messagesEndRef} />
               </div>
 

@@ -68,7 +68,8 @@ def is_user_online(user_id: str) -> bool:
         return False
     try:
         return bool(r.sismember("nurchat:online_users", user_id))
-    except Exception:
+    except Exception as exc:
+        logger.debug("Redis is_user_online error: %s", exc)
         return False
 
 
@@ -78,5 +79,6 @@ def get_online_users() -> list[str]:
         return []
     try:
         return list(r.smembers("nurchat:online_users"))
-    except Exception:
+    except Exception as exc:
+        logger.debug("Redis get_online_users error: %s", exc)
         return []

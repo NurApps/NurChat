@@ -15,6 +15,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   const [hasMore, setHasMore] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<any>(null)
 
   const decryptMessages = useCallback(async (msgs: MessageResponse[], chat: ChatResponse): Promise<MessageResponse[]> => {
     if (!e2eKeys || !isE2EEnabled(chat.participants, e2eKeys)) return msgs
@@ -66,17 +67,13 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   const loadMore = useCallback(async (chat: ChatResponse) => {
     if (loadingMore || !hasMore) return
     setLoadingMore(true)
-    const prevHeight = containerRef.current?.scrollHeight || 0
     try {
       const older = await api.getChatMessages(chat.id, messages.length, 50)
       const decrypted = await decryptMessages(older, chat)
       setMessages((prev) => [...decrypted, ...prev])
       setHasMore(older.length >= 50)
-      if (containerRef.current) {
-        requestAnimationFrame(() => {
-          containerRef.current!.scrollTop = containerRef.current!.scrollHeight - prevHeight
-        })
-      }
+      // Reset virtual list item sizes
+      listRef.current?.resetAfterIndex(0)
     } catch (e) {
       console.error("Load more failed:", e)
     } finally {
@@ -94,7 +91,6 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
     } else if (data._edit) {
       setMessages((prev) => prev.map((m) => m.id === data.message_id ? { ...m, content: data.content } : m))
     } else {
-      // New message
       setMessages((prev) => [...prev, data])
     }
   }, [])
@@ -112,7 +108,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   }, [])
 
   return {
-    messages, setMessages, loadingMore, hasMore, containerRef, endRef,
+    messages, setMessages, loadingMore, hasMore, containerRef, endRef, listRef,
     loadMessages, loadMore, handleWsMessage, addMessage, updateMessage, removeMessage, setHasMore,
   }
 }

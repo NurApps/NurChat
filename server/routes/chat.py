@@ -31,26 +31,73 @@ async def get_user_chats(
 ):
     try:
         user_id = token["sub"]
-        logger.info(f"Getting chats for user: {user_id}, search: {search}")
 
         query = db.query(models.Chat).join(models.ChatParticipant).filter(models.ChatParticipant.user_id == user_id)
         if search:
             query = query.filter(or_(models.Chat.name.ilike(f"%{search}%"), models.Chat.id.ilike(f"%{search}%")))
         user_chats = query.all()
+        chat_ids = [c.id for c in user_chats]
+
+        if not chat_ids:
+            return []
+
+        # Batch load last messages for all chats
+        last_msg_subq = (
+            db.query(models.Message.chat_id, models.Message.id.label("msg_id"))
+            .filter(models.Message.chat_id.in_(chat_ids))
+            .order_by(models.Message.chat_id, models.Message.created_at.desc())
+            .distinct(models.Message.chat_id)
+            .subquery()
+        )
+        last_messages = {}
+        if chat_ids:
+            msgs = db.query(models.Message).join(
+                last_msg_subq, models.Message.id == last_msg_subq.c.msg_id
+            ).options(joinedload(models.Message.user)).all()
+            last_messages = {m.chat_id: m for m in msgs}
+
+        # Batch load participants
+        all_participants = db.query(models.User, models.ChatParticipant).join(
+            models.ChatParticipant, models.User.id == models.ChatParticipant.user_id
+        ).filter(models.ChatParticipant.chat_id.in_(chat_ids)).all()
+        chat_participants: dict[str, list] = {}
+        user_participant_map: dict[str, dict] = {}
+        for user, participant in all_participants:
+            chat_participants.setdefault(participant.chat_id, []).append(user)
+            if participant.user_id == user_id:
+                user_participant_map[participant.chat_id] = participant
+
+        # Batch load unread counts
+        unread_counts = {}
+        if chat_ids:
+            unread_rows = (
+                db.query(models.Message.chat_id, func.count().label("cnt"))
+                .join(models.MessageReadStatus, models.MessageReadStatus.message_id == models.Message.id)
+                .filter(
+                    models.Message.chat_id.in_(chat_ids),
+                    models.MessageReadStatus.user_id == user_id,
+                    not models.MessageReadStatus.is_read
+                )
+                .group_by(models.Message.chat_id)
+                .all()
+            )
+            unread_counts = {row.chat_id: row.cnt for row in unread_rows}
+
         chats_response = []
         for chat in user_chats:
             try:
-                last_message = db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.chat_id == chat.id).order_by(models.Message.created_at.desc()).first()
-                participants = db.query(models.User).join(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat.id).all()
-                participant = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat.id, models.ChatParticipant.user_id == user_id).first()
+                participant = user_participant_map.get(chat.id)
                 is_pinned = participant.is_pinned if participant else False
                 is_muted = participant.is_muted if participant else False
-                unread_count = db.query(models.MessageReadStatus).join(models.Message).filter(models.Message.chat_id == chat.id, models.MessageReadStatus.user_id == user_id, not models.MessageReadStatus.is_read).count()
+                participants = chat_participants.get(chat.id, [])
+                last_message = last_messages.get(chat.id)
+                unread = unread_counts.get(chat.id, 0)
+
                 chats_response.append(schemas.ChatResponse(
                     id=chat.id, name=chat.name, is_group=chat.is_group, created_at=chat.created_at,
                     participants=[schemas.UserResponse.model_validate(p) for p in participants],
                     last_message=schemas.MessageResponse.model_validate(last_message) if last_message else None,
-                    unread_count=unread_count, is_pinned=is_pinned, is_muted=is_muted,
+                    unread_count=unread, is_pinned=is_pinned, is_muted=is_muted,
                 ))
             except Exception as e:
                 logger.error(f"Error processing chat {chat.id}: {e}")

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = 50 * 1024 * 1024
     FILE_TTL_DAYS: int = 30
     ENCRYPTION_KEY: str = "your_default_encryption_key_here"
+    JWT_SECRET_KEY: str = ""  # Auto-generated if empty, separate from ENCRYPTION_KEY
     WS_RECONNECT_TIMEOUT: int = 5
     CLEANUP_INTERVAL_HOURS: int = 6
     ORPHANED_CLEANUP_HOURS: int = 12
@@ -84,5 +85,9 @@ if settings.ENCRYPTION_KEY == "your_default_encryption_key_here":
         "Data will NOT persist across restarts. Set ENCRYPTION_KEY in .env for production."
     )
     settings.ENCRYPTION_KEY = secrets.token_hex(32)
+
+if not settings.JWT_SECRET_KEY:
+    import secrets
+    settings.JWT_SECRET_KEY = secrets.token_hex(32)
 
 ENCRYPTION_KEY = settings.ENCRYPTION_KEY.encode()

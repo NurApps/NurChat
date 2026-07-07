@@ -21,6 +21,10 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -52,8 +56,14 @@ def create_tables():
         ('is_online', 'BOOLEAN'),
     ]
 
+    ALLOWED_COL_NAMES = {c[0] for c in columns_to_add}
+    ALLOWED_COL_TYPES = {'VARCHAR', 'TEXT', 'BOOLEAN'}
+
     for col_name, col_type in columns_to_add:
         if col_name not in columns:
+            if col_name not in ALLOWED_COL_NAMES or col_type not in ALLOWED_COL_TYPES:
+                print(f"Blocked unsafe column: {col_name} {col_type}")
+                continue
             try:
                 print(f"Добавляем столбец {col_name} в таблицу users...")
                 with engine.connect() as conn:

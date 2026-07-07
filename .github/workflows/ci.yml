@@ -49,6 +49,10 @@ jobs:
         working-directory: frontend
         run: npx tsc --noEmit
 
+      - name: Build frontend
+        working-directory: frontend
+        run: npx vite build
+
   build-windows:
     runs-on: windows-latest
     needs: [test, lint]

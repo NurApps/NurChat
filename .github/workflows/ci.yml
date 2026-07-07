@@ -75,18 +75,22 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies
+        shell: cmd
         run: pip install -r requirements.txt pyinstaller
 
       - name: Build server sidecar
+        shell: cmd
         run: pyinstaller server.spec --clean --noconfirm
 
       - name: Prepare sidecar binary
+        shell: cmd
         run: |
           if not exist "src-tauri\binaries" mkdir "src-tauri\binaries"
           copy "dist\nurchat-server.exe" "src-tauri\binaries\nurchat-server-x86_64-pc-windows-msvc.exe"
           dir "src-tauri\binaries\"
 
       - name: Install root dependencies
+        shell: cmd
         run: npm install
 
       - name: Install frontend dependencies
@@ -94,6 +98,7 @@ jobs:
         run: npm install
 
       - name: Build Tauri app
+        shell: cmd
         run: npx tauri build
         working-directory: src-tauri
 

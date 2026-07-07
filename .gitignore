@@ -38,6 +38,7 @@ media/
 logs/
 assets/emoji/*.ttf
 ipfs_bin/
+frontend/public/fonts/*.ttf
 
 # IDE / Editor
 .vscode/

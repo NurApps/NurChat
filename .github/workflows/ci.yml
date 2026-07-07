@@ -86,11 +86,14 @@ jobs:
         working-directory: frontend
         run: npm install
 
-      - name: Download Apple Color Emoji font
+      - name: Download and subset Apple Color Emoji font
         shell: cmd
         run: |
+          pip install fonttools brotli
           if not exist "frontend\public\fonts" mkdir "frontend\public\fonts"
-          curl -L -o "frontend\public\fonts\AppleColorEmoji.ttf" "https://github.com/samuelngs/apple-emoji-ttf/releases/download/macos-26-20260613-f1fc560b/AppleColorEmoji-Windows.ttf"
+          curl -L -o "frontend\public\fonts\AppleColorEmoji-full.ttf" "https://github.com/samuelngs/apple-emoji-ttf/releases/download/macos-26-20260613-f1fc560b/AppleColorEmoji-Windows.ttf"
+          python tools\subset_emoji.py "frontend\public\fonts\AppleColorEmoji-full.ttf" "frontend\public\fonts\AppleColorEmoji.ttf"
+          del "frontend\public\fonts\AppleColorEmoji-full.ttf"
 
       - name: Build Tauri app
         shell: cmd

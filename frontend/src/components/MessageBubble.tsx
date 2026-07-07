@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import DOMPurify from "dompurify"
 import type { MessageResponse, UserResponse } from "../types"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
@@ -46,18 +47,23 @@ function highlightText(text: string, query: string): React.ReactNode[] {
   )
 }
 
+function sanitizeText(text: string): string {
+  return DOMPurify.sanitize(text, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
+}
+
 function parseLinks(text: string): Array<{ type: "text" | "link"; value: string; href?: string }> {
+  const safe = sanitizeText(text)
   const parts: Array<{ type: "text" | "link"; value: string; href?: string }> = []
   const re = /(https?:\/\/[^\s<>"\'()]+|[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/[^\s<>"\'()]*)?)/gi
   let last = 0
   let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push({ type: "text", value: text.slice(last, m.index) })
+  while ((m = re.exec(safe)) !== null) {
+    if (m.index > last) parts.push({ type: "text", value: safe.slice(last, m.index) })
     const url = m[0]
     parts.push({ type: "link", value: url, href: url.startsWith("http") ? url : `https://${url}` })
     last = re.lastIndex
   }
-  if (last < text.length) parts.push({ type: "text", value: text.slice(last) })
+  if (last < safe.length) parts.push({ type: "text", value: safe.slice(last) })
   return parts
 }
 

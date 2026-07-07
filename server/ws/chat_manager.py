@@ -98,9 +98,27 @@ class ConnectionManager:
             db.close()
 
     def _update_user_online_status_sync(self, user_id: str, is_online: bool):
-        """Синхронная версия обновления статуса"""
-        import asyncio
-        asyncio.create_task(self._update_user_online_status(user_id, is_online))
+        """Синхронная версия обновления статуса — безопасный вызов"""
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                loop.create_task(self._update_user_online_status(user_id, is_online))
+            else:
+                asyncio.ensure_future(self._update_user_online_status(user_id, is_online))
+        except RuntimeError:
+            # No event loop running — do sync DB update directly
+            db = SessionLocal()
+            try:
+                user = db.query(models.User).filter(models.User.id == user_id).first()
+                if user:
+                    user.is_online = is_online
+                    if not is_online:
+                        user.last_seen = models.func.now()
+                    db.commit()
+            except Exception:
+                db.rollback()
+            finally:
+                db.close()
 
     async def _notify_user_online(self, user_id: str):
         """Уведомление о пользователе онлайн"""

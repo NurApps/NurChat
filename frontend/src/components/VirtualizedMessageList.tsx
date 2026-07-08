@@ -17,7 +17,6 @@ interface Props {
   onBookmark: (id: string) => void
   onPin: (id: string) => void
   onShowInfo: (id: string) => void
-  listRef?: React.RefObject<{ scrollToRow: (opts: { index: number; align?: string }) => void } | null>
 }
 
 const ROW_HEIGHT = 100

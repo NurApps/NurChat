@@ -116,7 +116,7 @@ export default function ChatPage() {
 
   // Messages hook
   const {
-    messages, setMessages, loadingMore, hasMore, containerRef: messagesContainerRef, endRef: messagesEndRef, listRef,
+    messages, setMessages, loadingMore, hasMore, containerRef: messagesContainerRef, endRef: messagesEndRef,
     loadMessages, loadMore, addMessage, updateMessage, setHasMore,
   } = useChatMessages({ currentUser, e2eKeys })
 
@@ -798,7 +798,6 @@ export default function ChatPage() {
                     currentUser={currentUser}
                     reactions={messages.reduce((acc, m) => { if (m.reactions) acc[m.id] = m.reactions; return acc }, {} as Record<string, Record<string, string[]>>)}
                     bookmarkedIds={bookmarkedIds}
-                    listRef={listRef}
                     onReply={(id) => handleReply(id, messages)}
                     onDelete={handleDeleteMessage}
                     onForward={(id) => setShowForward(id)}

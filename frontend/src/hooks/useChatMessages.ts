@@ -15,7 +15,6 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   const [hasMore, setHasMore] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
-  const listRef = useRef<any>(null)
 
   const decryptMessages = useCallback(async (msgs: MessageResponse[], chat: ChatResponse): Promise<MessageResponse[]> => {
     if (!e2eKeys || !isE2EEnabled(chat.participants, e2eKeys)) return msgs
@@ -72,8 +71,6 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
       const decrypted = await decryptMessages(older, chat)
       setMessages((prev) => [...decrypted, ...prev])
       setHasMore(older.length >= 50)
-      // Reset virtual list item sizes
-      listRef.current?.resetAfterIndex(0)
     } catch (e) {
       console.error("Load more failed:", e)
     } finally {
@@ -108,7 +105,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   }, [])
 
   return {
-    messages, setMessages, loadingMore, hasMore, containerRef, endRef, listRef,
+    messages, setMessages, loadingMore, hasMore, containerRef, endRef,
     loadMessages, loadMore, handleWsMessage, addMessage, updateMessage, removeMessage, setHasMore,
   }
 }

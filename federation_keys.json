@@ -1,5 +1,5 @@
 {
-  "signing_key": "5b2f4cc2b68cd8d8d1e16ccd85497852fc5f0444ce295a93866085dd73c17339",
-  "verify_key": "727c6f6780cbf6a33c7e8d8cd33d42dc67897d53bf1853214bc4ff5f4137d6eb",
-  "server_name": ""
+  "signing_key": "9abf145e6cddb876f2f52e39c47c3638450a30bd071050336bb5d0e448e360ce",
+  "verify_key": "14e0688533273e57dfbe478f64f7000a40b7945a4ef5a7be12424ead645997df",
+  "server_name": "localhost:8000"
 }

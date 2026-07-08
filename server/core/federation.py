@@ -45,7 +45,7 @@ class FederationManager:
         key_path = Path(settings.FEDERATION_SERVER_KEY_PATH)
         if key_path.exists():
             data = json.loads(key_path.read_text())
-            self._signing_key = SigningKey(bytes.fromhex(data["signing_key"]), encoder=HexEncoder)
+            self._signing_key = SigningKey(data["signing_key"], encoder=HexEncoder)
             self._verify_key = self._signing_key.verify_key
             logger.info("Loaded federation keys from %s", key_path)
         else:

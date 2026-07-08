@@ -179,11 +179,19 @@ async def websocket_p2p_endpoint(websocket: WebSocket, user_id: str, token: str 
 
 # WebSocket для уведомлений
 @app.websocket("/ws/notifications/{user_id}")
-async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str):
+async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
+    if token:
+        from server.core.security import security as sec, AuthenticationError
+        try:
+            sec.verify_token(token)
+        except AuthenticationError:
+            release_ws_connection(client_ip)
+            await websocket.close(code=4001)
+            return
     try:
         await handle_notifications_websocket(websocket, user_id)
     finally:
@@ -201,9 +209,11 @@ async def health_check():
         from sqlalchemy import text
         from server.core.database import SessionLocal
         db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
-        db_ok = True
+        try:
+            db.execute(text("SELECT 1"))
+            db_ok = True
+        finally:
+            db.close()
     except Exception as e:
         logger.warning("Database health check failed: %s", e)
     try:

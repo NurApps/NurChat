@@ -139,14 +139,14 @@ async def login(
             logger.warning(f"Login attempt with non-existent username: {user_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверный username"
+                detail="Неверные учетные данные"
             )
 
         if not verify_password(user_data.password, user.hashed_password):
             logger.warning(f"Login attempt with wrong password for username: {user_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверный пароль"
+                detail="Неверные учетные данные"
             )
 
         user.last_seen = models.func.now()

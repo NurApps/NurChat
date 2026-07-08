@@ -220,14 +220,9 @@ class NotificationManager:
 
     def _get_chat_participants(self, chat_id: str) -> list[str]:
         """Получение участников чата из БД"""
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-
         from ..core import models
-        from ..core.database import DATABASE_URL
+        from ..core.database import SessionLocal
 
-        engine = create_engine(DATABASE_URL)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         db = SessionLocal()
 
         try:

@@ -76,7 +76,7 @@ async def get_user_chats(
                 .filter(
                     models.Message.chat_id.in_(chat_ids),
                     models.MessageReadStatus.user_id == user_id,
-                    not models.MessageReadStatus.is_read
+                    models.MessageReadStatus.is_read == False
                 )
                 .group_by(models.Message.chat_id)
                 .all()
@@ -106,7 +106,7 @@ async def get_user_chats(
         def get_sort_key(c):
             if c.last_message and c.last_message.created_at:
                 return (not c.is_pinned, c.last_message.created_at)
-            return (not c.is_pinned, datetime.min)
+            return (not c.is_pinned, datetime.min.replace(tzinfo=None))
 
         chats_response.sort(key=get_sort_key, reverse=True)
         return chats_response

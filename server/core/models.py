@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -60,6 +60,9 @@ class Chat(Base):
 
 class ChatParticipant(Base):
     __tablename__ = "chat_participants"
+    __table_args__ = (
+        Index("ix_chat_participants_user_chat", "user_id", "chat_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     chat_id = Column(String, ForeignKey("chats.id"))
@@ -74,6 +77,9 @@ class ChatParticipant(Base):
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_chat_created", "chat_id", "created_at"),
+    )
 
     id = Column(String, primary_key=True, index=True)
     chat_id = Column(String, ForeignKey("chats.id"))

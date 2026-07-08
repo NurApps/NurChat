@@ -359,6 +359,22 @@ export const api = {
   testConnection: () =>
     request<{ status: string }>("GET", "/api/health"),
 
+  // Federation
+  resolveRemoteUser: (address: string) =>
+    request<{ username: string; display_name: string; public_key: string; server_name: string; is_local: boolean; address?: string }>(
+      "GET", `/api/federation/resolve?address=${encodeURIComponent(address)}`
+    ),
+
+  createRemoteChat: (remoteAddress: string) =>
+    request<{ remote_address: string; display_name: string; public_key: string; server_name: string; username: string }>(
+      "POST", "/api/federation/chat", { remote_address: remoteAddress }
+    ),
+
+  getFederationInfo: () =>
+    request<{ server_name: string; public_key: string; federation_enabled: boolean }>(
+      "GET", "/.well-known/nurchat.json"
+    ),
+
   setToken: (token: string) => {
     localStorage.setItem("token", token)
   },

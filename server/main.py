@@ -19,7 +19,7 @@ from shared.rate_limiter import limiter
 from server.core.database import create_tables
 
 # Импорты routes
-from server.routes import auth, calls, chat, contacts_groups, files, forward, legal, p2p, ipfs, bookmarks, pins, stats, audit
+from server.routes import auth, calls, chat, contacts_groups, files, forward, legal, p2p, ipfs, bookmarks, pins, stats, audit, federation
 from server.utils.file_cleanup import file_cleanup_service
 from server.utils.logger import logger
 from server.ws.chat_manager import handle_websocket_connection
@@ -102,6 +102,7 @@ app.include_router(bookmarks.router, prefix="/api/bookmarks", tags=["Bookmarks"]
 app.include_router(pins.router, tags=["Pinned Messages"])
 app.include_router(stats.router, tags=["Statistics"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Audit Logs"])
+app.include_router(federation.router, tags=["Federation"])
 
 # WS rate limiting: max connections per IP
 _ws_connections: dict[str, int] = {}

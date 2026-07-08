@@ -260,6 +260,26 @@ async def send_message(
             except Exception as ws_error:
                 logger.error(f"Failed to broadcast message via WebSocket: {ws_error}")
             logger.info(f"Message sent successfully: {message_id} in chat {chat_id}")
+
+            # Federation: deliver to remote server if chat name is a remote address
+            if not chat_id.startswith("chat_"):
+                chat_obj = db.query(models.Chat).filter(models.Chat.id == chat_id).first()
+                if chat_obj and chat_obj.name and "@" in chat_obj.name:
+                    from server.routes.federation import send_federated_message
+                    sender_user = db.query(models.User).filter(models.User.id == user_id).first()
+                    if sender_user:
+                        try:
+                            await send_federated_message(
+                                sender_user=sender_user,
+                                recipient_address=chat_obj.name,
+                                content=message_data.content,
+                                msg_id=message_id,
+                                encrypted_content=encrypted_content,
+                                message_type=message_data.message_type,
+                            )
+                        except Exception as fed_err:
+                            logger.warning(f"Federation delivery failed: {fed_err}")
+
             return schemas.MessageResponse.model_validate(message_full)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось создать сообщение")
     except ChatNotFoundError:

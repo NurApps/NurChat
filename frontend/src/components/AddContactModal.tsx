@@ -6,14 +6,17 @@ interface Props {
   existingContactIds: string[]
   currentUserId: string
   onAdd: (userId: string) => void
+  onAddRemote?: (address: string) => void
   onClose: () => void
 }
 
-export default function AddContactModal({ existingContactIds, currentUserId, onAdd, onClose }: Props) {
+export default function AddContactModal({ existingContactIds, currentUserId, onAdd, onAddRemote, onClose }: Props) {
   const [search, setSearch] = useState("")
   const [users, setUsers] = useState<UserResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [remoteResult, setRemoteResult] = useState<{ username: string; display_name: string; server_name: string; address: string } | null>(null)
+  const [resolving, setResolving] = useState(false)
 
   useEffect(() => {
     api.getAllUsers()
@@ -27,7 +30,26 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
       .finally(() => setLoading(false))
   }, [currentUserId, existingContactIds])
 
-  const filtered = search
+  // Detect remote address pattern (user@host:port)
+  const isRemoteAddress = search.includes("@") && search.split("@").length === 2
+
+  const handleResolveRemote = async () => {
+    if (!search.includes("@")) return
+    setResolving(true)
+    setRemoteResult(null)
+    try {
+      const result = await api.resolveRemoteUser(search.trim())
+      if (!result.is_local) {
+        setRemoteResult(result as any)
+      }
+    } catch {
+      setRemoteResult(null)
+    } finally {
+      setResolving(false)
+    }
+  }
+
+  const filtered = search && !isRemoteAddress
     ? users.filter((u) => u.username.toLowerCase().includes(search.toLowerCase()))
     : users
 
@@ -50,18 +72,48 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
             </svg>
             <input
               type="text"
-              placeholder="Поиск по имени пользователя"
+              placeholder="Имя или user@host:port"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setRemoteResult(null) }}
+              onKeyDown={(e) => { if (isRemoteAddress && e.key === "Enter") handleResolveRemote() }}
               autoFocus
             />
+            {isRemoteAddress && (
+              <button
+                className="modal-btn primary"
+                style={{ marginLeft: 8, padding: "4px 12px", fontSize: 12 }}
+                onClick={handleResolveRemote}
+                disabled={resolving}
+              >
+                {resolving ? "..." : "Найти"}
+              </button>
+            )}
           </div>
+
+          {/* Remote user result */}
+          {remoteResult && (
+            <div
+              className={`modal-user-item ${selectedId === remoteResult.address ? "selected" : ""}`}
+              onClick={() => setSelectedId(remoteResult.address as any)}
+              style={{ cursor: "pointer" }}
+            >
+              <div className="modal-user-avatar" style={{ background: "#4CAF50" }}>
+                <span>@</span>
+              </div>
+              <div className="modal-user-info">
+                <span className="modal-user-name">{remoteResult.display_name || remoteResult.username}</span>
+                <span className="modal-user-sub">{remoteResult.address} (удалённый сервер)</span>
+              </div>
+            </div>
+          )}
 
           <div className="modal-user-list">
             {loading ? (
               <div className="modal-loading">Загрузка...</div>
-            ) : filtered.length === 0 ? (
-              <div className="modal-empty">Нет доступных пользователей</div>
+            ) : filtered.length === 0 && !remoteResult ? (
+              <div className="modal-empty">
+                {isRemoteAddress ? "Нажмите «Найти» для поиска" : "Нет доступных пользователей"}
+              </div>
             ) : (
               filtered.map((user) => (
                 <div
@@ -87,7 +139,14 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
           <button
             className="modal-btn primary"
             disabled={!selectedId}
-            onClick={() => selectedId && onAdd(selectedId)}
+            onClick={() => {
+              if (!selectedId) return
+              if (selectedId.includes("@") && onAddRemote) {
+                onAddRemote(selectedId)
+              } else {
+                onAdd(selectedId)
+              }
+            }}
           >
             Добавить
           </button>

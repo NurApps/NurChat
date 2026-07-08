@@ -278,3 +278,32 @@ class KeyRotationLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
+
+
+class FederationServer(Base):
+    __tablename__ = "federation_servers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    server_name = Column(String, unique=True, index=True, nullable=False)  # e.g. "nurchat.example.com:8000"
+    public_key = Column(Text, nullable=False)  # Ed25519 public key (hex)
+    display_name = Column(String, nullable=True)
+    software_version = Column(String, nullable=True)
+    last_seen = Column(DateTime(timezone=True), server_default=func.now())
+    is_blocked = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class FederationActivity(Base):
+    __tablename__ = "federation_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    activity_id = Column(String, unique=True, index=True, nullable=False)  # Unique activity ID
+    activity_type = Column(String, nullable=False)  # message, typing, reaction, etc.
+    sender_server = Column(String, nullable=False)
+    sender_user = Column(String, nullable=False)  # username on sender server
+    recipient_server = Column(String, nullable=False)
+    recipient_user = Column(String, nullable=False)
+    payload = Column(Text, nullable=False)  # JSON activity body
+    signature = Column(Text, nullable=False)  # Ed25519 signature (hex)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    processed_at = Column(DateTime(timezone=True), nullable=True)

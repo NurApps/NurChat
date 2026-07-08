@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     IPFS_API_URL: str = "http://127.0.0.1:5001"
     USE_FEDERATED_BACKUP: bool = False
     FEDERATED_BACKUP_URL: str | None = None
+
+    # Federation (server-to-server)
+    USE_FEDERATION: bool = False
+    FEDERATION_SERVER_NAME: str = ""  # Public server address, e.g. "nurchat.example.com:8000"
+    FEDERATION_SERVER_KEY_PATH: str = "federation_keys.json"
+    FEDERATION_ACTIVITY_TTL_HOURS: int = 72
+    FEDERATION_MAX_INBOX_SIZE: int = 1000
+    FEDERATION_ALLOWED_SERVERS: str = ""  # Comma-separated whitelist, empty = allow all
     WEBRTC_ICE_SERVERS: str | None = None
     CLIENT_HOST: str = "localhost"
 

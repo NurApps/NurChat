@@ -84,7 +84,7 @@ export default function LoginPage() {
     } catch (err: any) {
       const msg = err?.message || ""
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED") || msg.includes("ERR_NETWORK")) {
-        setError("Сервер недоступен. Убедитесь, что сервер запущен (python -m uvicorn server.main:app --port 8000)")
+        setError("Сервер недоступен. Перезапустите приложение или проверьте подключение")
       } else if (err instanceof Error && "status" in err) {
         const apiErr = err as { status: number; message: string }
         if (apiErr.status === 401) setError("Неверный username или пароль")

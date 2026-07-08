@@ -1770,6 +1770,34 @@ body {
   background: var(--bg);
 }
 
+/* ─── Server Boot Overlay ─── */
+
+.server-boot-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.server-boot-card {
+  text-align: center;
+  padding: 3rem;
+}
+
+.server-boot-card h2 {
+  color: var(--text);
+  font-size: 1.25rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.server-boot-card p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
 /* ─── Modals ─── */
 
 .modal-overlay {

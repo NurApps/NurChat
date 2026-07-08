@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { useState } from "react"
 import { ThemeProvider } from "./context/ThemeContext"
 import AuthGuard from "./components/AuthGuard"
 import OfflineBanner from "./components/OfflineBanner"
+import ServerBootOverlay from "./components/ServerBootOverlay"
 import LoginPage from "./pages/LoginPage"
 import ChatPage from "./pages/ChatPage"
 import CallPage from "./pages/CallPage"
@@ -16,8 +18,11 @@ import BackupPage from "./pages/BackupPage"
 import BlockedUsersPage from "./pages/BlockedUsersPage"
 
 function App() {
+  const [serverReady, setServerReady] = useState(false)
+
   return (
     <ThemeProvider>
+      {!serverReady && <ServerBootOverlay onReady={() => setServerReady(true)} />}
       <OfflineBanner />
       <BrowserRouter>
         <Routes>

@@ -1,15 +1,18 @@
 mod ipfs;
 mod p2p;
+mod server;
 
 use ipfs::{IpfsClient, IpfsAddResult};
 use p2p::{P2PNode, P2PConfig, P2PPeerInfo};
+use server::ServerManager;
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{Manager, State};
 use tokio::sync::RwLock;
 
 struct AppState {
     ipfs: RwLock<Option<IpfsClient>>,
     p2p: RwLock<Option<P2PNode>>,
+    server: ServerManager,
 }
 
 #[tauri::command]
@@ -118,10 +121,13 @@ async fn download_and_open_file(url: String, token: String, filename: String) ->
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let server = ServerManager::new();
+
     tauri::Builder::default()
         .manage(AppState {
             ipfs: RwLock::new(None),
             p2p: RwLock::new(None),
+            server,
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
@@ -146,8 +152,46 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Auto-start server
+            let state = app.handle().state::<AppState>();
+            let app_dir = app.path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
+
+            // Fallback to current dir if app_data_dir doesn't exist
+            let app_dir = if app_dir.exists() { app_dir } else {
+                std::env::current_dir().unwrap_or_default()
+            };
+
+            log::info!("Server app_dir: {:?}", app_dir);
+
+            match state.server.start(&app_dir) {
+                Ok(()) => {
+                    log::info!("Server process started");
+                    // Wait for server in background
+                    let state_handle = app.handle().clone();
+                    std::thread::spawn(move || {
+                        let state = state_handle.state::<AppState>();
+                        match state.server.wait_ready(15) {
+                            Ok(()) => log::info!("Server is ready"),
+                            Err(e) => log::error!("Server failed to start: {}", e),
+                        }
+                    });
+                }
+                Err(e) => {
+                    log::error!("Failed to start server: {}", e);
+                }
+            }
+
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                let state = app_handle.state::<AppState>();
+                state.server.stop();
+            }
+        });
 }

@@ -1,26 +1,18 @@
 import json
 import logging
+import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from server.core.database import get_db
 from server.core.federation import federation
 from server.core.models import FederationServer, FederationActivity, User
-from shared.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-class FederationUserInfo(BaseModel):
-    username: str
-    display_name: str
-    public_key: str
-    signing_public_key: str | None = None
-    server_name: str
 
 
 # ── Discovery ──
@@ -32,13 +24,13 @@ async def well_known():
         "server_name": federation.server_name,
         "public_key": federation.public_key_hex,
         "software": "NurChat",
-        "version": "0.12",
+        "version": "0.13",
         "federation_enabled": federation.enabled,
     }
 
 
 @router.get("/federation/user/{username}")
-async def federation_user_profile(username: str, db: Session = next(get_db)):
+async def federation_user_profile(username: str, db: Session = Depends(get_db)):
     """Public profile for cross-server user lookup."""
     user = db.query(User).filter(User.username == username).first()
     if not user:
@@ -55,7 +47,7 @@ async def federation_user_profile(username: str, db: Session = next(get_db)):
 
 
 @router.get("/api/federation/resolve")
-async def resolve_remote_address(address: str, db: Session = next(get_db)):
+async def resolve_remote_address(address: str, db: Session = Depends(get_db)):
     """Resolve a user@host:port address to their public profile."""
     parsed = federation.parse_address(address)
     if not parsed:
@@ -63,7 +55,6 @@ async def resolve_remote_address(address: str, db: Session = next(get_db)):
 
     username, server_name = parsed
 
-    # If it's our own server, look up locally
     if server_name == federation.server_name:
         user = db.query(User).filter(User.username == username).first()
         if not user:
@@ -76,7 +67,6 @@ async def resolve_remote_address(address: str, db: Session = next(get_db)):
             "is_local": True,
         }
 
-    # Fetch from remote server
     profile = await federation.fetch_user_profile(server_name, username)
     if not profile:
         raise HTTPException(status_code=502, detail=f"Cannot reach server {server_name}")
@@ -87,32 +77,21 @@ async def resolve_remote_address(address: str, db: Session = next(get_db)):
 
 
 class CreateRemoteChatRequest(BaseModel):
-    remote_address: str  # username@host:port
+    remote_address: str
 
 
 @router.post("/api/federation/chat")
-async def create_remote_chat(
-    req: CreateRemoteChatRequest,
-    db: Session = next(get_db),
-):
+async def create_remote_chat(req: CreateRemoteChatRequest):
     """Create or get a chat with a remote user (federation)."""
-    from fastapi import Depends
-    from server.core.security import verify_token_dependency, security
-
-    # We can't use Depends here directly, so we extract token manually
-    # This endpoint should be called with Authorization header
-
     parsed = federation.parse_address(req.remote_address)
     if not parsed:
         raise HTTPException(status_code=400, detail="Invalid address. Use username@host:port")
 
     username, server_name = parsed
 
-    # Don't allow chatting with own server via federation
     if server_name == federation.server_name:
         raise HTTPException(status_code=400, detail="User is on this server. Use regular chat creation.")
 
-    # Verify remote user exists
     profile = await federation.fetch_user_profile(server_name, username)
     if not profile:
         raise HTTPException(status_code=502, detail=f"Cannot reach {server_name}")
@@ -130,7 +109,7 @@ async def create_remote_chat(
 
 class FederationActivityPayload(BaseModel):
     activity_id: str
-    activity_type: str  # message, typing, reaction, read, presence
+    activity_type: str
     sender_server: str
     sender_user: str
     recipient_server: str
@@ -141,7 +120,7 @@ class FederationActivityPayload(BaseModel):
 
 
 @router.post("/federation/inbox")
-async def federation_inbox(activity: FederationActivityPayload, db: Session = next(get_db)):
+async def federation_inbox(activity: FederationActivityPayload, db: Session = Depends(get_db)):
     """Receive a signed activity from a remote server."""
     if not federation.enabled:
         raise HTTPException(status_code=503, detail="Federation disabled")
@@ -150,7 +129,6 @@ async def federation_inbox(activity: FederationActivityPayload, db: Session = ne
         logger.warning("Blocked activity from %s (not in allowed list)", activity.sender_server)
         raise HTTPException(status_code=403, detail="Server not allowed")
 
-    # Verify signature
     payload_for_verify = json.dumps(
         {k: v for k, v in activity.model_dump().items() if k != "signature"},
         sort_keys=True,
@@ -159,7 +137,6 @@ async def federation_inbox(activity: FederationActivityPayload, db: Session = ne
     if not federation.verify(payload_for_verify, activity.signature, activity.sender_server):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    # Store/update remote server info
     server = db.query(FederationServer).filter(
         FederationServer.server_name == activity.sender_server
     ).first()
@@ -173,7 +150,6 @@ async def federation_inbox(activity: FederationActivityPayload, db: Session = ne
     server.last_seen = datetime.now(timezone.utc)
     db.commit()
 
-    # Store activity
     db_activity = FederationActivity(
         activity_id=activity.activity_id,
         activity_type=activity.activity_type,
@@ -187,28 +163,22 @@ async def federation_inbox(activity: FederationActivityPayload, db: Session = ne
     db.add(db_activity)
     db.commit()
 
-    # Route the activity
     await _route_activity(activity, db)
 
     return {"status": "ok"}
 
 
 async def _route_activity(activity: FederationActivityPayload, db: Session):
-    """Route incoming activity to the appropriate local handler."""
-    from server.ws.chat_manager import connection_manager
-
     if activity.activity_type == "message":
         await _handle_federated_message(activity, db)
     elif activity.activity_type == "typing":
         await _handle_federated_typing(activity)
     elif activity.activity_type == "reaction":
         await _handle_federated_reaction(activity, db)
-    elif activity.activity_type == "presence":
-        pass  # Could update remote user presence
 
 
 async def _handle_federated_message(activity: FederationActivityPayload, db: Session):
-    """Store and deliver a federated message to a local user."""
+    from server.ws.chat_manager import connection_manager
     from server.core.security import security
     from server.core.models import Chat, ChatParticipant, Message
 
@@ -217,14 +187,9 @@ async def _handle_federated_message(activity: FederationActivityPayload, db: Ses
         logger.warning("Recipient %s not found locally", activity.recipient_user)
         return
 
-    sender_username = activity.sender_user
-    sender_server = activity.sender_server
+    remote_address = f"{activity.sender_user}@{activity.sender_server}"
     msg_data = activity.payload
 
-    # Find or create a chat with this remote user
-    remote_address = f"{sender_username}@{sender_server}"
-
-    # Look for an existing 1:1 chat where the name matches the remote address
     chat = None
     local_chats = db.query(Chat).join(ChatParticipant).filter(
         ChatParticipant.user_id == recipient.id,
@@ -236,7 +201,6 @@ async def _handle_federated_message(activity: FederationActivityPayload, db: Ses
             break
 
     if not chat:
-        # Create new chat for this remote user
         chat_id = security.generate_chat_id()
         chat = Chat(id=chat_id, name=remote_address, is_group=False)
         db.add(chat)
@@ -244,12 +208,11 @@ async def _handle_federated_message(activity: FederationActivityPayload, db: Ses
         db.add(participant)
         db.commit()
 
-    # Store message
     msg_id = msg_data.get("id") or security.generate_message_id()
     message = Message(
         id=msg_id,
         chat_id=chat.id,
-        user_id=recipient.id,  # Store as recipient's message
+        user_id=recipient.id,
         content=msg_data.get("content", ""),
         encrypted_content=msg_data.get("encrypted_content"),
         message_type=msg_data.get("message_type", "text"),
@@ -258,7 +221,6 @@ async def _handle_federated_message(activity: FederationActivityPayload, db: Ses
     db.add(message)
     db.commit()
 
-    # Deliver via WebSocket
     await connection_manager.send_personal_message(
         json.dumps({
             "type": "message",
@@ -277,7 +239,6 @@ async def _handle_federated_message(activity: FederationActivityPayload, db: Ses
 
 
 async def _handle_federated_typing(activity: FederationActivityPayload):
-    """Forward typing indicator from remote user."""
     from server.ws.chat_manager import connection_manager
     from server.core.database import SessionLocal
 
@@ -295,7 +256,6 @@ async def _handle_federated_typing(activity: FederationActivityPayload):
 
 
 async def _handle_federated_reaction(activity: FederationActivityPayload, db: Session):
-    """Handle a federated reaction."""
     from server.ws.chat_manager import connection_manager
     from server.core.models import MessageReaction
 
@@ -323,10 +283,9 @@ async def _handle_federated_reaction(activity: FederationActivityPayload, db: Se
     )
 
 
-# ── Outbox helper (called from chat routes) ──
+# ── Outbox helpers ──
 
 async def send_federated_message(sender_user: User, recipient_address: str, content: str, msg_id: str, encrypted_content: str | None = None, message_type: str = "text") -> bool:
-    """Send a message to a remote user via federation."""
     if not federation.enabled:
         return False
 
@@ -355,10 +314,6 @@ async def send_federated_message(sender_user: User, recipient_address: str, cont
     return await federation.deliver_activity(recipient_server, activity)
 
 
-import time
-
-
-# Helper for typing
 async def send_federated_typing(sender_user: User, recipient_address: str) -> bool:
     if not federation.enabled:
         return False

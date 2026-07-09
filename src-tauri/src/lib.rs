@@ -166,21 +166,30 @@ pub fn run() {
 
             log::info!("Server app_dir: {:?}", app_dir);
 
+            let handle = app.handle().clone();
+            let app_dir_clone = app_dir.clone();
             match state.server.start(&app_dir) {
                 Ok(()) => {
                     log::info!("Server process started");
-                    // Wait for server in background
-                    let state_handle = app.handle().clone();
+                    let _ = handle.emit("server-status", serde_json::json!({"status": "starting"}));
+                    // Wait for server in background (60s for embeddable Python download)
                     std::thread::spawn(move || {
-                        let state = state_handle.state::<AppState>();
-                        match state.server.wait_ready(15) {
-                            Ok(()) => log::info!("Server is ready"),
-                            Err(e) => log::error!("Server failed to start: {}", e),
+                        let state = handle.state::<AppState>();
+                        match state.server.wait_ready(60) {
+                            Ok(()) => {
+                                log::info!("Server is ready");
+                                let _ = handle.emit("server-status", serde_json::json!({"status": "ready"}));
+                            }
+                            Err(e) => {
+                                log::error!("Server failed to start: {}", e);
+                                let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
+                            }
                         }
                     });
                 }
                 Err(e) => {
                     log::error!("Failed to start server: {}", e);
+                    let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
                 }
             }
 

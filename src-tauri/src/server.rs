@@ -46,7 +46,8 @@ impl ServerManager {
         // Strategy 3: System Python
         if let Some(python) = find_system_python() {
             info!("Found system Python: {:?}", python);
-            return self.start_with_python(&python, app_dir, &mut child);
+            let python_path = PathBuf::from(&python);
+            return self.start_with_python(&python_path, app_dir, &mut child);
         }
 
         // Strategy 4: Download embeddable Python
@@ -220,7 +221,7 @@ fn download_embeddable_python(target_dir: &Path) -> Result<(), String> {
     use std::io::Write;
 
     info!("Downloading Python {} embeddable...", PYTHON_VERSION);
-    target_dir.create_dir_all().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(target_dir).map_err(|e| e.to_string())?;
 
     let zip_path = target_dir.join("python.zip");
 

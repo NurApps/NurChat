@@ -246,7 +246,10 @@ fn download_embeddable_python(target_dir: &Path) -> Result<(), String> {
     let pth_files: Vec<_> = std::fs::read_dir(target_dir)
         .map_err(|e| e.to_string())?
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|ext| ext == "pth").unwrap_or(false))
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.ends_with("._pth") || name.ends_with(".pth")
+        })
         .collect();
 
     for entry in pth_files {

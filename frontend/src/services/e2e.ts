@@ -61,6 +61,10 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("")
+}
+
 // ─── DH Key Agreement ───
 
 /**
@@ -252,4 +256,23 @@ export function isE2EEnabled(
 ): boolean {
   if (!myKeys) return false
   return participants.every((p) => !!p.public_key)
+}
+
+// ─── Key Rotation ───
+
+export async function rotateE2EKeys(): Promise<E2EKeys> {
+  // Generate new X25519 keypair
+  const boxKp = nacl.box.keyPair()
+  // Generate new Ed25519 signing keypair
+  const signKp = nacl.sign.keyPair()
+
+  const newKeys: E2EKeys = {
+    privateKeyHex: bytesToHex(boxKp.secretKey),
+    publicKeyHex: bytesToHex(boxKp.publicKey),
+    signingPrivateHex: bytesToHex(signKp.secretKey),
+    signingPublicHex: bytesToHex(signKp.publicKey),
+  }
+  saveKeys(newKeys)
+  chatKeyCache.clear()
+  return newKeys
 }

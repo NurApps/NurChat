@@ -19,7 +19,7 @@ from shared.rate_limiter import limiter
 from server.core.database import create_tables
 
 # Импорты routes
-from server.routes import auth, calls, chat, contacts_groups, files, forward, legal, p2p, ipfs, bookmarks, pins, stats, audit
+from server.routes import auth, calls, chat, contacts_groups, files, forward, legal, p2p, ipfs, bookmarks, pins, stats, audit, federation
 from server.utils.file_cleanup import file_cleanup_service
 from server.utils.logger import logger
 from server.ws.chat_manager import handle_websocket_connection
@@ -42,9 +42,31 @@ async def lifespan(app: FastAPI):
     file_cleanup_service.start_cleanup_scheduler()
     logger.info("File cleanup service started")
 
+    # Auto-start IPFS daemon if enabled
+    if settings.USE_IPFS:
+        from server.core import ipfs_manager
+        if ipfs_manager.is_installed() and not ipfs_manager.is_running():
+            result = ipfs_manager.start_daemon()
+            logger.info("IPFS auto-start: %s", result.get("message", "unknown"))
+        elif ipfs_manager.is_running():
+            logger.info("IPFS daemon already running")
+        else:
+            logger.info("IPFS enabled but not installed. Install via /api/ipfs/manager/install")
+
     yield
 
-    # Shutdown
+    # Shutdown: close all WebSocket connections gracefully
+    from server.ws.chat_manager import connection_manager
+    for user_id, ws in list(connection_manager.active_connections.items()):
+        try:
+            await ws.close(code=1001, reason="Server shutting down")
+        except Exception:
+            pass
+    connection_manager.active_connections.clear()
+    connection_manager.user_chats.clear()
+    connection_manager.chat_users.clear()
+    logger.info("All WebSocket connections closed")
+
     file_cleanup_service.stop_cleanup_scheduler()
     logger.info("NurChat Server stopped")
 
@@ -91,50 +113,104 @@ app.include_router(bookmarks.router, prefix="/api/bookmarks", tags=["Bookmarks"]
 app.include_router(pins.router, tags=["Pinned Messages"])
 app.include_router(stats.router, tags=["Statistics"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Audit Logs"])
+app.include_router(federation.router, tags=["Federation"])
+
+# WS rate limiting: max connections per IP
+_ws_connections: dict[str, int] = {}
+WS_MAX_PER_IP = 10
+
+def check_ws_rate_limit(ip: str) -> bool:
+    count = _ws_connections.get(ip, 0)
+    if count >= WS_MAX_PER_IP:
+        return False
+    _ws_connections[ip] = count + 1
+    return True
+
+def release_ws_connection(ip: str):
+    _ws_connections[ip] = max(0, _ws_connections.get(ip, 1) - 1)
 
 # WebSocket для чатов
 @app.websocket("/ws/chat/{user_id}")
 async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if not check_ws_rate_limit(client_ip):
+        await websocket.close(code=4008)
+        return
     if token:
         from server.core.security import security as sec, AuthenticationError
         try:
             sec.verify_token(token)
         except AuthenticationError:
+            release_ws_connection(client_ip)
             await websocket.close(code=4001)
             return
-    await handle_websocket_connection(websocket, user_id)
+    try:
+        await handle_websocket_connection(websocket, user_id)
+    finally:
+        release_ws_connection(client_ip)
 
 # WebSocket для звонков
 @app.websocket("/ws/calls/{user_id}")
 async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if not check_ws_rate_limit(client_ip):
+        await websocket.close(code=4008)
+        return
     if token:
         from server.core.security import security as sec, AuthenticationError
         try:
             sec.verify_token(token)
         except AuthenticationError:
+            release_ws_connection(client_ip)
             await websocket.close(code=4001)
             return
-    await call_manager.handle_signaling(websocket, user_id)
+    try:
+        await call_manager.handle_signaling(websocket, user_id)
+    finally:
+        release_ws_connection(client_ip)
 
 # WebSocket для P2P signalling и relay
 @app.websocket(settings.P2P_SIGNALING_PATH + "/{user_id}")
 async def websocket_p2p_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if not check_ws_rate_limit(client_ip):
+        await websocket.close(code=4008)
+        return
     if token:
         from server.core.security import security as sec, AuthenticationError
         try:
             sec.verify_token(token)
         except AuthenticationError:
+            release_ws_connection(client_ip)
             await websocket.close(code=4001)
             return
-    await p2p_manager.handle_connection(websocket, user_id)
+    try:
+        await p2p_manager.handle_connection(websocket, user_id)
+    finally:
+        release_ws_connection(client_ip)
 
 # WebSocket для уведомлений
 @app.websocket("/ws/notifications/{user_id}")
-async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str):
-    await handle_notifications_websocket(websocket, user_id)
+async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if not check_ws_rate_limit(client_ip):
+        await websocket.close(code=4008)
+        return
+    if token:
+        from server.core.security import security as sec, AuthenticationError
+        try:
+            sec.verify_token(token)
+        except AuthenticationError:
+            release_ws_connection(client_ip)
+            await websocket.close(code=4001)
+            return
+    try:
+        await handle_notifications_websocket(websocket, user_id)
+    finally:
+        release_ws_connection(client_ip)
 
-# Статические файлы
-app.mount("/media", StaticFiles(directory="media"), name="media")
+# Статические файлы — НЕ монтируем /media напрямую (безопасность)
+# Файлы доступны только через авторизованный эндпоинт /api/files/download/{file_id}
 
 # Health check
 @app.get("/health")
@@ -145,9 +221,11 @@ async def health_check():
         from sqlalchemy import text
         from server.core.database import SessionLocal
         db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
-        db_ok = True
+        try:
+            db.execute(text("SELECT 1"))
+            db_ok = True
+        finally:
+            db.close()
     except Exception as e:
         logger.warning("Database health check failed: %s", e)
     try:

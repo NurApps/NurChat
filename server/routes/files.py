@@ -18,6 +18,36 @@ from ..ws.notifications import notification_manager
 
 router = APIRouter()
 
+MAGIC_BYTES = {
+    b'\xff\xd8\xff': 'image/jpeg',
+    b'\x89PNG': 'image/png',
+    b'GIF87a': 'image/gif',
+    b'GIF89a': 'image/gif',
+    b'RIFF': 'audio/webm',
+    b'ID3': 'audio/mpeg',
+    b'\x1a\x45\xdf\xa3': 'video/webm',
+    b'\x00\x00\x00': None,
+    b'%PDF': 'application/pdf',
+    b'PK': 'application/zip',
+    b'Rar!': 'application/x-rar',
+}
+
+def _detect_mime_type(header: bytes, filename: str) -> str:
+    for magic, mime in MAGIC_BYTES.items():
+        if header[:len(magic)] == magic and mime:
+            return mime
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    ext_map = {
+        "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+        "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
+        "mp4": "video/mp4", "webm": "video/webm", "avi": "video/x-msvideo",
+        "mp3": "audio/mpeg", "ogg": "audio/ogg", "wav": "audio/wav",
+        "aac": "audio/aac", "m4a": "audio/x-m4a", "pdf": "application/pdf",
+        "txt": "text/plain", "doc": "application/msword",
+        "zip": "application/zip", "rar": "application/x-rar",
+    }
+    return ext_map.get(ext, "")
+
 
 @router.post("/upload", response_model=schemas.FileUploadResponse)
 async def upload_file(
@@ -32,6 +62,26 @@ async def upload_file(
         if file_type not in FILE_TYPES.values():
             logger.warning(f"User {token['sub']} tried to upload unsupported file type: {file_type}")
             raise FileTypeNotAllowedError("Неподдерживаемый тип файла")
+
+        # MIME type validation: read first bytes to detect actual type
+        header = await file.read(16)
+        await file.seek(0)
+        detected_type = _detect_mime_type(header, file.filename or "")
+
+        ALLOWED_MIMES = {
+            "image": {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/svg+xml"},
+            "video": {"video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/avi"},
+            "audio": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/aac", "audio/x-m4a"},
+            "voice": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm"},
+            "document": {"application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument",
+                         "text/plain", "application/zip", "application/x-rar"},
+            "file": set(),
+        }
+
+        expected_mimes = ALLOWED_MIMES.get(file_type, set())
+        if expected_mimes and detected_type and detected_type not in expected_mimes:
+            logger.warning(f"User {token['sub']} MIME mismatch: claimed {file_type}, detected {detected_type}")
+            raise FileTypeNotAllowedError(f"Файл не соответствует типу {file_type}")
 
         file.file.seek(0, 2)
         file_size = file.file.tell()

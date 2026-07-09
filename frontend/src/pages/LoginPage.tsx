@@ -82,15 +82,14 @@ export default function LoginPage() {
         navigate("/chat", { replace: true })
       }
     } catch (err: any) {
-      if (err instanceof Error) {
-        if ("status" in err) {
-          const apiErr = err as { status: number; message: string }
-          if (apiErr.status === 401) setError("Неверный username или пароль")
-          else if (apiErr.status === 409) setError("Username уже занят")
-          else setError(apiErr.message || "Ошибка сервера")
-        } else {
-          setError(err.message || "Ошибка подключения к серверу")
-        }
+      const msg = err?.message || ""
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED") || msg.includes("ERR_NETWORK")) {
+        setError("Сервер недоступен. Перезапустите приложение или проверьте подключение")
+      } else if (err instanceof Error && "status" in err) {
+        const apiErr = err as { status: number; message: string }
+        if (apiErr.status === 401) setError("Неверный username или пароль")
+        else if (apiErr.status === 409) setError("Username уже занят")
+        else setError(apiErr.message || "Ошибка сервера")
       } else {
         setError("Ошибка подключения к серверу")
       }

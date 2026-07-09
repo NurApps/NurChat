@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { WS_BASE, BASE_URL } from "../config"
+import { api } from "../services/api"
 
-const ICE_SERVERS: RTCIceServer[] = [
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ]
@@ -51,6 +52,7 @@ export default function CallPage() {
   const [speakerOn, setSpeakerOn] = useState(true)
   const [timer, setTimer] = useState(0)
   const [mediaError, setMediaError] = useState<string | null>(null)
+  const [iceServers, setIceServers] = useState<RTCIceServer[]>(DEFAULT_ICE_SERVERS)
 
   const [targetName, setTargetName] = useState(targetUserId || "Пользователь")
   const avatarChar = targetName[0]?.toUpperCase() || "?"
@@ -123,7 +125,7 @@ export default function CallPage() {
 
   const createPeerConnection = useCallback((isInitiator: boolean) => {
     if (pcRef.current) return pcRef.current
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+    const pc = new RTCPeerConnection({ iceServers })
     pcRef.current = pc
 
     console.log("[CALL] PC created, isInitiator:", isInitiator)
@@ -143,7 +145,22 @@ export default function CallPage() {
     }
 
     pc.oniceconnectionstatechange = () => {
-      console.log("[CALL] ICE state:", pc.iceConnectionState)
+      const iceState = pc.iceConnectionState
+      console.log("[CALL] ICE state:", iceState)
+      // ICE restart on disconnect/failed (attempt recovery)
+      if (iceState === "disconnected") {
+        console.log("[CALL] ICE disconnected, attempting restart...")
+        setTimeout(() => {
+          if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+            pc.restartIce()
+            pc.createOffer({ iceRestart: true }).then((offer) => {
+              pc.setLocalDescription(offer)
+              sendSignaling({ type: "offer", sdp: offer })
+              console.log("[CALL] ICE restart offer sent")
+            }).catch((err) => console.error("[CALL] ICE restart failed:", err))
+          }
+        }, 2000)
+      }
     }
 
     pc.onconnectionstatechange = () => {
@@ -159,7 +176,7 @@ export default function CallPage() {
         cleanup()
         setTimeout(() => navigate("/chat"), 1500)
       } else if (state === "disconnected") {
-        console.log("[CALL] PC disconnected, waiting...")
+        console.log("[CALL] PC disconnected, waiting for ICE restart...")
       } else if (state === "closed") {
         if (statusRef.current === "active") {
           setStatus("failed")
@@ -246,6 +263,15 @@ export default function CallPage() {
       })
     }
   }, [targetUserId])
+
+  // Fetch ICE servers (STUN/TURN) from server
+  useEffect(() => {
+    api.getIceServers().then(({ ice_servers }) => {
+      if (ice_servers && ice_servers.length > 0) {
+        setIceServers(ice_servers)
+      }
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (connectedRef.current) return

@@ -130,6 +130,7 @@ class FileUploadResponse(FileBase):
 class FileResponse(FileBase):
     user_id: str
     uploaded_at: datetime
+    ipfs_hash: Optional[str] = None
 
 # Auth
 class Token(BaseSchema):

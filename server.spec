@@ -88,7 +88,12 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'tkinter', 'unittest', 'test', 'distutils', 'setuptools',
+        'matplotlib', 'numpy', 'pandas', 'scipy',
+        'pytest', '_pytest', 'pygments', 'IPython', 'notebook',
+        'sphinx', 'cv2', 'torch', 'tensorflow',
+    ],
     noarchive=False,
 )
 
@@ -103,7 +108,7 @@ exe = EXE(
     name='server',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
+    strip=True,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,

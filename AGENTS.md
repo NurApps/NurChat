@@ -1,99 +1,116 @@
 # AGENTS.md
 
-## Session Summary
+## What This Is
 
-### Goal
-Перенести NurChat с Flet на Tauri (React + Rust) для нативного десктопа; Python CORE — sidecar.
+NurChat — self-hosted anonymous messenger. Tauri v2 desktop app (React + Rust frontend, FastAPI + SQLite backend). AGPL-3.0.
 
-### Constraints & Preferences
-- Анонимность без номера телефона / email
-- Исламская направленность + self-hosted (без Supabase/Firebase, чисто локально)
-- Лицензия GNU AGPL v3
-- Tauri → React + Vite (фронт), Rust (бэк), Python — только P2P/крипто
+## Quick Start
 
-### Done
-- **Supabase/Firebase/Firestore полностью удалены** — удалены `server/core/firestore_repositories.py`, `server/core/db_adapter.py`, `shared/firestore_config.py`, `docs/MIGRATION_GUIDE.md`. Из роутов (`auth.py`, `chat.py`, `contacts_groups.py`, `files.py`) убраны все `USE_FIRESTORE` ветки. Из `shared/config.py` и `.env` удалены `USE_FIRESTORE`, `FIREBASE_PROJECT_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_BUCKET_NAME`, `USE_SUPABASE_STORAGE`. Из `requirements.txt` удалён `google-cloud-firestore`
-- **start.bat** — скрипт быстрого запуска сервера и Tauri (через `.venv\Scripts\python`)
-- **Файлы/голосовые больше не 401** — `/api/files/download/{file_id}` принимает `?token=...` query параметр (помимо Authorization header). Фронт: `api.getFileUrl()` добавляет токен в URL
-- **ProfilePage** (`/profile`) — просмотр профиля: имя, фамилия, статус, био, аватар, дата регистрации. Кнопка «Редактировать профиль» → `/settings`
-- **Аватар** — загрузка и удаление через `/api/auth/profile/avatar` в `ProfilePage` и `SettingsPage`
-- **Смена аккаунта** — дропдаун TopBar: «Профиль» → `/profile`, «Сменить аккаунт» → очистка токена → `/login`
-- **Реакции (серверные)** — модель `MessageReaction` в БД, `POST /api/chat/messages/{message_id}/react` (toggle), `GET .../reactions`. Фронт сохраняет/загружает реакции с сервера, optimistic update с откатом
-- **Поиск сообщений** — `GET /api/chat/chats/{chat_id}/search?q=...`, UI в ChatPage (поле поиска + результаты inline)
-- **Пересылка сообщений** — `ForwardModal.tsx` (выбор чатов из списка доступных), `api.forwardMessage()` → `POST /api/forward/forward`
-- **Редактирование сообщений** — inline edit в `MessageBubble` (textarea вместо контента, save/cancel), `api.editMessage()` + WebSocket `edit_message`
-- **Удаление сообщений** — диалог «удалить у себя / удалить у всех» (`delete_for_all`), поддержка `deleted_for_all` колонки в модели
-- **Typing indicator** — WebSocket event `typing` отправляется/принимается, UI отображает «печатает...» в хедере чата (авто-сброс через 4 секунды)
-- **Online/offline reactive** — WebSocket события `user_online`/`user_offline` обновляют статус в реальном времени
-- **WebSocket клиент** — `ChatPage` подключается к `/ws/chat/{user_id}?token=...` с auto-reconnect (3 сек). Обрабатывает: typing, user_online/offline, message, message_delivered, delete_message, edit_message
-- **NotificationToast** — всплывающий тост при новом сообщении из другого чата (имя + превью), клик переключает на чат
-- **CSS** — `.settings-avatar-img`, `.avatar-actions`, `.avatar-btn`, `.profile-field*`, forward-modal, reaction-bar, msg-edit-mode, msg-delete-options, search-bar, toast-notification, typing-индикатор
-- **MessageBubble** — переписана: edit mode, delete options, forward indicator, реакции с сервера, меню для чужих сообщений (копировать/переслать)
-- **`api.deleteMessage()`** теперь принимает `deleteForAll` параметр (false по умолчанию)
-- **WS endpoint** `/ws/chat/{user_id}` теперь принимает `token` query параметр (верифицирует JWT)
+```bash
+# One-click (Windows):
+start.bat
 
-### In Progress
-- `/api/legal/privacy/text` response_model: dict, 200
-- `/api/legal/agreement/text` response_model: dict, 200
+# Manual:
+# Terminal 1 — server
+.venv\Scripts\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
 
-### Blocked
-- **CallPage** — UI-only, WebRTC не реализован (нужен signaling, ICE, peer connection)
-- **P2P / IPFS** — включены в конфиге (`USE_P2P=True`, `USE_IPFS=True`), клиентская часть не подключена
-- **Emoji picker** — базовый компонент есть, нужен полноценный пакет эмодзи
+# Terminal 2 — Tauri (handles Vite + Rust build automatically)
+npx tauri dev
+```
 
-### Key Decisions
-- **Локальное хранение** — все файлы в `media/` через `FileStorage`, никаких внешних облачных сервисов
-- **Токен в query параметре для медиа** — чтобы `<img>`, `<audio>`, `<video>` могли загружать защищённые файлы (без JS-заголовков)
-- **Реакции хранятся в БД** — модель `MessageReaction` с полями `message_id`, `user_id`, `emoji`. Фронт делает optimistic update с откатом при ошибке
-- **WebSocket как единый канал** — через один WS коннект идут typing, online, сообщения, уведомления (без отдельного `/ws/notifications`)
-- **`delete_for_all`** — колонка в `Message`, фронт показывает «Сообщение удалено» вместо полного скрытия
+**Critical:** `npx tauri dev` does NOT start the FastAPI server. Server on `:8000` must be running separately. Without it, frontend shows "Сервер недоступен".
 
-### Next Steps
-1. Установить полноценный emoji-picker (emoji-mart или аналог)
-2. Реализовать WebRTC для звонков (signaling через `/ws/calls/{user_id}`)
-3. Подключить P2P/IPFS роутинг
-4. Анимировать переходы, улучшить UX
+## Commands
 
-### Critical Context
-- **Node** 22.14.0 на `D:\node-v22.14.0-win-x64`, npm работает из cmd
-- **Tauri** v2, **Vite** 8, **React** 19, **TypeScript** 6
-- **Сервер** FastAPI на SQLite + SQLAlchemy (локально), файлы в `media/`
-- **Сборка**: `npm run build` проходит чисто (`tsc -b && vite build`)
-- **Запуск сервера**: `.venv\Scripts\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload`
-- **Запуск Tauri**: `npx tauri dev` (запускает Vite + Tauri, сервер нужен отдельно)
-- **start.bat** — запускает сервер в отдельном окне, затем Tauri
-- Внешние сервисы не требуются — всё локально
+| Action | Command |
+|--------|---------|
+| Start everything | `start.bat` |
+| Server only | `.venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload` |
+| Tauri dev | `npx tauri dev` |
+| Frontend build | `cd frontend && npm run build` |
+| Frontend dev server | `cd frontend && npm run dev` (port 5173) |
+| Python tests | `pytest test/ -v` |
+| Python lint | `ruff check .` |
+| Python typecheck | `mypy .` |
+| Frontend lint | `cd frontend && npm run lint` |
+| Tauri build (installer) | `npx tauri build` |
 
-## Relevant Files
-- `frontend/src/pages/ChatPage.tsx`: главная страница (сайдбар + чат + WS + typing + online + поиск + forward + уведомления + @mentions + модалки)
-- `frontend/src/pages/ProfilePage.tsx`: просмотр профиля + смена/удаление аватара
-- `frontend/src/pages/SettingsPage.tsx`: редактирование профиля + смена/удаление аватара
-- `frontend/src/pages/LoginPage.tsx`: вход/регистрация, сохранение токена и user в localStorage
-- `frontend/src/pages/LegalPage.tsx`: политика конфиденциальности и пользовательское соглашение
-- `frontend/src/pages/CallPage.tsx`: UI звонка (аудио/видео) без WebRTC
-- `frontend/src/components/MessageBubble.tsx`: сообщение + файлы + реакции + edit mode + delete options + forward
-- `frontend/src/components/ForwardModal.tsx`: модалка выбора чатов для пересылки
-- `frontend/src/components/NotificationToast.tsx`: всплывающий тост для новых сообщений
-- `frontend/src/components/TopBar.tsx`: дропдаун (Профиль, Сменить аккаунт, Выйти) + кнопки (настройки, правила, тема, выход)
-- `frontend/src/components/AddContactModal.tsx`: поиск/добавление контакта
-- `frontend/src/components/CreateChatModal.tsx`: создание чата (выбор участников, имя группы)
-- `frontend/src/components/ChatListItem.tsx`: пункт чата с меню (закрепить, muted, удалить)
-- `frontend/src/components/EmojiPicker.tsx`: базовый выбор эмодзи
-- `frontend/src/services/api.ts`: HTTP-клиент (все эндпоинты, включая search, reactions, forward, uploadFile, getFileUrl, deleteMessage с deleteForAll)
-- `frontend/src/types.ts`: типы (MessageResponse, ReactionResponse, и т.д.)
-- `frontend/src/index.css`: все стили (чат, модалки, forward, реакции, edit, delete, search, toast, typing, аватар)
-- `frontend/src/App.tsx`: роуты: `/login`, `/chat`, `/call/:userId/:type`, `/settings`, `/profile`, `/legal`
-- `server/main.py`: WS endpoint с опциональным token query param
-- `server/routes/auth.py`: `/register`, `/login`, `/me`, `/users`, `/profile/update`, `/profile/avatar`
-- `server/routes/chat.py`: CRUD чатов/сообщений, search, reactions (toggle/get), delete chat, block, export
-- `server/routes/contacts_groups.py`: контакты, группы, приглашения
-- `server/routes/files.py`: загрузка/скачивание/удаление файлов (только локальное хранение, token query param)
-- `server/routes/forward.py`: пересылка сообщений
-- `server/routes/legal.py`: политика и соглашение (markdown)
-- `server/core/models.py`: модели SQLAlchemy (включая MessageReaction, `deleted_for_all` в Message)
-- `server/core/storage.py`: локальное файловое хранилище (`media/`)
-- `server/core/security.py`: генерация ключей, JWT, хеши паролей
-- `server/ws/chat_manager.py`: WebSocket менеджер (typing, online, сообщения, delete/edit)
-- `shared/config.py`: настройки (без Supabase/Firebase)
-- `shared/schemas.py`: Pydantic схемы (включая ReactionCreate, ReactionResponse)
-- `start.bat`: быстрый запуск сервера + Tauri
+## Architecture
+
+```
+Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI server ──> SQLite
+                              │                              │
+                              └── IPC commands ──────────────┘
+```
+
+- **Frontend:** React 19 + Vite 8 + TypeScript 6 + Tailwind CSS v4
+- **Backend:** FastAPI + SQLAlchemy + SQLite (`nurchat.db`)
+- **Desktop:** Tauri v2 (Rust shell, WebView2 on Windows)
+- **Migrations:** Alembic (fallback to `create_all` if not configured)
+- **File storage:** Local `media/` directory (no cloud)
+
+## Non-Obvious Quirks
+
+1. **Token in query params for media.** `<img>`, `<audio>`, `<video>` can't send Authorization headers. All file URLs use `?token=...`. Frontend `api.getFileUrl()` handles this.
+
+2. **Token in WS query param.** WebSocket at `/ws/chat/{user_id}?token=...` — JWT verified from query string, not header.
+
+3. **Python imports are absolute from repo root.** `server/main.py` adds repo root to `sys.path`. Use `from shared.config import settings`, `from server.core.models import User`, etc.
+
+4. **`config.py` auto-creates dirs on import.** `media/`, `logs/`, `legal/` are created at module load time.
+
+5. **`ENCRYPTION_KEY` and `JWT_SECRET_KEY` auto-generate if not set.** Data encrypted with auto-generated keys won't survive restarts. Set stable values in `.env`.
+
+6. **CORS allows `*` in DEBUG mode.** `DEBUG=True` (default) = all origins allowed.
+
+7. **Frontend env vars use `VITE_` prefix.** Set in shell or `.env`, not in `frontend/.env`. Key vars: `VITE_API_HOST`, `VITE_API_PROTOCOL`.
+
+8. **Supabase/Firebase fully removed.** All storage is local. No cloud dependencies.
+
+## Env Variables
+
+Required in `.env`:
+```
+ENCRYPTION_KEY=<stable hex key>
+JWT_SECRET_KEY=<stable hex key>
+```
+
+Optional:
+```
+USE_FEDERATION=true
+FEDERATION_SERVER_NAME=localhost:8000
+USE_IPFS=true
+USE_P2P=true
+```
+
+Full reference: `.env.example` and `shared/config.py`.
+
+## Testing
+
+- Test dir: `test/` (singular, not `tests/`)
+- Run: `pytest test/ -v`
+- No frontend tests exist
+- Key test files: `test/test_crypto.py`, `test/e2e_encryption_tests.py`
+
+## Key Files
+
+**Server entry:** `server/main.py` — FastAPI app, CORS, routes, WS endpoints, lifespan
+**Config:** `shared/config.py` — Pydantic Settings, reads `.env`
+**Models:** `server/core/models.py` — All SQLAlchemy models
+**Auth:** `server/routes/auth.py` — Register, login, profile, avatar
+**Chat:** `server/routes/chat.py` — CRUD, search, reactions, block, export
+**Files:** `server/routes/files.py` — Upload/download (with `?token=`), delete
+**WS manager:** `server/ws/chat_manager.py` — WebSocket connections
+**Frontend entry:** `frontend/src/App.tsx` — Route definitions
+**API client:** `frontend/src/services/api.ts` — All HTTP calls
+**Main page:** `frontend/src/pages/ChatPage.tsx` — Sidebar + chat + WS
+**Tauri config:** `src-tauri/tauri.conf.json` — App metadata, CSP, build settings
+
+## Conventions
+
+- Russian language in UI and commit messages
+- All API responses are JSON (Pydantic models)
+- WebSocket events use `{"type": "event_name", ...}` format
+- File IDs use `file_` prefix, message IDs use `msg_`, user IDs use `user_`
+- Messages in DB store `content` as plaintext or `"[encrypted]"` for E2E
+- Reactions are stored server-side in `MessageReaction` table (not ephemeral)

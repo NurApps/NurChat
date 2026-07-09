@@ -231,6 +231,3 @@ FEDERATION_SERVER_NAME=your-server.com:8000
 
 ---
 
-<p align="center">
-  Сделано с ❤️ для приватности и свободы
-</p>

@@ -24,6 +24,7 @@ src-tauri/Frameworks/
 token.txt
 *.txt
 !requirements.txt
+!requirements-build.txt
 !README.md
 !AGENTS.md
 !LICENSE

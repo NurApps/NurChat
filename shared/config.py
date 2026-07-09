@@ -15,11 +15,19 @@ class Settings(BaseSettings):
     P2P_RELAY_STORE_MESSAGES: bool = True
     P2P_PENDING_LIMIT: int = 500
     P2P_DISCOVERY_TTL_SECONDS: int = 300
-    USE_IPFS: bool = False
+    USE_IPFS: bool = True
     IPFS_API_URL: str = "http://127.0.0.1:5001"
     USE_FEDERATED_BACKUP: bool = False
     FEDERATED_BACKUP_URL: str | None = None
-    WEBRTC_ICE_SERVERS: str | None = None
+
+    # Federation (server-to-server)
+    USE_FEDERATION: bool = False
+    FEDERATION_SERVER_NAME: str = ""  # Public server address, e.g. "nurchat.example.com:8000"
+    FEDERATION_SERVER_KEY_PATH: str = "federation_keys.json"
+    FEDERATION_ACTIVITY_TTL_HOURS: int = 72
+    FEDERATION_MAX_INBOX_SIZE: int = 1000
+    FEDERATION_ALLOWED_SERVERS: str = ""  # Comma-separated whitelist, empty = allow all
+    WEBRTC_ICE_SERVERS: str | None = None  # JSON: [{"urls":"stun:...","username":"...","credential":"..."}]
     CLIENT_HOST: str = "localhost"
 
     # S3 / MinIO
@@ -34,6 +42,7 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = 50 * 1024 * 1024
     FILE_TTL_DAYS: int = 30
     ENCRYPTION_KEY: str = "your_default_encryption_key_here"
+    JWT_SECRET_KEY: str = ""  # Auto-generated if empty, separate from ENCRYPTION_KEY
     WS_RECONNECT_TIMEOUT: int = 5
     CLEANUP_INTERVAL_HOURS: int = 6
     ORPHANED_CLEANUP_HOURS: int = 12
@@ -84,5 +93,9 @@ if settings.ENCRYPTION_KEY == "your_default_encryption_key_here":
         "Data will NOT persist across restarts. Set ENCRYPTION_KEY in .env for production."
     )
     settings.ENCRYPTION_KEY = secrets.token_hex(32)
+
+if not settings.JWT_SECRET_KEY:
+    import secrets
+    settings.JWT_SECRET_KEY = secrets.token_hex(32)
 
 ENCRYPTION_KEY = settings.ENCRYPTION_KEY.encode()

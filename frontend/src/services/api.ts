@@ -74,6 +74,9 @@ export const api = {
   editMessage: (messageId: string, content: string) =>
     request<MessageResponse>("PUT", `/api/chat/messages/${messageId}/edit?new_content=${encodeURIComponent(content)}`),
 
+  rotateKey: (newPublicKey: string) =>
+    request<{ status: string; old_key: string }>("POST", "/api/auth/profile/rotate-key", { new_public_key: newPublicKey }),
+
   // Contacts (server: /api/contacts-groups prefix)
   getContacts: () =>
     request<ContactResponse[]>("GET", "/api/contacts-groups/contacts"),
@@ -247,6 +250,9 @@ export const api = {
       callee?: { id: string; username: string; first_name: string }
     }>; total: number }>("GET", `/api/calls/call-history?skip=${skip}&limit=${limit}`),
 
+  getIceServers: () =>
+    request<{ ice_servers: Array<{ urls: string; username?: string; credential?: string }> }>("GET", "/api/calls/ice-servers"),
+
   // P2P
   generateP2PKeys: () =>
     request<{ private_key: string; public_key: string; signing_private_key: string; signing_public_key: string }>("POST", "/api/p2p/keys/generate"),
@@ -355,6 +361,22 @@ export const api = {
   // Misc
   testConnection: () =>
     request<{ status: string }>("GET", "/api/health"),
+
+  // Federation
+  resolveRemoteUser: (address: string) =>
+    request<{ username: string; display_name: string; public_key: string; server_name: string; is_local: boolean; address?: string }>(
+      "GET", `/api/federation/resolve?address=${encodeURIComponent(address)}`
+    ),
+
+  createRemoteChat: (remoteAddress: string) =>
+    request<{ remote_address: string; display_name: string; public_key: string; server_name: string; username: string }>(
+      "POST", "/api/federation/chat", { remote_address: remoteAddress }
+    ),
+
+  getFederationInfo: () =>
+    request<{ server_name: string; public_key: string; federation_enabled: boolean }>(
+      "GET", "/.well-known/nurchat.json"
+    ),
 
   setToken: (token: string) => {
     localStorage.setItem("token", token)

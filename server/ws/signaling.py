@@ -90,7 +90,7 @@ class CallManager:
         """Обработка запроса на звонок"""
         target_user_id = data["target_user_id"]
         call_id = data["call_id"]
-        call_type = data.get("call_type", CALL_TYPES["AUDIO"])
+        call_type = data.get("call_type", "audio")
 
         # Проверяем, что целевой пользователь существует и онлайн
         if not connection_manager.is_user_online(target_user_id):
@@ -241,7 +241,6 @@ class CallManager:
                 user_id=call["caller_id"],
                 title="Пропущенный звонок",
                 body="Звонок отклонён",
-                notification_type="missed_call",
             )
         except Exception as e:
             logger.error(f"Missed call notification error: {e}")
@@ -303,13 +302,11 @@ class CallManager:
                     user_id=user_id,
                     title="Пропущенный звонок",
                     body="Абонент не ответил",
-                    notification_type="missed_call",
                 )
                 await notification_manager.send_system_notification(
                     user_id=call["callee_id"],
                     title="Пропущенный звонок",
                     body="Вам звонили",
-                    notification_type="missed_call",
                 )
             except Exception as e:
                 logger.error(f"Missed call notification error: {e}")

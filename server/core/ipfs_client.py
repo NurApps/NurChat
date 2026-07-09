@@ -25,7 +25,8 @@ class IPFSClient:
                 r = await client.post(f"{self.api_url}/api/v0/id")
                 self._online = r.status_code == 200
                 return self._online
-        except Exception:
+        except Exception as exc:
+            logger.debug("IPFS offline: %s", exc)
             self._online = False
             return False
 
@@ -84,7 +85,8 @@ class IPFSClient:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 r = await client.post(f"{self.api_url}/api/v0/pin/add?arg={ipfs_hash}")
                 return r.status_code == 200
-        except Exception:
+        except Exception as exc:
+            logger.debug("IPFS pin error: %s", exc)
             return False
 
     async def unpin(self, ipfs_hash: str) -> bool:
@@ -93,7 +95,8 @@ class IPFSClient:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 r = await client.post(f"{self.api_url}/api/v0/pin/rm?arg={ipfs_hash}")
                 return r.status_code == 200
-        except Exception:
+        except Exception as exc:
+            logger.debug("IPFS unpin error: %s", exc)
             return False
 
 

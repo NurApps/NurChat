@@ -1,11 +1,11 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "NurChat",
-  "version": "0.1.0",
+  "version": "0.15.0",
   "identifier": "com.nurapps.nurchat",
   "build": {
-"beforeDevCommand": "npm --prefix frontend run dev",
-"beforeBuildCommand": "npm --prefix frontend run build",
+    "beforeDevCommand": "npm --prefix frontend run dev",
+    "beforeBuildCommand": "npm --prefix frontend run build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../frontend/dist"
   },
@@ -13,19 +13,24 @@
     "windows": [
       {
         "title": "NurChat",
-        "width": 800,
-        "height": 600,
+        "width": 1000,
+        "height": 700,
+        "minWidth": 600,
+        "minHeight": 400,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "center": true,
+        "decorations": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* ws://localhost:* https://api.qrserver.com; img-src 'self' data: blob: http://localhost:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self'; media-src 'self' blob: data:"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
+    "externalBin": ["binaries/server"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -33,8 +38,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "android": {
-      "debugApplicationIdSuffix": ".debug"
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "both",
+        "languages": ["Russian", "English"]
+      }
     }
   }
 }

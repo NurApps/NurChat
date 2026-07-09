@@ -55,18 +55,8 @@ async def start_call(
         # Генерируем ID звонка
         call_id = security.generate_call_id()
 
-        # Создаем запись о звонке
-        call_log = models.CallLog(
-            call_id=call_id,
-            caller_id=token["sub"],
-            callee_id=call_data.target_user_id,
-            call_type=call_data.call_type,
-            started_at=datetime.now(timezone.utc)
-        )
-
-        db.add(call_log)
-        db.commit()
-        db.refresh(call_log)
+        # CallLog создаётся signaling.py при завершении звонка (с duration и ended_at)
+        # Здесь только уведомление
 
         try:
             await notification_manager.send_call_notification(
@@ -88,7 +78,7 @@ async def start_call(
             callee_id=call_data.target_user_id,
             call_type=call_data.call_type,
             status="ringing",
-            started_at=call_log.started_at
+            started_at=datetime.now(timezone.utc)
         )
     except HTTPException:
         raise
@@ -186,3 +176,22 @@ async def get_call_history(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Внутренняя ошибка сервера"
         )
+
+
+@router.get("/ice-servers")
+async def get_ice_servers(token: dict = Depends(verify_token_dependency)):
+    """Get configured ICE servers (STUN/TURN) for WebRTC."""
+    import json
+    from shared.config import settings
+    default_ice = [
+        {"urls": "stun:stun.l.google.com:19302"},
+        {"urls": "stun:stun1.l.google.com:19302"},
+    ]
+    if settings.WEBRTC_ICE_SERVERS:
+        try:
+            custom = json.loads(settings.WEBRTC_ICE_SERVERS)
+            if isinstance(custom, list) and len(custom) > 0:
+                return {"ice_servers": custom}
+        except Exception:
+            pass
+    return {"ice_servers": default_ice}

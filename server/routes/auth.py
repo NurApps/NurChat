@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 from server.core import models, schemas
 from server.core.database import get_db
@@ -139,14 +139,14 @@ async def login(
             logger.warning(f"Login attempt with non-existent username: {user_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверный username"
+                detail="Неверные учетные данные"
             )
 
         if not verify_password(user_data.password, user.hashed_password):
             logger.warning(f"Login attempt with wrong password for username: {user_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверный пароль"
+                detail="Неверные учетные данные"
             )
 
         user.last_seen = models.func.now()
@@ -216,12 +216,21 @@ async def get_current_user(
 @router.get("/users", response_model=list[schemas.UserResponse])
 async def get_all_users(
     db: Session = Depends(get_db),
-    token: dict = Depends(verify_token_dependency)
+    token: dict = Depends(verify_token_dependency),
+    q: str = "",
+    offset: int = 0,
+    limit: int = 50,
 ):
-    """Получение списка всех пользователей"""
+    """Получение списка пользователей с пагинацией и поиском"""
     try:
         current_user_id = token["sub"]
-        users = db.query(models.User).filter(models.User.id != current_user_id).all()
+        query = db.query(models.User).filter(models.User.id != current_user_id)
+        if q:
+            query = query.filter(
+                models.User.username.ilike(f"%{q}%") |
+                models.User.first_name.ilike(f"%{q}%")
+            )
+        users = query.offset(offset).limit(min(limit, 100)).all()
         return [schemas.UserResponse.model_validate(user) for user in users]
     except Exception as e:
         logger.error(f"Get all users error: {e}")
@@ -374,3 +383,30 @@ async def delete_avatar(
         logger.error(f"Delete avatar error: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+
+
+@router.post("/profile/rotate-key")
+async def rotate_key(
+    new_public_key: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """Ротация E2E ключа — сохраняет старый ключ в лог и обновляет на новый"""
+    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    old_key = user.public_key
+
+    # Log rotation
+    log = models.KeyRotationLog(
+        user_id=user.id,
+        old_public_key=old_key,
+        new_public_key=new_public_key,
+    )
+    db.add(log)
+
+    user.public_key = new_public_key
+    db.commit()
+
+    return {"status": "ok", "old_key": old_key}

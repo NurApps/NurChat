@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, test]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -21,6 +21,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -40,19 +41,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: npm ci
 
       - name: TypeScript check
         working-directory: frontend
         run: npx tsc --noEmit
 
+      - name: Build frontend
+        working-directory: frontend
+        run: npx vite build
+
   build-windows:
     runs-on: windows-latest
     needs: [test, lint]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: ((github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test') && github.event_name == 'push') || startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
@@ -60,6 +67,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -69,27 +78,65 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt "pyinstaller>=6.0"
+
+      - name: Build server.exe with PyInstaller
+        shell: cmd
+        run: pyinstaller server.spec --clean --noconfirm && dir dist\
+
+      - name: Copy server.exe to Tauri binaries
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          cp -f dist/server.exe src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
+          ls -la src-tauri/binaries/
+
       - name: Install root dependencies
+        shell: cmd
         run: npm install
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: npm ci
 
-      - name: Build .exe
+      - name: Build Tauri app
+        shell: cmd
         run: npx tauri build
         working-directory: src-tauri
 
-      - name: Upload .exe artifact
+      - name: Upload server.exe
         uses: actions/upload-artifact@v4
         with:
-          name: NurChat-windows-x64
+          name: server-windows-x64
+          path: dist/server.exe
+          if-no-files-found: warn
+
+      - name: Upload .exe installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: NurChat-windows-x64-setup
           path: src-tauri/target/release/bundle/nsis/NurChat_*.exe
           if-no-files-found: warn
 
-      - name: Upload MSI artifact
+      - name: Download WebView2 bootstrapper
+        run: |
+          curl -L -o WebView2Setup.exe "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+        shell: bash
+
+      - name: Upload WebView2 bootstrapper
         uses: actions/upload-artifact@v4
         with:
-          name: NurChat-windows-x64-msi
-          path: src-tauri/target/release/bundle/msi/NurChat_*.msi
+          name: WebView2Setup
+          path: WebView2Setup.exe
           if-no-files-found: warn
+
+

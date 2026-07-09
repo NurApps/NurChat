@@ -86,17 +86,20 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install -r requirements.txt pyinstaller>=6.0
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt "pyinstaller>=6.0"
 
       - name: Build server.exe with PyInstaller
         run: |
           pyinstaller server.spec --clean --noconfirm
+          ls -la dist/server/
 
       - name: Copy server.exe to Tauri binaries
-        shell: cmd
+        shell: bash
         run: |
-          mkdir src-tauri\binaries
-          copy dist\server\server.exe src-tauri\binaries\server-x86_64-pc-windows-msvc.exe
+          mkdir -p src-tauri/binaries
+          cp -f dist/server/server.exe src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
+          ls -la src-tauri/binaries/
 
       - name: Install root dependencies
         shell: cmd

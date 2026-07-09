@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import DOMPurify from "dompurify"
 import type { MessageResponse, UserResponse } from "../types"
 import { api } from "../services/api"
+import { ipfsGatewayUrl } from "../config"
 import { getAvatarColor } from "../utils/avatar"
 import MediaViewer from "./MediaViewer"
 import VoiceMessage from "./VoiceMessage"
@@ -208,39 +209,43 @@ export default function MessageBubble({
   const renderFileContent = () => {
     const mt = message.message_type
     const fileUrl = message.file_id ? api.getFileUrl(message.file_id) : null
-    if (mt === "image" && fileUrl) {
+    // IPFS fallback: use gateway if ipfs_hash is available
+    const ipfsUrl = message.file?.ipfs_hash ? ipfsGatewayUrl(message.file.ipfs_hash) : null
+    const imageUrl = ipfsUrl || fileUrl
+    if (mt === "image" && imageUrl) {
       return (
         <div className="msg-file">
           {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
           <img
-            src={fileUrl}
+            src={imageUrl}
             alt={content}
             className="msg-image"
             loading="lazy"
-            onClick={() => setMediaViewer({ type: "image", url: fileUrl, filename: content || undefined })}
+            onError={(e) => { if (ipfsUrl && fileUrl) (e.target as HTMLImageElement).src = fileUrl }}
+            onClick={() => setMediaViewer({ type: "image", url: imageUrl, filename: content || undefined })}
             style={{ cursor: "pointer" }}
           />
         </div>
       )
     }
-    if (mt === "voice" && fileUrl) {
+    if (mt === "voice" && imageUrl) {
       return (
         <div className="msg-file">
-          <VoiceMessage src={fileUrl} />
+          <VoiceMessage src={imageUrl} />
         </div>
       )
     }
-    if (mt === "audio" && fileUrl) {
+    if (mt === "audio" && imageUrl) {
       return (
         <div className="msg-file">
-          <audio controls src={fileUrl} className="msg-audio" />
+          <audio controls src={imageUrl} className="msg-audio" />
         </div>
       )
     }
-    if (mt === "video" && fileUrl) {
+    if (mt === "video" && imageUrl) {
       return (
-        <div className="msg-file" onClick={() => setMediaViewer({ type: "video", url: fileUrl, filename: content || undefined })} style={{ cursor: "pointer" }}>
-          <video src={fileUrl} className="msg-video" preload="metadata" />
+        <div className="msg-file" onClick={() => setMediaViewer({ type: "video", url: imageUrl, filename: content || undefined })} style={{ cursor: "pointer" }}>
+          <video src={imageUrl} className="msg-video" preload="metadata" />
           <div className="msg-video-play">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3" /></svg>
           </div>

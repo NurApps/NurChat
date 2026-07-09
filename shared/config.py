@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     P2P_RELAY_STORE_MESSAGES: bool = True
     P2P_PENDING_LIMIT: int = 500
     P2P_DISCOVERY_TTL_SECONDS: int = 300
-    USE_IPFS: bool = False
+    USE_IPFS: bool = True
     IPFS_API_URL: str = "http://127.0.0.1:5001"
     USE_FEDERATED_BACKUP: bool = False
     FEDERATED_BACKUP_URL: str | None = None
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     FEDERATION_ACTIVITY_TTL_HOURS: int = 72
     FEDERATION_MAX_INBOX_SIZE: int = 1000
     FEDERATION_ALLOWED_SERVERS: str = ""  # Comma-separated whitelist, empty = allow all
-    WEBRTC_ICE_SERVERS: str | None = None
+    WEBRTC_ICE_SERVERS: str | None = None  # JSON: [{"urls":"stun:...","username":"...","credential":"..."}]
     CLIENT_HOST: str = "localhost"
 
     # S3 / MinIO

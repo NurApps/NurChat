@@ -250,6 +250,9 @@ export const api = {
       callee?: { id: string; username: string; first_name: string }
     }>; total: number }>("GET", `/api/calls/call-history?skip=${skip}&limit=${limit}`),
 
+  getIceServers: () =>
+    request<{ ice_servers: Array<{ urls: string; username?: string; credential?: string }> }>("GET", "/api/calls/ice-servers"),
+
   // P2P
   generateP2PKeys: () =>
     request<{ private_key: string; public_key: string; signing_private_key: string; signing_public_key: string }>("POST", "/api/p2p/keys/generate"),

@@ -42,6 +42,17 @@ async def lifespan(app: FastAPI):
     file_cleanup_service.start_cleanup_scheduler()
     logger.info("File cleanup service started")
 
+    # Auto-start IPFS daemon if enabled
+    if settings.USE_IPFS:
+        from server.core import ipfs_manager
+        if ipfs_manager.is_installed() and not ipfs_manager.is_running():
+            result = ipfs_manager.start_daemon()
+            logger.info("IPFS auto-start: %s", result.get("message", "unknown"))
+        elif ipfs_manager.is_running():
+            logger.info("IPFS daemon already running")
+        else:
+            logger.info("IPFS enabled but not installed. Install via /api/ipfs/manager/install")
+
     yield
 
     # Shutdown: close all WebSocket connections gracefully
@@ -198,8 +209,8 @@ async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, t
     finally:
         release_ws_connection(client_ip)
 
-# Статические файлы
-app.mount("/media", StaticFiles(directory="media"), name="media")
+# Статические файлы — НЕ монтируем /media напрямую (безопасность)
+# Файлы доступны только через авторизованный эндпоинт /api/files/download/{file_id}
 
 # Health check
 @app.get("/health")

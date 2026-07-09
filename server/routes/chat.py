@@ -174,7 +174,7 @@ async def get_chat_messages(
             raise ChatNotFoundError("Чат не найден или доступ запрещен")
         if limit > 100:
             limit = 100
-        messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.chat_id == chat_id, models.Message.is_deleted == False).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
+        messages = db.query(models.Message).options(joinedload(models.Message.user), joinedload(models.Message.file)).filter(models.Message.chat_id == chat_id, models.Message.is_deleted == False).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
         messages.reverse()
         processed_messages = []
         for msg in messages:

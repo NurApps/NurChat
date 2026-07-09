@@ -90,15 +90,14 @@ jobs:
           pip install -r requirements.txt "pyinstaller>=6.0"
 
       - name: Build server.exe with PyInstaller
-        run: |
-          pyinstaller server.spec --clean --noconfirm
-          ls -la dist/server/
+        shell: cmd
+        run: pyinstaller server.spec --clean --noconfirm && dir dist\
 
       - name: Copy server.exe to Tauri binaries
         shell: bash
         run: |
           mkdir -p src-tauri/binaries
-          cp -f dist/server/server.exe src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
+          cp -f dist/server.exe src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
           ls -la src-tauri/binaries/
 
       - name: Install root dependencies
@@ -118,7 +117,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: server-windows-x64
-          path: dist/server/server.exe
+          path: dist/server.exe
           if-no-files-found: warn
 
       - name: Upload .exe installer

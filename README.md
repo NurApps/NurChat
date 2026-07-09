@@ -1,129 +1,236 @@
-# NurChat — Анонимный Мессенджер с E2E Шифрованием
+<p align="center">
+  <img src="frontend/public/icon.png" width="120" alt="NurChat Logo">
+</p>
 
-![NurChat Logo](assets/nurchat_logo/nurchat_logo.jpg)
+<h1 align="center">NurChat</h1>
 
-[![CI](https://github.com/salihhhh014/NurChat_desktop_beta/actions/workflows/ci.yml/badge.svg)](https://github.com/salihhhh014/NurChat_desktop_beta/actions/workflows/ci.yml)
+<p align="center">
+  Анонимный мессенджер нового поколения с гибридным протоколом<br>
+  <b>Signal + Matrix + Session + Briar + IPFS = NurChat</b>
+</p>
 
-NurChat — современный анонимный мессенджер с end-to-end шифрованием. Проект [NurApps](https://t.me/NurApps) — исламский стартап.
+<p align="center">
+  <a href="#features">Фичи</a> •
+  <a href="#installation">Установка</a> •
+  <a href="#development">Разработка</a> •
+  <a href="#federation">Федерация</a> •
+  <a href="#protocol">Протокол</a> •
+  <a href="#license">Лицензия</a>
+</p>
 
-> **Статус:** Сейчас доступен только десктоп (Windows, macOS, Linux). Мобильная версия (Android + iOS) в разработке — скоро!
+---
 
-## Возможности
+## Features
 
-- **Анонимность** — регистрация без телефона/email, только никнейм
-- **E2E шифрование** — X25519 DH + SecretBox (XSalsa20-Poly1305), подписи Ed25519
-- **Групповые чаты** — создание групп, управление участниками
-- **Голосовые и видеозвонки** — WebRTC P2P (экспериментально)
-- **Медиа** — изображения, видео, голосовые сообщения, документы
-- **P2P/IPFS** — децентрализованное хранение (экспериментально)
-- **Реакции** — emoji-реакции на сообщения
-- **Пересылка** — пересылка сообщений между чатами
-- **Редактирование** — inline-редактирование отправленных сообщений
-- **Удаление** — удаление у себя / у всех
-- **Поиск** — поиск по сообщениям
-- **Темы** — светлая/тёмная тема
+### Шифрование
+- **E2E шифрование** — X25519 + NaCl sealed box (как Signal)
+- **Ed25519 подписи** — верификация сообщений и P2P событий
+- **Вращение ключей** — авто-ротация с уведомлением контактов
+- **Групповое E2E** — зашифрованный group key для групп
 
-## Технологический стек
+### Федерация
+- **Сервер-к-серверу** — Ed25519 подписанные activity (как Matrix)
+- **Адресация** — `user@host:port` (как email)
+- **Авто-обнаружение** — `/.well-known/nurchat.json`
+- **Самостоятельный хостинг** — один запуск = сервер + мессенджер
 
-| Компонент | Технологии |
-|-----------|-----------|
-| Фронтенд | React 19, TypeScript, Vite 8 |
-| Нативный слой | Tauri v2 (Rust) |
-| Бэкенд | FastAPI, SQLAlchemy, SQLite |
-| Шифрование | PyNaCl, tweetnacl (X25519, Ed25519, SecretBox) |
-| WebSocket | websockets |
-| Сборка | npm (фронт), uv (Python) |
+### Приватность
+- **Без телефона** — регистрация без номера/email (как Session)
+- **Локальное хранение** — всё на вашем сервере (как Briar)
+- **Эфемерные сообщения** — авто-удаление по таймеру
+- **PIN-код** — блокировка приложения
 
-## Установка
+### P2P
+- **WebRTC DataChannel** — прямая передача файлов между пользователями
+- **IPFS** — контент-адресация, кеширование, доступность без центрального сервера
+- **WebSocket** — real-time доставка сообщений, typing indicators, online/offline
+
+### Медиа
+- **Голосовые сообщения** — запись и воспроизведение
+- **Видео-кружки** — короткие видео как в Telegram
+- **Файлы** — загрузка до 50 МБ с прогрессом
+- **Стикеры** — базовый набор + кастомные
+- **Превью ссылок** — превью страниц в сообщениях
+
+### Группы
+- **Создание групп** — выбор участников, имя группы
+- **Админы** — управление участниками
+- **Приглашения** — инвайт-ссылки
+- **Мут/пин** — отключение уведомлений, закрепление чатов
+
+### Звонки
+- **Аудио/видео** — WebRTC с TURN/STUN поддержкой
+- **ICE restart** — авто-восстановление при обрыве
+- **История звонков** — лог всех звонков
+
+### Удобство
+- **Тёмная/светлая тема** — авто-определение
+- **Поиск** — глобальный поиск по сообщениям
+- **Закладки** — сохранение важных сообщений
+- **Пересылка** — пересылка сообщений в другие чаты
+- **Редактирование** — inline редактирование сообщений
+- **Реакции** — emoji реакции на сообщения
+
+---
+
+## Installation
+
+### Windows
+
+1. Скачайте `NurChat_*_x64-setup.exe` с [Releases](https://github.com/NurApps/NurChat_desktop_beta/releases)
+2. Запустите установщик
+3. Приложение автоматически запустит Python сервер
+
+### macOS / Linux
+
+```bash
+git clone https://github.com/NurApps/NurChat_desktop_beta.git
+cd NurChat_desktop
+./start.sh
+```
 
 ### Требования
-- Node.js 22+
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) (package manager для Python)
-- Rust + Cargo (для Tauri)
+- **Python 3.10+** (для сервера)
+- **Node.js 22+** (для Tauri фронта)
+- **Rust** (для сборки Tauri)
+- **WebView2** (Windows, устанавливается автоматически)
 
-### Быстрый запуск
+---
+
+## Development
+
+### Быстрый старт
+
 ```bash
-git clone https://github.com/your-username/NurChat_desktop.git
+# 1. Клонируем
+git clone https://github.com/NurApps/NurChat_desktop_beta.git
 cd NurChat_desktop
 
-# Python зависимости
-uv venv
-uv pip install -r requirements.txt
+# 2. Python venv
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+pip install -r requirements.txt
 
-# Frontend зависимости
-cd frontend
-npm install
-cd ..
+# 3. Frontend
+cd frontend && npm install && cd ..
 
-# Запуск (сервер + Tauri)
-start.bat
+# 4. Запуск (сервер + Tauri)
+./start.bat  # Windows
+# или
+python -m uvicorn server.main:app --port 8000 &  # сервер отдельно
+npx tauri dev  # Tauri отдельно
 ```
 
-### Ручной запуск
-```bash
-# Сервер
-.venv\Scripts\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Tauri (в отдельном терминале)
-cd frontend
-npx tauri dev
-```
-
-## Конфигурация
-
-Создайте `.env` в корне проекта (см. `.env.example`):
-
-```env
-SERVER_HOST=0.0.0.0
-SERVER_PORT=8000
-DEBUG=True
-DATABASE_URL=sqlite:///./nurchat.db
-ENCRYPTION_KEY=
-```
-
-## Тестирование
-
-```bash
-# E2E шифрование (не требует сервер)
-pytest test/test_crypto.py -v
-
-# Функциональные тесты (требует запущенный сервер)
-python test/functional_tests.py
-```
-
-## Структура проекта
+### Структура проекта
 
 ```
 NurChat_desktop/
-├── frontend/               # React + TypeScript (Vite)
+├── frontend/           # React + TypeScript + Vite
 │   ├── src/
-│   │   ├── pages/          # Страницы (Chat, Login, Profile, Settings, Call, Legal)
-│   │   ├── components/     # Компоненты (MessageBubble, EmojiPicker, UserProfileModal...)
-│   │   ├── services/       # API клиент, WebSocket, E2E, P2P
-│   │   └── hooks/          # React хуки (useAvatar)
-│   └── src-tauri/          # Tauri (Rust) конфиг
-├── server/                 # FastAPI сервер
-│   ├── routes/             # API маршруты (auth, chat, files, calls, p2p, forward, legal)
-│   ├── core/               # Ядро (models, security, storage, ipfs_client)
-│   └── ws/                 # WebSocket (chat_manager, signaling)
-├── shared/                 # Общие модули (config, schemas, p2p_encryption)
-├── legal/                  # Юридические документы
-├── media/                  # Хранилище медиа-файлов
-└── test/                   # Тесты
+│   │   ├── components/ # UI компоненты
+│   │   ├── pages/      # Страницы (Chat, Call, Settings...)
+│   │   ├── services/   # API клиент, E2E, P2P
+│   │   └── hooks/      # React hooks
+│   └── public/
+├── server/             # FastAPI + SQLAlchemy
+│   ├── core/           # Models, security, federation, IPFS
+│   ├── routes/         # API endpoints
+│   ├── ws/             # WebSocket managers
+│   └── utils/          # Helpers
+├── shared/             # Общие конфиги, схемы, константы
+├── src-tauri/          # Rust Tauri backend
+│   └── src/
+│       ├── lib.rs      # Tauri commands
+│       ├── server.rs   # Auto-start Python server
+│       ├── ipfs.rs     # IPFS client
+│       └── p2p.rs      # P2P networking
+└── alembic/            # DB миграции
 ```
 
-## Roadmap
+### Команды
 
-- [x] Десктопное приложение (Tauri v2)
-- [x] E2E шифрование (X25519 + SecretBox)
-- [x] Групповые чаты
-- [x] Голосовые/видеозвонки (WebRTC)
-- [x] P2P/IPFS интеграция
-- [ ] **Мобильная версия (Android + iOS)**
-- [ ] Синхронизация устройств
-- [ ] Стикеры и GIF
+```bash
+# Сервер
+python -m uvicorn server.main:app --port 8000 --reload
 
-## Лицензия
+# Tauri dev
+npx tauri dev
 
-GNU AGPL v3.0 — см. [LICENSE](LICENSE)
+# Tauri build (installer)
+npx tauri build
+
+# Тесты
+pytest test/ -v
+
+# TypeScript check
+cd frontend && npx tsc --noEmit
+```
+
+---
+
+## Federation
+
+NurChat поддерживает федерацию — серверы общаются друг с другом.
+
+### Включение
+
+```bash
+# .env
+USE_FEDERATION=true
+FEDERATION_SERVER_NAME=your-server.com:8000
+```
+
+### Как работает
+
+1. **Discovery** — `GET /.well-known/nurchat.json` (публичный ключ сервера)
+2. **User lookup** — `GET /federation/user/{username}`
+3. **Message relay** — `POST /federation/inbox` (подписанное activity)
+4. **Адресация** — `user@host:port` (как email)
+
+### Протокол
+
+- Каждый сервер генерирует Ed25519 ключ при старте
+- Activity подписываются серверным ключом
+- Получатель верифицирует подпись через `/.well-known/nurchat.json`
+- E2E шифрование сохраняется — сервер видит только зашифрованный контент
+
+---
+
+## Protocol
+
+### Гибридный протокол NurChat
+
+Мы взяли лучшее из каждого протокола и смешали:
+
+| Протокол | Что взяли | Зачем |
+|----------|-----------|-------|
+| **Signal** | X25519 + NaCl sealed box | Доказанное E2E шифрование |
+| **Matrix** | Federation (inbox/outbox) | Серверы общаются без единой точки отказа |
+| **Session** | Анонимность без телефона | Приватность регистрации |
+| **Briar** | Локальное хранение, P2P | Автономность от облаков |
+| **IPFS** | Content-addressed файлы | Доступность через CID, кеширование |
+| **Telegram** | UX (группы, файлы, стикеры) | Привычный интерфейс |
+
+### Сравнение
+
+| | Signal | Matrix | Session | Briar | **NurChat** |
+|---|---|---|---|---|---|
+| E2E шифрование | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Федерация | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Без телефона | ❌ | ✅ | ✅ | ✅ | ✅ |
+| P2P | ❌ | ⚠️ | ✅ | ✅ | ✅ |
+| IPFS | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Самостоятельный хостинг | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Нативное десктоп приложение | ❌ | ❌ | ❌ | ❌ | ✅ |
+
+---
+
+## License
+
+[GNU AGPL v3](LICENSE) — NurApps 2026
+
+---
+
+<p align="center">
+  Сделано с ❤️ для приватности и свободы
+</p>

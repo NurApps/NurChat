@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import type { ChatResponse, UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
-import { getDraftForChat } from "../pages/ChatPage"
+import { getDraftForChat } from "../utils/drafts"
 
 interface Props {
   chat: ChatResponse

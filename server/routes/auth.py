@@ -523,28 +523,13 @@ async def enable_2fa(
     return {"message": "2FA включена"}
 
 
-@router.post("/2fa/verify")
-async def verify_2fa_login(
-    body: schemas.TwoFALoginRequest,
-    db: Session = Depends(get_db),
-):
-    """Верифицировать 2FA-код при входе (TOTP или backup-код)."""
-    # This endpoint requires a pending 2FA token
-    # For simplicity, we accept username + code
-    # In production, use the pending token from login
-    raise HTTPException(
-        status_code=400,
-        detail="Используйте заголовок Authorization с токеном из /login"
-    )
-
-
 @router.post("/2fa/verify-login")
 async def verify_2fa_login_with_token(
     body: schemas.TwoFALoginRequest,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
 ):
-    """Верифицировать 2FA-код при входе (с токеном с flag 2fa_pending)."""
+    """Верифицировать 2FA-код при входе (TOTP или backup-код)."""
     if not token.get("2fa_pending"):
         raise HTTPException(status_code=400, detail="Токен не требует 2FA верификации")
 
@@ -552,8 +537,8 @@ async def verify_2fa_login_with_token(
     if not user or not user.is_2fa_enabled:
         raise HTTPException(status_code=400, detail="2FA не активна")
 
-    # Try TOTP first
-    secret = decrypt_secret(user.totp_secret, token.get("password", ""))
+    # Decrypt TOTP secret with password from request
+    secret = decrypt_secret(user.totp_secret, body.password) if user.totp_secret else None
     totp_valid = secret and verify_totp(secret, body.code)
 
     # Try backup code

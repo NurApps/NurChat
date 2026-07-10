@@ -6,7 +6,20 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from server.core import models, schemas
 from server.core.database import get_db
-from server.core.security import encryption, hash_password, verify_password, security, verify_token_dependency
+from server.core.security import encryption, security, verify_token_dependency
+from server.utils.security import (
+    hash_password as hash_password_argon2,
+    verify_password as verify_password_argon2,
+    encrypt_secret,
+    decrypt_secret,
+    generate_totp_secret,
+    generate_totp_uri,
+    generate_qr_code_base64,
+    verify_totp,
+    generate_backup_codes,
+    hash_backup_codes,
+    verify_backup_code,
+)
 from server.utils.logger import logger
 from shared.rate_limiter import limiter
 
@@ -56,7 +69,7 @@ async def register(
                     detail="Если есть латинские буквы, их должно быть минимум 4"
                 )
 
-        hashed_password = hash_password(user_data.password)
+        hashed_password = hash_password_argon2(user_data.password)
 
         keypair = encryption.generate_keypair()
 
@@ -129,7 +142,7 @@ async def login(
     user_data: schemas.UserCreate,
     db: Session = Depends(get_db)
 ):
-    """Вход пользователя с проверкой пароля"""
+    """Вход пользователя с проверкой пароля и 2FA"""
     try:
         user = db.query(models.User).filter(
             models.User.username == user_data.username
@@ -142,12 +155,38 @@ async def login(
                 detail="Неверные учетные данные"
             )
 
-        if not verify_password(user_data.password, user.hashed_password):
+        if not verify_password_argon2(user_data.password, user.hashed_password):
             logger.warning(f"Login attempt with wrong password for username: {user_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Неверные учетные данные"
             )
+
+        # If 2FA is enabled, return token with requires_2fa=True
+        if user.is_2fa_enabled:
+            access_token = security.create_access_token(
+                data={"sub": user.id, "username": user.username, "2fa_pending": True}
+            )
+            response = schemas.UserResponse(
+                id=user.id,
+                username=user.username,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                created_at=user.created_at,
+                last_seen=user.last_seen,
+                is_online=user.is_online,
+                public_key=user.public_key,
+                signing_public_key=getattr(user, "signing_public_key", None),
+                avatar_path=user.avatar_path,
+                status=getattr(user, "status", None),
+                bio=getattr(user, "bio", None),
+            )
+            return {
+                "access_token": access_token,
+                "token_type": "bearer",
+                "user": response,
+                "requires_2fa": True,
+            }
 
         user.last_seen = models.func.now()
         db.commit()
@@ -410,3 +449,196 @@ async def rotate_key(
     db.commit()
 
     return {"status": "ok", "old_key": old_key}
+
+
+# ── 2FA Endpoints ──
+
+@router.post("/2fa/setup", response_model=schemas.TwoFASetupResponse)
+async def setup_2fa(
+    body: schemas.TwoFASetupRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Начать настройку 2FA — генерирует секрет, QR-код и backup-коды."""
+    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    if not verify_password_argon2(body.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Неверный пароль")
+
+    if user.is_2fa_enabled:
+        raise HTTPException(status_code=400, detail="2FA уже включена. Сначала отключите.")
+
+    # Generate TOTP secret, encrypted with user's password
+    secret = generate_totp_secret()
+    uri = generate_totp_uri(secret, user.username)
+    qr_code = generate_qr_code_base64(uri)
+
+    # Generate backup codes
+    codes = generate_backup_codes()
+
+    # Store encrypted secret and hashed backup codes temporarily (not enabled yet)
+    user.totp_secret = encrypt_secret(secret, body.password)
+    user.backup_codes = hash_backup_codes(codes)
+    db.commit()
+
+    return schemas.TwoFASetupResponse(
+        secret=secret,
+        uri=uri,
+        qr_code=qr_code,
+        backup_codes=codes,
+    )
+
+
+@router.post("/2fa/enable")
+async def enable_2fa(
+    body: schemas.TwoFAEnableRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Подтвердить TOTP-кодом и включить 2FA."""
+    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    if user.is_2fa_enabled:
+        raise HTTPException(status_code=400, detail="2FA уже включена")
+
+    if not user.totp_secret:
+        raise HTTPException(status_code=400, detail="Сначала вызовите /2fa/setup")
+
+    if not verify_password_argon2(body.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Неверный пароль")
+
+    # Decrypt secret and verify the code
+    secret = decrypt_secret(user.totp_secret, body.password)
+    if not secret or not verify_totp(secret, body.code):
+        raise HTTPException(status_code=400, detail="Неверный TOTP-код")
+
+    user.is_2fa_enabled = True
+    db.commit()
+
+    logger.info(f"2FA enabled for user: {user.username}")
+    return {"message": "2FA включена"}
+
+
+@router.post("/2fa/verify")
+async def verify_2fa_login(
+    body: schemas.TwoFALoginRequest,
+    db: Session = Depends(get_db),
+):
+    """Верифицировать 2FA-код при входе (TOTP или backup-код)."""
+    # This endpoint requires a pending 2FA token
+    # For simplicity, we accept username + code
+    # In production, use the pending token from login
+    raise HTTPException(
+        status_code=400,
+        detail="Используйте заголовок Authorization с токеном из /login"
+    )
+
+
+@router.post("/2fa/verify-login")
+async def verify_2fa_login_with_token(
+    body: schemas.TwoFALoginRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Верифицировать 2FA-код при входе (с токеном с flag 2fa_pending)."""
+    if not token.get("2fa_pending"):
+        raise HTTPException(status_code=400, detail="Токен не требует 2FA верификации")
+
+    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    if not user or not user.is_2fa_enabled:
+        raise HTTPException(status_code=400, detail="2FA не активна")
+
+    # Try TOTP first
+    secret = decrypt_secret(user.totp_secret, token.get("password", ""))
+    totp_valid = secret and verify_totp(secret, body.code)
+
+    # Try backup code
+    backup_valid = False
+    if not totp_valid and user.backup_codes:
+        backup_valid, updated_codes = verify_backup_code(body.code, user.backup_codes)
+        if backup_valid:
+            user.backup_codes = updated_codes
+            db.commit()
+
+    if not totp_valid and not backup_valid:
+        logger.warning(f"Failed 2FA attempt for user: {user.username}")
+        raise HTTPException(status_code=401, detail="Неверный код")
+
+    # Issue full access token
+    user.last_seen = models.func.now()
+    db.commit()
+
+    access_token = security.create_access_token(
+        data={"sub": user.id, "username": user.username}
+    )
+
+    logger.info(f"User logged in with 2FA: {user.username}")
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": schemas.UserResponse.model_validate(user),
+    }
+
+
+@router.post("/2fa/disable")
+async def disable_2fa(
+    body: schemas.TwoFADisableRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Отключить 2FA (требует пароль + текущий код)."""
+    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    if not user.is_2fa_enabled:
+        raise HTTPException(status_code=400, detail="2FA не включена")
+
+    if not verify_password_argon2(body.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Неверный пароль")
+
+    # Verify code (TOTP or backup)
+    secret = decrypt_secret(user.totp_secret, body.password)
+    totp_valid = secret and verify_totp(secret, body.code)
+
+    backup_valid = False
+    if not totp_valid and user.backup_codes:
+        backup_valid, _ = verify_backup_code(body.code, user.backup_codes)
+
+    if not totp_valid and not backup_valid:
+        raise HTTPException(status_code=401, detail="Неверный код")
+
+    user.is_2fa_enabled = False
+    user.totp_secret = None
+    user.backup_codes = None
+    db.commit()
+
+    logger.info(f"2FA disabled for user: {user.username}")
+    return {"message": "2FA отключена"}
+
+
+@router.get("/2fa/status", response_model=schemas.TwoFAResponse)
+async def get_2fa_status(
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Получить статус 2FA текущего пользователя."""
+    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    remaining = 0
+    if user.backup_codes:
+        try:
+            remaining = len(__import__("json").loads(user.backup_codes))
+        except Exception:
+            pass
+
+    return schemas.TwoFAResponse(
+        enabled=user.is_2fa_enabled,
+        backup_codes_remaining=remaining,
+    )

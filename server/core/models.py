@@ -24,6 +24,11 @@ class User(Base):
     last_seen = Column(DateTime(timezone=True), server_default=func.now())
     is_online = Column(Boolean, default=False)
 
+    # 2FA fields
+    is_2fa_enabled = Column(Boolean, default=False)
+    totp_secret = Column(String, nullable=True)  # Argon2id-hashed TOTP secret
+    backup_codes = Column(Text, nullable=True)  # JSON array of Argon2id-hashed backup codes
+
     messages = relationship("Message", back_populates="user")
     files = relationship("File", back_populates="user")
     chats = relationship("ChatParticipant", back_populates="user")

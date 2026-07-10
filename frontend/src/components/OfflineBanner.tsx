@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 
 export default function OfflineBanner() {
+  const { t } = useTranslation()
   const [isOnline, setIsOnline] = useState(navigator.onLine)
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export default function OfflineBanner() {
         <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
         <line x1="12" y1="20" x2="12.01" y2="20" />
       </svg>
-      Нет подключения к интернету
+      {t("common.noInternet")}
     </div>
   )
 }

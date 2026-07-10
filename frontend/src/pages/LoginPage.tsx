@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import { saveKeys as saveE2EKeys } from "../services/e2e"
+import { BASE_URL } from "../config"
 
 const TG_BLUE = "#2AABEE"
 
@@ -16,6 +17,12 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  
+  // CAPTCHA state for registration
+  const [captchaId, setCaptchaId] = useState<string>("")
+  const [captchaQuestion, setCaptchaQuestion] = useState<string>("")
+  const [captchaCode, setCaptchaCode] = useState("")
+  const [refreshingCaptcha, setRefreshingCaptcha] = useState(false)
 
   // Auto-login: если токен есть и валиден — сразу в чат
   useEffect(() => {
@@ -34,6 +41,28 @@ export default function LoginPage() {
         setChecking(false)
       })
   }, [navigate])
+
+  // Load CAPTCHA when switching to registration mode
+  useEffect(() => {
+    if (mode === "register" && !captchaId) {
+      loadCaptcha()
+    }
+  }, [mode])
+
+  const loadCaptcha = async () => {
+    setRefreshingCaptcha(true)
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/captcha`)
+      const data = await res.json()
+      setCaptchaId(data.captcha_id)
+      setCaptchaQuestion(data.question)
+      setCaptchaCode("")
+    } catch (err) {
+      console.error("Failed to load CAPTCHA:", err)
+    } finally {
+      setRefreshingCaptcha(false)
+    }
+  }
 
   const toggleMode = () => {
     setMode(mode === "login" ? "register" : "login")
@@ -67,16 +96,49 @@ export default function LoginPage() {
         // If not available, keys will be generated via P2PStatusPage
         navigate("/chat", { replace: true })
       } else {
-        const res = await api.register(username.trim(), password, firstName.trim(), lastName.trim())
-        api.setToken(res.access_token)
-        localStorage.setItem("user", JSON.stringify(res.user))
+        // Registration with CAPTCHA
+        if (!captchaId || !captchaCode) {
+          setError("Пройдите проверку CAPTCHA")
+          setLoading(false)
+          return
+        }
+        
+        const res = await fetch(`${BASE_URL}/api/auth/register`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: username.trim(),
+            password,
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            captcha_id: captchaId,
+            captcha_code: captchaCode,
+          }),
+        })
+        
+        if (!res.ok) {
+          const errorData = await res.json()
+          if (res.status === 400 && errorData.detail?.includes("CAPTCHA")) {
+            setError("Неверная CAPTCHA. Попробуйте еще раз")
+            loadCaptcha() // Auto-refresh captcha on error
+            setLoading(false)
+            return
+          }
+          throw new Error(errorData.detail || "Ошибка регистрации")
+        }
+        
+        const data = await res.json()
+        api.setToken(data.access_token)
+        localStorage.setItem("user", JSON.stringify(data.user))
         // Save E2E keys on registration (private keys returned once)
-        if (res.private_key && res.signing_private_key && res.user) {
+        if (data.private_key && data.signing_private_key && data.user) {
           saveE2EKeys({
-            privateKeyHex: res.private_key,
-            publicKeyHex: res.user.public_key || "",
-            signingPrivateHex: res.signing_private_key,
-            signingPublicHex: res.user.signing_public_key || "",
+            privateKeyHex: data.private_key,
+            publicKeyHex: data.user.public_key || "",
+            signingPrivateHex: data.signing_private_key,
+            signingPublicHex: data.user.signing_public_key || "",
           })
         }
         navigate("/chat", { replace: true })
@@ -148,6 +210,43 @@ export default function LoginPage() {
                   placeholder="Фамилия (необязательно)"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
+                />
+              </div>
+              
+              {/* CAPTCHA Field */}
+              <div className="field-wrapper captcha-field">
+                <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <div className="captcha-container" style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
+                  <span className="captcha-question" style={{ fontSize: "14px", fontWeight: "bold", color: "#333", minWidth: "100px" }}>
+                    {captchaQuestion || "Загрузка..."}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={loadCaptcha}
+                    disabled={refreshingCaptcha}
+                    className="captcha-refresh-btn"
+                    style={{
+                      background: "none",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px",
+                      padding: "4px 8px",
+                      cursor: refreshingCaptcha ? "not-allowed" : "pointer",
+                      opacity: refreshingCaptcha ? 0.6 : 1,
+                    }}
+                    title="Обновить CAPTCHA"
+                  >
+                    {refreshingCaptcha ? "↻" : "⟳"}
+                  </button>
+                </div>
+                <input
+                  className="login-input"
+                  type="text"
+                  placeholder="Введите ответ"
+                  value={captchaCode}
+                  onChange={(e) => setCaptchaCode(e.target.value)}
+                  style={{ marginLeft: "8px", maxWidth: "120px" }}
                 />
               </div>
             </>

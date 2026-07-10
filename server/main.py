@@ -17,6 +17,7 @@ from slowapi.errors import RateLimitExceeded
 from shared.rate_limiter import limiter
 
 from server.core.database import create_tables
+from server.middleware.csrf import CSRFMiddleware
 
 # Импорты routes
 from server.routes import auth, calls, chat, contacts_groups, files, forward, legal, p2p, ipfs, bookmarks, pins, stats, audit, federation
@@ -75,6 +76,23 @@ app = FastAPI(
     description="Анонимный мессенджер нового поколения от NurApps",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# CSRF Protection (защита от подделки межсайтовых запросов)
+app.add_middleware(
+    CSRFMiddleware,
+    secret_key=settings.JWT_SECRET_KEY,
+    cookie_name="csrf_token",
+    header_name="X-CSRF-Token",
+    token_lifetime_hours=24,
+    exempt_paths=[
+        "/health",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/api/captcha",
+        "/api/auth/login",  # Login without CSRF for initial access
+    ],
 )
 
 # Rate limiting (защита от брутфорса)

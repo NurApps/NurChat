@@ -7,10 +7,29 @@ from sqlalchemy.orm import Session
 from server.core import models, schemas
 from server.core.database import get_db
 from server.core.security import encryption, hash_password, verify_password, security, verify_token_dependency
+from server.utils.captcha import validate_captcha, generate_captcha
 from server.utils.logger import logger
 from shared.rate_limiter import limiter
 
 router = APIRouter()
+
+
+@router.get("/captcha")
+@limiter.limit("30/minute")
+async def get_captcha(request: Request):
+    """Get a new CAPTCHA challenge for registration"""
+    try:
+        captcha_id, question = generate_captcha()
+        return {
+            "captcha_id": captcha_id,
+            "question": question,
+        }
+    except Exception as e:
+        logger.error(f"Get captcha error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка генерации CAPTCHA"
+        )
 
 
 @router.post("/register")
@@ -18,10 +37,20 @@ router = APIRouter()
 async def register(
     request: Request,
     user_data: schemas.UserCreate,
+    captcha_id: str = Body(..., embed=True),
+    captcha_code: str = Body(..., embed=True),
     db: Session = Depends(get_db)
 ):
     """Регистрация пользователя с именем и фамилией"""
     try:
+        # Validate CAPTCHA first
+        if not validate_captcha(captcha_id, captcha_code):
+            logger.warning(f"Registration attempt with invalid CAPTCHA: {captcha_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Неверная CAPTCHA"
+            )
+        
         if not user_data.first_name or len(user_data.first_name.strip()) < 2:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

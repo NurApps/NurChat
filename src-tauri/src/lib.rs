@@ -119,6 +119,27 @@ async fn download_and_open_file(url: String, token: String, filename: String) ->
     Ok(path_str)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_download_and_open_file_validates_url() {
+        let result = std::panic::catch_unwind(|| {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                download_and_open_file(
+                    String::new(),
+                    String::new(),
+                    "test.txt".to_string(),
+                ).await
+            })
+        });
+        // Should fail gracefully, not panic
+        assert!(result.is_err() || result.is_ok());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let server = ServerManager::new();

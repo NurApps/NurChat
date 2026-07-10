@@ -101,3 +101,26 @@ impl IpfsClient {
         self.client.post(&url).send().await.is_ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ipfs_client_creation() {
+        let client = IpfsClient::new("http://127.0.0.1:5001");
+        assert_eq!(client.api_url, "http://127.0.0.1:5001");
+    }
+
+    #[test]
+    fn test_ipfs_client_trim_trailing_slash() {
+        let client = IpfsClient::new("http://127.0.0.1:5001/");
+        assert_eq!(client.api_url, "http://127.0.0.1:5001");
+    }
+
+    #[test]
+    fn test_ipfs_client_default_url() {
+        let client = IpfsClient::new("http://127.0.0.1:5001");
+        assert!(client.api_url.contains("127.0.0.1"));
+    }
+}

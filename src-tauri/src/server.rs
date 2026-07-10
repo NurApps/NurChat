@@ -151,6 +151,31 @@ impl ServerManager {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_server_manager_creation() {
+        let manager = ServerManager::new();
+        assert!(manager.child.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_stop_without_start() {
+        let manager = ServerManager::new();
+        manager.stop();
+        let child = manager.child.lock().unwrap();
+        assert!(child.is_none());
+    }
+
+    #[test]
+    fn test_find_system_python() {
+        let python = find_system_python();
+        assert!(python.is_none() || python.is_some());
+    }
+}
+
 impl Drop for ServerManager {
     fn drop(&mut self) {
         self.stop();

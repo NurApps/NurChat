@@ -88,14 +88,21 @@ settings = Settings()
 if settings.ENCRYPTION_KEY == "your_default_encryption_key_here":
     import secrets
     import logging
-    logging.warning(
-        "ENCRYPTION_KEY is not set in .env! Generated a temporary key. "
-        "Data will NOT persist across restarts. Set ENCRYPTION_KEY in .env for production."
+    logging.critical(
+        "⚠️  ENCRYPTION_KEY is NOT set! Generated a TEMPORARY key. "
+        "All encrypted data will be LOST on restart. "
+        "Set a stable ENCRYPTION_KEY in .env immediately!"
     )
     settings.ENCRYPTION_KEY = secrets.token_hex(32)
 
 if not settings.JWT_SECRET_KEY:
     import secrets
+    import logging
+    logging.warning(
+        "JWT_SECRET_KEY is not set in .env. Generated a temporary key. "
+        "All active sessions will be invalidated on restart (users will be logged out). "
+        "Set JWT_SECRET_KEY in .env for production."
+    )
     settings.JWT_SECRET_KEY = secrets.token_hex(32)
 
 ENCRYPTION_KEY = settings.ENCRYPTION_KEY.encode()

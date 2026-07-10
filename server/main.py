@@ -90,6 +90,10 @@ _cors_origins = [
 ]
 if settings.DEBUG:
     _cors_origins.append("*")
+    logger.warning(
+        "⚠️  DEBUG mode: CORS allows all origins (*). "
+        "Disable DEBUG or restrict origins for production use."
+    )
 
 app.add_middleware(
     CORSMiddleware,

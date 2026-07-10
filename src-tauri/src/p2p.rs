@@ -75,3 +75,67 @@ impl P2PNode {
         peers.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_p2p_node_creation() {
+        let config = P2PConfig {
+            listen_port: 0,
+            max_peers: 10,
+            relay_enabled: true,
+        };
+        let node = P2PNode::new(config);
+        assert_eq!(node.get_peer_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_p2p_add_remove_peer() {
+        let config = P2PConfig::default();
+        let node = P2PNode::new(config);
+
+        let peer = P2PPeerInfo {
+            peer_id: "peer_1".to_string(),
+            public_key: "abc123".to_string(),
+            address: "127.0.0.1".to_string(),
+            port: 9000,
+        };
+
+        node.add_peer(peer.clone()).await;
+        assert_eq!(node.get_peer_count().await, 1);
+
+        node.remove_peer("peer_1").await;
+        assert_eq!(node.get_peer_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_p2p_max_peers() {
+        let config = P2PConfig {
+            listen_port: 0,
+            max_peers: 2,
+            relay_enabled: false,
+        };
+        let node = P2PNode::new(config);
+
+        for i in 0..5 {
+            node.add_peer(P2PPeerInfo {
+                peer_id: format!("peer_{}", i),
+                public_key: "key".to_string(),
+                address: "127.0.0.1".to_string(),
+                port: 9000 + i as u16,
+            }).await;
+        }
+
+        assert_eq!(node.get_peer_count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn test_p2p_start_listener() {
+        let config = P2PConfig::default();
+        let node = P2PNode::new(config);
+        let port = node.start().await.unwrap();
+        assert!(port > 0);
+    }
+}

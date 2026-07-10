@@ -1,0 +1,124 @@
+.call-page {
+  display: flex;
+  flex-direction: column;
+  height: 100svh;
+  background: var(--bg);
+}
+
+.call-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--divider);
+}
+
+.call-back {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+}
+
+.call-title { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+
+.call-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+}
+
+.call-avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--tg-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 48px;
+  font-weight: 700;
+}
+
+.call-name { font-size: 24px; font-weight: 700; color: var(--text-primary); margin: 0; }
+.call-status { font-size: 16px; color: var(--text-secondary); margin: 0; }
+.call-timer { font-size: 24px; font-weight: 700; color: var(--text-primary); margin: 0; }
+
+.call-video-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.call-video-remote {
+  width: 280px;
+  height: 200px;
+  background: #000;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #888;
+  font-size: 12px;
+}
+
+.call-video-local {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 100px;
+  height: 80px;
+  background: #111;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #888;
+  font-size: 10px;
+  border: 1px solid #333;
+}
+
+.call-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px 16px 32px;
+  background: var(--surface);
+  border-top: 1px solid var(--divider);
+}
+
+.call-btn {
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s, transform 0.12s;
+  color: #fff;
+}
+
+.call-btn:hover { opacity: 0.85; transform: scale(1.05); }
+.call-btn:active { transform: scale(0.97); }
+
+.call-btn.end, .call-btn.decline { background: #e53935; width: 64px; height: 64px; }
+.call-btn.accept { background: #43a047; width: 64px; height: 64px; }
+.call-btn.control { background: #546e7a; width: 52px; height: 52px; }
+.call-btn.control.off { background: #e53935; }

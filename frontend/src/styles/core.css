@@ -1,0 +1,83 @@
+@font-face {
+  font-family: 'Noto Color Emoji';
+  src: url('/fonts/NotoColorEmoji.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-variant: #f5f5f5;
+  --hover: #e5e5ea;
+  --text-primary: #000000;
+  --text-secondary: #8e8e93;
+  --border-color: #e0e0e0;
+  --divider: #e0e0e0;
+  --tg-blue: #2aabee;
+  --tg-green: #4fae4e;
+  --error: #e53935;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  color-scheme: light dark;
+  color: var(--text-primary);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="dark"] {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-variant: #21262d;
+  --hover: #30363d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --border-color: #30363d;
+  --divider: #21262d;
+  --input-bg: #0d1117;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body { margin: 0; }
+
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+.msg-content, .cli-preview, .sticker-btn, .chat-input, .reply-text, .gs-text, .notification-toast, .call-name, .msg-ephemeral {
+  font-variant-emoji: emoji;
+}
+
+.emoji-btn, .emoji-tab, .msg-content, .message-bubble, .chat-input, .reply-text, .reaction-bar, .reaction-btn {
+  font-family: "Noto Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
+}
+
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.auth-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100svh;
+  background: var(--bg);
+}

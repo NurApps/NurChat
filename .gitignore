@@ -1,71 +1,41 @@
-# Dependencies
-node_modules/
-.venv/
-venv/
+```
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.mimocode
-
-# Build / Output
-dist/
-build/
-out/
-src-tauri/target/
-src-tauri/WixTools/
-src-tauri/Frameworks/
-*.tsbuildinfo
-.production/
-
-# Environment / Secrets
+.Python
+venv/
+.venv/
 .env
 .env.local
-.env.*.local
-token.txt
-*.txt
-!requirements.txt
-!requirements-build.txt
-!README.md
-!AGENTS.md
-!LICENSE
+*.env.*
 
-# Databases
-*.db
-*.sqlite
-*.sqlite3
+# Node.js
+node_modules/
 
-# Media / User content
-media/
-logs/
-assets/emoji/*.ttf
-ipfs_bin/
-frontend/public/fonts/*.ttf
+# Docker
+.dockerenv
 
-# IDE / Editor
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.kilo/
+# Logs
+*.log
 
 # OS
 .DS_Store
 Thumbs.db
-Desktop.ini
 
-# Testing / Coverage
-coverage/
-.nyc_output/
-.pytest_cache/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
 
-# Rust / Cargo
-Cargo.lock
-
-# Misc
-*.log
-.ruff_cache/
-pip-log.txt
-devUrl
-npx
+# Build artifacts
+dist/
+build/
+target/
+*.o
+*.obj
+*.out
+```

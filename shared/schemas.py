@@ -156,6 +156,7 @@ class TwoFAVerifyRequest(BaseSchema):
 
 class TwoFALoginRequest(BaseSchema):
     code: str = Field(..., description="6-digit TOTP code or backup code (XXXX-XXXX)")
+    password: str = Field(..., description="Password to decrypt TOTP secret")
 
 class TwoFAEnableRequest(BaseSchema):
     code: str = Field(..., min_length=6, max_length=7, description="6-digit TOTP code to confirm setup")

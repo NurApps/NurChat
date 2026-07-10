@@ -48,11 +48,11 @@ def needs_rehash(hashed: str) -> bool:
 def _derive_fernet_key(password: str, salt: bytes) -> bytes:
     """Derive a Fernet key from password using Argon2id."""
     kdf = Argon2idKDF(
-        length=32,
         salt=salt,
-        time_cost=3,
+        length=32,
+        iterations=3,
+        lanes=4,
         memory_cost=65536,
-        parallelism=4,
     )
     key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
     return key

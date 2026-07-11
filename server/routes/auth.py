@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -6,8 +7,19 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from server.core import models, schemas
 from server.core.database import get_db
-from server.core.security import encryption, hash_password, verify_password, security, verify_token_dependency
+from server.core.security import encryption, hash_password, verify_password, security, verify_token_dependency, get_encryption_key
 from server.utils.captcha import validate_captcha, generate_captcha
+from server.utils.totp import (
+    generate_totp_secret,
+    get_provisioning_uri,
+    generate_qr_code_data_uri,
+    verify_totp,
+    encrypt_totp_secret,
+    decrypt_totp_secret,
+    generate_backup_codes,
+    hash_backup_code,
+    verify_backup_code
+)
 from server.utils.logger import logger
 from shared.rate_limiter import limiter
 
@@ -156,9 +168,10 @@ async def register(
 async def login(
     request: Request,
     user_data: schemas.UserCreate,
+    totp_code: str = Body(None, embed=True),
     db: Session = Depends(get_db)
 ):
-    """Вход пользователя с проверкой пароля"""
+    """Вход пользователя с проверкой пароля и TOTP (если включен)"""
     try:
         user = db.query(models.User).filter(
             models.User.username == user_data.username
@@ -177,6 +190,40 @@ async def login(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Неверные учетные данные"
             )
+
+        # Check if TOTP is enabled
+        if user.totp_enabled and user.totp_secret:
+            if not totp_code:
+                logger.warning(f"TOTP required for user: {user.username}")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="TOTP_REQUIRED",
+                    headers={"X-TOTP-Required": "true"}
+                )
+            
+            # Decrypt TOTP secret with master key (not password-dependent)
+            secret = decrypt_totp_secret(user.totp_secret)
+            
+            # Try to verify as TOTP code first
+            is_valid = verify_totp(secret, totp_code)
+            
+            # If not TOTP, try as backup code
+            if not is_valid and user.backup_codes:
+                hashed_codes = json.loads(user.backup_codes)
+                is_valid = verify_backup_code(totp_code, hashed_codes)
+                
+                # If backup code was used, remove it from the list
+                if is_valid:
+                    new_hashed_codes = [hc for hc in hashed_codes if hc != hash_backup_code(totp_code)]
+                    user.backup_codes = json.dumps(new_hashed_codes) if new_hashed_codes else None
+                    db.commit()
+            
+            if not is_valid:
+                logger.warning(f"Invalid TOTP/backup code for user: {user.username}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Неверный код TOTP или резервный код"
+                )
 
         user.last_seen = models.func.now()
         db.commit()
@@ -439,3 +486,235 @@ async def rotate_key(
     db.commit()
 
     return {"status": "ok", "old_key": old_key}
+
+
+# TOTP 2FA Endpoints
+@router.get("/totp/setup")
+async def setup_totp(
+    request: Request,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """
+    Setup TOTP for the current user.
+    Returns QR code data URI and secret hint.
+    Requires password confirmation.
+    """
+    try:
+        user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        # Get password for encryption key derivation
+        password = request.headers.get("X-Password-Confirmation")
+        if not password:
+            raise HTTPException(
+                status_code=400, 
+                detail="Требуется подтверждение пароля. Передайте в заголовке X-Password-Confirmation"
+            )
+        
+        # Verify password first
+        if not verify_password(password, user.hashed_password):
+            raise HTTPException(
+                status_code=401, 
+                detail="Неверный пароль"
+            )
+        
+        # Generate new TOTP secret (NOT stored yet)
+        secret = generate_totp_secret()
+        provisioning_uri = get_provisioning_uri(user.username, secret)
+        qr_code_uri = generate_qr_code_data_uri(provisioning_uri)
+        
+        # Return QR code and secret hint (DO NOT store yet - wait for enable)
+        secret_hint = secret[:4] + "..." if len(secret) > 4 else secret
+        
+        return schemas.TOTPSetupResponse(
+            qr_code=qr_code_uri,
+            secret_hint=secret_hint,
+            manual_entry_key=secret  # For manual entry in authenticator app
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"TOTP setup error: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+
+
+@router.post("/totp/enable")
+async def enable_totp(
+    request: Request,
+    totp_data: schemas.TOTPEnableRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """
+    Enable TOTP after verifying the first code.
+    Requires password confirmation. Generates backup codes.
+    """
+    try:
+        user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        # Get password for verification
+        password = request.headers.get("X-Password-Confirmation")
+        if not password:
+            raise HTTPException(
+                status_code=400, 
+                detail="Требуется подтверждение пароля"
+            )
+        
+        # Verify password
+        if not verify_password(password, user.hashed_password):
+            raise HTTPException(
+                status_code=401, 
+                detail="Неверный пароль"
+            )
+        
+        # Verify the TOTP code provided by user
+        # We need to decrypt the secret they just got from /setup
+        # But we haven't stored it yet - so we need to pass it in the request
+        # Actually, let's change approach: store encrypted secret temporarily
+        # Better approach: client sends back the secret they received (encrypted in transit via HTTPS)
+        secret = totp_data.secret  # Client sends back the secret from /setup response
+        
+        if not secret:
+            raise HTTPException(
+                status_code=400, 
+                detail="TOTP секрет обязателен"
+            )
+        
+        # Verify the code works with this secret
+        if not verify_totp(secret, totp_data.code):
+            raise HTTPException(
+                status_code=400, 
+                detail="Неверный код TOTP"
+            )
+        
+        # Now encrypt and store
+        encrypted_secret = encrypt_totp_secret(secret)
+        
+        # Generate backup codes
+        backup_codes = generate_backup_codes()
+        hashed_codes = [hash_backup_code(code) for code in backup_codes]
+        
+        # Store encrypted secret and backup codes
+        user.totp_secret = encrypted_secret
+        user.totp_enabled = True
+        user.backup_codes = json.dumps(hashed_codes)
+        db.commit()
+        
+        logger.info(f"TOTP enabled for user: {user.username}")
+        
+        # Return backup codes ONCE (they won't be shown again)
+        return {
+            "message": "TOTP успешно включен", 
+            "enabled": True,
+            "backup_codes": backup_codes  # Show these only once!
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"TOTP enable error: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+
+
+@router.post("/totp/disable")
+async def disable_totp(
+    request: Request,
+    totp_data: schemas.TOTPDisableRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """
+    Disable TOTP by verifying current code or backup code.
+    Requires password confirmation.
+    """
+    try:
+        user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        if not user.totp_enabled or not user.totp_secret:
+            raise HTTPException(
+                status_code=400, 
+                detail="TOTP не включен"
+            )
+        
+        # Get password for verification
+        password = request.headers.get("X-Password-Confirmation")
+        if not password:
+            raise HTTPException(
+                status_code=400, 
+                detail="Требуется подтверждение пароля"
+            )
+        
+        # Verify password
+        if not verify_password(password, user.hashed_password):
+            raise HTTPException(
+                status_code=401, 
+                detail="Неверный пароль"
+            )
+        
+        # Decrypt TOTP secret with master key
+        secret = decrypt_totp_secret(user.totp_secret)
+        
+        # Try to verify as TOTP code first
+        is_valid = verify_totp(secret, totp_data.code)
+        
+        # If not TOTP, try as backup code
+        if not is_valid and user.backup_codes:
+            hashed_codes = json.loads(user.backup_codes)
+            is_valid = verify_backup_code(totp_data.code, hashed_codes)
+            
+            # If backup code was used, remove it from the list
+            if is_valid:
+                # Remove used code
+                new_hashed_codes = [hc for hc in hashed_codes if hc != hash_backup_code(totp_data.code)]
+                user.backup_codes = json.dumps(new_hashed_codes) if new_hashed_codes else None
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=400, 
+                detail="Неверный код TOTP или резервный код"
+            )
+        
+        user.totp_enabled = False
+        user.totp_secret = None
+        user.backup_codes = None
+        db.commit()
+        
+        logger.info(f"TOTP disabled for user: {user.username}")
+        return {"message": "TOTP успешно отключен", "enabled": False}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"TOTP disable error: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+
+
+@router.get("/totp/status")
+async def get_totp_status(
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """
+    Get TOTP status for current user.
+    """
+    try:
+        user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        return schemas.UserTOTPStatus(
+            enabled=user.totp_enabled,
+            setup_required=bool(user.totp_secret and not user.totp_enabled)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"TOTP status error: {e}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")

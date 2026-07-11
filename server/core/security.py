@@ -1,5 +1,6 @@
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import bcrypt
 from fastapi import Depends, HTTPException, status
@@ -25,6 +26,44 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+
+
+def get_encryption_key(password: str, hashed_password: str) -> bytes:
+    """
+    Derive a stable encryption key from user's password.
+    Uses PBKDF2 with SHA256 to derive a 32-byte key suitable for Fernet.
+    
+    Args:
+        password: User's plain text password
+        hashed_password: User's hashed password from database (to extract salt)
+    
+    Returns:
+        32-byte key encoded in URL-safe base64 for Fernet
+    """
+    import base64
+    import hashlib
+    
+    # Extract salt from bcrypt hash ($2b$12$saltsalt...)
+    # Bcrypt hash format: $algorithm$cost$salthash
+    parts = hashed_password.split('$')
+    if len(parts) >= 4:
+        salt_bcrypt = parts[2]  # This includes cost and salt
+        # For simplicity, we'll use a fixed salt derived from the hash
+        salt = hashed_password.encode('utf-8')[:16]
+    else:
+        salt = b'nurchat_default_salt'
+    
+    # Use PBKDF2 to derive a 32-byte key
+    derived_key = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt,
+        100000,  # iterations
+        dklen=32
+    )
+    
+    # Fernet requires URL-safe base64 encoding
+    return base64.urlsafe_b64encode(derived_key)
 
 class SecurityManager:
     """Менеджер безопасности для аутентификации и шифрования"""

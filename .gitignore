@@ -1,75 +1,50 @@
 ```
-# Database
-nurchat.db
-
-# Environment variables
-.env
-.env.local
-.env.*
-
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-env/
 venv/
 .venv/
-.venv.bak/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-*.pot
-*.pyc
-*.pyo
-*.pyd
-.MF
-tags
-TAGS
-*.tmp
-*.temp
+.env
+.env.local
+*.env.*
 
-# Alembic
-alembic/versions/*.py
-
-# Dependencies
+# Node.js
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+
+# Docker
+.dockerenv
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.tmp
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Build outputs
+# Build artifacts
 dist/
 build/
 target/
+*.o
+*.obj
 *.out
-*.exe
-*.dll
-*.so
-*.a
-*.class
-
-# Testing
-.pytest_cache/
-.mypy_cache/
-htmlcov/
-.coverage
-```
+# Специфичный мусор проекта NurChat
+*.db
+nurchat.db
+actions_log.txt
+.kilo/
+ipfs_bin/
+npx
+desktop.ini
+*.ttf
+frontend/public/fonts/

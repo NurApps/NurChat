@@ -2,12 +2,10 @@
 # Dependencies
 node_modules/
 
-# Build outputs
+# Build artifacts
 dist/
 build/
-.next/
-.nuxt/
-public/dist/
+target/
 
 # Logs
 *.log
@@ -17,54 +15,74 @@ public/dist/
 .env.local
 *.env.*
 
-# IDE files
+# IDE specific
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# OS files
-.DS_Store
-Thumbs.db
-
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# Python cache
+# Python specific
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-selfcheck.json
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage/
+
+# Node specific
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
 
 # Temporary files
 *.tmp
 *.temp
 *.bak
+*.swp
+*.swo
 
-# Compression files
+# Archives
 *.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
 *.tar.gz
 *.tar.bz2
 *.tar.xz
-*.tar.zst
+*.gz
+*.rar
+*.7z
+
+# Compiled files
+*.exe
+*.dll
+*.so
+*.a
+*.obj
+*.out
+*.class
+*.jar
+*.war
+*.ear
+
+# Coverage reports
+coverage/
+htmlcov/
+
+# Distribution / packaging
+*.egg-info/
+.eggs/
+eggs/
+parts/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
 ```

@@ -32,6 +32,9 @@ jobs:
       - name: Run crypto tests
         run: pytest test/test_crypto.py -v
 
+      - name: Run security tests
+        run: pytest test/test_security.py -v
+
   lint:
     runs-on: ubuntu-latest
     steps:

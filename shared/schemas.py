@@ -163,6 +163,36 @@ class Token(BaseSchema):
     user: UserResponse
     private_key: Optional[str] = None
     signing_private_key: Optional[str] = None  # Ed25519 private key (returned once on register)
+    requires_2fa: bool = False  # True if 2FA is enabled but not yet verified
+
+# 2FA
+class TwoFASetupRequest(BaseSchema):
+    password: str = Field(..., description="Current password to confirm identity")
+
+class TwoFASetupResponse(BaseSchema):
+    secret: str = Field(..., description="TOTP secret (for manual entry)")
+    uri: str = Field(..., description="otpauth:// URI")
+    qr_code: str = Field(..., description="QR code as base64 data URI")
+    backup_codes: list[str] = Field(..., description="Plaintext backup codes (shown once)")
+
+class TwoFAVerifyRequest(BaseSchema):
+    code: str = Field(..., min_length=6, max_length=7, description="6-digit TOTP code (e.g. 123456 or 123 456)")
+
+class TwoFALoginRequest(BaseSchema):
+    code: str = Field(..., description="6-digit TOTP code or backup code (XXXX-XXXX)")
+    password: str = Field(..., description="Password to decrypt TOTP secret")
+
+class TwoFAEnableRequest(BaseSchema):
+    code: str = Field(..., min_length=6, max_length=7, description="6-digit TOTP code to confirm setup")
+    password: str = Field(..., description="Current password")
+
+class TwoFADisableRequest(BaseSchema):
+    password: str = Field(..., description="Current password")
+    code: str = Field(..., description="Current TOTP code or backup code")
+
+class TwoFAResponse(BaseSchema):
+    enabled: bool
+    backup_codes_remaining: int = 0
     
 # Forward
 class ForwardRequest(BaseSchema):

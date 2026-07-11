@@ -70,9 +70,9 @@ interface ChatState {
   setShowAddContact: (show: boolean) => void
   setShowCreateChat: (show: boolean) => void
   setShowMessageInfo: (id: string | null) => void
-  setBookmarkedIds: (ids: Set<string>) => void
+  setBookmarkedIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void
 
-  setInput: (input: string) => void
+  setInput: (input: string | ((prev: string) => string)) => void
   setShowEmoji: (show: boolean) => void
   setShowStickers: (show: boolean) => void
   setUploading: (uploading: boolean) => void
@@ -142,9 +142,9 @@ export const useChatStore = create<ChatState>((set) => ({
   setShowAddContact: (show) => set({ showAddContact: show }),
   setShowCreateChat: (show) => set({ showCreateChat: show }),
   setShowMessageInfo: (id) => set({ showMessageInfo: id }),
-  setBookmarkedIds: (ids) => set({ bookmarkedIds: ids }),
+  setBookmarkedIds: (ids) => set((state) => ({ bookmarkedIds: typeof ids === "function" ? ids(state.bookmarkedIds) : ids })),
 
-  setInput: (input) => set({ input }),
+  setInput: (input) => set((state) => ({ input: typeof input === "function" ? input(state.input) : input })),
   setShowEmoji: (show) => set({ showEmoji: show }),
   setShowStickers: (show) => set({ showStickers: show }),
   setUploading: (uploading) => set({ uploading }),

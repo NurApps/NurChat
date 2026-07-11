@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { loadKeys, saveKeys, type E2EKeys } from "../services/e2e"
-import nacl from "tweetnacl"
 import { encode as base64Encode, decode as base64Decode } from "base64-arraybuffer"
 
 interface Backup {
@@ -33,7 +32,7 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt,
+      salt: salt as Uint8Array<ArrayBuffer>,
       iterations: 100000,
       hash: "SHA-256",
     },
@@ -74,14 +73,14 @@ async function encryptBackupData(keys: E2EKeys, password: string): Promise<strin
     type: "nurchat_backup",
     version: 2,
     created_at: new Date().toISOString(),
-    encryptedKeys: base64Encode(new Uint8Array(encrypted).buffer),
-    nonce: base64Encode(iv.buffer),
+    encryptedKeys: base64Encode((new Uint8Array(encrypted)).buffer as ArrayBuffer),
+    nonce: base64Encode(iv.buffer as ArrayBuffer),
   }
   
   // Include salt in the final payload
   const fullPayload = {
     ...backupData,
-    salt: base64Encode(salt.buffer),
+    salt: base64Encode(salt.buffer as ArrayBuffer),
   }
   
   return btoa(JSON.stringify(fullPayload))

@@ -20,6 +20,9 @@ class User(Base):
     signing_public_key = Column(Text, nullable=True)  # Ed25519 public key для подписи P2P-событий
     avatar_path = Column(String, nullable=True)  # Путь к аватару
     status = Column(String, default="", nullable=True)  # Статус пользователя
+    totp_secret = Column(String, nullable=True)  # TOTP секрет для 2FA (зашифрован мастер-ключом)
+    totp_enabled = Column(Boolean, default=False)  # Включен ли TOTP 2FA
+    backup_codes = Column(Text, nullable=True)  # JSON список хешей резервных кодов восстановления
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_seen = Column(DateTime(timezone=True), server_default=func.now())
     is_online = Column(Boolean, default=False)

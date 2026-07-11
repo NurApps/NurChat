@@ -31,7 +31,12 @@ from shared.schemas import (
     UserUpdate,
     UserResponse,
     MessageCreate,
-    GroupRenameRequest
+    GroupRenameRequest,
+    TOTPSetupResponse,
+    TOTPVerifyRequest,
+    TOTPEnableRequest,
+    TOTPDisableRequest,
+    UserTOTPStatus
 )
 
 # Обновляем ссылки для рекурсивных типов

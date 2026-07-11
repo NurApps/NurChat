@@ -53,6 +53,17 @@ export function hasKeys(): boolean {
 
 // ─── Helpers ───
 
+export function generateKeys(): E2EKeys {
+  const boxKp = nacl.box.keyPair()
+  const signKp = nacl.sign.keyPair()
+  return {
+    privateKeyHex: bytesToHex(boxKp.secretKey),
+    publicKeyHex: bytesToHex(boxKp.publicKey),
+    signingPrivateHex: bytesToHex(signKp.secretKey),
+    signingPublicHex: bytesToHex(signKp.publicKey),
+  }
+}
+
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
   for (let i = 0; i < hex.length; i += 2) {

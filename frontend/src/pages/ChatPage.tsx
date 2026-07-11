@@ -84,6 +84,8 @@ export default function ChatPage() {
   const setShowGlobalSearch = useChatStore((s) => s.setShowGlobalSearch)
   const setShowMessageInfo = useChatStore((s) => s.setShowMessageInfo)
   const setBookmarkedIds = useChatStore((s) => s.setBookmarkedIds)
+  const typingUsers = useChatStore((s) => s.typingUsers)
+  const setTypingUsers = useChatStore((s) => s.setTypingUsers)
   const setP2pConnected = useChatStore((s) => s.setP2pConnected)
   const setUploading = useChatStore((s) => s.setUploading)
   const setUploadProgress = useChatStore((s) => s.setUploadProgress)
@@ -118,7 +120,7 @@ export default function ChatPage() {
 
   const { wsRef, chatIdRef } = useChatSocket({
     currentUser, selectedChat,
-    onMessage: useCallback((data: Record<string, unknown>) => {
+    onMessage: useCallback((data: any) => {
       if (data._update) { updateMessage(data.message_id as string, { is_read: true }); return }
       if (data._delete) { updateMessage(data.message_id as string, { is_deleted: true, deleted_for_all: data.delete_for_all as boolean }); return }
       if (data._edit) { updateMessage(data.message_id as string, { content: data.content as string }); return }

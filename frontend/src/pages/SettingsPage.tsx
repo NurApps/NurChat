@@ -65,7 +65,6 @@ export default function SettingsPage() {
   // TOTP 2FA state
   const [totpEnabled, setTotpEnabled] = useState(false)
   const [totpQrCode, setTotpQrCode] = useState<string>("")
-  const [totpSecretHint, setTotpSecretHint] = useState("")
   const [totpManualKey, setTotpManualKey] = useState("")
   const [totpCode, setTotpCode] = useState("")
   const [totpPassword, setTotpPassword] = useState("")
@@ -121,7 +120,6 @@ export default function SettingsPage() {
       }
       const data = await res.json()
       setTotpQrCode(data.qr_code)
-      setTotpSecretHint(data.secret_hint)
       setTotpManualKey(data.manual_entry_key)
       setTotpSetupMode("enable")
       setTotpBackupCodes(data.backup_codes || [])

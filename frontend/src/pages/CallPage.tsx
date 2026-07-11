@@ -111,14 +111,14 @@ export default function CallPage() {
       try {
         switch (msg.type) {
           case "offer": {
-            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp!))
             const answer = await pc.createAnswer()
             await pc.setLocalDescription(answer)
             sendSignaling({ type: "answer", sdp: answer })
             break
           }
           case "answer":
-            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp!))
             break
           case "ice-candidate":
             if (msg.candidate) {
@@ -594,7 +594,7 @@ export default function CallPage() {
       } else {
         // Start screen sharing
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: { cursor: "always" }, 
+          video: { cursor: "always" } as MediaTrackConstraints, 
           audio: false 
         })
         

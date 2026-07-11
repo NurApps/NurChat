@@ -58,7 +58,7 @@ class E2EWorkerService {
   private pendingRequests = new Map<string, {
     resolve: (data: any) => void
     reject: (error: Error) => void
-    timeoutId?: NodeJS.Timeout
+    timeoutId?: ReturnType<typeof setTimeout>
   }>()
   private initialized = false
   private useWorker = true
@@ -118,7 +118,7 @@ class E2EWorkerService {
     }
     
     // Очищаем все ожидающие запросы
-    for (const [requestId, pending] of this.pendingRequests.entries()) {
+    for (const [, pending] of this.pendingRequests.entries()) {
       if (pending.timeoutId) clearTimeout(pending.timeoutId)
       pending.reject(new Error('Worker terminated'))
     }

@@ -80,7 +80,7 @@ class E2EWorkerService {
       }
 
       // Создаем воркер
-      this.worker = new Worker(new URL('./e2eWorker.ts', import.meta.url), {
+      this.worker = new Worker(new URL('../workers/e2eWorker.ts', import.meta.url), {
         type: 'module',
       })
 

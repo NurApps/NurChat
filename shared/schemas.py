@@ -8,6 +8,30 @@ from datetime import datetime
 class BaseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+# TOTP 2FA Schemas
+class TOTPSetupResponse(BaseSchema):
+    """Response with QR code for TOTP setup"""
+    qr_code: str  # Data URI with QR code image
+    secret_hint: str  # First few characters of secret for manual entry (optional)
+    backup_codes: Optional[List[str]] = None  # Recovery codes (optional for future)
+
+class TOTPVerifyRequest(BaseSchema):
+    """Request to verify TOTP code"""
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+class TOTPEnableRequest(TOTPVerifyRequest):
+    """Request to enable TOTP after setup"""
+    pass
+
+class TOTPDisableRequest(TOTPVerifyRequest):
+    """Request to disable TOTP"""
+    pass
+
+class UserTOTPStatus(BaseSchema):
+    """TOTP status for user"""
+    enabled: bool
+    setup_required: bool  # True if secret exists but not enabled yet
+
 # User
 class UserBase(BaseSchema):
     id: str

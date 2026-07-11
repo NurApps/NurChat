@@ -52,6 +52,7 @@ export default function CallPage() {
   const [micOn, setMicOn] = useState(true)
   const [camOn, setCamOn] = useState(true)
   const [speakerOn, setSpeakerOn] = useState(true)
+  const [screenSharing, setScreenSharing] = useState(false)
   const [timer, setTimer] = useState(0)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [iceServers, setIceServers] = useState<RTCIceServer[]>(DEFAULT_ICE_SERVERS)
@@ -565,6 +566,69 @@ export default function CallPage() {
     }
   }, [speakerOn])
 
+  const toggleScreenShare = useCallback(async () => {
+    if (!pcRef.current || callType !== "video") return
+    
+    try {
+      if (screenSharing) {
+        // Stop screen sharing - restore camera
+        const screenTrack = localStreamRef.current?.getTracks().find(t => t.kind === "video" && t.label.includes("screen"))
+        if (screenTrack) {
+          screenTrack.stop()
+          localStreamRef.current?.removeTrack(screenTrack)
+          pcRef.current.getSenders().forEach(sender => {
+            if (sender.track === screenTrack) {
+              pcRef.current?.removeTrack(sender)
+            }
+          })
+        }
+        
+        // Re-enable camera track if it exists
+        const cameraTrack = localStreamRef.current?.getTracks().find(t => t.kind === "video" && !t.label.includes("screen"))
+        if (cameraTrack) {
+          cameraTrack.enabled = true
+        }
+        
+        setScreenSharing(false)
+        setCamOn(true)
+      } else {
+        // Start screen sharing
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: { cursor: "always" }, 
+          audio: false 
+        })
+        
+        const screenTrack = screenStream.getVideoTracks()[0]
+        if (screenTrack && pcRef.current) {
+          // Disable camera track
+          const cameraTrack = localStreamRef.current?.getVideoTracks()[0]
+          if (cameraTrack) {
+            cameraTrack.enabled = false
+          }
+          
+          // Add screen track to peer connection
+          pcRef.current.addTrack(screenTrack, screenStream)
+          
+          // Add to local stream for preview
+          localStreamRef.current?.addTrack(screenTrack)
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = localStreamRef.current
+          }
+          
+          screenTrack.onended = () => {
+            toggleScreenShare()
+          }
+          
+          setScreenSharing(true)
+          setCamOn(false)
+        }
+      }
+    } catch (err) {
+      console.error("[CALL] Screen share error:", err)
+      setMediaError(t("call.screenShareFailed"))
+    }
+  }, [screenSharing, callType, t])
+
   const statusText = () => {
     if (mediaError) return mediaError
     switch (status) {
@@ -588,11 +652,18 @@ export default function CallPage() {
             </svg>
           </button>
           {callType === "video" && (
-            <button className={`call-btn control ${!camOn ? "off" : ""}`} onClick={toggleCam} title={t("call.camera")}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-              </svg>
-            </button>
+            <>
+              <button className={`call-btn control ${!camOn || screenSharing ? "off" : ""}`} onClick={toggleCam} title={t("call.camera")}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                </svg>
+              </button>
+              <button className={`call-btn control ${screenSharing ? "on" : ""}`} onClick={toggleScreenShare} title={t("call.screenShare")}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
+                </svg>
+              </button>
+            </>
           )}
           <button className="call-btn end" onClick={endCall}>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

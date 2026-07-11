@@ -61,6 +61,17 @@ export default function SettingsPage() {
   const [pinInput, setPinInput] = useState("")
   const [pinConfirm, setPinConfirm] = useState("")
   const [pinStep, setPinStep] = useState<"enter" | "confirm">("enter")
+  
+  // TOTP 2FA state
+  const [totpEnabled, setTotpEnabled] = useState(false)
+  const [totpQrCode, setTotpQrCode] = useState<string>("")
+  const [totpSecretHint, setTotpSecretHint] = useState("")
+  const [totpManualKey, setTotpManualKey] = useState("")
+  const [totpCode, setTotpCode] = useState("")
+  const [totpPassword, setTotpPassword] = useState("")
+  const [totpSetupMode, setTotpSetupMode] = useState<"idle" | "setup" | "enable" | "disable">("idle")
+  const [totpBackupCodes, setTotpBackupCodes] = useState<string[]>([])
+  const [totpLoading, setTotpLoading] = useState(false)
 
   useEffect(() => {
     api.getCurrentUser()
@@ -77,7 +88,113 @@ export default function SettingsPage() {
   useEffect(() => {
     setE2eEnabled(hasKeys())
     api.getStorageInfo?.().then((info: any) => setStorageInfo(info)).catch(() => {})
+    loadTotpStatus()
   }, [])
+
+  const loadTotpStatus = async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/totp/status`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setTotpEnabled(data.enabled || false)
+      }
+    } catch (e) {
+      console.error("Failed to load TOTP status:", e)
+    }
+  }
+
+  const handleTotpSetup = async () => {
+    setTotpLoading(true)
+    setMsg("")
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/totp/setup`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "X-Password-Confirmation": totpPassword,
+        },
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || "Ошибка настройки TOTP")
+      }
+      const data = await res.json()
+      setTotpQrCode(data.qr_code)
+      setTotpSecretHint(data.secret_hint)
+      setTotpManualKey(data.manual_entry_key)
+      setTotpSetupMode("enable")
+      setTotpBackupCodes(data.backup_codes || [])
+    } catch (e: any) {
+      setMsg(e.message || "Ошибка настройки TOTP")
+    } finally {
+      setTotpLoading(false)
+    }
+  }
+
+  const handleTotpEnable = async () => {
+    if (!totpCode || totpCode.length < 6) {
+      setMsg("Введите 6-значный код из приложения аутентификации")
+      return
+    }
+    setTotpLoading(true)
+    setMsg("")
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/totp/enable`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ code: totpCode }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || "Ошибка включения TOTP")
+      }
+      setTotpEnabled(true)
+      setTotpSetupMode("idle")
+      setTotpCode("")
+      setTotpPassword("")
+      setMsg("TOTP 2FA успешно включен! Сохраните резервные коды.")
+    } catch (e: any) {
+      setMsg(e.message || "Ошибка включения TOTP")
+    } finally {
+      setTotpLoading(false)
+    }
+  }
+
+  const handleTotpDisable = async () => {
+    if (!totpCode) {
+      setMsg("Введите код TOTP или резервный код для отключения")
+      return
+    }
+    setTotpLoading(true)
+    setMsg("")
+    try {
+      const res = await fetch(`${BASE_URL}/api/auth/totp/disable`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ code: totpCode }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || "Ошибка отключения TOTP")
+      }
+      setTotpEnabled(false)
+      setTotpSetupMode("idle")
+      setTotpCode("")
+      setTotpPassword("")
+      setMsg("TOTP 2FA отключен")
+    } catch (e: any) {
+      setMsg(e.message || "Ошибка отключения TOTP")
+    } finally {
+      setTotpLoading(false)
+    }
+  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -365,6 +482,119 @@ export default function SettingsPage() {
           {/* ─── Security ─── */}
           {tab === "security" && (
             <div className="settings-sections">
+              <div className="settings-group">
+                <h3 className="settings-group-title">Двухфакторная аутентификация (TOTP)</h3>
+                <div className="settings-toggle-row">
+                  <span>TOTP 2FA</span>
+                  <span className={`settings-badge ${totpEnabled ? "on" : "off"}`}>
+                    {totpEnabled ? "Включено" : "Выключено"}
+                  </span>
+                </div>
+                <p className="settings-info-text">
+                  {totpEnabled
+                    ? "Двухфакторная аутентификация включена. При входе потребуется код из приложения аутентификации."
+                    : "Защитите свой аккаунт с помощью TOTP 2FA."}
+                </p>
+                
+                {!totpEnabled && totpSetupMode === "idle" && (
+                  <div>
+                    <input
+                      className="settings-input"
+                      type="password"
+                      placeholder="Введите пароль для подтверждения"
+                      value={totpPassword}
+                      onChange={(e) => setTotpPassword(e.target.value)}
+                      style={{ width: "100%", marginBottom: 8 }}
+                    />
+                    <button 
+                      className="settings-action-btn" 
+                      onClick={handleTotpSetup}
+                      disabled={totpLoading || !totpPassword}
+                    >
+                      {totpLoading ? "Загрузка..." : "Настроить TOTP"}
+                    </button>
+                  </div>
+                )}
+                
+                {totpSetupMode === "enable" && (
+                  <div style={{ padding: 16, borderRadius: 8, background: "var(--input-bg)", border: "1px solid var(--border)" }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>1. Отсканируйте QR-код в приложении аутентификации</p>
+                    {totpQrCode && (
+                      <img src={totpQrCode} alt="TOTP QR Code" style={{ width: 200, height: 200, marginBottom: 12 }} />
+                    )}
+                    {totpManualKey && (
+                      <p style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>
+                        Ключ для ручного ввода: <strong>{totpManualKey}</strong>
+                      </p>
+                    )}
+                    <p style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>2. Введите 6-значный код из приложения</p>
+                    <input
+                      className="settings-input"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                      style={{ width: 140, marginBottom: 12 }}
+                    />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        className="settings-save-btn"
+                        onClick={handleTotpEnable}
+                        disabled={totpLoading || totpCode.length !== 6}
+                      >
+                        {totpLoading ? "Проверка..." : "Включить TOTP"}
+                      </button>
+                      <button
+                        className="avatar-btn"
+                        onClick={() => { setTotpSetupMode("idle"); setTotpCode(""); setTotpPassword(""); }}
+                        disabled={totpLoading}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                    {totpBackupCodes.length > 0 && (
+                      <div style={{ marginTop: 16, padding: 12, background: "rgba(76,175,80,0.1)", borderRadius: 6 }}>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: "#4CAF50", marginBottom: 8 }}>
+                          ⚠️ Сохраните эти резервные коды в безопасном месте!
+                        </p>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 4, fontSize: 11 }}>
+                          {totpBackupCodes.map((code, i) => (
+                            <div key={i} style={{ fontFamily: "monospace", background: "#fff", padding: "2px 6px", borderRadius: 4 }}>
+                              {code}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {totpEnabled && (
+                  <div>
+                    <p style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>Введите код TOTP или резервный код для отключения</p>
+                    <input
+                      className="settings-input"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={12}
+                      placeholder="Код TOTP или резервный код"
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value)}
+                      style={{ width: 180, marginBottom: 8 }}
+                    />
+                    <button 
+                      className="settings-action-btn danger" 
+                      onClick={handleTotpDisable}
+                      disabled={totpLoading || !totpCode}
+                    >
+                      {totpLoading ? "Отключение..." : "Отключить TOTP"}
+                    </button>
+                  </div>
+                )}
+              </div>
+              
               <div className="settings-group">
                 <h3 className="settings-group-title">End-to-End шифрование</h3>
                 <div className="settings-toggle-row">

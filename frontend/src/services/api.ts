@@ -14,17 +14,25 @@ function getToken(): string | null {
   return localStorage.getItem("token")
 }
 
+// Get CSRF token from cookie
+function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\\s*)csrf_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
 ): Promise<T> {
   const token = getToken()
+  const csrfToken = getCsrfToken()
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(csrfToken && method !== "GET" ? { "X-CSRF-Token": csrfToken } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   })

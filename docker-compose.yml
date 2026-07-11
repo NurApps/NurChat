@@ -10,10 +10,55 @@ services:
       - ./nurchat.db:/app/nurchat.db
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=postgresql://nurchat:nurchat_pass@db:5432/nurchat
+      - REDIS_URL=redis://redis:6379/0
+      - USE_REDIS=true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/auth/me"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 30s
+    networks:
+      - nurchat-network
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: nurchat
+      POSTGRES_PASSWORD: nurchat_pass
+      POSTGRES_DB: nurchat
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nurchat -d nurchat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nurchat-network
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - nurchat-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  nurchat-network:
+    driver: bridge

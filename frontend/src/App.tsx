@@ -1,9 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
-import { lazy, Suspense, useState } from "react"
+import { lazy, Suspense, useState, useEffect } from "react"
 import { ThemeProvider } from "./context/ThemeContext"
 import AuthGuard from "./components/AuthGuard"
 import OfflineBanner from "./components/OfflineBanner"
 import ServerBootOverlay from "./components/ServerBootOverlay"
+import { e2eWorkerService } from "./services/e2eWorkerService"
 
 const LoginPage = lazy(() => import("./pages/LoginPage"))
 const ChatPage = lazy(() => import("./pages/ChatPage"))
@@ -28,6 +29,25 @@ function PageLoader() {
 
 function App() {
   const [serverReady, setServerReady] = useState(false)
+
+  // Инициализация E2E Web Worker при старте приложения
+  useEffect(() => {
+    const initWorker = async () => {
+      try {
+        const usingWorker = await e2eWorkerService.init()
+        console.log('[App] E2E Worker initialized:', usingWorker ? 'using worker' : 'using main thread fallback')
+      } catch (error) {
+        console.error('[App] Failed to initialize E2E Worker:', error)
+      }
+    }
+
+    initWorker()
+
+    // Очистка при размонтировании
+    return () => {
+      e2eWorkerService.terminate()
+    }
+  }, [])
 
   return (
     <ThemeProvider>

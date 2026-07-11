@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-import { loadKeys } from "../services/e2e"
+import { loadKeys, saveKeys, type E2EKeys } from "../services/e2e"
+import nacl from "tweetnacl"
+import { encode as base64Encode, decode as base64Decode } from "base64-arraybuffer"
 
 interface Backup {
   id: string
@@ -10,6 +12,113 @@ interface Backup {
   created_at: string
 }
 
+interface EncryptedBackupData {
+  type: "nurchat_backup"
+  version: number
+  created_at: string
+  encryptedKeys: string // base64 encoded encrypted keys
+  nonce: string // base64 encoded nonce
+}
+
+// Derive encryption key from password using PBKDF2
+async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<CryptoKey> {
+  const enc = new TextEncoder()
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  )
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 100000,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  )
+}
+
+// Generate random salt
+function generateSalt(): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(16))
+}
+
+// Encrypt backup data with password
+async function encryptBackupData(keys: E2EKeys, password: string): Promise<string> {
+  const salt = generateSalt()
+  const key = await deriveKeyFromPassword(password, salt)
+  
+  const dataToEncrypt = JSON.stringify({
+    privateKeyHex: keys.privateKeyHex,
+    publicKeyHex: keys.publicKeyHex,
+    signingPrivateHex: keys.signingPrivateHex,
+    signingPublicHex: keys.signingPublicHex,
+  })
+  
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const enc = new TextEncoder()
+  
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    enc.encode(dataToEncrypt)
+  )
+  
+  const backupData: EncryptedBackupData = {
+    type: "nurchat_backup",
+    version: 2,
+    created_at: new Date().toISOString(),
+    encryptedKeys: base64Encode(new Uint8Array(encrypted).buffer),
+    nonce: base64Encode(iv.buffer),
+  }
+  
+  // Include salt in the final payload
+  const fullPayload = {
+    ...backupData,
+    salt: base64Encode(salt.buffer),
+  }
+  
+  return btoa(JSON.stringify(fullPayload))
+}
+
+// Decrypt backup data with password
+async function decryptBackupData(encryptedPayload: string, password: string): Promise<E2EKeys | null> {
+  try {
+    const parsed = JSON.parse(atob(encryptedPayload))
+    
+    if (parsed.type !== "nurchat_backup" || parsed.version < 2) {
+      console.error("Invalid backup format")
+      return null
+    }
+    
+    const salt = new Uint8Array(base64Decode(parsed.salt))
+    const key = await deriveKeyFromPassword(password, salt)
+    
+    const encryptedData = new Uint8Array(base64Decode(parsed.encryptedKeys))
+    const iv = new Uint8Array(base64Decode(parsed.nonce))
+    
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      encryptedData
+    )
+    
+    const dec = new TextDecoder()
+    const keysJson = dec.decode(decrypted)
+    
+    return JSON.parse(keysJson) as E2EKeys
+  } catch (error) {
+    console.error("Failed to decrypt backup:", error)
+    return null
+  }
+}
+
 export default function BackupPage() {
   const navigate = useNavigate()
   const [backups, setBackups] = useState<Backup[]>([])
@@ -17,8 +126,12 @@ export default function BackupPage() {
   const [creating, setCreating] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [msg, setMsg] = useState("")
-  const [recoveryKey, setRecoveryKey] = useState("")
-  const [showRecovery, setShowRecovery] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showRestoreModal, setShowRestoreModal] = useState(false)
+  const [backupPassword, setBackupPassword] = useState("")
+  const [restorePassword, setRestorePassword] = useState("")
+  const [selectedBackup, setSelectedBackup] = useState<Backup | null>(null)
+  const [fileError, setFileError] = useState("")
 
   const loadBackups = useCallback(async () => {
     try {
@@ -36,6 +149,11 @@ export default function BackupPage() {
   useEffect(() => { loadBackups() }, [loadBackups])
 
   const handleCreateBackup = useCallback(async () => {
+    if (!backupPassword || backupPassword.length < 8) {
+      setMsg("Пароль должен быть не менее 8 символов")
+      return
+    }
+
     setCreating(true)
     setMsg("")
     try {
@@ -46,19 +164,14 @@ export default function BackupPage() {
       }
 
       // Create encrypted backup payload
+      const encryptedPayload = await encryptBackupData(keys, backupPassword)
+
       const backupData = {
         type: "nurchat_backup",
-        version: 1,
+        version: 2,
         created_at: new Date().toISOString(),
-        public_key: keys.publicKeyHex,
-        signing_key: keys.signingPublicHex,
+        encryptedPayload,
       }
-
-      // Generate recovery key (random string)
-      const recovery = crypto.randomUUID().replace(/-/g, "").slice(0, 32)
-
-      // Simple encryption with recovery key (for demo; production should use proper KDF)
-      const encoded = btoa(JSON.stringify(backupData))
 
       await fetch("/api/p2p/backups", {
         method: "POST",
@@ -68,37 +181,86 @@ export default function BackupPage() {
         },
         body: JSON.stringify({
           chat_id: "global_backup",
-          payload: encoded,
-          version: 1,
+          payload: btoa(JSON.stringify(backupData)),
+          version: 2,
         }),
       })
 
-      setRecoveryKey(recovery)
-      setShowRecovery(true)
-      setMsg("Бэкап создан!")
+      setMsg("Бэкап создан и зашифрован!")
+      setShowCreateModal(false)
+      setBackupPassword("")
       loadBackups()
     } catch (e) {
       setMsg("Ошибка создания бэкапа")
     } finally {
       setCreating(false)
     }
-  }, [loadBackups])
+  }, [backupPassword, loadBackups])
 
-  const handleRestore = useCallback(async (backup: Backup) => {
+  const handleRestore = useCallback(async (backup: Backup, password: string) => {
     setRestoring(true)
     setMsg("")
     try {
-      const data = JSON.parse(atob(backup.payload))
-      if (data.type !== "nurchat_backup") {
-        setMsg("Неверный формат бэкапа")
+      const outerData = JSON.parse(atob(backup.payload))
+      
+      if (!outerData.encryptedPayload) {
+        setMsg("Неверный формат бэкапа (требуется версия 2+)")
         return
       }
 
+      const keys = await decryptBackupData(outerData.encryptedPayload, password)
+      
+      if (!keys) {
+        setMsg("Неверный пароль или поврежденный бэкап")
+        return
+      }
+
+      saveKeys(keys)
       setMsg("Бэкап восстановлен! Ключи обновлены.")
+      setShowRestoreModal(false)
+      setRestorePassword("")
+      setSelectedBackup(null)
     } catch (e) {
-      setMsg("Ошибка восстановления")
+      setMsg("Ошибка восстановления: неверный пароль или поврежденный файл")
     } finally {
       setRestoring(false)
+    }
+  }, [])
+
+  const handleImportBackup = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setFileError("")
+    setMsg("")
+
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      
+      if (!Array.isArray(data) || data.length === 0) {
+        setFileError("Неверный формат файла импорта")
+        return
+      }
+
+      // Import first backup from file
+      const backupToImport = data[0]
+      if (!backupToImport.payload) {
+        setFileError("Неверный формат бэкапа в файле")
+        return
+      }
+
+      // Show restore modal for imported backup
+      setSelectedBackup({
+        id: backupToImport.id || `imported_${Date.now()}`,
+        chat_id: backupToImport.chat_id || "imported",
+        payload: backupToImport.payload,
+        version: backupToImport.version || 2,
+        created_at: backupToImport.created_at || new Date().toISOString(),
+      })
+      setShowRestoreModal(true)
+    } catch (e) {
+      setFileError("Ошибка чтения файла: " + (e as Error).message)
     }
   }, [])
 
@@ -161,23 +323,99 @@ export default function BackupPage() {
           </div>
         )}
 
-        {/* Create backup */}
+        {fileError && (
+          <div style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            background: "rgba(244,67,54,0.1)",
+            color: "#f44336",
+            fontSize: 13,
+            marginBottom: 16,
+          }}>
+            {fileError}
+          </div>
+        )}
+
+        {/* Create backup with password modal */}
         <div className="settings-fields" style={{ marginBottom: 16 }}>
           <h3 style={{ marginTop: 0 }}>Создать бэкап</h3>
           <p style={{ fontSize: 12, color: "#888", margin: "0 0 12px" }}>
-            Бэкап содержит ваши E2E ключи. Сохраните восстановительный код!
+            Бэкап содержит ваши E2E ключи, зашифрованные паролем (минимум 8 символов).
           </p>
-          <button
-            className="settings-save-btn"
-            onClick={handleCreateBackup}
-            disabled={creating}
-          >
-            {creating ? "Создание..." : "Создать бэкап"}
-          </button>
+          {!showCreateModal ? (
+            <button
+              className="settings-save-btn"
+              onClick={() => setShowCreateModal(true)}
+            >
+              Создать бэкап
+            </button>
+          ) : (
+            <div style={{
+              padding: 16,
+              borderRadius: 8,
+              background: "var(--input-bg)",
+              border: "1px solid var(--border)",
+            }}>
+              <label style={{ fontSize: 13, fontWeight: 500, display: "block", marginBottom: 8 }}>
+                Пароль для шифрования
+              </label>
+              <input
+                type="password"
+                value={backupPassword}
+                onChange={(e) => setBackupPassword(e.target.value)}
+                placeholder="Введите пароль (мин. 8 символов)"
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: 6,
+                  border: "1px solid var(--border)",
+                  background: "var(--bg)",
+                  marginBottom: 12,
+                }}
+              />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  className="avatar-btn"
+                  onClick={() => {
+                    setShowCreateModal(false)
+                    setBackupPassword("")
+                  }}
+                  disabled={creating}
+                >
+                  Отмена
+                </button>
+                <button
+                  className="settings-save-btn"
+                  onClick={handleCreateBackup}
+                  disabled={creating || backupPassword.length < 8}
+                  style={{ flex: 1 }}
+                >
+                  {creating ? "Шифрование..." : "Создать и сохранить"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Recovery key modal */}
-        {showRecovery && (
+        {/* Import backup from file */}
+        <div className="settings-fields" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Импортировать бэкап</h3>
+          <p style={{ fontSize: 12, color: "#888", margin: "0 0 12px" }}>
+            Загрузите файл .json с бэкапом и введите пароль для расшифровки.
+          </p>
+          <input
+            type="file"
+            accept=".json"
+            onChange={handleImportBackup}
+            style={{
+              padding: "8px 0",
+              fontSize: 13,
+            }}
+          />
+        </div>
+
+        {/* Restore modal for selected backup */}
+        {showRestoreModal && selectedBackup && (
           <div style={{
             padding: 16,
             borderRadius: 8,
@@ -186,36 +424,53 @@ export default function BackupPage() {
             border: "1px solid var(--border)",
           }}>
             <p style={{ fontSize: 13, fontWeight: 500, margin: "0 0 8px" }}>
-              Сохраните восстановительный код:
+              Восстановление из бэкапа: {selectedBackup.chat_id}
             </p>
-            <div style={{
-              fontFamily: "monospace",
-              fontSize: 16,
-              padding: 12,
-              background: "var(--bg)",
-              borderRadius: 4,
-              wordBreak: "break-all",
-              marginBottom: 8,
-            }}>
-              {recoveryKey}
-            </div>
-            <button
-              className="avatar-btn"
-              onClick={() => {
-                navigator.clipboard.writeText(recoveryKey)
-                setMsg("Скопировано!")
+            <p style={{ fontSize: 11, color: "#888", margin: "0 0 12px" }}>
+              Введите пароль для расшифровки ключей
+            </p>
+            <input
+              type="password"
+              value={restorePassword}
+              onChange={(e) => setRestorePassword(e.target.value)}
+              placeholder="Пароль от бэкапа"
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                background: "var(--bg)",
+                marginBottom: 12,
               }}
-              style={{ width: "100%" }}
-            >
-              Копировать
-            </button>
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="avatar-btn"
+                onClick={() => {
+                  setShowRestoreModal(false)
+                  setRestorePassword("")
+                  setSelectedBackup(null)
+                }}
+                disabled={restoring}
+              >
+                Отмена
+              </button>
+              <button
+                className="settings-save-btn"
+                onClick={() => handleRestore(selectedBackup!, restorePassword)}
+                disabled={restoring || !restorePassword}
+                style={{ flex: 1 }}
+              >
+                {restoring ? "Расшифровка..." : "Восстановить"}
+              </button>
+            </div>
           </div>
         )}
 
         {/* Existing backups */}
         <div className="settings-fields">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>Бэкапы ({backups.length})</h3>
+            <h3 style={{ margin: 0 }}>Бэкапы на сервере ({backups.length})</h3>
             {backups.length > 0 && (
               <button className="avatar-btn" onClick={handleExportBackup} style={{ fontSize: 12, padding: "4px 8px" }}>
                 Экспорт
@@ -225,7 +480,7 @@ export default function BackupPage() {
 
           {backups.length === 0 ? (
             <p style={{ fontSize: 13, color: "#888", textAlign: "center", padding: 20 }}>
-              Нет бэкапов
+              Нет бэкапов на сервере
             </p>
           ) : (
             backups.map((backup) => (
@@ -255,7 +510,10 @@ export default function BackupPage() {
                 </div>
                 <button
                   className="avatar-btn"
-                  onClick={() => handleRestore(backup)}
+                  onClick={() => {
+                    setSelectedBackup(backup)
+                    setShowRestoreModal(true)
+                  }}
                   disabled={restoring}
                   style={{ fontSize: 12, padding: "4px 8px" }}
                 >

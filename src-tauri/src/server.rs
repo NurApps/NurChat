@@ -24,6 +24,9 @@ impl ServerManager {
             return Ok(());
         }
 
+        // Generate .env if missing (keys persist across restarts)
+        ensure_env(app_dir);
+
         // Strategy 1: bundled server.exe (PyInstaller)
         if let Some(exe) = find_server_exe(app_dir) {
             info!("Found bundled server.exe: {:?}", exe);
@@ -238,6 +241,35 @@ fn find_system_python() -> Option<String> {
     }
 
     None
+}
+
+// ── .env generation ──
+
+fn ensure_env(app_dir: &Path) {
+    let env_path = app_dir.join(".env");
+    if env_path.exists() {
+        return;
+    }
+
+    use std::io::Write;
+    use rand::Rng;
+
+    let mut rng = rand::thread_rng();
+    let enc_key: String = (0..64).map(|_| format!("{:02x}", rng.gen::<u8>())).collect();
+    let jwt_key: String = (0..64).map(|_| format!("{:02x}", rng.gen::<u8>())).collect();
+
+    let content = format!(
+        "ENCRYPTION_KEY={}\nJWT_SECRET_KEY={}\n",
+        enc_key, jwt_key,
+    );
+
+    match std::fs::File::create(&env_path) {
+        Ok(mut f) => {
+            let _ = f.write_all(content.as_bytes());
+            info!("Generated .env in {:?}", env_path);
+        }
+        Err(e) => warn!("Failed to create .env: {}", e),
+    }
 }
 
 // ── Embeddable Python ──

@@ -60,6 +60,9 @@ Thumbs.db
 *.rar
 *.7z
 
+# Fonts
+AppleColorEmoji.ttf
+
 # Compiled files
 *.exe
 *.dll

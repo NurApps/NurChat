@@ -2,13 +2,12 @@
 Тесты для E2E шифрования NurChat
 Проверка корректности шифрования/дешифрования сообщений
 """
+import os
 import sys
 from datetime import datetime
 
-# Добавляем корень проекта в path
-sys.path.insert(0, 'c:/Users/Huawei/Desktop/NurChat')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from server.services.encryption_service import ServerEncryptionService
 from shared.p2p_encryption import P2PEncryption
 
 
@@ -181,45 +180,16 @@ def test_decrypt_key_with_private_key(results, encrypted_key, private_key, origi
         results.add_fail("Decrypt Key With Private Key", str(e))
 
 
+import pytest
+
+@pytest.mark.skip(reason="EncryptionManager удалён из кодовой базы")
 def test_encryption_manager_chat_key(results):
     """Тест 8: Генерация ключа чата в EncryptionManager"""
-    try:
-        manager = EncryptionManager()
-        chat_id = "test_chat_123"
-
-        key1 = manager.generate_chat_key(chat_id)
-        key2 = manager.generate_chat_key(chat_id)
-
-        # Ключи для одного чата должны быть одинаковыми (детерминировано)
-        assert key1 == key2, "Ключи чата не детерминированы"
-        assert len(key1) == 32, f"Неверная длина ключа чата: {len(key1)}"
-
-        results.add_pass("EncryptionManager Chat Key")
-    except Exception as e:
-        results.add_fail("EncryptionManager Chat Key", str(e))
 
 
+@pytest.mark.skip(reason="EncryptionManager удалён из кодовой базы")
 def test_encryption_manager_message(results):
     """Тест 9: Шифрование/дешифрование сообщения через EncryptionManager"""
-    try:
-        manager = EncryptionManager()
-        chat_id = "test_chat_456"
-        message = "Тестовое сообщение для чата"
-
-        # encrypt_message сам сгенерирует детерминированный ключ, если нет готового
-        encrypted = manager.encrypt_message(message, chat_id)
-
-        assert encrypted is not None, "Зашифрованное сообщение не создано"
-        assert encrypted.startswith('enc:'), "Зашифрованное сообщение должно иметь префикс enc:"
-
-        # Дешифруем
-        decrypted = manager.decrypt_message(encrypted, chat_id)
-
-        assert decrypted == message, f"Расшифрованное не равно оригиналу: '{decrypted}' != '{message}'"
-
-        results.add_pass("EncryptionManager Message Encrypt/Decrypt")
-    except Exception as e:
-        results.add_fail("EncryptionManager Message Encrypt/Decrypt", str(e))
 
 
 def test_base64_padding_handling(results):
@@ -314,10 +284,6 @@ def run_e2e_encryption_tests():
     # Тесты шифрования ключей
     encrypted_key, private_key, original_key = test_encrypt_key_with_public_key(results)
     test_decrypt_key_with_private_key(results, encrypted_key, private_key, original_key)
-
-    # Тесты EncryptionManager
-    test_encryption_manager_chat_key(results)
-    test_encryption_manager_message(results)
 
     # Краевые случаи
     test_base64_padding_handling(results)

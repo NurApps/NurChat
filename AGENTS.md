@@ -43,7 +43,7 @@ Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI 
                               └── IPC commands ──────────────┘
 ```
 
-- **Frontend:** React 19 + Vite 8 + TypeScript 6 + Tailwind CSS v4
+- **Frontend:** React 19 + Vite 8 + TypeScript 6 + CSS modules (custom properties)
 - **Backend:** FastAPI + SQLAlchemy + SQLite (`nurchat.db`)
 - **Desktop:** Tauri v2 (Rust shell, WebView2 on Windows)
 - **Migrations:** Alembic (fallback to `create_all` if not configured)
@@ -89,8 +89,8 @@ Full reference: `.env.example` and `shared/config.py`.
 
 - Test dir: `test/` (singular, not `tests/`)
 - Run: `pytest test/ -v`
-- No frontend tests exist
-- Key test files: `test/test_crypto.py`, `test/e2e_encryption_tests.py`
+- Frontend tests: `cd frontend && npx vitest run` (5 tests in `frontend/src/test/api.test.ts`)
+- Key test files: `test/test_crypto.py`, `test/test_security.py`
 
 ## Key Files
 

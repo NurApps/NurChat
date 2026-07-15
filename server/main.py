@@ -297,9 +297,9 @@ async def root():
 
 if __name__ == "__main__":
     uvicorn.run(
-        "main:app",
+        app,
         host=settings.SERVER_HOST,
         port=settings.SERVER_PORT,
-        reload=settings.DEBUG,
+        reload=False,
         log_level="info"
     )

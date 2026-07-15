@@ -52,11 +52,27 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_TO_FILE: bool = True
 
-    model_config = SettingsConfigDict(
-        env_file=Path(__file__).resolve().parent.parent / ".env",
-        case_sensitive=False,
-        extra="ignore",
-    )
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        from pydantic_settings.sources import DotenvSettingsSource
+        import os
+
+        env_paths = [
+            Path(__file__).resolve().parent.parent / ".env",
+            Path(os.getcwd()) / ".env",
+        ]
+        sources = [init_settings, env_settings, file_secret_settings]
+        for path in env_paths:
+            if path.exists():
+                sources.insert(0, DotenvSettingsSource(settings_cls, env_file=path))
+        return sources
 
     @field_validator("DEBUG", mode="before")
     @classmethod

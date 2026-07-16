@@ -61,18 +61,16 @@ class Settings(BaseSettings):
         dotenv_settings,
         file_secret_settings,
     ):
-        from pydantic_settings.sources import DotenvSettingsSource
         import os
 
-        env_paths = [
-            Path(__file__).resolve().parent.parent / ".env",
-            Path(os.getcwd()) / ".env",
-        ]
-        sources = [init_settings, env_settings, file_secret_settings]
-        for path in env_paths:
-            if path.exists():
-                sources.insert(0, DotenvSettingsSource(settings_cls, env_file=path))
-        return sources
+        from pydantic_settings.sources import DotEnvSettingsSource
+
+        env_path = Path(__file__).resolve().parent.parent / ".env"
+        if not env_path.exists():
+            env_path = Path(os.getcwd()) / ".env"
+
+        dotenv = DotEnvSettingsSource(settings_cls, env_file=str(env_path)) if env_path.exists() else dotenv_settings
+        return (init_settings, env_settings, file_secret_settings, dotenv)
 
     @field_validator("DEBUG", mode="before")
     @classmethod

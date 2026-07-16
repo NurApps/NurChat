@@ -185,11 +185,18 @@ pub fn run() {
                 std::env::current_dir().unwrap_or_default()
             };
 
+            // Also try resource dir for Tauri sidecar
+            let res_dir = app.path()
+                .resource_dir()
+                .ok();
+
             log::info!("Server app_dir: {:?}", app_dir);
+            log::info!("Server resource_dir: {:?}", res_dir);
 
             let handle = app.handle().clone();
             let app_dir_clone = app_dir.clone();
-            match state.server.start(&app_dir) {
+            let res_dir_clone = res_dir.clone();
+            match state.server.start(&app_dir, res_dir.as_deref()) {
                 Ok(()) => {
                     log::info!("Server process started");
                     let _ = handle.emit("server-status", serde_json::json!({"status": "starting"}));

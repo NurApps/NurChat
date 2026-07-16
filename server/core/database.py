@@ -34,14 +34,18 @@ def create_tables():
     Создаёт таблицы через Alembic миграции.
     Fallback: если Alembic недоступен — create_all.
     """
+    import sys
     from server.core import models  # noqa: F401 — registers models
+
+    if getattr(sys, 'frozen', False):
+        Base.metadata.create_all(bind=engine)
+        return
 
     try:
         from alembic.config import Config
         from alembic import command
         alembic_cfg = Config("alembic.ini")
         command.upgrade(alembic_cfg, "head")
-        print("Alembic migrations applied successfully.")
     except Exception as e:
-        print(f"Alembic not available, using create_all: {e}")
+        print(f"Alembic fallback, using create_all: {e}")
         Base.metadata.create_all(bind=engine)

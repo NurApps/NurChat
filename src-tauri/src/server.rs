@@ -18,7 +18,7 @@ impl ServerManager {
         }
     }
 
-    pub fn start(&self, app_dir: &Path) -> Result<(), String> {
+    pub fn start(&self, app_dir: &Path, res_dir: Option<&Path>) -> Result<(), String> {
         let mut child = self.child.lock().map_err(|e| e.to_string())?;
         if child.is_some() {
             return Ok(());
@@ -28,7 +28,7 @@ impl ServerManager {
         ensure_env(app_dir);
 
         // Strategy 1: bundled server.exe (PyInstaller)
-        if let Some(exe) = find_server_exe(app_dir) {
+        if let Some(exe) = find_server_exe(app_dir, res_dir) {
             info!("Found bundled server.exe: {:?}", exe);
             let mut cmd = Command::new(&exe);
             cmd.current_dir(app_dir)
@@ -187,27 +187,34 @@ impl Drop for ServerManager {
 
 // ── Finders ──
 
-fn find_server_exe(app_dir: &Path) -> Option<PathBuf> {
-    // 1. Next to the app executable
+fn find_server_exe(app_dir: &Path, res_dir: Option<&Path>) -> Option<PathBuf> {
+    // Candidates to check, in order
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    // 1. Sidecar next to the Tauri .exe (NSIS installer)
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(dir) = exe_path.parent() {
-            let server_exe = dir.join("server.exe");
-            if server_exe.exists() {
-                return Some(server_exe);
-            }
+            candidates.push(dir.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
+            candidates.push(dir.join("server-x86_64-pc-windows-msvc.exe"));
+            candidates.push(dir.join("server.exe"));
         }
     }
 
-    // 2. In app_dir
-    let server_exe = app_dir.join("server.exe");
-    if server_exe.exists() {
-        return Some(server_exe);
+    // 2. Tauri resource dir (where externalBin is extracted)
+    if let Some(rd) = res_dir {
+        candidates.push(rd.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
+        candidates.push(rd.join("server.exe"));
     }
 
-    // 3. In dist/server/
-    let dist_server = app_dir.join("dist").join("server").join("server.exe");
-    if dist_server.exists() {
-        return Some(dist_server);
+    // 3. app_data_dir and subdirs
+    candidates.push(app_dir.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
+    candidates.push(app_dir.join("server.exe"));
+    candidates.push(app_dir.join("dist").join("server").join("server.exe"));
+
+    for p in &candidates {
+        if p.exists() {
+            return Some(p.clone());
+        }
     }
 
     None

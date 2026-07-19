@@ -1,4 +1,4 @@
-const API_HOST = import.meta.env.VITE_API_HOST || "localhost:8000"
+const API_HOST = import.meta.env.VITE_API_HOST || "127.0.0.1:8000"
 const API_PROTOCOL = import.meta.env.VITE_API_PROTOCOL || "http"
 const WS_PROTOCOL = API_PROTOCOL === "https" ? "wss" : "ws"
 

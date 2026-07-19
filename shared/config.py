@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./nurchat.db"
-    SERVER_HOST: str = "0.0.0.0"
+    SERVER_HOST: str = "127.0.0.1"
     SERVER_PORT: int = 8000
     DEBUG: bool = True
     USE_P2P: bool = True

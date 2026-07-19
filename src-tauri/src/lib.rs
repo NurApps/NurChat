@@ -176,14 +176,14 @@ pub fn run() {
 
             // Auto-start server
             let state = app.handle().state::<AppState>();
+
+            // Use app_data_dir for server files, create if missing
             let app_dir = app.path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
-
-            // Fallback to current dir if app_data_dir doesn't exist
-            let app_dir = if app_dir.exists() { app_dir } else {
-                std::env::current_dir().unwrap_or_default()
-            };
+            if !app_dir.exists() {
+                let _ = std::fs::create_dir_all(&app_dir);
+            }
 
             // Also try resource dir for Tauri sidecar
             let res_dir = app.path()

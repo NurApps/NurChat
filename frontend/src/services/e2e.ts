@@ -12,6 +12,7 @@ export interface EncryptedEnvelope {
   signature: string
   timestamp: number
   senderId: string
+  senderSigningKey?: string
 }
 
 export interface E2EKeys {
@@ -155,7 +156,7 @@ export async function encryptMessage(
   theirPublicKeyHex: string,
   chatId: string,
   senderId: string,
-): Promise<{ ciphertext: string; signature: string; timestamp: number; senderId: string }> {
+): Promise<EncryptedEnvelope> {
   const session = await getOrCreateSession(chatId, myKeys, theirPublicKeyHex, true)
   const envelope = await session.encryptMessage(plaintext)
   const signature = nacl.sign.detached(
@@ -168,11 +169,12 @@ export async function encryptMessage(
     signature: base64Encode(signature.buffer as ArrayBuffer),
     timestamp: Date.now(),
     senderId,
+    senderSigningKey: myKeys.signingPublicHex,
   }
 }
 
 export async function decryptMessage(
-  envelope: { ciphertext: string; signature: string; timestamp: number; senderId: string },
+  envelope: EncryptedEnvelope,
   myKeys: E2EKeys,
   senderPublicKeyHex: string,
   chatId: string,
@@ -193,13 +195,16 @@ export async function decryptMessage(
     }
     const plaintext = await session.decryptMessage(ratchetEnvelope)
     persistSessions()
-    const sigBytes = new Uint8Array(base64Decode(envelope.signature))
-    const valid = nacl.sign.detached.verify(
-      new TextEncoder().encode(plaintext),
-      sigBytes,
-      hexToBytes(senderPublicKeyHex),
-    )
-    return valid ? plaintext : null
+    if (envelope.senderSigningKey) {
+      const sigBytes = new Uint8Array(base64Decode(envelope.signature))
+      const valid = nacl.sign.detached.verify(
+        new TextEncoder().encode(plaintext),
+        sigBytes,
+        hexToBytes(envelope.senderSigningKey),
+      )
+      if (!valid) return null
+    }
+    return plaintext
   } catch (err) {
     console.warn("[E2E] decryptMessage failed:", err)
     return null

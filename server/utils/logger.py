@@ -22,7 +22,9 @@ def setup_logger():
     logger = logging.getLogger("nurchat")
     logger.setLevel(logging.DEBUG if settings.DEBUG else logging.INFO)
 
-    # Консольный handler
+    # Консольный handler (с защитой от cp1251 — заменяет не-ASCII на ?)
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(errors='replace')
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)

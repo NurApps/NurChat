@@ -319,10 +319,9 @@ self.onmessage = async (event: MessageEvent<WorkerRequest & { requestId: string 
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    const errorType = type.replace('encrypt', 'encryptError').replace('decrypt', 'decryptError').replace('generateKeys', 'generateKeysError')
     
     const response: WorkerResponse = {
-      type: `${errorType}Error` as any,
+      type: `${type}Error` as any,
       error: errorMessage,
       requestId,
     }

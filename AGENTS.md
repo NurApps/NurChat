@@ -90,15 +90,41 @@ Full reference: `.env.example` and `shared/config.py`.
 - Test dir: `test/` (singular, not `tests/`)
 - Run: `pytest test/ -v`
 - Frontend tests: `cd frontend && npx vitest run` (5 tests in `frontend/src/test/api.test.ts`)
-- Key test files: `test/test_crypto.py`, `test/test_security.py`
+- Key test files: `test/test_crypto.py`, `test/test_security.py`, `test/test_double_ratchet.py`
+
+## Encryption Architecture
+
+NurChat implements **Double Ratchet** (Signal Protocol) for E2E encryption:
+
+- **X3DH** — initial key agreement with identity keys, signed pre-keys, and one-time pre-keys
+- **Double Ratchet** — continuous key rotation on every message
+- **Forward secrecy** — old keys destroyed after each ratchet step
+- **Replay protection** — message IDs tracked per session
+
+```
+shared/double_ratchet.py              ← Python implementation (server-side tests)
+frontend/src/services/doubleRatchet.ts ← TypeScript implementation (browser)
+frontend/src/services/e2e.ts           ← Session manager integrating Double Ratchet
+server/routes/keys.py                  ← PreKey API endpoints
+```
+
+**PreKey lifecycle:**
+1. User registers → generates identity keypair (existing `public_key` on `User`)
+2. User uploads signed pre-key + one-time pre-keys via `/api/keys/*`
+3. Initiator fetches bundle: `GET /api/keys/bundle/{user_id}`
+4. After X3DH, one-time pre-key is marked `is_used=True`
+5. Cleanup: `POST /api/keys/cleanup` removes used pre-keys
+
+**Session state** serialized to `localStorage` (`e2e_sessions`).
 
 ## Key Files
 
 **Server entry:** `server/main.py` — FastAPI app, CORS, routes, WS endpoints, lifespan
 **Config:** `shared/config.py` — Pydantic Settings, reads `.env`
-**Models:** `server/core/models.py` — All SQLAlchemy models
+**Models:** `server/core/models.py` — All SQLAlchemy models (includes `SignedPreKey`, `OneTimePreKey`)
 **Auth:** `server/routes/auth.py` — Register, login, profile, avatar
 **Chat:** `server/routes/chat.py` — CRUD, search, reactions, block, export
+**Keys:** `server/routes/keys.py` — PreKey bundle, signed/one-time pre-key API
 **Files:** `server/routes/files.py` — Upload/download (with `?token=`), delete
 **WS manager:** `server/ws/chat_manager.py` — WebSocket connections
 **Frontend entry:** `frontend/src/App.tsx` — Route definitions

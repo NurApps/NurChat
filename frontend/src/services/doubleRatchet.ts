@@ -1,0 +1,420 @@
+/**
+ * Double Ratchet implementation for NurChat (TypeScript)
+ * Mirrors shared/double_ratchet.py — X3DH + Double Ratchet (Signal Protocol)
+ *
+ * Provides forward secrecy, automatic key rotation, and replay protection.
+ */
+
+import nacl from "tweetnacl"
+import {
+  encode as base64Encode,
+  decode as base64Decode,
+} from "base64-arraybuffer"
+
+// ─── Helpers ───
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16)
+  }
+  return bytes
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+function u8Concat(...arrays: Uint8Array[]): Uint8Array {
+  let total = 0
+  for (const a of arrays) total += a.length
+  const result = new Uint8Array(total)
+  let offset = 0
+  for (const a of arrays) {
+    result.set(a, offset)
+    offset += a.length
+  }
+  return result
+}
+
+// ─── HKDF (SHA-256 based) ───
+
+async function hkdfExtract(salt: Uint8Array, ikm: Uint8Array): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey("raw", salt as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"])
+  const result = await crypto.subtle.sign("HMAC", key, ikm as BufferSource)
+  return new Uint8Array(result)
+}
+
+async function hkdfExpand(prk: Uint8Array, info: Uint8Array, length: number): Promise<Uint8Array> {
+  const N = Math.ceil(length / 32)
+  let t = new Uint8Array(0)
+  const okmParts: Uint8Array[] = []
+  for (let i = 1; i <= N; i++) {
+    const key = await crypto.subtle.importKey("raw", prk as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"])
+    const input = u8Concat(t, info, new Uint8Array([i]))
+    t = new Uint8Array(await crypto.subtle.sign("HMAC", key, input as BufferSource))
+    okmParts.push(t)
+  }
+  return u8Concat(...okmParts).slice(0, length)
+}
+
+async function hkdf(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, length: number): Promise<Uint8Array> {
+  const prk = await hkdfExtract(salt, ikm)
+  return hkdfExpand(prk, info, length)
+}
+
+// ─── KDF Chain ───
+
+class KDFChain {
+  key: Uint8Array
+  step: number
+  constructor(key: Uint8Array, step: number = 0) {
+    this.key = key
+    this.step = step
+  }
+
+  async nextMessageKey(): Promise<{ msgKey: Uint8Array; chain: KDFChain }> {
+    const nextKey = await hkdf(new Uint8Array(0), this.key, new TextEncoder().encode("chain_next"), 32)
+    const msgKey = await hkdf(new Uint8Array(0), this.key, new TextEncoder().encode("chain_out"), 32)
+    return { msgKey, chain: new KDFChain(nextKey, this.step + 1) }
+  }
+}
+
+// ─── Session Types ───
+
+export interface RatchetHeader {
+  dh: string   // hex-encoded public key
+  pn: number   // previous message count
+  ns: number   // message number in current sending chain
+}
+
+export interface RatchetEnvelope {
+  header: RatchetHeader
+  ciphertext: string   // base64
+  ad: string           // base64 encoded associated data
+}
+
+export interface SerializedSession {
+  DHs: string | null
+  DHr: string | null
+  RK: string | null
+  CKs: string | null
+  CKr: string | null
+  CKs_step: number
+  CKr_step: number
+  Ns: number
+  Nr: number
+  PN: number
+  our_id: string | null
+  their_id: string | null
+}
+
+// ─── Double Ratchet Session ───
+
+export class DoubleRatchetSession {
+  DHs: nacl.BoxKeyPair | null = null
+  DHr: Uint8Array | null = null
+  RK: Uint8Array | null = null
+  CKs: KDFChain | null = null
+  CKr: KDFChain | null = null
+  Ns = 0
+  Nr = 0
+  PN = 0
+  ourIdentityPublic: Uint8Array | null = null
+  theirIdentityPublic: Uint8Array | null = null
+  private seenMessageIds = new Set<string>()
+
+  private associatedData(): Uint8Array {
+    const a = this.ourIdentityPublic || new Uint8Array(0)
+    const b = this.theirIdentityPublic || new Uint8Array(0)
+    return u8Concat(a, b)
+  }
+
+  static async x3dhInitialize(
+    ourIdentitySecret: Uint8Array,
+    theirIdentityPublic: Uint8Array,
+    theirSignedPrekeyPublic: Uint8Array,
+    theirOneTimePrekeyPublic?: Uint8Array,
+  ): Promise<{ sk: Uint8Array; ephemeralSecret: Uint8Array }> {
+    const ephemeralKp = nacl.box.keyPair()
+
+    const dh1 = nacl.box.before(theirSignedPrekeyPublic, ourIdentitySecret)
+    const dh2 = nacl.box.before(theirIdentityPublic, ephemeralKp.secretKey)
+    const dh3 = nacl.box.before(theirSignedPrekeyPublic, ephemeralKp.secretKey)
+
+    let dhInput = u8Concat(dh1, dh2, dh3)
+    if (theirOneTimePrekeyPublic) {
+      const dh4 = nacl.box.before(theirOneTimePrekeyPublic, ephemeralKp.secretKey)
+      dhInput = u8Concat(dhInput, dh4)
+    }
+
+    const sk = await hkdf(new Uint8Array(0), dhInput, new TextEncoder().encode("X3DH_SK"), 32)
+    return { sk, ephemeralSecret: ephemeralKp.secretKey }
+  }
+
+  static async x3dhReceive(
+    ourIdentitySecret: Uint8Array,
+    ourSignedPrekeySecret: Uint8Array,
+    ourOneTimePrekeySecret: Uint8Array | null,
+    theirIdentityPublic: Uint8Array,
+    theirEphemeralPublic: Uint8Array,
+  ): Promise<Uint8Array> {
+    const dh1 = nacl.box.before(theirIdentityPublic, ourSignedPrekeySecret)
+    const dh2 = nacl.box.before(theirEphemeralPublic, ourIdentitySecret)
+    const dh3 = nacl.box.before(theirEphemeralPublic, ourSignedPrekeySecret)
+
+    let dhInput = u8Concat(dh1, dh2, dh3)
+    if (ourOneTimePrekeySecret) {
+      const dh4 = nacl.box.before(theirEphemeralPublic, ourOneTimePrekeySecret)
+      dhInput = u8Concat(dhInput, dh4)
+    }
+
+    return hkdf(new Uint8Array(0), dhInput, new TextEncoder().encode("X3DH_SK"), 32)
+  }
+
+  async initializeAsAlice(params: {
+    ourIdentitySecret: Uint8Array
+    theirIdentityPublic: Uint8Array
+    theirSignedPrekeyPublic: Uint8Array
+    theirOneTimePrekeyPublic?: Uint8Array
+  }): Promise<void> {
+    const { sk, ephemeralSecret } = await DoubleRatchetSession.x3dhInitialize(
+      params.ourIdentitySecret,
+      params.theirIdentityPublic,
+      params.theirSignedPrekeyPublic,
+      params.theirOneTimePrekeyPublic,
+    )
+
+    const ephemeralKp = nacl.box.keyPair.fromSecretKey(ephemeralSecret)
+    const ourIdentityKp = nacl.box.keyPair.fromSecretKey(params.ourIdentitySecret)
+
+    this.DHs = ephemeralKp
+    this.DHr = params.theirSignedPrekeyPublic
+    this.ourIdentityPublic = ourIdentityKp.publicKey
+    this.theirIdentityPublic = params.theirIdentityPublic
+
+    const derived = await hkdf(sk, new Uint8Array(0), new TextEncoder().encode("DoubleRatchet_Init"), 64)
+    this.RK = derived.slice(0, 32)
+    this.CKs = new KDFChain(derived.slice(32))
+    this.CKr = null
+    this.Ns = 0
+    this.Nr = 0
+    this.PN = 0
+    this.seenMessageIds = new Set()
+  }
+
+  async initializeAsBob(params: {
+    ourIdentitySecret: Uint8Array
+    ourSignedPrekeySecret: Uint8Array
+    ourOneTimePrekeySecret: Uint8Array | null
+    theirIdentityPublic: Uint8Array
+    theirEphemeralPublic: Uint8Array
+  }): Promise<void> {
+    const sk = await DoubleRatchetSession.x3dhReceive(
+      params.ourIdentitySecret,
+      params.ourSignedPrekeySecret,
+      params.ourOneTimePrekeySecret,
+      params.theirIdentityPublic,
+      params.theirEphemeralPublic,
+    )
+
+    const ourIdentityKp = nacl.box.keyPair.fromSecretKey(params.ourIdentitySecret)
+
+    this.DHr = params.theirEphemeralPublic
+    this.DHs = nacl.box.keyPair.fromSecretKey(params.ourSignedPrekeySecret)
+    this.ourIdentityPublic = ourIdentityKp.publicKey
+    this.theirIdentityPublic = params.theirIdentityPublic
+
+    const derived = await hkdf(sk, new Uint8Array(0), new TextEncoder().encode("DoubleRatchet_Init"), 64)
+    this.RK = derived.slice(0, 32)
+    this.CKr = new KDFChain(derived.slice(32))
+    this.CKs = null
+    this.Ns = 0
+    this.Nr = 0
+    this.PN = 0
+    this.seenMessageIds = new Set()
+  }
+
+  private async dhRatchetSend(): Promise<void> {
+    if (!this.DHr) throw new Error("No remote DH key for ratchet")
+    const newDHs = nacl.box.keyPair()
+    const dhShared = nacl.box.before(this.DHr, newDHs.secretKey)
+    const derived = await hkdf(
+      this.RK || new Uint8Array(32),
+      dhShared,
+      new TextEncoder().encode("DoubleRatchet_Ratchet"),
+      64,
+    )
+    this.RK = derived.slice(0, 32)
+
+    this.CKr = this.CKs
+    this.CKs = new KDFChain(derived.slice(32))
+
+    this.PN = this.Ns
+    this.Ns = 0
+    this.Nr = 0
+    this.DHs = newDHs
+  }
+
+  private async dhRatchetRecv(theirPublic: Uint8Array): Promise<void> {
+    if (!this.DHs) throw new Error("No local DH key for ratchet")
+    const dhShared = nacl.box.before(theirPublic, this.DHs.secretKey)
+    const derived = await hkdf(
+      this.RK || new Uint8Array(32),
+      dhShared,
+      new TextEncoder().encode("DoubleRatchet_Ratchet"),
+      64,
+    )
+    this.RK = derived.slice(0, 32)
+
+    this.CKr = this.CKs
+    this.CKs = new KDFChain(derived.slice(32))
+
+    this.PN = this.Ns
+    this.Nr = 0
+    this.DHr = theirPublic
+    this.DHs = nacl.box.keyPair()
+  }
+
+  async encryptMessage(plaintext: string): Promise<RatchetEnvelope> {
+    if (!this.CKs) {
+      if (this.CKr && this.DHr) {
+        await this.dhRatchetSend()
+      } else {
+        throw new Error("No sending chain available — ratchet first")
+      }
+    }
+
+    if (!this.CKs) throw new Error("Sending chain still null after ratchet")
+
+    const { msgKey, chain } = await this.CKs.nextMessageKey()
+    this.CKs = chain
+
+    const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
+    const msgBytes = new TextEncoder().encode(plaintext)
+    const ciphertext = nacl.secretbox(msgBytes, nonce, msgKey)
+
+    const ciphertextWithNonce = new Uint8Array(nonce.length + ciphertext.length)
+    ciphertextWithNonce.set(nonce)
+    ciphertextWithNonce.set(ciphertext, nonce.length)
+
+    const dhPubHex = bytesToHex(this.DHs!.publicKey)
+
+    const header: RatchetHeader = {
+      dh: dhPubHex,
+      pn: this.PN,
+      ns: this.Ns,
+    }
+
+    const ad = this.associatedData()
+
+    this.Ns += 1
+
+    return {
+      header,
+      ciphertext: base64Encode(ciphertextWithNonce.buffer as ArrayBuffer),
+      ad: base64Encode(ad.buffer as ArrayBuffer),
+    }
+  }
+
+  async decryptMessage(envelope: RatchetEnvelope): Promise<string> {
+    const { dh, pn, ns } = envelope.header
+
+    const msgId = `${dh}:${ns}`
+    if (this.seenMessageIds.has(msgId)) {
+      throw new Error("Replay attack detected — duplicate message ID")
+    }
+
+    const theirRatchet = hexToBytes(dh)
+
+    if (!this.DHr || !bytesEqual(this.DHr, theirRatchet)) {
+      this.PN = pn
+      await this.dhRatchetRecv(theirRatchet)
+    }
+
+    if (!this.CKr) throw new Error("No receiving chain available")
+
+    if (ns < this.CKr.step) {
+      throw new Error(`Message number ${ns} is in the past (chain at ${this.CKr.step})`)
+    }
+
+    let chain = this.CKr
+    while (chain.step < ns) {
+      const result = await chain.nextMessageKey()
+      chain = result.chain
+    }
+
+    const { msgKey, chain: nextChain } = await chain.nextMessageKey()
+    this.CKr = nextChain
+    this.Nr += 1
+
+    this.seenMessageIds.add(msgId)
+    if (this.seenMessageIds.size > 10000) {
+      this.seenMessageIds = new Set([...this.seenMessageIds].slice(-5000))
+    }
+
+    const ciphertextBytes = new Uint8Array(base64Decode(envelope.ciphertext))
+    const nonce = ciphertextBytes.subarray(0, nacl.secretbox.nonceLength)
+    const ciphertext = ciphertextBytes.subarray(nacl.secretbox.nonceLength)
+
+    const plaintext = nacl.secretbox.open(ciphertext, nonce, msgKey)
+    if (!plaintext) throw new Error("Decryption failed")
+    return new TextDecoder().decode(plaintext)
+  }
+
+  serialize(): SerializedSession {
+    return {
+      DHs: this.DHs ? bytesToHex(this.DHs.publicKey) + ":" + bytesToHex(this.DHs.secretKey) : null,
+      DHr: this.DHr ? bytesToHex(this.DHr) : null,
+      RK: this.RK ? base64Encode(this.RK.buffer as ArrayBuffer) : null,
+      CKs: this.CKs ? base64Encode(this.CKs.key.buffer as ArrayBuffer) : null,
+      CKr: this.CKr ? base64Encode(this.CKr.key.buffer as ArrayBuffer) : null,
+      CKs_step: this.CKs?.step ?? 0,
+      CKr_step: this.CKr?.step ?? 0,
+      Ns: this.Ns,
+      Nr: this.Nr,
+      PN: this.PN,
+      our_id: this.ourIdentityPublic ? base64Encode(this.ourIdentityPublic.buffer as ArrayBuffer) : null,
+      their_id: this.theirIdentityPublic ? base64Encode(this.theirIdentityPublic.buffer as ArrayBuffer) : null,
+    }
+  }
+
+  static deserialize(data: SerializedSession): DoubleRatchetSession {
+    const s = new DoubleRatchetSession()
+
+    if (data.DHs) {
+      const secHex = data.DHs.split(":")[1]
+      s.DHs = nacl.box.keyPair.fromSecretKey(hexToBytes(secHex))
+    }
+    if (data.DHr) {
+      s.DHr = hexToBytes(data.DHr)
+    }
+    if (data.RK) {
+      s.RK = new Uint8Array(base64Decode(data.RK))
+    }
+    if (data.CKs) {
+      s.CKs = new KDFChain(new Uint8Array(base64Decode(data.CKs)), data.CKs_step)
+    }
+    if (data.CKr) {
+      s.CKr = new KDFChain(new Uint8Array(base64Decode(data.CKr)), data.CKr_step)
+    }
+    s.Ns = data.Ns
+    s.Nr = data.Nr
+    s.PN = data.PN
+    if (data.our_id) {
+      s.ourIdentityPublic = new Uint8Array(base64Decode(data.our_id))
+    }
+    if (data.their_id) {
+      s.theirIdentityPublic = new Uint8Array(base64Decode(data.their_id))
+    }
+    return s
+  }
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}

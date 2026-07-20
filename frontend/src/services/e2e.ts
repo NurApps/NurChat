@@ -1,16 +1,18 @@
-/**
- * E2E Encryption Service for NurChat
- *
- * X25519 DH key agreement → blake2b-derived symmetric key → SecretBox encrypt/decrypt
- * Ed25519 signatures for message authenticity
- */
 import nacl from "tweetnacl"
 import {
   encode as base64Encode,
   decode as base64Decode,
 } from "base64-arraybuffer"
+import { DoubleRatchetSession, type RatchetEnvelope, type SerializedSession } from "./doubleRatchet"
 
-// ─── Types ───
+export type { RatchetEnvelope } from "./doubleRatchet"
+
+export interface EncryptedEnvelope {
+  ciphertext: string
+  signature: string
+  timestamp: number
+  senderId: string
+}
 
 export interface E2EKeys {
   privateKeyHex: string
@@ -19,16 +21,8 @@ export interface E2EKeys {
   signingPublicHex: string
 }
 
-export interface EncryptedEnvelope {
-  ciphertext: string   // base64-encoded SecretBox output
-  signature: string    // base64-encoded Ed25519 signature
-  timestamp: number
-  senderId: string
-}
-
-// ─── Key Storage ───
-
 const KEYS_KEY = "e2e_keys"
+const SESSIONS_KEY = "e2e_sessions"
 
 export function loadKeys(): E2EKeys | null {
   try {
@@ -45,13 +39,12 @@ export function saveKeys(keys: E2EKeys) {
 
 export function clearKeys() {
   localStorage.removeItem(KEYS_KEY)
+  localStorage.removeItem(SESSIONS_KEY)
 }
 
 export function hasKeys(): boolean {
   return !!loadKeys()
 }
-
-// ─── Helpers ───
 
 export function generateKeys(): E2EKeys {
   const boxKp = nacl.box.keyPair()
@@ -76,119 +69,151 @@ function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("")
 }
 
-// ─── DH Key Agreement ───
+// ─── Session Manager (Double Ratchet) ───
 
-/**
- * X25519 DH: derive shared_secret = my_private * their_public
- * Returns 32-byte shared secret.
- */
-function deriveSharedSecret(
-  myPrivateKeyHex: string,
-  theirPublicKeyHex: string,
-): Uint8Array {
-  const myPrivate = nacl.box.keyPair.fromSecretKey(hexToBytes(myPrivateKeyHex))
-  const theirPublic = hexToBytes(theirPublicKeyHex)
-  // X25519 scalar multiplication
-  return nacl.box.before(theirPublic, myPrivate.secretKey)
-}
+const sessionCache = new Map<string, DoubleRatchetSession>()
 
-/**
- * Derive a 32-byte symmetric key from DH shared secret + chat_id context.
- * Uses SubtleCrypto SHA-256 for domain separation.
- */
-async function deriveChatKey(
-  myPrivateKeyHex: string,
-  theirPublicKeyHex: string,
+export async function getOrCreateSession(
   chatId: string,
-): Promise<Uint8Array> {
-  const sharedSecret = deriveSharedSecret(myPrivateKeyHex, theirPublicKeyHex)
-  // SHA-256(shared_secret || chat_id) → 32 bytes
-  const data = new Uint8Array([...sharedSecret, ...new TextEncoder().encode(chatId)])
-  const hash = await crypto.subtle.digest("SHA-256", data)
-  return new Uint8Array(hash)
+  myKeys: E2EKeys,
+  theirPublicKeyHex: string,
+  isInitiator: boolean,
+  theirSignedPrekeyHex?: string,
+  theirOneTimePrekeyHex?: string,
+): Promise<DoubleRatchetSession> {
+  const cached = sessionCache.get(chatId)
+  if (cached) return cached
+
+  let session: DoubleRatchetSession
+
+  if (isInitiator) {
+    session = new DoubleRatchetSession()
+    await session.initializeAsAlice({
+      ourIdentitySecret: hexToBytes(myKeys.privateKeyHex),
+      theirIdentityPublic: hexToBytes(theirPublicKeyHex),
+      theirSignedPrekeyPublic: hexToBytes(theirSignedPrekeyHex || theirPublicKeyHex),
+      theirOneTimePrekeyPublic: theirOneTimePrekeyHex ? hexToBytes(theirOneTimePrekeyHex) : undefined,
+    })
+  } else {
+    const prekeySecret = hexToBytes(myKeys.privateKeyHex)
+    session = new DoubleRatchetSession()
+    await session.initializeAsBob({
+      ourIdentitySecret: prekeySecret,
+      ourSignedPrekeySecret: prekeySecret,
+      ourOneTimePrekeySecret: null,
+      theirIdentityPublic: hexToBytes(theirPublicKeyHex),
+      theirEphemeralPublic: hexToBytes(theirSignedPrekeyHex || theirPublicKeyHex),
+    })
+  }
+
+  sessionCache.set(chatId, session)
+  persistSessions()
+  return session
 }
 
+export function getSession(chatId: string): DoubleRatchetSession | undefined {
+  return sessionCache.get(chatId)
+}
 
-// ─── Encrypt / Decrypt ───
+export function removeSession(chatId: string) {
+  sessionCache.delete(chatId)
+  persistSessions()
+}
 
-/**
- * Encrypt a plaintext message for a 1-on-1 chat.
- */
+export function clearSessions() {
+  sessionCache.clear()
+  localStorage.removeItem(SESSIONS_KEY)
+}
+
+function persistSessions() {
+  const data: Record<string, SerializedSession> = {}
+  for (const [chatId, session] of sessionCache) {
+    data[chatId] = session.serialize()
+  }
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(data))
+}
+
+function loadSessions() {
+  try {
+    const raw = localStorage.getItem(SESSIONS_KEY)
+    if (!raw) return
+    const data: Record<string, SerializedSession> = JSON.parse(raw)
+    for (const [chatId, serialized] of Object.entries(data)) {
+      sessionCache.set(chatId, DoubleRatchetSession.deserialize(serialized))
+    }
+  } catch {
+    // ignore corrupt data
+  }
+}
+loadSessions()
+
+// ─── Encrypt / Decrypt with Double Ratchet ───
+
 export async function encryptMessage(
   plaintext: string,
   myKeys: E2EKeys,
   theirPublicKeyHex: string,
   chatId: string,
   senderId: string,
-): Promise<EncryptedEnvelope> {
-  const symmetricKey = await deriveChatKey(
-    myKeys.privateKeyHex,
-    theirPublicKeyHex,
-    chatId,
-  )
-  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
-  const messageBytes = new TextEncoder().encode(plaintext)
-  const ciphertext = nacl.secretbox(messageBytes, nonce, symmetricKey)
-  // Prepend nonce to ciphertext for storage
-  const ciphertextWithNonce = new Uint8Array(nonce.length + ciphertext.length)
-  ciphertextWithNonce.set(nonce)
-  ciphertextWithNonce.set(ciphertext, nonce.length)
-  // Sign the plaintext
+): Promise<{ ciphertext: string; signature: string; timestamp: number; senderId: string }> {
+  const session = await getOrCreateSession(chatId, myKeys, theirPublicKeyHex, true)
+  const envelope = await session.encryptMessage(plaintext)
   const signature = nacl.sign.detached(
-    messageBytes,
+    new TextEncoder().encode(plaintext),
     hexToBytes(myKeys.signingPrivateHex),
   )
+  persistSessions()
   return {
-    ciphertext: base64Encode(ciphertextWithNonce.buffer as ArrayBuffer),
+    ciphertext: JSON.stringify(envelope),
     signature: base64Encode(signature.buffer as ArrayBuffer),
     timestamp: Date.now(),
     senderId,
   }
 }
 
-/**
- * Decrypt a message from a 1-on-1 chat.
- */
 export async function decryptMessage(
-  envelope: EncryptedEnvelope,
+  envelope: { ciphertext: string; signature: string; timestamp: number; senderId: string },
   myKeys: E2EKeys,
   senderPublicKeyHex: string,
   chatId: string,
 ): Promise<string | null> {
   try {
-    const symmetricKey = await deriveChatKey(
-      myKeys.privateKeyHex,
-      senderPublicKeyHex,
-      chatId,
-    )
-    const ciphertextBytes = new Uint8Array(base64Decode(envelope.ciphertext))
-    const nonce = ciphertextBytes.subarray(0, nacl.secretbox.nonceLength)
-    const ciphertext = ciphertextBytes.subarray(nacl.secretbox.nonceLength)
-    const plaintext = nacl.secretbox.open(ciphertext, nonce, symmetricKey)
-    if (!plaintext) return null
-    // Verify signature
-    const messageBytes = new Uint8Array(plaintext)
-    const signatureBytes = new Uint8Array(base64Decode(envelope.signature))
+    const ratchetEnvelope: RatchetEnvelope = JSON.parse(envelope.ciphertext)
+    let session = getSession(chatId)
+    if (!session) {
+      session = new DoubleRatchetSession()
+      await session.initializeAsBob({
+        ourIdentitySecret: hexToBytes(myKeys.privateKeyHex),
+        ourSignedPrekeySecret: hexToBytes(myKeys.privateKeyHex),
+        ourOneTimePrekeySecret: null,
+        theirIdentityPublic: hexToBytes(senderPublicKeyHex),
+        theirEphemeralPublic: hexToBytes(ratchetEnvelope.header.dh),
+      })
+      sessionCache.set(chatId, session)
+    }
+    const plaintext = await session.decryptMessage(ratchetEnvelope)
+    persistSessions()
+    const sigBytes = new Uint8Array(base64Decode(envelope.signature))
     const valid = nacl.sign.detached.verify(
-      messageBytes,
-      signatureBytes,
+      new TextEncoder().encode(plaintext),
+      sigBytes,
       hexToBytes(senderPublicKeyHex),
     )
-    return valid ? new TextDecoder().decode(plaintext) : null
-  } catch {
+    return valid ? plaintext : null
+  } catch (err) {
+    console.warn("[E2E] decryptMessage failed:", err)
     return null
   }
 }
 
-/**
- * Encrypt a message for a group chat using the group symmetric key.
- */
+// ─── Group Message (legacy, kept for compatibility) ───
+
 export function encryptGroupMessage(
   plaintext: string,
   myKeys: E2EKeys,
   groupKey: Uint8Array,
   senderId: string,
-): EncryptedEnvelope {
+): { ciphertext: string; signature: string; timestamp: number; senderId: string } {
   const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
   const messageBytes = new TextEncoder().encode(plaintext)
   const ciphertext = nacl.secretbox(messageBytes, nonce, groupKey)
@@ -207,11 +232,8 @@ export function encryptGroupMessage(
   }
 }
 
-/**
- * Decrypt a group chat message using the group symmetric key.
- */
 export function decryptGroupMessage(
-  envelope: EncryptedEnvelope,
+  envelope: { ciphertext: string; signature: string; timestamp: number; senderId: string },
   groupKey: Uint8Array,
 ): string | null {
   try {
@@ -225,58 +247,12 @@ export function decryptGroupMessage(
   }
 }
 
-// ─── Chat Key Cache ───
-
-const chatKeyCache = new Map<string, { key: Uint8Array; peerPub: string }>()
-
-export function getCachedChatKey(chatId: string): { key: Uint8Array; peerPub: string } | undefined {
-  return chatKeyCache.get(chatId)
-}
-
-export function setCachedChatKey(chatId: string, key: Uint8Array, peerPub: string) {
-  chatKeyCache.set(chatId, { key, peerPub })
-}
-
-export async function getOrCreateChatKey(
-  chatId: string,
-  isGroup: boolean,
-  participants: Array<{ id: string; public_key?: string }>,
-  myId: string,
-  myKeys: E2EKeys,
-): Promise<Uint8Array> {
-  const cached = chatKeyCache.get(chatId)
-  if (cached) return cached.key
-
-  if (!isGroup) {
-    const peer = participants.find((p) => p.id !== myId)
-    if (!peer?.public_key) throw new Error("Peer public key not found — E2E not available")
-    const key = await deriveChatKey(myKeys.privateKeyHex, peer.public_key, chatId)
-    chatKeyCache.set(chatId, { key, peerPub: peer.public_key })
-    return key
-  }
-
-  // Group: group key should be fetched from chat metadata
-  throw new Error("Group key not loaded — call loadGroupKey first")
-}
-
-// ─── E2E Eligibility Check ───
-
-export function isE2EEnabled(
-  participants: Array<{ id: string; public_key?: string }>,
-  myKeys: E2EKeys | null,
-): boolean {
-  if (!myKeys) return false
-  return participants.every((p) => !!p.public_key)
-}
-
 // ─── Key Rotation ───
 
 export async function rotateE2EKeys(): Promise<E2EKeys> {
-  // Generate new X25519 keypair
+  clearSessions()
   const boxKp = nacl.box.keyPair()
-  // Generate new Ed25519 signing keypair
   const signKp = nacl.sign.keyPair()
-
   const newKeys: E2EKeys = {
     privateKeyHex: bytesToHex(boxKp.secretKey),
     publicKeyHex: bytesToHex(boxKp.publicKey),
@@ -284,6 +260,13 @@ export async function rotateE2EKeys(): Promise<E2EKeys> {
     signingPublicHex: bytesToHex(signKp.publicKey),
   }
   saveKeys(newKeys)
-  chatKeyCache.clear()
   return newKeys
+}
+
+export function isE2EEnabled(
+  participants: Array<{ id: string; public_key?: string }>,
+  myKeys: E2EKeys | null,
+): boolean {
+  if (!myKeys) return false
+  return participants.every((p) => !!p.public_key)
 }

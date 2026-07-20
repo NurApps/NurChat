@@ -276,6 +276,31 @@ class PinnedMessage(Base):
     pinned_by_user = relationship("User", foreign_keys=[pinned_by])
 
 
+class SignedPreKey(Base):
+    __tablename__ = "signed_prekeys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), index=True)
+    public_key = Column(Text, nullable=False)
+    signature = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+
+
+class OneTimePreKey(Base):
+    __tablename__ = "one_time_prekeys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), index=True)
+    public_key = Column(Text, nullable=False)
+    is_used = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+
+
 class KeyRotationLog(Base):
     __tablename__ = "key_rotation_log"
 

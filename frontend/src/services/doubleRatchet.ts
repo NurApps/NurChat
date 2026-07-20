@@ -247,7 +247,6 @@ export class DoubleRatchetSession {
     )
     this.RK = derived.slice(0, 32)
 
-    this.CKr = this.CKs
     this.CKs = new KDFChain(derived.slice(32))
 
     this.PN = this.Ns
@@ -267,8 +266,7 @@ export class DoubleRatchetSession {
     )
     this.RK = derived.slice(0, 32)
 
-    this.CKr = this.CKs
-    this.CKs = new KDFChain(derived.slice(32))
+    this.CKr = new KDFChain(derived.slice(32))
 
     this.PN = this.Ns
     this.Nr = 0

@@ -6,6 +6,14 @@
 import type { E2EKeys, EncryptedEnvelope } from "./e2e"
 import { encryptMessage as encryptMain, decryptMessage as decryptMain, generateKeys as generateKeysMain } from "./e2e"
 
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16)
+  }
+  return bytes
+}
+
 type WorkerRequest = 
   | { type: 'encrypt'; payload: EncryptPayload }
   | { type: 'decrypt'; payload: DecryptPayload }
@@ -69,49 +77,18 @@ class E2EWorkerService {
    */
   async init(): Promise<boolean> {
     if (this.initialized) return this.useWorker
-
-    try {
-      // Проверяем поддержку Web Workers
-      if (typeof Worker === 'undefined') {
-        console.warn('[E2EWorker] Web Workers not supported, using main thread fallback')
-        this.useWorker = false
-        this.initialized = true
-        return false
-      }
-
-      // Создаем воркер
-      this.worker = new Worker(new URL('../workers/e2eWorker.ts', import.meta.url), {
-        type: 'module',
-      })
-
-      // Настраиваем обработчик сообщений
-      this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-        this.handleResponse(event.data)
-      }
-
-      this.worker.onerror = (error) => {
-        console.error('[E2EWorker] Worker error:', error)
-        this.useWorker = false
-      }
-
-      // Тестовый запрос для проверки работоспособности
-      await this.generateKeys()
-      
-      this.initialized = true
-      console.log('[E2EWorker] Initialized successfully')
-      return true
-    } catch (error) {
-      console.warn('[E2EWorker] Failed to initialize worker, using main thread fallback:', error)
-      this.useWorker = false
-      this.initialized = true
-      return false
-    }
+    this.initialized = true
+    this.useWorker = false
+    return false
   }
+
+
 
   /**
    * Завершение работы воркера
    */
   terminate(): void {
+    void this.handleResponse
     if (this.worker) {
       this.worker.terminate()
       this.worker = null
@@ -256,7 +233,6 @@ class E2EWorkerService {
     senderId: string,
   ): Promise<EncryptedEnvelope> {
     if (!this.useWorker) {
-      // Fallback для групповых сообщений будет реализован отдельно
       const nacl = await import('tweetnacl')
       const { encode: base64Encode } = await import('base64-arraybuffer')
       
@@ -268,10 +244,14 @@ class E2EWorkerService {
       ciphertextWithNonce.set(nonce)
       ciphertextWithNonce.set(ciphertext, nonce.length)
       
-      // Для упрощения в fallback не добавляем подпись
+      const signature = nacl.default.sign.detached(
+        messageBytes,
+        new Uint8Array(hexToBytes(myKeys.signingPrivateHex)),
+      )
+      
       return {
         ciphertext: base64Encode(ciphertextWithNonce.buffer as ArrayBuffer),
-        signature: '',
+        signature: base64Encode(signature.buffer as ArrayBuffer),
         timestamp: Date.now(),
         senderId,
       }

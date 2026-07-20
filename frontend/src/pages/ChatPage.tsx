@@ -8,7 +8,7 @@ import { useChatSocket } from "../hooks/useChatSocket"
 import { useChatMessages } from "../hooks/useChatMessages"
 import { useChatActions } from "../hooks/useChatActions"
 import { useChatTyping } from "../hooks/useChatTyping"
-import { loadKeys as loadE2EKeys, type E2EKeys } from "../services/e2e"
+import { loadKeys as loadE2EKeys, decryptMessage, type E2EKeys } from "../services/e2e"
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications } from "../services/notifications"
 import { clearPin } from "../services/pinLock"
@@ -120,12 +120,24 @@ export default function ChatPage() {
 
   const { wsRef, chatIdRef } = useChatSocket({
     currentUser, selectedChat,
-    onMessage: useCallback((data: any) => {
+    onMessage: useCallback(async (data: any) => {
       if (data._update) { updateMessage(data.message_id as string, { is_read: true }); return }
       if (data._delete) { updateMessage(data.message_id as string, { is_deleted: true, deleted_for_all: data.delete_for_all as boolean }); return }
       if (data._edit) { updateMessage(data.message_id as string, { content: data.content as string }); return }
+      if (data.encrypted_content && e2eKeys && selectedChat) {
+        try {
+          const peer = selectedChat.participants.find((p: any) => p.id !== currentUser.id)
+          if (peer?.public_key) {
+            const envelope = JSON.parse(data.encrypted_content)
+            const plain = await decryptMessage(
+              envelope, e2eKeys, peer.public_key, selectedChat.id,
+            )
+            if (plain) data.content = plain
+          }
+        } catch (e) { console.warn("[WS] decrypt failed:", e) }
+      }
       addMessage(data as unknown as MessageResponse)
-    }, [addMessage, updateMessage]),
+    }, [addMessage, updateMessage, e2eKeys, currentUser, selectedChat]),
     onChatUpdate: loadChats,
     onToast: setToast,
     onIncomingCall: setIncomingCall,

@@ -3,6 +3,7 @@ API routes for Double Ratchet pre-key management.
 Handles signed pre-keys, one-time pre-keys, and bundle publishing.
 """
 
+import hashlib
 import json
 import secrets
 
@@ -18,7 +19,7 @@ from server.core.security import security, verify_token_dependency
 from server.utils.logger import logger
 from shared.double_ratchet import PreKeyBundle
 
-router = APIRouter(prefix="/keys", tags=["keys"])
+router = APIRouter(tags=["keys"])
 
 ONE_TIME_PREKEY_BATCH = 100
 
@@ -142,9 +143,6 @@ async def get_prekey_bundle(
     Get a pre-key bundle for X3DH session establishment.
     Returns identity key, signed pre-key, and one one-time pre-key.
     """
-    from server.core.security import verify_token_dependency as _
-    _ = _
-
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -171,7 +169,7 @@ async def get_prekey_bundle(
         "signed_prekey": spk.public_key,
         "signed_prekey_signature": spk.signature,
         "one_time_prekey": otpk.public_key if otpk else None,
-        "registration_id": hash(user.id) & 0xFFFFFF,
+        "registration_id": int(hashlib.sha256(user.id.encode()).hexdigest()[:6], 16) & 0xFFFFFF,
     }
 
 

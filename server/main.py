@@ -99,19 +99,20 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS
-_cors_origins = [
-    "http://localhost:5173",
-    "http://localhost:8000",
-    "tauri://localhost",
-    "https://tauri.localhost",
-]
+# CORS — строгий белый список из .env (CORS_ORIGINS) или дефолтные
+import os
+_cors_origins_env = os.getenv("CORS_ORIGINS", "")
+if _cors_origins_env:
+    _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+else:
+    _cors_origins = [
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "tauri://localhost",
+        "https://tauri.localhost",
+    ]
 if settings.DEBUG:
-    _cors_origins.append("*")
-    logger.warning(
-        "⚠️  DEBUG mode: CORS allows all origins (*). "
-        "Disable DEBUG or restrict origins for production use."
-    )
+    logger.info("Allowed origins: %s", _cors_origins)
 
 app.add_middleware(
     CORSMiddleware,

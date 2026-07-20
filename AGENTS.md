@@ -35,6 +35,16 @@ npx tauri dev
 | Frontend lint | `cd frontend && npm run lint` |
 | Tauri build (installer) | `npx tauri build` |
 
+## Known Issues & Workarounds
+
+1. **ENCRYPTION_KEY / JWT_SECRET_KEY not set.** Both auto-generate if empty in `.env`, but temp keys mean data loss / session reset on restart. **Must set stable values in `.env` for production.**
+
+2. **UnicodeEncodeError in Windows console.** Fixed: logger uses `sys.stdout.reconfigure(errors='replace')` — non-ASCII chars (emoji, Cyrillic, etc.) are replaced with `?` instead of crashing.
+
+3. **CORS origins.** Defaults to `localhost:5173, localhost:8000, tauri://localhost, https://tauri.localhost`. Override via `CORS_ORIGINS` env var (comma-separated). No wildcard `*` even in DEBUG.
+
+4. **Server dies when terminal closes.** `start.bat` runs server in background with `start /B`. Use `taskkill /f /im python.exe` to stop.
+
 ## Architecture
 
 ```

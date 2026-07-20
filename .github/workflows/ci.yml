@@ -96,13 +96,6 @@ jobs:
         shell: cmd
         run: pyinstaller server.spec --clean --noconfirm && dir dist\
 
-      - name: Copy server.exe to Tauri binaries
-        shell: bash
-        run: |
-          mkdir -p src-tauri/binaries
-          cp -f dist/server.exe src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
-          ls -la src-tauri/binaries/
-
       - name: Install root dependencies
         shell: cmd
         run: npm install
@@ -113,8 +106,7 @@ jobs:
 
       - name: Build Tauri app
         shell: cmd
-        run: npx tauri build
-        working-directory: src-tauri
+        run: npx tauri build --config src-tauri/tauri.conf.json
 
       - name: Upload server.exe
         uses: actions/upload-artifact@v4

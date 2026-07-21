@@ -9,7 +9,7 @@ if project_root not in sys.path:
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
@@ -20,7 +20,7 @@ from server.core.database import create_tables
 from server.middleware.csrf import CSRFMiddleware
 
 # Импорты routes
-from server.routes import auth, calls, chat, contacts_groups, files, forward, keys, legal, p2p, ipfs, bookmarks, pins, stats, audit, federation
+from server.routes import auth, calls, chat, contacts_groups, files, forward, keys, legal, p2p, ipfs, bookmarks, pins, stats, audit, federation, discovery
 from server.utils.file_cleanup import file_cleanup_service
 from server.utils.logger import logger
 from server.ws.chat_manager import handle_websocket_connection
@@ -54,7 +54,17 @@ async def lifespan(app: FastAPI):
         else:
             logger.info("IPFS enabled but not installed. Install via /api/ipfs/manager/install")
 
+    # Start LAN discovery
+    from server.core.discovery import start_discovery
+    await start_discovery()
+    logger.info("LAN discovery service started")
+
     yield
+
+    # Shutdown LAN discovery
+    from server.core.discovery import stop_discovery
+    await stop_discovery()
+    logger.info("LAN discovery service stopped")
 
     # Shutdown: close all WebSocket connections gracefully
     from server.ws.chat_manager import connection_manager
@@ -138,6 +148,7 @@ app.include_router(stats.router, tags=["Statistics"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Audit Logs"])
 app.include_router(federation.router, tags=["Federation"])
 app.include_router(keys.router, prefix="/api/keys", tags=["Keys"])
+app.include_router(discovery.router, prefix="/api/discover", tags=["LAN Discovery"])
 
 # WS rate limiting: max connections per IP
 _ws_connections: dict[str, int] = {}
@@ -212,6 +223,49 @@ async def websocket_p2p_endpoint(websocket: WebSocket, user_id: str, token: str 
         await p2p_manager.handle_connection(websocket, user_id)
     finally:
         release_ws_connection(client_ip)
+
+# WebSocket для удалённых P2P пиров (прямое соединение сервер-сервер)
+@app.websocket("/ws/remote/{node_id}")
+async def websocket_remote_endpoint(websocket: WebSocket, node_id: str):
+    await websocket.accept()
+    try:
+        hello = await asyncio.wait_for(websocket.receive_json(), timeout=10)
+        if not isinstance(hello, dict) or hello.get("type") != "remote_hello":
+            await websocket.send_json({"type": "error", "message": "Expected remote_hello"})
+            await websocket.close()
+            return
+        address = hello.get("address", "unknown")
+        user_id = hello.get("user_id", "")
+        if not user_id:
+            await websocket.send_json({"type": "error", "message": "user_id required"})
+            await websocket.close()
+            return
+        from server.ws.remote import remote_manager
+        await remote_manager.connect(node_id, websocket, address, user_id)
+        await websocket.send_json({"type": "remote_ack", "node_id": node_id})
+        while True:
+            data = await websocket.receive_json()
+            msg_type = data.get("type")
+            if msg_type == "relay_message":
+                target = data.get("target_user_id", "")
+                payload = data.get("payload", {})
+                sent = await remote_manager.relay_message(target, payload)
+                await websocket.send_json({
+                    "type": "relay_ack",
+                    "target": target,
+                    "delivered": sent,
+                })
+            elif msg_type == "ping":
+                await websocket.send_json({"type": "pong"})
+    except asyncio.TimeoutError:
+        await websocket.send_json({"type": "error", "message": "Handshake timeout"})
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"Remote peer error: {e}")
+    finally:
+        from server.ws.remote import remote_manager
+        remote_manager.disconnect(node_id)
 
 # WebSocket для уведомлений
 @app.websocket("/ws/notifications/{user_id}")

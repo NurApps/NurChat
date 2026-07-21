@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,7 @@ from server.core import models, schemas
 from server.core.database import get_db
 from server.core.security import security, verify_token_dependency
 from server.utils.logger import logger
+from shared.config import settings
 
 router = APIRouter()
 
@@ -238,3 +240,92 @@ async def delete_pending_message(
     db.delete(message)
     db.commit()
     return {"message": "Сообщение удалено"}
+
+
+@router.get("/my-address")
+async def get_my_address(
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Возвращает nurchat:// URI для приглашения других пользователей"""
+    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404)
+    host = settings.SERVER_HOST
+    port = settings.SERVER_PORT
+    if host == "127.0.0.1":
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            host = s.getsockname()[0]
+        except Exception:
+            host = "127.0.0.1"
+        finally:
+            s.close()
+    peer_id = user.public_key or user.id
+    uri = f"nurchat://{host}:{port}/{user.id}#{peer_id[:16]}"
+    return {
+        "uri": uri,
+        "host": host,
+        "port": port,
+        "user_id": user.id,
+        "peer_id": peer_id,
+        "port_open": settings.SERVER_HOST != "127.0.0.1",
+    }
+
+
+@router.post("/open-port")
+async def open_port(
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Переключает сервер на 0.0.0.0 для внешних подключений"""
+    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404)
+    if settings.SERVER_HOST != "127.0.0.1":
+        return {"message": "Порт уже открыт", "host": settings.SERVER_HOST, "port": settings.SERVER_PORT}
+    settings.SERVER_HOST = "0.0.0.0"
+    logger.warning("SERVER_HOST changed to 0.0.0.0 — сервер открыт для внешних подключений!")
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        external_ip = s.getsockname()[0]
+    except Exception:
+        external_ip = "0.0.0.0"
+    finally:
+        s.close()
+    peer_id = user.public_key or user.id
+    uri = f"nurchat://{external_ip}:{settings.SERVER_PORT}/{user.id}#{peer_id[:16]}"
+    return {
+        "message": "Порт открыт. Отправьте эту ссылку другу:",
+        "uri": uri,
+        "host": external_ip,
+        "port": settings.SERVER_PORT,
+        "user_id": user.id,
+    }
+
+
+@router.get("/remote-peers")
+async def list_remote_peers(
+    token: dict = Depends(verify_token_dependency),
+):
+    """Список подключённых удалённых пиров"""
+    from server.ws.remote import remote_manager
+    return {"peers": remote_manager.active_peers}
+
+
+@router.delete("/remote-peers/{node_id}")
+async def disconnect_remote_peer(
+    node_id: str,
+    token: dict = Depends(verify_token_dependency),
+):
+    """Отключить удалённого пира"""
+    from server.ws.remote import remote_manager
+    peer = remote_manager.get_peer_by_node(node_id)
+    if not peer:
+        raise HTTPException(status_code=404, detail="Пир не найден")
+    remote_manager.disconnect(node_id)
+    return {"message": f"Пир {node_id} отключён"}

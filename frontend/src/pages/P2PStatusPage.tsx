@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import { p2pClient } from "../services/p2p"
+import P2PShare from "../components/P2PShare"
 
 interface P2PKeys {
   private_key: string
@@ -216,6 +217,11 @@ export default function P2PStatusPage() {
           {ipfsEnabled && ipfsMessage && (
             <p style={{ fontSize: 11, color: "#888", margin: "4px 0 0" }}>{ipfsMessage}</p>
           )}
+        </div>
+
+        {/* P2P Sharing (direct server-to-server) */}
+        <div className="settings-fields" style={{ marginTop: 16 }}>
+          <P2PShare />
         </div>
 
         {/* IPFS Manager */}

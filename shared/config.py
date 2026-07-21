@@ -99,6 +99,8 @@ def create_directories():
 create_directories()
 settings = Settings()
 
+_env_written = False
+
 if settings.ENCRYPTION_KEY == "your_default_encryption_key_here":
     import secrets
     import logging
@@ -109,6 +111,7 @@ if settings.ENCRYPTION_KEY == "your_default_encryption_key_here":
         "Set a stable ENCRYPTION_KEY in .env immediately!"
     )
     settings.ENCRYPTION_KEY = secrets.token_hex(32)
+    _env_written = True
 
 if not settings.JWT_SECRET_KEY:
     import secrets
@@ -120,5 +123,19 @@ if not settings.JWT_SECRET_KEY:
         "Set JWT_SECRET_KEY in .env for production."
     )
     settings.JWT_SECRET_KEY = secrets.token_hex(32)
+    _env_written = True
+
+if _env_written:
+    import os
+    _env_path = Path(os.getcwd()) / ".env"
+    if not _env_path.exists():
+        try:
+            _env_path.write_text(
+                f"ENCRYPTION_KEY={settings.ENCRYPTION_KEY}\n"
+                f"JWT_SECRET_KEY={settings.JWT_SECRET_KEY}\n"
+            )
+            logging.getLogger("nurchat").info("Auto-generated .env at %s", _env_path)
+        except Exception as _exc:
+            logging.getLogger("nurchat").warning("Failed to write .env: %s", _exc)
 
 ENCRYPTION_KEY = settings.ENCRYPTION_KEY.encode()

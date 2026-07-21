@@ -23,6 +23,7 @@ export default function LoginPage() {
   const [captchaQuestion, setCaptchaQuestion] = useState<string>("")
   const [captchaCode, setCaptchaCode] = useState("")
   const [refreshingCaptcha, setRefreshingCaptcha] = useState(false)
+  const [captchaError, setCaptchaError] = useState("")
 
   // TOTP 2FA state for login
   const [totpRequired, setTotpRequired] = useState(false)
@@ -61,8 +62,9 @@ export default function LoginPage() {
       setCaptchaId(data.captcha_id)
       setCaptchaQuestion(data.question)
       setCaptchaCode("")
+      setCaptchaError("")
     } catch (err) {
-      console.error("Failed to load CAPTCHA:", err)
+      setCaptchaError("Не удалось загрузить капчу: " + (err instanceof Error ? err.message : "ошибка сети"))
     } finally {
       setRefreshingCaptcha(false)
     }
@@ -262,8 +264,8 @@ export default function LoginPage() {
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </svg>
                 <div className="captcha-container" style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
-                  <span className="captcha-question" style={{ fontSize: "14px", fontWeight: "bold", color: "#333", minWidth: "100px" }}>
-                    {captchaQuestion || "Загрузка..."}
+                  <span className="captcha-question" style={{ fontSize: "14px", fontWeight: "bold", color: captchaError ? "#e74c3c" : "#333", minWidth: "100px" }}>
+                    {captchaError || captchaQuestion || "Загрузка..."}
                   </span>
                   <button
                     type="button"
@@ -279,8 +281,12 @@ export default function LoginPage() {
                       opacity: refreshingCaptcha ? 0.6 : 1,
                     }}
                     title="Обновить CAPTCHA"
+                    aria-label="Обновить CAPTCHA"
                   >
-                    {refreshingCaptcha ? "↻" : "⟳"}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: refreshingCaptcha ? "spin 1s linear infinite" : "none" }}>
+                      <polyline points="23 4 23 10 17 10" />
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                    </svg>
                   </button>
                 </div>
                 <input

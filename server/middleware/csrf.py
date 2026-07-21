@@ -44,13 +44,14 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             "/docs",
             "/redoc",
             "/openapi.json",
-            "/api/captcha",
+            "/api/auth/captcha",
             "/api/auth/login",
         ]
     
     def _generate_token(self) -> str:
         """Generate a new CSRF token with timestamp"""
-        timestamp = datetime.now(timezone.utc).isoformat()
+        ts_int = int(datetime.now(timezone.utc).timestamp())
+        timestamp = str(ts_int)
         random_part = secrets.token_hex(32)
         message = f"{timestamp}:{random_part}"
         signature = hmac.new(
@@ -63,7 +64,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     def _validate_token(self, token: str) -> bool:
         """Validate CSRF token"""
         try:
-            parts = token.split(":")
+            parts = token.rsplit(":", 2)
             if len(parts) != 3:
                 return False
             
@@ -79,7 +80,10 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 return False
             
             # Check token expiration
-            timestamp = datetime.fromisoformat(timestamp_str)
+            try:
+                timestamp = datetime.fromisoformat(timestamp_str)
+            except ValueError:
+                timestamp = datetime.fromtimestamp(float(timestamp_str), tz=timezone.utc)
             if datetime.now(timezone.utc) - timestamp > self.token_lifetime:
                 return False
             

@@ -24,6 +24,12 @@ impl ServerManager {
             return Ok(());
         }
 
+        // Pre-check: already serving on port 8000?
+        if is_server_running() {
+            info!("Server already running on port 8000, reusing");
+            return Ok(());
+        }
+
         // Generate .env if missing (keys persist across restarts)
         ensure_env(app_dir);
 
@@ -211,6 +217,13 @@ fn find_server_exe(app_dir: &Path, res_dir: Option<&Path>) -> Option<PathBuf> {
     candidates.push(app_dir.join("server.exe"));
     candidates.push(app_dir.join("dist").join("server").join("server.exe"));
 
+    // 4. current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
+        candidates.push(cwd.join("server-x86_64-pc-windows-msvc.exe"));
+        candidates.push(cwd.join("server.exe"));
+    }
+
     for p in &candidates {
         if p.exists() {
             return Some(p.clone());
@@ -218,6 +231,17 @@ fn find_server_exe(app_dir: &Path, res_dir: Option<&Path>) -> Option<PathBuf> {
     }
 
     None
+}
+
+fn is_server_running() -> bool {
+    if let Ok(resp) = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .and_then(|c| c.get("http://127.0.0.1:8000/health").send())
+    {
+        return resp.status().is_success();
+    }
+    false
 }
 
 fn find_venv_python(app_dir: &Path) -> Option<PathBuf> {

@@ -18,6 +18,10 @@ target/
 # Federation signing keys (auto-generated, NEVER commit)
 federation_keys.json
 
+# Agent/IDE workspace files
+.opencode/
+.agents/
+
 # IDE specific
 .vscode/
 .idea/

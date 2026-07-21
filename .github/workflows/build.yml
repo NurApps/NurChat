@@ -42,8 +42,7 @@ jobs:
 
       - name: Build server.exe
         run: |
-          .venv\Scripts\pyinstaller --onefile --name server.exe `
-            --add-data ".venv\Lib\site-packages;." `
+          .venv\Scripts\pyinstaller --onefile --noconsole --name server.exe `
             --hidden-import "uvicorn.logging" `
             --hidden-import "uvicorn.loops.auto" `
             --hidden-import "uvicorn.protocols.http.auto" `
@@ -84,14 +83,6 @@ jobs:
             src-tauri/target
           key: cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
 
-      - name: Install frontend deps
-        run: npm ci
-        working-directory: frontend
-
-      - name: Build frontend
-        run: npm run build
-        working-directory: frontend
-
       - name: Download server.exe
         uses: actions/download-artifact@v4
         with:
@@ -100,10 +91,10 @@ jobs:
 
       - name: Rename server.exe for sidecar
         run: |
-          Rename-Item -Path "src-tauri\binaries\server.exe" -NewName "server-x86_64-pc-windows-msvc.exe" -ErrorAction SilentlyContinue
+          Rename-Item -Path "src-tauri\binaries\server.exe" -NewName "server-x86_64-pc-windows-msvc.exe" -Force -ErrorAction SilentlyContinue
 
       - name: Build app.exe (Tauri)
-        uses: tauri-apps/tauri-action@v2
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

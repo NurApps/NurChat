@@ -119,6 +119,16 @@ async fn download_and_open_file(url: String, token: String, filename: String) ->
     Ok(path_str)
 }
 
+#[tauri::command]
+async fn fetch_captcha() -> Result<serde_json::Value, String> {
+    let resp = reqwest::get("http://127.0.0.1:8000/api/auth/captcha")
+        .await
+        .map_err(|e| format!("Captcha fetch failed: {e}"))?;
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("Captcha parse failed: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,6 +174,7 @@ pub fn run() {
             p2p_get_peer_count,
             init_p2p,
             download_and_open_file,
+            fetch_captcha,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

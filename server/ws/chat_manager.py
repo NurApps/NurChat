@@ -6,6 +6,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from shared.constants import WS_EVENTS
+from shared.config import settings
 
 from server.core.redis_manager import publish_presence, set_user_online, set_user_offline
 
@@ -370,6 +371,19 @@ class ChatManager:
             data["chat_id"],
             exclude_user=user_id
         )
+
+        if settings.USE_FEDERATION:
+            try:
+                db = SessionLocal()
+                chat_obj = db.query(models.Chat).filter(models.Chat.id == data["chat_id"]).first()
+                if chat_obj and chat_obj.name and "@" in chat_obj.name:
+                    from server.routes.federation import send_federated_typing
+                    user_obj = db.query(models.User).filter(models.User.id == user_id).first()
+                    if user_obj:
+                        await send_federated_typing(user_obj, chat_obj.name)
+                db.close()
+            except Exception:
+                pass
 
         logger.debug(f"Typing event from {user_id} in chat {data['chat_id']}: {data['is_typing']}")
 

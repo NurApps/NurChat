@@ -142,7 +142,7 @@ async def upload_file(
         try:
             await notification_manager.send_file_upload_notification(
                 user_id,
-                response.dict()
+                response.model_dump()
             )
         except Exception as notify_error:
             logger.error(f"Failed to send file upload notification: {notify_error}")

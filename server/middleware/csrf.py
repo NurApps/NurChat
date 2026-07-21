@@ -125,10 +125,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 csrf_token = request.headers.get(self.header_name)
                 
                 if not csrf_token:
-                    # Try to get token from cookie as fallback
-                    csrf_token = request.cookies.get(self.cookie_name)
-                
-                if not csrf_token or not self._validate_token(csrf_token):
+                    return JSONResponse(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        content={"detail": "CSRF token missing"}
+                    )
+
+                if not self._validate_token(csrf_token):
                     return JSONResponse(
                         status_code=status.HTTP_403_FORBIDDEN,
                         content={"detail": "CSRF token missing or invalid"}

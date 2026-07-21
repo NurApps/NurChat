@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { api } from "../services/api"
-import { saveKeys as saveE2EKeys } from "../services/e2e"
+import { invoke } from "@tauri-apps/api/core"
+import api from "../services/api"
 import { BASE_URL } from "../config"
 
 const TG_BLUE = "#2AABEE"
@@ -57,8 +57,15 @@ export default function LoginPage() {
   const loadCaptcha = async () => {
     setRefreshingCaptcha(true)
     try {
-      const res = await fetch(`${BASE_URL}/api/auth/captcha`)
-      const data = await res.json()
+      let data: { captcha_id: string; question: string }
+
+      try {
+        const res = await fetch(`${BASE_URL}/api/auth/captcha`, { signal: AbortSignal.timeout(5000) })
+        data = await res.json()
+      } catch {
+        data = await invoke("fetch_captcha") as { captcha_id: string; question: string }
+      }
+
       setCaptchaId(data.captcha_id)
       setCaptchaQuestion(data.question)
       setCaptchaCode("")

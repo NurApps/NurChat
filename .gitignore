@@ -15,6 +15,9 @@ target/
 .env.local
 *.env.*
 
+# Federation signing keys (auto-generated, NEVER commit)
+federation_keys.json
+
 # IDE specific
 .vscode/
 .idea/

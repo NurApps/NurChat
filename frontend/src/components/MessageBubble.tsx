@@ -126,15 +126,32 @@ export default function MessageBubble({
   }
 
   const renderStatusIcon = () => {
-    if (status === "sending") return <span className="msg-status sending">⏳</span>
-    if (status === "failed") return <span className="msg-status failed">✗</span>
-    if (isRead || (readCount && readCount.read > 0)) return (
-      <span className="msg-status read" title={readCount ? `${readCount.read}/${readCount.total} прочитали` : "Прочитано"}>
-        ✓✓{readCount && readCount.total > 1 && <span className="msg-read-count">{readCount.read}/{readCount.total}</span>}
+    if (status === "sending") return (
+      <span className="msg-status sending">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       </span>
     )
-    if (status === "delivered") return <span className="msg-status delivered">✓✓</span>
-    return <span className="msg-status sent">✓</span>
+    if (status === "failed") return (
+      <span className="msg-status failed">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </span>
+    )
+    if (isRead || (readCount && readCount.read > 0)) return (
+      <span className="msg-status read" title={readCount ? `${readCount.read}/${readCount.total} прочитали` : "Прочитано"}>
+        <svg width="16" height="10" viewBox="0 0 24 16" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="2 8 7 13 13 3"/><polyline points="11 8 16 13 22 3"/></svg>
+        {readCount && readCount.total > 1 && <span className="msg-read-count">{readCount.read}/{readCount.total}</span>}
+      </span>
+    )
+    if (status === "delivered") return (
+      <span className="msg-status delivered">
+        <svg width="16" height="10" viewBox="0 0 24 16" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="2 8 7 13 13 3"/><polyline points="11 8 16 13 22 3"/></svg>
+      </span>
+    )
+    return (
+      <span className="msg-status sent">
+        <svg width="14" height="10" viewBox="0 0 24 16" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 8 9 13 20 2"/></svg>
+      </span>
+    )
   }
 
   const renderContent = () => {
@@ -345,8 +362,8 @@ export default function MessageBubble({
                 {time}
               </span>
               {message.expires_at && (
-                <span className="msg-ephemeral" title={`Исчезнет ${new Date(message.expires_at).toLocaleString("ru-RU")}`}>
-                  <span className="msg-ephemeral-icon">⏱</span>
+                  <span className="msg-ephemeral" title={`Исчезнет ${new Date(message.expires_at).toLocaleString("ru-RU")}`}>
+                  <span className="msg-ephemeral-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
                 </span>
               )}
               {isMyMessage && renderStatusIcon()}
@@ -412,7 +429,9 @@ export default function MessageBubble({
         </div>
         {bubble}
         <div className="msg-menu-area" ref={menuRef}>
-          <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
+          <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="Меню сообщения">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+          </button>
           {menuOpen && !showDeleteOptions && (
             <div className="msg-dropdown">
               {menuItems.map((item) => (
@@ -441,7 +460,9 @@ export default function MessageBubble({
     <div className="msg-row my-row">
       <div className="msg-spacer" />
       <div className="msg-menu-area" ref={menuRef}>
-        <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
+        <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="Меню сообщения">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+        </button>
         {menuOpen && !showDeleteOptions && (
           <div className="msg-dropdown right">
             {menuItems.map((item) => (

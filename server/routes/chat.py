@@ -19,6 +19,7 @@ from sqlalchemy import func, or_
 
 from server.ws.chat_manager import connection_manager
 from server.ws.notifications import notification_manager
+from shared.config import settings
 
 router = APIRouter()
 
@@ -236,7 +237,7 @@ async def send_message(
                 db.add(read_status)
             db.commit()
             try:
-                notification_message_data = message_data.dict()
+                notification_message_data = message_data.model_dump()
                 notification_message_data['content'] = message_data.content
                 await notification_manager.send_message_notification(message_data=notification_message_data, target_user_ids=target_user_ids)
             except Exception as notify_error:
@@ -413,7 +414,7 @@ async def edit_message(
         message.content = new_content
         db.commit()
         edit_event = {
-            "event": "message_edit",
+            "event": "edit_message",
             "data": {
                 "message_id": message_id,
                 "chat_id": message.chat_id,
@@ -715,6 +716,18 @@ async def toggle_reaction(
             )
         except Exception as ws_err:
             logger.warning(f"Failed to broadcast reaction: {ws_err}")
+
+        # Federation: send reaction to remote server
+        if settings.USE_FEDERATION:
+            try:
+                chat_obj = db.query(models.Chat).filter(models.Chat.id == message.chat_id).first()
+                if chat_obj and chat_obj.name and "@" in chat_obj.name:
+                    from server.routes.federation import send_federated_reaction
+                    sender_user = db.query(models.User).filter(models.User.id == user_id).first()
+                    if sender_user:
+                        await send_federated_reaction(sender_user, chat_obj.name, message_id, reaction.emoji)
+            except Exception as fed_err:
+                logger.warning(f"Federation reaction failed: {fed_err}")
 
         return result
     except MessageNotFoundError:

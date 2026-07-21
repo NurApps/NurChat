@@ -364,7 +364,7 @@ export const api = {
 
   // Files list
   getMyFiles: (fileType?: string) =>
-    request<FileUploadResponse[]>("GET", "/api/files/my" + (fileType ? `?file_type=${fileType}` : "")),
+    request<FileUploadResponse[]>("GET", "/api/files/my-files" + (fileType ? `?file_type=${fileType}` : "")),
 
   // Misc
   testConnection: () =>

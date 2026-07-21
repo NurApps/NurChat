@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     FEDERATED_BACKUP_URL: str | None = None
 
     # Federation (server-to-server)
-    USE_FEDERATION: bool = False
+    USE_FEDERATION: bool = True
     FEDERATION_SERVER_NAME: str = ""  # Public server address, e.g. "nurchat.example.com:8000"
     FEDERATION_SERVER_KEY_PATH: str = "federation_keys.json"
     FEDERATION_ACTIVITY_TTL_HOURS: int = 72
@@ -33,9 +33,9 @@ class Settings(BaseSettings):
     # S3 / MinIO
     USE_S3_STORAGE: bool = False
     S3_ENDPOINT: str = "http://localhost:9000"
-    S3_ACCESS_KEY: str = "nurchat"
-    S3_SECRET_KEY: str = "nurchat-secret"
-    S3_BUCKET: str = "nurchat-media"
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_BUCKET: str = ""
     S3_REGION: str = "us-east-1"
     CLIENT_PORT: int = 8001
     MEDIA_ROOT: str = "media"

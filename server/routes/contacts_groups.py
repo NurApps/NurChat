@@ -166,7 +166,7 @@ async def invite_to_group(
 
         try:
             await notification_manager.send_group_invite_notification(
-                invite_data=schemas.GroupInviteResponse.model_validate(invite).dict(),
+                invite_data=schemas.GroupInviteResponse.model_validate(invite).model_dump(),
                 target_user_id=invitee_id
             )
         except Exception as notify_error:

@@ -17,7 +17,7 @@ security_scheme = HTTPBearer()
 # JWT настройки
 SECRET_KEY = settings.JWT_SECRET_KEY
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 дней
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 часа
 
 
 def hash_password(password: str) -> str:

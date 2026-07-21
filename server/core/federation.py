@@ -27,6 +27,12 @@ class FederationManager:
                 s.strip() for s in settings.FEDERATION_ALLOWED_SERVERS.split(",") if s.strip()
             }
 
+        if self._enabled:
+            logger.warning(
+                "Federation enabled — all server-to-server traffic uses PLAIN HTTP. "
+                "Set up a reverse proxy with TLS in production."
+            )
+
     @property
     def enabled(self) -> bool:
         return self._enabled

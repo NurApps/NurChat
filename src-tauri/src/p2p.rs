@@ -43,7 +43,7 @@ impl P2PNode {
     }
 
     pub async fn start(&self) -> Result<u16, String> {
-        let addr = format!("0.0.0.0:{}", self.config.listen_port);
+        let addr = format!("127.0.0.1:{}", self.config.listen_port);
         let listener = TcpListener::bind(&addr)
             .await
             .map_err(|e| e.to_string())?;

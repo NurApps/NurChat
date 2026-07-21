@@ -69,10 +69,10 @@ export default function CallHistoryPage() {
     return call.caller
   }
 
-  const getCallIcon = (type: string, duration?: number) => {
-    if (!duration || duration === 0) return { icon: "📞", color: "#f44336", label: "Пропущенный" }
-    if (type === "video") return { icon: "📹", color: "#4CAF50", label: formatDuration(duration) }
-    return { icon: "📞", color: "#4CAF50", label: formatDuration(duration) }
+  const getCallStatus = (type: string, duration?: number) => {
+    if (!duration || duration === 0) return { color: "#f44336", label: "Пропущенный" }
+    if (type === "video") return { color: "#4CAF50", label: formatDuration(duration) }
+    return { color: "#4CAF50", label: formatDuration(duration) }
   }
 
   if (loading) {
@@ -114,7 +114,7 @@ export default function CallHistoryPage() {
           <div className="settings-fields">
             {calls.map((call) => {
               const other = getOtherUser(call)
-              const status = getCallIcon(call.call_type, call.duration)
+              const status = getCallStatus(call.call_type, call.duration)
               const wasOutgoing = call.caller_id === currentUser?.id
               const name = other ? [other.first_name, other.username].filter(Boolean).join(" (@") + (other.username ? ")" : "") : "Неизвестный"
 

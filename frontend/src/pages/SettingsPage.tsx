@@ -554,9 +554,10 @@ export default function SettingsPage() {
                     </div>
                     {totpBackupCodes.length > 0 && (
                       <div style={{ marginTop: 16, padding: 12, background: "rgba(76,175,80,0.1)", borderRadius: 6 }}>
-                        <p style={{ fontSize: 12, fontWeight: 600, color: "#4CAF50", marginBottom: 8 }}>
-                          ⚠️ Сохраните эти резервные коды в безопасном месте!
-                        </p>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#4CAF50", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          <span>Сохраните эти резервные коды в безопасном месте!</span>
+                        </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 4, fontSize: 11 }}>
                           {totpBackupCodes.map((code, i) => (
                             <div key={i} style={{ fontFamily: "monospace", background: "#fff", padding: "2px 6px", borderRadius: 4 }}>

@@ -40,6 +40,12 @@ impl ServerManager {
             cmd.current_dir(app_dir)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x08000000;
+                cmd.creation_flags(CREATE_NO_WINDOW);
+            }
 
             let process = cmd.spawn().map_err(|e| format!("Failed to start server.exe: {e}"))?;
             Self::setup_logging(process, &mut child);

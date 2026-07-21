@@ -12,7 +12,9 @@ const ThemeContext = createContext<ThemeCtx>({ theme: "light", toggle: () => {} 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem("theme")
-    return (saved === "dark" ? "dark" : "light")
+    if (saved === "dark" || saved === "light") return saved
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+    return prefersDark ? "dark" : "light"
   })
 
   useEffect(() => {

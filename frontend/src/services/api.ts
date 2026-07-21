@@ -277,6 +277,59 @@ export const api = {
   getP2PPending: (limit = 500) =>
     request<{ id: string; sender_id: string; recipient_id: string; payload: string; created_at: string }[]>("GET", `/api/p2p/pending?limit=${limit}`),
 
+  // P2P Sharing (direct server-to-server)
+  discoverLAN: () =>
+    request<{ peers: { node_id: string; host: string; port: number; user_id: string; username: string; peer_name: string; last_seen: string }[] }>("GET", "/api/discover/lan"),
+
+  getP2PAddress: () =>
+    request<{ uri: string; host: string; port: number; user_id: string; peer_id: string; port_open: boolean }>("GET", "/api/p2p/my-address"),
+
+  openP2PPort: () =>
+    request<{ message: string; uri: string; host: string; port: number; user_id: string }>("POST", "/api/p2p/open-port"),
+
+  getRemotePeers: () =>
+    request<{ peers: { node_id: string; address: string; user_id: string; connected_at: string }[] }>("GET", "/api/p2p/remote-peers"),
+
+  connectToRemote: async (inviteUri: string) => {
+    const [, rest] = inviteUri.split("://")
+    if (!rest) throw new Error("Неверный формат ссылки")
+    const [hostPort, userIdHash] = rest.split("/")
+    const [host, portStr] = hostPort.split(":")
+    const port = parseInt(portStr) || 8000
+    const [userId] = (userIdHash || "").split("#")
+    if (!host || !userId) throw new Error("Неверный формат ссылки")
+
+    const token = getToken()
+    if (!token) throw new Error("Не авторизован")
+
+    const wsUrl = `ws://${host}:${port}/ws/remote/${encodeURIComponent(token.slice(0, 16))}`
+
+    const ws = new WebSocket(wsUrl)
+    await new Promise<void>((resolve, reject) => {
+      ws.onopen = () => resolve()
+      ws.onerror = () => reject(new Error("Не удалось подключиться к удалённому серверу"))
+    })
+
+    ws.send(JSON.stringify({
+      type: "remote_hello",
+      address: `${host}:${port}`,
+      user_id: JSON.parse(atob(token.split(".")[1])).sub || "",
+    }))
+
+    const ack = await new Promise<any>((resolve, reject) => {
+      ws.onmessage = (e) => {
+        try { resolve(JSON.parse(e.data)) } catch { }
+      }
+      setTimeout(() => reject(new Error("Таймаут handshake")), 10000)
+    })
+
+    if (ack.type === "remote_ack") {
+      await request("POST", "/api/p2p/backups", { chat_id: userId, payload: JSON.stringify({ wsUrl, nodeId: ack.node_id }) })
+      return { connected: true, node_id: ack.node_id }
+    }
+    throw new Error(ack.message || "Ошибка подключения")
+  },
+
   // IPFS
   getIPFSStatus: () =>
     request<{ enabled: boolean; online: boolean; api_url?: string; message: string }>("GET", "/api/ipfs/status"),

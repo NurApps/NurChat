@@ -109,6 +109,9 @@ class Message(Base):
 
 class File(Base):
     __tablename__ = "files"
+    __table_args__ = (
+        Index("ix_files_user_uploaded", "user_id", "uploaded_at"),
+    )
 
     id = Column(String, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"))
@@ -129,6 +132,9 @@ def create_tables():
 
 class Contact(Base):
     __tablename__ = "contacts"
+    __table_args__ = (
+        Index("ix_contacts_user_contact", "user_id", "contact_user_id"),
+    )
 
     id = Column(String, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"))  # Кто добавил контакт
@@ -140,6 +146,9 @@ class Contact(Base):
 
 class GroupInvite(Base):
     __tablename__ = "group_invites"
+    __table_args__ = (
+        Index("ix_group_invites_invitee_status", "invitee_id", "status"),
+    )
 
     id = Column(String, primary_key=True, index=True)
     group_id = Column(String, ForeignKey("chats.id"))
@@ -155,6 +164,9 @@ class GroupInvite(Base):
 
 class MessageReadStatus(Base):
     __tablename__ = "message_read_status"
+    __table_args__ = (
+        Index("ix_read_status_message_user", "message_id", "user_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     message_id = Column(String, ForeignKey("messages.id"))
@@ -167,6 +179,9 @@ class MessageReadStatus(Base):
 
 class CallLog(Base):
     __tablename__ = "call_logs"
+    __table_args__ = (
+        Index("ix_call_logs_callee", "callee_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     call_id = Column(String, index=True)
@@ -183,6 +198,9 @@ class CallLog(Base):
 
 class MessageReaction(Base):
     __tablename__ = "message_reactions"
+    __table_args__ = (
+        Index("ix_reactions_message", "message_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     message_id = Column(String, ForeignKey("messages.id"))
@@ -196,6 +214,9 @@ class MessageReaction(Base):
 
 class BlockedUser(Base):
     __tablename__ = "blocked_users"
+    __table_args__ = (
+        Index("ix_blocked_user_target", "user_id", "blocked_user_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"))  # Кто заблокировал
@@ -208,6 +229,10 @@ class BlockedUser(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("ix_audit_logs_user_action", "user_id", "created_at"),
+        Index("ix_audit_logs_action", "action"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"))
@@ -221,6 +246,9 @@ class AuditLog(Base):
 
 class P2PMessage(Base):
     __tablename__ = "p2p_messages"
+    __table_args__ = (
+        Index("ix_p2p_messages_recipient_created", "recipient_id", "created_at"),
+    )
 
     id = Column(String, primary_key=True, index=True)
     sender_id = Column(String, ForeignKey("users.id"), index=True)
@@ -326,6 +354,10 @@ class FederationServer(Base):
 
 class FederationActivity(Base):
     __tablename__ = "federation_activities"
+    __table_args__ = (
+        Index("ix_fed_activity_sender", "sender_server", "created_at"),
+        Index("ix_fed_activity_type", "activity_type", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     activity_id = Column(String, unique=True, index=True, nullable=False)  # Unique activity ID

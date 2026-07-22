@@ -22,7 +22,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     
     - Generates CSRF tokens stored in HttpOnly cookies
     - Validates X-CSRF-Token header for POST, PUT, PATCH, DELETE requests
-    - Excludes paths: /health, /docs, /captcha, /auth/login
+    - Excludes paths: /health, /docs, /captcha, /auth/login, /auth/register
     """
     
     def __init__(
@@ -46,6 +46,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             "/openapi.json",
             "/api/auth/captcha",
             "/api/auth/login",
+            "/api/auth/register",
         ]
     
     def _generate_token(self) -> str:
@@ -107,14 +108,14 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         # Process the request
         response = await call_next(request)
         
-        # Set CSRF token in HttpOnly cookie
+        # Set CSRF token in cookie (non-HttpOnly so JS can read it for X-CSRF-Token header)
         if isinstance(response, Response):
             response.set_cookie(
                 key=self.cookie_name,
                 value=new_token,
                 max_age=int(self.token_lifetime.total_seconds()),
-                httponly=True,
-                secure=not settings.DEBUG,  # Secure only in production
+                httponly=False,
+                secure=not settings.DEBUG,
                 samesite="lax",
                 path="/",
             )

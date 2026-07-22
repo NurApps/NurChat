@@ -49,9 +49,12 @@ async def get_captcha(request: Request):
 @limiter.limit("5/minute")
 async def register(
     request: Request,
-    user_data: schemas.UserCreate,
-    captcha_id: str = Body(..., embed=True),
-    captcha_code: str = Body(..., embed=True),
+    username: str = Body(...),
+    password: str = Body(...),
+    first_name: str = Body(...),
+    last_name: str = Body(default=""),
+    captcha_id: str = Body(...),
+    captcha_code: str = Body(...),
     db: Session = Depends(get_db)
 ):
     """Регистрация пользователя с именем и фамилией"""
@@ -64,23 +67,22 @@ async def register(
                 detail="Неверная CAPTCHA"
             )
         
-        if not user_data.first_name or len(user_data.first_name.strip()) < 2:
+        if not first_name or len(first_name.strip()) < 2:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Имя должно содержать минимум 2 символа"
             )
 
         existing_user = db.query(models.User).filter(
-            models.User.username == user_data.username
+            models.User.username == username
         ).first()
         if existing_user:
-            logger.warning(f"Registration attempt with existing username: {user_data.username}")
+            logger.warning(f"Registration attempt with existing username: {username}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Username уже занят"
             )
 
-        password = user_data.password
         has_letters = any(c.isalpha() for c in password)
         is_all_digits = all(c.isdigit() for c in password if c.strip())
 
@@ -98,7 +100,7 @@ async def register(
                     detail="Если есть латинские буквы, их должно быть минимум 4"
                 )
 
-        hashed_password = hash_password_argon2(user_data.password)
+        hashed_password = hash_password_argon2(password)
 
         keypair = encryption.generate_keypair()
 
@@ -111,9 +113,9 @@ async def register(
 
         user = models.User(
             id=user_id,
-            username=user_data.username,
-            first_name=user_data.first_name.strip(),
-            last_name=user_data.last_name.strip() if user_data.last_name else None,
+            username=username,
+            first_name=first_name.strip(),
+            last_name=last_name.strip() if last_name else None,
             hashed_password=hashed_password,
             public_key=keypair['public_key'],
             signing_public_key=signing_public_hex,

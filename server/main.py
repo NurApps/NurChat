@@ -101,8 +101,9 @@ app.add_middleware(
         "/docs",
         "/redoc",
         "/openapi.json",
-        "/api/captcha",
-        "/api/auth/login",  # Login without CSRF for initial access
+        "/api/auth/captcha",
+        "/api/auth/login",
+        "/api/auth/register",
     ],
 )
 

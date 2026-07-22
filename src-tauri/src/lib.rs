@@ -205,8 +205,6 @@ pub fn run() {
             log::info!("Server resource_dir: {:?}", res_dir);
 
             let handle = app.handle().clone();
-            let app_dir_clone = app_dir.clone();
-            let res_dir_clone = res_dir.clone();
             match state.server.start(&app_dir, res_dir.as_deref()) {
                 Ok(()) => {
                     log::info!("Server process started");

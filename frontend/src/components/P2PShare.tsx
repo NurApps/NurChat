@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { api } from "../services/api"
-import { WS_BASE } from "../config"
 import styles from "./P2PShare.module.css"
 
 interface RemotePeer {
@@ -9,6 +8,7 @@ interface RemotePeer {
   address: string
   user_id: string
   connected_at: string
+  is_relay?: boolean
 }
 
 interface RelayPeer {
@@ -34,8 +34,7 @@ export default function P2PShare() {
   const [relayInput, setRelayInput] = useState("")
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([])
   const [relayPeers, setRelayPeers] = useState<RelayPeer[]>([])
-  const [isRelay, setIsRelay] = useState(false)
-  const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
+const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
   const [lanScanning, setLanScanning] = useState(false)
   const [status, setStatus] = useState("")
   const [error, setError] = useState("")
@@ -97,7 +96,6 @@ export default function P2PShare() {
     setError("")
     try {
       await api.registerRelay()
-      setIsRelay(true)
       setStatus("Вы зарегистрированы как ретранслятор!")
       loadRelays()
     } catch (e: any) {

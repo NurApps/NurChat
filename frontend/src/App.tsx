@@ -4,6 +4,8 @@ import { ThemeProvider } from "./context/ThemeContext"
 import AuthGuard from "./components/AuthGuard"
 import OfflineBanner from "./components/OfflineBanner"
 import ServerBootOverlay from "./components/ServerBootOverlay"
+import Onboarding from "./components/Onboarding"
+import ErrorBoundary from "./components/ErrorBoundary"
 import { e2eWorkerService } from "./services/e2eWorkerService"
 
 const LoginPage = lazy(() => import("./pages/LoginPage"))
@@ -51,9 +53,11 @@ function App() {
 
   return (
     <ThemeProvider>
-      {!serverReady && <ServerBootOverlay onReady={() => setServerReady(true)} />}
-      <OfflineBanner />
-      <BrowserRouter>
+      <ErrorBoundary>
+        <Onboarding />
+        {!serverReady && <ServerBootOverlay onReady={() => setServerReady(true)} />}
+        <OfflineBanner />
+        <BrowserRouter>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -72,6 +76,7 @@ function App() {
           </Routes>
         </Suspense>
       </BrowserRouter>
+      </ErrorBoundary>
     </ThemeProvider>
   )
 }

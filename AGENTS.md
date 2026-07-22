@@ -71,11 +71,21 @@ Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI 
 
 5. **`ENCRYPTION_KEY` and `JWT_SECRET_KEY` auto-generate if not set.** Data encrypted with auto-generated keys won't survive restarts. Set stable values in `.env`.
 
-6. **CORS allows `*` in DEBUG mode.** `DEBUG=True` (default) = all origins allowed.
+6. **CORS uses whitelist, not wildcard.** Default: `localhost:5173, localhost:8000, tauri://localhost, https://tauri.localhost`. Even in DEBUG mode, no wildcard `*`.
 
 7. **Frontend env vars use `VITE_` prefix.** Set in shell or `.env`, not in `frontend/.env`. Key vars: `VITE_API_HOST`, `VITE_API_PROTOCOL`.
 
 8. **Supabase/Firebase fully removed.** All storage is local. No cloud dependencies.
+
+9. **Tray icon.** App minimizes to system tray on close. Click tray icon to show, click "Выйти" in tray menu to quit. Frontend `invoke("minimize_to_tray")` hides the window.
+
+10. **P2P Sharing via `nurchat://`.** Invite URIs: `nurchat://IP:PORT/USER_ID#HASH`. Direct WebSocket connection server-to-server. NAT relay fallback if direct connection fails.
+
+11. **LAN discovery via UDP multicast.** `239.255.43.21:8002` — `/api/discover/lan` scans local network. "Найти в локальной сети" button in P2P page.
+
+12. **Onboarding wizard.** Shown on first launch (4 steps). Dismissed with `localStorage.onboarding_seen`.
+
+13. **ErrorBoundary.** Catches React render errors, shows friendly error page with reload button.
 
 ## Env Variables
 

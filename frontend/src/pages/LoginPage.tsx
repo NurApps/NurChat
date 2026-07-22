@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { invoke } from "@tauri-apps/api/core"
-import api from "../services/api"
+import { api } from "../services/api"
 import { BASE_URL } from "../config"
 
 const TG_BLUE = "#2AABEE"

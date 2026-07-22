@@ -236,13 +236,27 @@ async def websocket_remote_endpoint(websocket: WebSocket, node_id: str):
             return
         address = hello.get("address", "unknown")
         user_id = hello.get("user_id", "")
+        is_relay = bool(hello.get("is_relay", False))
+        relay_for = hello.get("relay_for", "")
         if not user_id:
             await websocket.send_json({"type": "error", "message": "user_id required"})
             await websocket.close()
             return
         from server.ws.remote import remote_manager
-        await remote_manager.connect(node_id, websocket, address, user_id)
-        await websocket.send_json({"type": "remote_ack", "node_id": node_id})
+
+        # If connecting as relay client, find the target through the relay's peer connection
+        if is_relay and relay_for:
+            peer = remote_manager.get_peer_by_user(relay_for)
+            if not peer:
+                await websocket.send_json({"type": "error", "message": "Relay target not connected"})
+                await websocket.close()
+                return
+            # Register as relay client
+            await remote_manager.connect(node_id, websocket, address, user_id, is_relay=True)
+            await websocket.send_json({"type": "remote_ack", "node_id": node_id, "relayed": True})
+        else:
+            await remote_manager.connect(node_id, websocket, address, user_id, is_relay=is_relay)
+            await websocket.send_json({"type": "remote_ack", "node_id": node_id})
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")
@@ -255,6 +269,11 @@ async def websocket_remote_endpoint(websocket: WebSocket, node_id: str):
                     "target": target,
                     "delivered": sent,
                 })
+            elif msg_type == "relay_register":
+                peer = remote_manager.get_peer_by_node(node_id)
+                if peer:
+                    peer.is_relay = True
+                await websocket.send_json({"type": "relay_registered"})
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
     except asyncio.TimeoutError:

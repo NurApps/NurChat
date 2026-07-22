@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { invoke } from "@tauri-apps/api/core"
 import { api } from "../services/api"
 import { BASE_URL } from "../config"
+import { saveKeys } from "../services/e2e"
 
 const TG_BLUE = "#2AABEE"
 
@@ -179,7 +180,7 @@ export default function LoginPage() {
         localStorage.setItem("user", JSON.stringify(data.user))
         // Save E2E keys on registration (private keys returned once)
         if (data.private_key && data.signing_private_key && data.user) {
-          saveE2EKeys({
+          saveKeys({
             privateKeyHex: data.private_key,
             publicKeyHex: data.user.public_key || "",
             signingPrivateHex: data.signing_private_key,

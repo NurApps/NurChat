@@ -54,7 +54,9 @@ jobs:
         with:
           node-version: "22"
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -96,8 +98,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Install root deps (для @tauri-apps/cli)
+        run: npm install
+
       - name: Build app (Tauri)
-        run: npx tauri build --config src-tauri/tauri.conf.json
+        run: npx --yes tauri build --config src-tauri/tauri.conf.json
 
       - name: Upload app installer
         uses: actions/upload-artifact@v4

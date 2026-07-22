@@ -7,6 +7,8 @@ use p2p::{P2PNode, P2PConfig, P2PPeerInfo};
 use server::ServerManager;
 use std::path::PathBuf;
 use tauri::{Emitter, Manager, State};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+use tauri::menu::{MenuBuilder};
 use tokio::sync::RwLock;
 
 struct AppState {
@@ -129,6 +131,31 @@ async fn fetch_captcha() -> Result<serde_json::Value, String> {
         .map_err(|e| format!("Captcha parse failed: {e}"))
 }
 
+#[tauri::command]
+fn minimize_to_tray(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn share_invite(uri: String) -> Result<(), String> {
+    // Open default mail client with invite URI
+    let body = format!("Присоединяйся ко мне в NurChat!\n\nМоя ссылка: {}\n\nУстанови NurChat: https://github.com/NurApps/NurChat_desktop_beta/releases", uri);
+    let mailto = format!("mailto:?subject=Приглашение в NurChat&body={}", urlencoding(&body));
+    open::that(&mailto).map_err(|e| format!("Failed to open mail: {e}"))
+}
+
+fn urlencoding(s: &str) -> String {
+    s.chars().map(|c| match c {
+        ' ' => "%20".to_string(),
+        '\n' => "%0A".to_string(),
+        _ if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' || c == '~' => c.to_string(),
+        _ => format!("%{:02X}", c as u8),
+    }).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,6 +202,8 @@ pub fn run() {
             init_p2p,
             download_and_open_file,
             fetch_captcha,
+            minimize_to_tray,
+            share_invite,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -230,14 +259,66 @@ pub fn run() {
                 }
             }
 
+            // Tray icon
+            let show_label = "Показать NurChat";
+            let quit_label = "Выйти";
+
+            let tray_menu = MenuBuilder::new(app)
+                .item(&tauri::menu::MenuItemBuilder::with_id("show", show_label).build(app)?)
+                .item(&tauri::menu::MenuItemBuilder::with_id("quit", quit_label).build(app)?)
+                .build()?;
+
+            let _tray = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .tooltip("NurChat")
+                .on_menu_event(move |app, event| {
+                    match event.id().as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            let state = app.state::<AppState>();
+                            state.server.stop();
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up, ..
+                    } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
-                let state = app_handle.state::<AppState>();
-                state.server.stop();
+            let state = app_handle.state::<AppState>();
+            match event {
+                tauri::RunEvent::WindowEvent { label, event: win_event, .. } => {
+                    if let tauri::WindowEvent::CloseRequested { .. } = win_event {
+                        if let Some(window) = app_handle.get_webview_window(&label) {
+                            let _ = window.hide();
+                        }
+                    }
+                }
+                tauri::RunEvent::Exit => {
+                    state.server.stop();
+                }
+                _ => {}
             }
         });
 }

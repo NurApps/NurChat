@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from server.core.database import get_db
 from server.core.models import Message, Chat, File, ChatParticipant, User
@@ -31,7 +31,7 @@ def get_stats(
     ).scalar() or 0
 
     # Messages by day (last 30 days)
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     messages_by_day = (
         db.query(
             func.date(Message.created_at).label("day"),

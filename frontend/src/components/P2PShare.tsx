@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { invoke } from "@tauri-apps/api/core"
 import { api } from "../services/api"
 import { WS_BASE } from "../config"
 import styles from "./P2PShare.module.css"
@@ -143,12 +144,20 @@ export default function P2PShare() {
             {status === "Открытие порта..." ? "⏳" : "🔓"} Открыть порт
           </button>
         ) : (
-          <div className={styles.uriBox}>
-            <label>Ваша инвайт-ссылка:</label>
-            <div className={styles.uri}>{inviteUri}</div>
-            <button className={styles.copyBtn} onClick={() => { navigator.clipboard.writeText(inviteUri); setStatus("Скопировано!") }}>
-              📋 Копировать
-            </button>
+            <div className={styles.uriBox}>
+              <label>Ваша инвайт-ссылка:</label>
+              <div className={styles.uri}>{inviteUri}</div>
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <button className={styles.copyBtn} onClick={() => { navigator.clipboard.writeText(inviteUri); setStatus("Скопировано!") }}>
+                  📋 Копировать
+                </button>
+                <button className={styles.shareBtn} onClick={async () => {
+                  try { await invoke("share_invite", { uri: inviteUri }); setStatus("Отправлено!") }
+                  catch { setStatus("Ошибка отправки") }
+                }}>
+                  📤 Отправить другу
+                </button>
+              </div>
             <p className={styles.hint}>Отправьте эту ссылку другу в любом мессенджере</p>
           </div>
         )}

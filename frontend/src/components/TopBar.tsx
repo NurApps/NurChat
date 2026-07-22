@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useTheme } from "../context/useTheme"
+import { invoke } from "@tauri-apps/api/core"
 
 interface Props {
   username: string
@@ -93,6 +94,12 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
               <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
             </svg>
           )}
+        </button>
+        <button className="topbar-btn" title="Свернуть в трей" onClick={() => invoke("minimize_to_tray")}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="5" y1="19" x2="19" y2="19" />
+            <polyline points="5 14 12 7 19 14" />
+          </svg>
         </button>
         <button className="topbar-btn danger" title={t("common.logout")} onClick={onLogout}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

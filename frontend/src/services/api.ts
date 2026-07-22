@@ -288,9 +288,15 @@ export const api = {
     request<{ message: string; uri: string; host: string; port: number; user_id: string }>("POST", "/api/p2p/open-port"),
 
   getRemotePeers: () =>
-    request<{ peers: { node_id: string; address: string; user_id: string; connected_at: string }[] }>("GET", "/api/p2p/remote-peers"),
+    request<{ peers: { node_id: string; address: string; user_id: string; connected_at: string; is_relay: boolean }[] }>("GET", "/api/p2p/remote-peers"),
 
-  connectToRemote: async (inviteUri: string) => {
+  getRelayPeers: () =>
+    request<{ relays: { node_id: string; address: string; user_id: string }[] }>("GET", "/api/p2p/relay-peers"),
+
+  registerRelay: () =>
+    request<{ message: string; node_id: string }>("POST", "/api/p2p/register-relay"),
+
+  connectToRemote: async (inviteUri: string, relayUri?: string) => {
     const [, rest] = inviteUri.split("://")
     if (!rest) throw new Error("Неверный формат ссылки")
     const [hostPort, userIdHash] = rest.split("/")
@@ -302,32 +308,48 @@ export const api = {
     const token = getToken()
     if (!token) throw new Error("Не авторизован")
 
-    const wsUrl = `ws://${host}:${port}/ws/remote/${encodeURIComponent(token.slice(0, 16))}`
+    const myUserId = JSON.parse(atob(token.split(".")[1])).sub || ""
 
-    const ws = new WebSocket(wsUrl)
-    await new Promise<void>((resolve, reject) => {
-      ws.onopen = () => resolve()
-      ws.onerror = () => reject(new Error("Не удалось подключиться к удалённому серверу"))
-    })
-
-    ws.send(JSON.stringify({
-      type: "remote_hello",
-      address: `${host}:${port}`,
-      user_id: JSON.parse(atob(token.split(".")[1])).sub || "",
-    }))
-
-    const ack = await new Promise<any>((resolve, reject) => {
-      ws.onmessage = (e) => {
-        try { resolve(JSON.parse(e.data)) } catch { }
-      }
-      setTimeout(() => reject(new Error("Таймаут handshake")), 10000)
-    })
-
-    if (ack.type === "remote_ack") {
-      await request("POST", "/api/p2p/backups", { chat_id: userId, payload: JSON.stringify({ wsUrl, nodeId: ack.node_id }) })
-      return { connected: true, node_id: ack.node_id }
+    const tryConnect = (targetHost: string, targetPort: number, viaRelay: boolean): Promise<{ ws: WebSocket; node_id: string }> => {
+      return new Promise((resolve, reject) => {
+        const ws = new WebSocket(`ws://${targetHost}:${targetPort}/ws/remote/${encodeURIComponent(token.slice(0, 16))}`)
+        const timeout = setTimeout(() => { ws.close(); reject(new Error("Таймаут подключения")) }, 8000)
+        ws.onopen = () => {
+          clearTimeout(timeout)
+          ws.send(JSON.stringify({
+            type: "remote_hello",
+            address: `${targetHost}:${targetPort}`,
+            user_id: myUserId,
+            is_relay: viaRelay,
+            relay_for: viaRelay ? userId : "",
+          }))
+        }
+        ws.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data)
+            if (data.type === "remote_ack") resolve({ ws, node_id: data.node_id })
+          } catch { }
+        }
+        ws.onerror = () => { clearTimeout(timeout); reject(new Error("Ошибка соединения")) }
+      })
     }
-    throw new Error(ack.message || "Ошибка подключения")
+
+    try {
+      const result = await tryConnect(host, port, false)
+      await request("POST", "/api/p2p/backups", { chat_id: userId, payload: JSON.stringify({ nodeId: result.node_id }) })
+      return { connected: true, node_id: result.node_id }
+    } catch {
+      if (relayUri) {
+        const [, relayRest] = relayUri.split("://")
+        if (relayRest) {
+          const [relayHost, relayPortStr] = relayRest.split("/")[0].split(":")
+          const relayPort = parseInt(relayPortStr) || 8000
+          const result = await tryConnect(relayHost, relayPort, true)
+          return { connected: true, node_id: result.node_id, relayed: true }
+        }
+      }
+      throw new Error("Не удалось подключиться (прямое соединение недоступно, укажите relay сервер)")
+    }
   },
 
   // IPFS

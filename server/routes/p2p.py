@@ -329,3 +329,26 @@ async def disconnect_remote_peer(
         raise HTTPException(status_code=404, detail="Пир не найден")
     remote_manager.disconnect(node_id)
     return {"message": f"Пир {node_id} отключён"}
+
+
+@router.get("/relay-peers")
+async def list_relay_peers(
+    token: dict = Depends(verify_token_dependency),
+):
+    """Список пиров, которые могут выступать ретранслятором (NAT relay)"""
+    from server.ws.remote import remote_manager
+    return {"relays": remote_manager.relay_peers}
+
+
+@router.post("/register-relay")
+async def register_as_relay(
+    token: dict = Depends(verify_token_dependency),
+):
+    """Отмечает текущего пользователя как ретранслятор"""
+    user_id = token["sub"]
+    from server.ws.remote import remote_manager
+    peer = remote_manager.get_peer_by_user(user_id)
+    if not peer:
+        raise HTTPException(status_code=404, detail="Нет активного P2P соединения")
+    peer.is_relay = True
+    return {"message": "Релей зарегистрирован", "node_id": peer.node_id}

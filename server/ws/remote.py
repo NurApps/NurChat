@@ -10,11 +10,12 @@ logger = logging.getLogger("nurchat_remote")
 
 
 class RemotePeer:
-    def __init__(self, node_id: str, ws: WebSocket, address: str, user_id: str):
+    def __init__(self, node_id: str, ws: WebSocket, address: str, user_id: str, is_relay: bool = False):
         self.node_id = node_id
         self.ws = ws
         self.address = address
         self.user_id = user_id
+        self.is_relay = is_relay
         self.connected_at = datetime.now(timezone.utc)
 
 
@@ -33,18 +34,31 @@ class RemotePeerManager:
                 "address": p.address,
                 "user_id": p.user_id,
                 "connected_at": p.connected_at.isoformat(),
+                "is_relay": p.is_relay,
             }
             for p in self._peers.values()
         ]
 
-    async def connect(self, node_id: str, ws: WebSocket, address: str, user_id: str):
+    @property
+    def relay_peers(self) -> list[dict]:
+        return [
+            {
+                "node_id": p.node_id,
+                "address": p.address,
+                "user_id": p.user_id,
+            }
+            for p in self._peers.values()
+            if p.is_relay
+        ]
+
+    async def connect(self, node_id: str, ws: WebSocket, address: str, user_id: str, is_relay: bool = False):
         old = self._peers.pop(node_id, None)
         if old:
             try:
                 await old.ws.close()
             except Exception:
                 pass
-        self._peers[node_id] = RemotePeer(node_id, ws, address, user_id)
+        self._peers[node_id] = RemotePeer(node_id, ws, address, user_id, is_relay)
         self._user_map[user_id] = node_id
         logger.info("Remote peer connected: %s (%s)", node_id, address)
 

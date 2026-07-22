@@ -10,6 +10,12 @@ interface RemotePeer {
   connected_at: string
 }
 
+interface RelayPeer {
+  node_id: string
+  address: string
+  user_id: string
+}
+
 interface LanPeerInfo {
   node_id: string
   host: string
@@ -24,7 +30,10 @@ export default function P2PShare() {
   const [inviteUri, setInviteUri] = useState("")
   const [portOpen, setPortOpen] = useState(false)
   const [remoteInput, setRemoteInput] = useState("")
+  const [relayInput, setRelayInput] = useState("")
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([])
+  const [relayPeers, setRelayPeers] = useState<RelayPeer[]>([])
+  const [isRelay, setIsRelay] = useState(false)
   const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
   const [lanScanning, setLanScanning] = useState(false)
   const [status, setStatus] = useState("")
@@ -45,7 +54,14 @@ export default function P2PShare() {
     } catch { }
   }, [])
 
-  useEffect(() => { loadAddress(); loadPeers() }, [loadAddress, loadPeers])
+  const loadRelays = useCallback(async () => {
+    try {
+      const data = await api.getRelayPeers()
+      setRelayPeers(data.relays || [])
+    } catch { }
+  }, [])
+
+  useEffect(() => { loadAddress(); loadPeers(); loadRelays() }, [loadAddress, loadPeers, loadRelays])
 
   const handleOpenPort = async () => {
     setStatus("Открытие порта...")
@@ -66,13 +82,25 @@ export default function P2PShare() {
     setStatus("Подключение...")
     setError("")
     try {
-      await api.connectToRemote(remoteInput.trim())
+      await api.connectToRemote(remoteInput.trim(), relayInput.trim() || undefined)
       setRemoteInput("")
       setStatus("Подключено!")
       loadPeers()
     } catch (e: any) {
       setError(e.message || "Не удалось подключиться")
       setStatus("")
+    }
+  }
+
+  const handleRegisterRelay = async () => {
+    setError("")
+    try {
+      await api.registerRelay()
+      setIsRelay(true)
+      setStatus("Вы зарегистрированы как ретранслятор!")
+      loadRelays()
+    } catch (e: any) {
+      setError(e.message || "Не удалось зарегистрировать релей")
     }
   }
 
@@ -140,6 +168,34 @@ export default function P2PShare() {
             🔗 Подключиться
           </button>
         </div>
+        <input
+          type="text"
+          placeholder="Relay сервер (nurchat://ip:port — если нет прямого доступа)"
+          value={relayInput}
+          onChange={(e) => setRelayInput(e.target.value)}
+          className={styles.input}
+          style={{ marginTop: 6 }}
+        />
+      </div>
+
+      <div className={styles.section}>
+        <label>Ретранслятор (NAT relay):</label>
+        <button className={styles.scanBtn} onClick={handleRegisterRelay} style={{ background: "#7c3aed" }}>
+          📡 Стать ретранслятором
+        </button>
+        {relayPeers.length > 0 && (
+          <ul className={styles.peerList} style={{ marginTop: 8 }}>
+            {relayPeers.map((p) => (
+              <li key={p.node_id} className={styles.peerItem}>
+                <span>🔄 {p.user_id}</span>
+                <span className={styles.peerAddr}>{p.address}</span>
+                <button className={styles.smallBtn} onClick={() => setRelayInput(`nurchat://${p.address}/${p.user_id}`)}>
+                  Использовать
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className={styles.section}>
@@ -171,8 +227,8 @@ export default function P2PShare() {
           <ul className={styles.peerList}>
             {remotePeers.map((p) => (
               <li key={p.node_id} className={styles.peerItem}>
-                <span>🟢 {p.user_id}</span>
-                <span className={styles.peerAddr}>{p.address}</span>
+                <span>{p.is_relay ? "🔄" : "🟢"} {p.user_id}</span>
+                <span className={styles.peerAddr}>{p.address}{p.is_relay ? " (relay)" : ""}</span>
               </li>
             ))}
           </ul>

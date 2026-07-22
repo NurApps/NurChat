@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 import sys
 
@@ -371,10 +372,15 @@ async def root():
     }
 
 if __name__ == "__main__":
+    # PyInstaller fix: в --noconsole sys.stderr = None, валится uvicorn
+    if sys.stderr is None:
+        sys.stderr = io.StringIO()
+
     uvicorn.run(
         app,
         host=settings.SERVER_HOST,
         port=settings.SERVER_PORT,
         reload=False,
-        log_level="info"
+        log_level="info",
+        log_config=None
     )

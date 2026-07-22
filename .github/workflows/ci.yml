@@ -94,7 +94,7 @@ jobs:
 
       - name: Build server.exe with PyInstaller
         shell: cmd
-        run: pyinstaller server.spec --clean --noconfirm && dir dist\
+        run: pyinstaller --onefile --noconsole --name server.exe --hidden-import "uvicorn.logging" --hidden-import "uvicorn.loops.auto" --hidden-import "uvicorn.protocols.http.auto" --hidden-import "uvicorn.lifespan.on" --add-data "shared;shared" --collect-all "multipart" server\main.py --noconfirm && dir dist\
 
       - name: Install root dependencies
         shell: cmd

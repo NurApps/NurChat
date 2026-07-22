@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import sys
 from pathlib import Path
@@ -5,27 +7,32 @@ from pathlib import Path
 from shared.config import settings
 
 
-def setup_logger():
-    """Настройка логгера для NurChat"""
+class SafeStreamHandler(logging.StreamHandler):
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            super().emit(record)
+        except UnicodeEncodeError:
+            msg = self.format(record).encode('utf-8', errors='replace').decode()
+            try:
+                self.stream.write(msg + self.terminator)
+                self.flush()
+            except Exception:
+                self.handleError(record)
 
-    # Создаем директорию для логов
+
+def setup_logger():
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
 
-    # Формат логов
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    # Логгер для приложения
     logger = logging.getLogger("nurchat")
     logger.setLevel(logging.DEBUG if settings.DEBUG else logging.INFO)
 
-    # Консольный handler (с защитой от cp1251 — заменяет не-ASCII на ?)
-    if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(errors='replace')
-    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler = SafeStreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 

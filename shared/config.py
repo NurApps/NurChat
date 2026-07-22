@@ -1,6 +1,14 @@
 from pathlib import Path
 from typing import Any
 
+import sys
+
+# Должно быть самым первым — до любого вывода в консоль
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(errors='replace')
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

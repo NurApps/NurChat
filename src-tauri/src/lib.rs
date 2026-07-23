@@ -150,6 +150,15 @@ async fn fetch_register(body: String) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn minimize_to_tray(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
@@ -160,14 +169,14 @@ fn minimize_to_tray(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn share_invite(uri: String) -> Result<(), String> {
     // Open default mail client with invite URI
-    let body = format!("Присоединяйся ко мне в NurChat!\n\nМоя ссылка: {}\n\nУстанови NurChat: https://github.com/NurApps/NurChat_desktop_beta/releases", uri);
+    let body = format!("Присоединяйся ко мне в NurChat!\n\nМоя ссылка: {}\n\nУстанови NurChat: https://github.com/NurApps/NurChat_desktop/releases", uri);
     let mailto = format!("mailto:?subject=Приглашение в NurChat&body={}", urlencoding(&body));
     open::that(&mailto).map_err(|e| format!("Failed to open mail: {e}"))
 }
 
 #[tauri::command]
 async fn check_update(current_version: String) -> Result<serde_json::Value, String> {
-    let url = "https://api.github.com/repos/NurApps/NurChat_desktop_beta/releases/latest";
+    let url = "https://api.github.com/repos/NurApps/NurChat_desktop/releases/latest";
     let client = reqwest::Client::builder()
         .user_agent("NurChat")
         .build()
@@ -254,6 +263,7 @@ pub fn run() {
             fetch_register,
             check_update,
             get_app_version,
+            show_main_window,
             minimize_to_tray,
             share_invite,
         ])

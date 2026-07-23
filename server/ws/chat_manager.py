@@ -1,4 +1,5 @@
 import asyncio
+import json as json_lib
 import logging
 from datetime import datetime, timezone
 
@@ -502,8 +503,12 @@ async def handle_websocket_connection(websocket: WebSocket, user_id: str):
 
     try:
         while True:
-            # Получаем сообщения от клиента
-            data = await websocket.receive_json()
+            raw = await websocket.receive_text()
+            if len(raw) > 1024 * 1024:
+                logger.warning(f"Oversized WS message from {user_id}: {len(raw)} bytes")
+                await websocket.send_json({"event": "error", "data": {"message": "Сообщение слишком большое"}})
+                continue
+            data = json_lib.loads(raw)
             await chat_manager.handle_message(user_id, data)
 
     except WebSocketDisconnect:

@@ -2,7 +2,6 @@
 aiofiles==25.1.0
 argon2-cffi==23.1.0
 apscheduler==3.11.2
-bcrypt>=4.0.0
 cryptography==46.0.6
 fastapi==0.135.3
 httpx>=0.28.0

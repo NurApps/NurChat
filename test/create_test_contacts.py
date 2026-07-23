@@ -7,7 +7,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from server.core.database import SessionLocal
 from server.core.models import Contact, User
-from server.core.security import encryption, hash_password, security
+from server.core.security import encryption, security
+from server.utils.security import hash_password
 
 test_contacts = [
     {

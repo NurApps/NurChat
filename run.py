@@ -35,7 +35,7 @@ class NurChatRunner:
     def start_tauri(self):
         """Запуск Tauri клиента"""
         print("Запуск Tauri клиента...")
-        subprocess.Popen(["npx", "tauri", "dev"], shell=True)
+        subprocess.Popen(["npx", "tauri", "dev"])
 
     def wait_for_server(self, timeout=60):
         """Ожидание запуска сервера"""

@@ -694,3 +694,50 @@
   font-size: 12px;
   cursor: pointer;
 }
+
+/* UpdateBanner */
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+
+.update-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.update-banner-actions button {
+  padding: 4px 12px;
+  border: 1px solid rgba(255,255,255,0.5);
+  background: transparent;
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.update-banner-actions button:first-child {
+  background: rgba(255,255,255,0.2);
+  border-color: transparent;
+}
+
+.update-banner-actions button:hover {
+  background: rgba(255,255,255,0.3);
+}

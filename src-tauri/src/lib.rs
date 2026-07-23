@@ -165,6 +165,37 @@ fn share_invite(uri: String) -> Result<(), String> {
     open::that(&mailto).map_err(|e| format!("Failed to open mail: {e}"))
 }
 
+#[tauri::command]
+async fn check_update(current_version: String) -> Result<serde_json::Value, String> {
+    let url = "https://api.github.com/repos/NurApps/NurChat_desktop_beta/releases/latest";
+    let client = reqwest::Client::builder()
+        .user_agent("NurChat")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Update check failed: {e}"))?;
+    let data: serde_json::Value = resp.json().await.map_err(|e| format!("Parse failed: {e}"))?;
+    
+    let tag_name = data["tag_name"].as_str().unwrap_or("").to_string();
+    let latest = tag_name.trim_start_matches('v');
+    let current = current_version.trim_start_matches('v');
+    
+    Ok(serde_json::json!({
+        "has_update": latest != current,
+        "latest_version": tag_name,
+        "url": data["html_url"],
+        "body": data["body"],
+    }))
+}
+
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 fn urlencoding(s: &str) -> String {
     s.chars().map(|c| match c {
         ' ' => "%20".to_string(),
@@ -221,6 +252,8 @@ pub fn run() {
             download_and_open_file,
             fetch_captcha,
             fetch_register,
+            check_update,
+            get_app_version,
             minimize_to_tray,
             share_invite,
         ])

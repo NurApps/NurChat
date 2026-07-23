@@ -25,17 +25,52 @@ export interface E2EKeys {
 const KEYS_KEY = "e2e_keys"
 const SESSIONS_KEY = "e2e_sessions"
 
+function _deriveStorageKey(): Uint8Array {
+  const token = localStorage.getItem("token") || ""
+  const hash = nacl.hash(new TextEncoder().encode(token))
+  return hash.slice(0, 32)
+}
+
+function _encryptPayload(plain: string): string {
+  const key = _deriveStorageKey()
+  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
+  const data = new TextEncoder().encode(plain)
+  const box = nacl.secretbox(data, nonce, key)
+  if (!box) return plain
+  const combined = new Uint8Array(nonce.length + box.length)
+  combined.set(nonce)
+  combined.set(box, nonce.length)
+  return base64Encode(combined.buffer as ArrayBuffer)
+}
+
+function _decryptPayload(encoded: string): string | null {
+  try {
+    const key = _deriveStorageKey()
+    const combined = new Uint8Array(base64Decode(encoded))
+    const nonce = combined.subarray(0, nacl.secretbox.nonceLength)
+    const box = combined.subarray(nacl.secretbox.nonceLength)
+    const plain = nacl.secretbox.open(box, nonce, key)
+    return plain ? new TextDecoder().decode(new Uint8Array(plain)) : null
+  } catch {
+    return null
+  }
+}
+
 export function loadKeys(): E2EKeys | null {
   try {
     const raw = localStorage.getItem(KEYS_KEY)
-    return raw ? JSON.parse(raw) : null
+    if (!raw) return null
+    const decrypted = _decryptPayload(raw)
+    return decrypted ? JSON.parse(decrypted) : null
   } catch {
     return null
   }
 }
 
 export function saveKeys(keys: E2EKeys) {
-  localStorage.setItem(KEYS_KEY, JSON.stringify(keys))
+  const plain = JSON.stringify(keys)
+  const encrypted = _encryptPayload(plain)
+  localStorage.setItem(KEYS_KEY, encrypted)
 }
 
 export function clearKeys() {

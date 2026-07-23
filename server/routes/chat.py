@@ -594,7 +594,7 @@ async def export_chat(
         participant = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat_id, models.ChatParticipant.user_id == user_id).first()
         if not participant:
             raise HTTPException(status_code=404, detail="Чат не найден")
-        messages = db.query(models.Message).filter(models.Message.chat_id == chat_id, models.Message.is_deleted == False).order_by(models.Message.created_at.asc()).all()
+        messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.chat_id == chat_id, models.Message.is_deleted == False).order_by(models.Message.created_at.asc()).all()
         chat = db.query(models.Chat).filter(models.Chat.id == chat_id).first()
         if format == "json":
             export_data = {
@@ -603,7 +603,7 @@ async def export_chat(
                 "messages": []
             }
             for msg in messages:
-                sender = db.query(models.User).filter(models.User.id == msg.user_id).first()
+                sender = msg.user
                 export_data["messages"].append({
                     "id": msg.id, "sender": sender.username if sender else "Unknown",
                     "content": msg.content, "type": msg.message_type,
@@ -614,7 +614,7 @@ async def export_chat(
             export_text = f"Экспорт чата: {chat.name if chat.name else chat_id}\n"
             export_text += "=" * 50 + "\n\n"
             for msg in messages:
-                sender = db.query(models.User).filter(models.User.id == msg.user_id).first()
+                sender = msg.user
                 ts = msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(msg.created_at, 'strftime') else str(msg.created_at)
                 export_text += f"[{ts}] {sender.username if sender else 'Unknown'}: {msg.content}\n"
             return {"content": export_text}

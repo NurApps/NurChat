@@ -71,7 +71,7 @@ class ChatCrypto:
 
     def decrypt(self, chat_id: str, data: str) -> str:
         if not data.startswith("enc:"):
-            return data[4:] if data.startswith("enc:") and len(data) > 4 else data
+            return data
         key = self.get_or_create_key(chat_id)
         box = nacl.secret.SecretBox(key)
         raw = base64.b64decode(data[4:])

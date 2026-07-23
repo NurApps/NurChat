@@ -10,8 +10,9 @@ if project_root not in sys.path:
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -130,9 +131,52 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "Accept"],
 )
+
+# Глобальный обработчик исключений
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Внутренняя ошибка сервера"},
+    )
+
+# Security headers
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    if "Content-Security-Policy" not in response.headers:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; "
+            "img-src 'self' data: blob: http://localhost:* http://127.0.0.1:*; "
+            "media-src 'self' blob: http://localhost:* http://127.0.0.1:*; "
+            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "
+            "frame-ancestors 'none'; "
+            "form-action 'self'"
+        )
+    return response
+
+# Body size limit
+MAX_BODY_SIZE = 10 * 1024 * 1024
+
+@app.middleware("http")
+async def limit_body_size(request: Request, call_next):
+    if request.method in ("POST", "PUT", "PATCH"):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_BODY_SIZE:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=413, content={"detail": "Тело запроса слишком большое (макс. 10MB)"})
+    return await call_next(request)
 
 # Роуты
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])

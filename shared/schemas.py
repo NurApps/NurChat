@@ -159,6 +159,7 @@ class FileResponse(FileBase):
 # Auth
 class Token(BaseSchema):
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: str
     user: UserResponse
     private_key: Optional[str] = None

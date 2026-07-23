@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
+import { getVersion } from "@tauri-apps/api/app"
+import { open } from "@tauri-apps/plugin-shell"
 import { api } from "../services/api"
 import { BASE_URL, avatarUrl } from "../config"
 import { useAvatar } from "../hooks/useAvatar"
 import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
+import { checkForUpdates } from "../services/updateService"
 import type { UserResponse } from "../types"
 
 type SettingsTab = "profile" | "notifications" | "privacy" | "storage" | "security" | "account"
@@ -53,6 +56,9 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [tab, setTab] = useState<SettingsTab>("profile")
   const { uploading, msg, setMsg, uploadAvatar, deleteAvatar } = useAvatar(setUser)
+  const [appVersion, setAppVersion] = useState("")
+  const [updateStatus, setUpdateStatus] = useState<"checking" | "available" | "latest" | "error" | "">("")
+  const [updateUrl, setUpdateUrl] = useState("")
 
   const [e2eEnabled, setE2eEnabled] = useState(false)
   const [storageInfo, setStorageInfo] = useState<{total: number; files: number} | null>(null)
@@ -87,7 +93,7 @@ export default function SettingsPage() {
   useEffect(() => {
     setE2eEnabled(hasKeys())
     api.getStorageInfo?.().then((info: any) => setStorageInfo(info)).catch(() => {})
-    loadTotpStatus()
+    getVersion().then(setAppVersion).catch(() => setAppVersion("0.15.0"))
   }, [])
 
   const loadTotpStatus = async () => {
@@ -289,6 +295,19 @@ export default function SettingsPage() {
     api.clearToken()
     clearPin()
     navigate("/login", { replace: true })
+  }
+
+  const handleCheckUpdate = async () => {
+    setUpdateStatus("checking")
+    const result = await checkForUpdates()
+    if (!result) {
+      setUpdateStatus("error")
+    } else if (result.has_update) {
+      setUpdateStatus("available")
+      setUpdateUrl(result.url)
+    } else {
+      setUpdateStatus("latest")
+    }
   }
 
   const handleDeleteAccount = async () => {
@@ -740,7 +759,7 @@ export default function SettingsPage() {
                 <h3 className="settings-group-title">О приложении</h3>
                 <div className="settings-field-row">
                   <span className="settings-field-label">Версия</span>
-                  <span className="settings-field-value">0.1.0</span>
+                  <span className="settings-field-value">{appVersion || "0.15.0"}</span>
                 </div>
                 <div className="settings-field-row">
                   <span className="settings-field-label">Лицензия</span>
@@ -749,6 +768,22 @@ export default function SettingsPage() {
                 <div className="settings-field-row">
                   <span className="settings-field-label">Разработчик</span>
                   <span className="settings-field-value">NurApps</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}>
+                  <button className="settings-action-btn" onClick={handleCheckUpdate} disabled={updateStatus === "checking"}>
+                    {updateStatus === "checking" ? "Проверка..." : "Проверить обновления"}
+                  </button>
+                  {updateStatus === "available" && (
+                    <button className="settings-action-btn" onClick={() => open(updateUrl)}>
+                      Скачать {appVersion}
+                    </button>
+                  )}
+                  {updateStatus === "latest" && (
+                    <span style={{ color: "var(--success)", fontSize: "13px" }}>У вас последняя версия</span>
+                  )}
+                  {updateStatus === "error" && (
+                    <span style={{ color: "var(--error)", fontSize: "13px" }}>Ошибка проверки обновлений</span>
+                  )}
                 </div>
               </div>
             </div>

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ from server.utils.logger import logger
 from shared.config import settings
 from shared.constants import FILE_TYPES
 from shared.exceptions import FileTooLargeError, FileTypeNotAllowedError
+from shared.rate_limiter import limiter
 
 from ..core import models, schemas
 from ..core.database import get_db
@@ -50,7 +51,9 @@ def _detect_mime_type(header: bytes, filename: str) -> str:
 
 
 @router.post("/upload", response_model=schemas.FileUploadResponse)
+@limiter.limit("10/minute")
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     file_type: str = Form(...),
     db: Session = Depends(get_db),

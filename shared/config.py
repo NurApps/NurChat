@@ -136,14 +136,30 @@ if not settings.JWT_SECRET_KEY:
 if _env_written:
     import os
     _env_path = Path(os.getcwd()) / ".env"
-    if not _env_path.exists():
-        try:
+    try:
+        _env_lines = []
+        _written_enc = False
+        _written_jwt = False
+        if _env_path.exists():
+            _env_lines = _env_path.read_text().splitlines()
+            _existing = {l.split("=", 1)[0] for l in _env_lines if "=" in l}
+            if "ENCRYPTION_KEY" not in _existing:
+                _env_lines.append(f"ENCRYPTION_KEY={settings.ENCRYPTION_KEY}")
+                _written_enc = True
+            if "JWT_SECRET_KEY" not in _existing:
+                _env_lines.append(f"JWT_SECRET_KEY={settings.JWT_SECRET_KEY}")
+                _written_jwt = True
+            if _written_enc or _written_jwt:
+                _env_path.write_text("\n".join(_env_lines) + "\n")
+        else:
             _env_path.write_text(
                 f"ENCRYPTION_KEY={settings.ENCRYPTION_KEY}\n"
                 f"JWT_SECRET_KEY={settings.JWT_SECRET_KEY}\n"
             )
-            logging.getLogger("nurchat").info("Auto-generated .env at %s", _env_path)
-        except Exception as _exc:
-            logging.getLogger("nurchat").warning("Failed to write .env: %s", _exc)
+            _written_enc = True
+        if _written_enc or _written_jwt:
+            logging.getLogger("nurchat").info("Auto-generated keys written to %s", _env_path)
+    except Exception as _exc:
+        logging.getLogger("nurchat").warning("Failed to write .env: %s", _exc)
 
 ENCRYPTION_KEY = settings.ENCRYPTION_KEY.encode()

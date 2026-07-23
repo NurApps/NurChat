@@ -6,6 +6,7 @@ import OfflineBanner from "./components/OfflineBanner"
 import ServerBootOverlay from "./components/ServerBootOverlay"
 import Onboarding from "./components/Onboarding"
 import ErrorBoundary from "./components/ErrorBoundary"
+import UpdateBanner from "./components/UpdateBanner"
 import { e2eWorkerService } from "./services/e2eWorkerService"
 
 const LoginPage = lazy(() => import("./pages/LoginPage"))
@@ -55,6 +56,7 @@ function App() {
     <ThemeProvider>
       <ErrorBoundary>
         <Onboarding />
+        <UpdateBanner />
         {!serverReady && <ServerBootOverlay onReady={() => setServerReady(true)} />}
         <OfflineBanner />
         <BrowserRouter>

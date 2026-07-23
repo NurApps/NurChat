@@ -18,10 +18,10 @@ def random_username():
     return ''.join(random.choices(string.ascii_lowercase, k=10))
 
 
-BASE_URL = "http://127.0.0.1:8002"
+BASE_URL = "http://127.0.0.1:8000"
 
 class TestResults:
-    def __init__(self):      #
+    def __init__(self):
         self.passed = 0
         self.failed = 0
         self.errors = []
@@ -53,6 +53,27 @@ class TestResults:
         return self.failed == 0
 
 
+def get_captcha():
+    """Получить CAPTCHA для регистрации"""
+    r = requests.get(f"{BASE_URL}/api/auth/captcha", timeout=10)
+    if r.status_code == 200:
+        data = r.json()
+        return data.get("captcha_id"), data.get("question")
+    return None, None
+
+
+def solve_captcha(question: str) -> str:
+    """Решить простую математическую CAPTCHA."""
+    question = question.strip().lower().replace("?", "").replace(" ", "")
+    if "+" in question:
+        parts = question.split("+")
+        try:
+            return str(int(parts[0]) + int(parts[1]))
+        except (ValueError, IndexError):
+            pass
+    return "0"
+
+
 def test_health_check(results):
     """Тест 1: Проверка доступности сервера"""
     try:
@@ -72,13 +93,22 @@ def test_registration(results):
         username = random_username()
         password = "TestPass123"
 
+        captcha_id, question = get_captcha()
+        if captcha_id and question:
+            captcha_code = solve_captcha(question)
+        else:
+            captcha_code = "0"
+            captcha_id = ""
+
         r = requests.post(f"{BASE_URL}/api/auth/register", json={
             "username": username,
             "password": password,
-            "first_name": "Тестовый"
+            "first_name": "Тестовый",
+            "captcha_id": captcha_id,
+            "captcha_code": captcha_code,
         }, timeout=10)
 
-        assert r.status_code == 200, f"Status: {r.status_code}"
+        assert r.status_code == 200, f"Status: {r.status_code}, Response: {r.text}"
         data = r.json()
 
         assert "access_token" in data
@@ -284,18 +314,34 @@ def test_invalid_login(results):
         return False
 
 
+def _register_with_captcha(username: str, password: str, first_name: str, last_name: str = "", expect_fail: bool = False):
+    """Helper: get CAPTCHA and register."""
+    captcha_id, question = get_captcha()
+    captcha_code = solve_captcha(question) if question else "0"
+    payload = {
+        "username": username,
+        "password": password,
+        "first_name": first_name,
+        "captcha_id": captcha_id or "",
+        "captcha_code": captcha_code,
+    }
+    if last_name:
+        payload["last_name"] = last_name
+    r = requests.post(f"{BASE_URL}/api/auth/register", json=payload, timeout=10)
+    if expect_fail:
+        return r.status_code in [400, 422], r
+    return r.status_code == 200, r
+
+
 def test_duplicate_registration(results, username):
     """Тест 12: Регистрация с занятым username"""
     try:
-        r = requests.post(f"{BASE_URL}/api/auth/register", json={
-            "username": username,
-            "password": "AnotherPass123",
-            "first_name": "Дубликат"
-        }, timeout=10)
-
-        assert r.status_code == 400
-        results.add_pass("Duplicate Registration Rejection")
-        return True
+        ok, r = _register_with_captcha(username, "AnotherPass123", "Дубликат", expect_fail=True)
+        if ok or r.status_code in [400, 422]:
+            results.add_pass("Duplicate Registration Rejection")
+            return True
+        results.add_fail("Duplicate Registration Rejection", f"Expected 400/422, got {r.status_code}")
+        return False
     except Exception as e:
         results.add_fail("Duplicate Registration Rejection", str(e))
         return False
@@ -304,16 +350,12 @@ def test_duplicate_registration(results, username):
 def test_validation_username(results, token):
     """Тест 13: Валидация username (спецсимволы)"""
     try:
-        r = requests.post(f"{BASE_URL}/api/auth/register", json={
-            "username": "user<script>alert('xss')</script>",
-            "password": "TestPass123",
-            "first_name": "Тест"
-        }, timeout=10)
-
-        # Должна быть ошибка валидации
-        assert r.status_code in [400, 422]
-        results.add_pass("Username XSS Validation")
-        return True
+        ok, r = _register_with_captcha("user<script>alert('xss')</script>", "TestPass123", "Тест", expect_fail=True)
+        if ok or r.status_code in [400, 422]:
+            results.add_pass("Username XSS Validation")
+            return True
+        results.add_fail("Username XSS Validation", f"Expected 400/422, got {r.status_code}")
+        return False
     except Exception as e:
         results.add_fail("Username XSS Validation", str(e))
         return False
@@ -324,28 +366,20 @@ def test_username_only_letters(results):
     passed = True
 
     # С цифрами — должно FAIL
-    r = requests.post(f"{BASE_URL}/api/auth/register", json={
-        "username": "user123",
-        "password": "abc",
-        "first_name": "Тест"
-    }, timeout=10)
-    if r.status_code not in [400, 422]:
+    ok, r = _register_with_captcha("user123", "abc", "Тест", expect_fail=True)
+    if not ok and r.status_code in [400, 422]:
+        results.add_pass("Username Reject Digits")
+    else:
         results.add_fail("Username Reject Digits", f"Expected 400/422, got {r.status_code}")
         passed = False
-    else:
-        results.add_pass("Username Reject Digits")
 
     # С кириллицей — должно FAIL
-    r = requests.post(f"{BASE_URL}/api/auth/register", json={
-        "username": "пользователь",
-        "password": "abc",
-        "first_name": "Тест"
-    }, timeout=10)
-    if r.status_code not in [400, 422]:
+    ok, r = _register_with_captcha("пользователь", "abc", "Тест", expect_fail=True)
+    if not ok and r.status_code in [400, 422]:
+        results.add_pass("Username Reject Cyrillic")
+    else:
         results.add_fail("Username Reject Cyrillic", f"Expected 400/422, got {r.status_code}")
         passed = False
-    else:
-        results.add_pass("Username Reject Cyrillic")
 
     return passed
 
@@ -356,16 +390,12 @@ def test_password_min_length(results):
 
     # Пароль 3 символа — OK
     username = random_username()
-    r = requests.post(f"{BASE_URL}/api/auth/register", json={
-        "username": username,
-        "password": "abc",
-        "first_name": "Тест"
-    }, timeout=10)
-    if r.status_code != 200:
-        results.add_fail("Password 3 chars Accepted", f"Expected 200, got {r.status_code}")
-        passed = False
-    else:
+    ok, r = _register_with_captcha(username, "abc", "Тест")
+    if ok:
         results.add_pass("Password 3 chars Accepted")
+    else:
+        results.add_fail("Password 3 chars Accepted", f"Expected 200, got {r.status_code}: {r.text}")
+        passed = False
 
     return passed
 
@@ -373,17 +403,12 @@ def test_password_min_length(results):
 def test_name_any_letters(results):
     """Тест 16: Имя/фамилия любые буквы"""
     username = random_username()
-    r = requests.post(f"{BASE_URL}/api/auth/register", json={
-        "username": username,
-        "password": "abc",
-        "first_name": "Мухаммад",
-        "last_name": "ибн Абдуллах"
-    }, timeout=10)
-    if r.status_code != 200:
-        results.add_fail("Name Any Letters", f"Expected 200, got {r.status_code}: {r.text}")
-        return False
-    results.add_pass("Name Any Letters (Cyrillic/Arabic)")
-    return True
+    ok, r = _register_with_captcha(username, "abc", "Мухаммад", "ибн Абдуллах")
+    if ok:
+        results.add_pass("Name Any Letters (Cyrillic/Arabic)")
+        return True
+    results.add_fail("Name Any Letters", f"Expected 200, got {r.status_code}: {r.text}")
+    return False
 
 
 def test_logout(results, token):

@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "logging\config.py", line 587, in configure
+  File "logging\config.py", line 699, in configure_formatter
+  File "logging\config.py", line 490, in configure_custom
+  File "uvicorn\logging.py", line 42, in __init__
+AttributeError: 'NoneType' object has no attribute 'isatty'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "main.py", line 374, in <module>
+  File "uvicorn\main.py", line 541, in run
+  File "uvicorn\config.py", line 280, in __init__
+  File "uvicorn\config.py", line 372, in configure_logging
+  File "logging\config.py", line 942, in dictConfig
+  File "logging\config.py", line 590, in configure
+ValueError: Unable to configure formatter 'default'

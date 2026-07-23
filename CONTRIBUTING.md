@@ -14,7 +14,7 @@
 
 ```bash
 # Клонируем
-git clone https://github.com/NurApps/NurChat_desktop_beta.git
+git clone https://github.com/NurApps/NurChat_desktop.git
 cd NurChat_desktop
 
 # Python venv

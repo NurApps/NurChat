@@ -23,8 +23,6 @@ class Settings(BaseSettings):
     P2P_RELAY_STORE_MESSAGES: bool = True
     P2P_PENDING_LIMIT: int = 500
     P2P_DISCOVERY_TTL_SECONDS: int = 300
-    USE_IPFS: bool = True
-    IPFS_API_URL: str = "http://127.0.0.1:5001"
     USE_FEDERATED_BACKUP: bool = False
     FEDERATED_BACKUP_URL: str | None = None
 
@@ -38,13 +36,6 @@ class Settings(BaseSettings):
     WEBRTC_ICE_SERVERS: str | None = None  # JSON: [{"urls":"stun:...","username":"...","credential":"..."}]
     CLIENT_HOST: str = "localhost"
 
-    # S3 / MinIO
-    USE_S3_STORAGE: bool = False
-    S3_ENDPOINT: str = "http://localhost:9000"
-    S3_ACCESS_KEY: str = ""
-    S3_SECRET_KEY: str = ""
-    S3_BUCKET: str = ""
-    S3_REGION: str = "us-east-1"
     CLIENT_PORT: int = 8001
     MEDIA_ROOT: str = "media"
     MAX_FILE_SIZE: int = 50 * 1024 * 1024
@@ -55,7 +46,7 @@ class Settings(BaseSettings):
     CLEANUP_INTERVAL_HOURS: int = 6
     ORPHANED_CLEANUP_HOURS: int = 12
     REDIS_URL: str = "redis://localhost:6379/0"
-    USE_REDIS: bool = False
+    USE_REDIS: bool = True
     ENABLE_METRICS: bool = False
     LOG_LEVEL: str = "INFO"
     LOG_TO_FILE: bool = True

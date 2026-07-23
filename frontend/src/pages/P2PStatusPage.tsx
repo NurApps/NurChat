@@ -29,11 +29,6 @@ export default function P2PStatusPage() {
   const [peerQuery, setPeerQuery] = useState("")
   const [searching, setSearching] = useState(false)
   const [p2pConnected, setP2pConnected] = useState(false)
-  const [ipfsOnline, setIpfsOnline] = useState<boolean | null>(null)
-  const [ipfsEnabled, setIpfsEnabled] = useState(true)
-  const [ipfsMessage, setIpfsMessage] = useState("")
-  const [ipfsInstalled, setIpfsInstalled] = useState(false)
-  const [ipfsInstalling, setIpfsInstalling] = useState(false)
   const [msg, setMsg] = useState("")
 
   useEffect(() => {
@@ -51,20 +46,6 @@ export default function P2PStatusPage() {
       if (event.type === "connected") setP2pConnected(true)
       if (event.type === "disconnected") setP2pConnected(false)
     })
-
-    api.getIPFSStatus().then((status) => {
-      setIpfsEnabled(status.enabled)
-      setIpfsOnline(status.online)
-      setIpfsMessage(status.message)
-    }).catch(() => {
-      setIpfsOnline(false)
-      setIpfsMessage("Ошибка подключения к серверу")
-    })
-
-    // Check IPFS manager status
-    api.getIPFSManagerStatus().then((status) => {
-      setIpfsInstalled(status.installed)
-    }).catch(() => {})
 
     return unsub
   }, [])
@@ -137,50 +118,6 @@ export default function P2PStatusPage() {
     }
   }, [])
 
-  const handleInstallIPFS = useCallback(async () => {
-    setIpfsInstalling(true)
-    try {
-      const result = await api.installIPFS()
-      if (result.success) {
-        setIpfsInstalled(true)
-        setMsg("IPFS установлен! Нажмите 'Запустить'")
-      } else {
-        setMsg(result.message)
-      }
-    } catch (e) {
-      setMsg("Ошибка установки IPFS")
-    } finally {
-      setIpfsInstalling(false)
-    }
-  }, [])
-
-  const handleStartIPFS = useCallback(async () => {
-    try {
-      const result = await api.startIPFS()
-      setMsg(result.message)
-      if (result.success) {
-        setTimeout(() => {
-          api.getIPFSStatus().then((s) => {
-            setIpfsOnline(s.online)
-            setIpfsMessage(s.message)
-          })
-        }, 2000)
-      }
-    } catch (e) {
-      setMsg("Ошибка запуска IPFS")
-    }
-  }, [])
-
-  const handleStopIPFS = useCallback(async () => {
-    try {
-      const result = await api.stopIPFS()
-      setMsg(result.message)
-      setIpfsOnline(false)
-    } catch (e) {
-      setMsg("Ошибка остановки IPFS")
-    }
-  }, [])
-
   return (
     <div className="settings-page">
       <div className="settings-header">
@@ -189,7 +126,7 @@ export default function P2PStatusPage() {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h2>P2P & IPFS</h2>
+        <h2>P2P</h2>
       </div>
 
       <div className="settings-body">
@@ -208,49 +145,11 @@ export default function P2PStatusPage() {
               {hasKeys ? "Настроены" : "Не сгенерированы"}
             </span>
           </div>
-          <div className="profile-field">
-            <span className="profile-field-label">IPFS</span>
-            <span className="profile-field-value" style={{ color: !ipfsEnabled ? "#666" : ipfsOnline ? "#4CAF50" : "#9E9E9E" }}>
-              {!ipfsEnabled ? "Отключён" : ipfsOnline === null ? "Проверка..." : ipfsOnline ? "Онлайн" : "Недоступен"}
-            </span>
-          </div>
-          {ipfsEnabled && ipfsMessage && (
-            <p style={{ fontSize: 11, color: "#888", margin: "4px 0 0" }}>{ipfsMessage}</p>
-          )}
         </div>
 
         {/* P2P Sharing (direct server-to-server) */}
         <div className="settings-fields" style={{ marginTop: 16 }}>
           <P2PShare />
-        </div>
-
-        {/* IPFS Manager */}
-        <div className="settings-fields" style={{ marginTop: 16 }}>
-          <h3 style={{ marginTop: 0 }}>IPFS (опционально)</h3>
-          <p style={{ fontSize: 12, color: "#888", margin: "0 0 12px" }}>
-            IPFS — распределённое хранилище файлов. Не обязательно для работы чата.
-          </p>
-          {!ipfsInstalled ? (
-            <button
-              className="settings-save-btn"
-              onClick={handleInstallIPFS}
-              disabled={ipfsInstalling}
-            >
-              {ipfsInstalling ? "Установка..." : "Установить IPFS (~20 МБ)"}
-            </button>
-          ) : (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {!ipfsOnline ? (
-                <button className="settings-save-btn" onClick={handleStartIPFS}>
-                  Запустить IPFS
-                </button>
-              ) : (
-                <button className="avatar-btn" onClick={handleStopIPFS} style={{ background: "#f44336", color: "#fff" }}>
-                  Остановить IPFS
-                </button>
-              )}
-            </div>
-          )}
         </div>
 
         {/* P2P Actions */}

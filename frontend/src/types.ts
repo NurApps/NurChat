@@ -20,7 +20,7 @@ export interface MessageResponse {
   chat_id: string
   message_type: string
   file_id?: string
-  file?: { id: string; filename: string; file_type: string; file_size: number; ipfs_hash?: string; uploaded_at: string; user_id: string }
+  file?: { id: string; filename: string; file_type: string; file_size: number; uploaded_at: string; user_id: string }
   encrypted_content?: string
   signature?: string
   user: UserResponse
@@ -86,7 +86,6 @@ export interface FileUploadResponse {
   file_type: string
   file_size: number
   file_path: string
-  ipfs_hash?: string
   ttl_days: number
   uploaded_at: string
   user_id: string

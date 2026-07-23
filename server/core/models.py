@@ -30,21 +30,8 @@ class User(Base):
     messages = relationship("Message", back_populates="user")
     files = relationship("File", back_populates="user")
     chats = relationship("ChatParticipant", back_populates="user")
-    plans = relationship("Plan", back_populates="owner")
     contacts_added = relationship("Contact", foreign_keys="Contact.user_id", back_populates="user")
     contacts_of_user = relationship("Contact", foreign_keys="Contact.contact_user_id", back_populates="contact_user")
-
-class Plan(Base):
-    __tablename__ = "plans"
-
-    id = Column(String, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"))
-    task = Column(String, index=True)
-    steps = Column(Text) # JSON-строка с шагами
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    owner = relationship("User", back_populates="plans")
-    messages = relationship("Message", back_populates="plan")
 
 class Chat(Base):
     __tablename__ = "chats"
@@ -92,7 +79,6 @@ class Message(Base):
     signature = Column(Text, nullable=True)  # E2E: Ed25519 signature (base64)
     message_type = Column(String, default=MESSAGE_TYPES["TEXT"])
     file_id = Column(String, ForeignKey("files.id"), nullable=True)
-    plan_id = Column(String, ForeignKey("plans.id"), nullable=True)
     forwarded_from = Column(String, nullable=True)  # ID оригинального сообщения
     is_deleted = Column(Boolean, default=False)
     deleted_for_all = Column(Boolean, default=False)
@@ -102,7 +88,6 @@ class Message(Base):
     user = relationship("User", back_populates="messages")
     chat = relationship("Chat", back_populates="messages")
     file = relationship("File", back_populates="message")
-    plan = relationship("Plan", back_populates="messages")
 
 class File(Base):
     __tablename__ = "files"
@@ -116,7 +101,6 @@ class File(Base):
     file_path = Column(String)
     file_type = Column(String)  # image, video, voice, document
     file_size = Column(Integer)
-    ipfs_hash = Column(String, nullable=True)  # IPFS content hash (CID)
     ttl_days = Column(Integer, default=30)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 

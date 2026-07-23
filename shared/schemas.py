@@ -147,14 +147,12 @@ class FileBase(BaseSchema):
 
 class FileUploadResponse(FileBase):
     file_path: str
-    ipfs_hash: Optional[str] = None
     ttl_days: int
     uploaded_at: datetime
 
 class FileResponse(FileBase):
     user_id: str
     uploaded_at: datetime
-    ipfs_hash: Optional[str] = None
 
 # Auth
 class Token(BaseSchema):
@@ -275,20 +273,6 @@ class BlockedUserBase(BaseSchema):
 
 class BlockedUserResponse(BlockedUserBase):
     pass
-
-# Plans
-class PlanBase(BaseSchema):
-    task: str = Field(..., max_length=255, description="The main task of the plan")
-    steps: str = Field(..., description="The steps of the plan, likely a JSON string")
-
-class PlanCreate(PlanBase):
-    pass
-
-class PlanResponse(PlanBase):
-    id: str
-    user_id: str
-    created_at: datetime
-
 
 class P2PIdentityResponse(BaseSchema):
     user_id: str

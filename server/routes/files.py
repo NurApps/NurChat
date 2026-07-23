@@ -102,18 +102,6 @@ async def upload_file(
         file_id = file_info["file_id"]
         file_path = file_info["file_path"]
 
-        # IPFS: загружаем файл если IPFS включён
-        ipfs_hash = None
-        if settings.USE_IPFS:
-            try:
-                from server.core.ipfs_client import ipfs_client
-                ipfs_result = await ipfs_client.add_file(file_path)
-                if ipfs_result:
-                    ipfs_hash = ipfs_result["hash"]
-                    logger.info("File %s also stored in IPFS: %s", file_id, ipfs_hash)
-            except Exception as e:
-                logger.debug("IPFS upload skipped: %s", e)
-
         now = datetime.now(timezone.utc)
         db_file = models.File(
             id=file_id,
@@ -122,7 +110,6 @@ async def upload_file(
             file_path=file_path,
             file_type=file_type,
             file_size=len(file_content),
-            ipfs_hash=ipfs_hash,
             ttl_days=30,
             uploaded_at=now,
         )
@@ -136,7 +123,6 @@ async def upload_file(
             file_path=file_path,
             file_type=file_type,
             file_size=len(file_content),
-            ipfs_hash=ipfs_hash,
             uploaded_at=now,
             user_id=user_id,
             ttl_days=30,
@@ -205,21 +191,7 @@ async def download_file(
         try:
             file_path = await file_storage.get_file_path(file_id, file_record.user_id)
         except FileNotFoundError:
-            # IPFS fallback: если локальный файл не найден, пробуем из IPFS
-            if file_record.ipfs_hash and settings.USE_IPFS:
-                try:
-                    from server.core.ipfs_client import ipfs_client
-                    content = await ipfs_client.cat(file_record.ipfs_hash)
-                    if content:
-                        import mimetypes
-                        mime_type = mimetypes.guess_type(file_record.filename or "")[0] or "application/octet-stream"
-                        from starlette.responses import Response
-                        return Response(content=content, media_type=mime_type, headers={
-                            "Content-Disposition": f'attachment; filename="{file_record.filename}"'
-                        })
-                except Exception as e:
-                    logger.error("IPFS fallback failed for %s: %s", file_id, e)
-            raise HTTPException(status_code=404, detail="Файл не найден ни локально, ни в IPFS")
+            raise HTTPException(status_code=404, detail="Файл не найден")
 
         # Determine proper MIME type from file extension
         import mimetypes

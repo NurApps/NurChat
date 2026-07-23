@@ -7,7 +7,6 @@ services:
       - "8000:8000"
     volumes:
       - ./media:/app/media
-      - ./nurchat.db:/app/nurchat.db
     env_file:
       - .env
     environment:

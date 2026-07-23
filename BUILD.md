@@ -100,7 +100,7 @@ npx tauri dev
     "updater": {
       "endpoints": [
         "https://your-server.com/latest.json",
-        "https://github.com/NurApps/NurChat_desktop_beta/releases/latest/download/latest.json"
+        "https://github.com/NurApps/NurChat_desktop/releases/latest/download/latest.json"
       ],
       "pubkey": "ВАШ_PUBKEY_ИЗ_UPDATER_TOOL"
     }
@@ -157,7 +157,7 @@ GitHub Actions автоматически создаст релиз с exe и la
 NurChat_desktop/
 ├── frontend/          # React + Vite (фронтенд)
 ├── src-tauri/         # Tauri + Rust (обёртка)
-│   ├── src/lib.rs     # Tauri команды (IPFS, P2P)
+│   ├── src/lib.rs     # Tauri команды (P2P)
 │   └── Cargo.toml
 ├── server/            # FastAPI + SQLite (бэкенд)
 │   ├── routes/        # API эндпоинты

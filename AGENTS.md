@@ -99,7 +99,6 @@ Optional:
 ```
 USE_FEDERATION=true
 FEDERATION_SERVER_NAME=localhost:8000
-USE_IPFS=true
 USE_P2P=true
 ```
 

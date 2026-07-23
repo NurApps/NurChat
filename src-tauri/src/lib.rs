@@ -1,62 +1,16 @@
-mod ipfs;
 mod p2p;
 mod server;
 
-use ipfs::{IpfsClient, IpfsAddResult};
 use p2p::{P2PNode, P2PConfig, P2PPeerInfo};
 use server::ServerManager;
-use std::path::PathBuf;
 use tauri::{Emitter, Manager, State};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tauri::menu::{MenuBuilder};
 use tokio::sync::RwLock;
 
 struct AppState {
-    ipfs: RwLock<Option<IpfsClient>>,
     p2p: RwLock<Option<P2PNode>>,
     server: ServerManager,
-}
-
-#[tauri::command]
-async fn ipfs_add_file(state: State<'_, AppState>, file_path: String) -> Result<IpfsAddResult, String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    client.add_file(&PathBuf::from(file_path)).await
-}
-
-#[tauri::command]
-async fn ipfs_cat(state: State<'_, AppState>, hash: String) -> Result<Vec<u8>, String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    client.cat(&hash).await
-}
-
-#[tauri::command]
-async fn ipfs_pin(state: State<'_, AppState>, hash: String) -> Result<(), String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    client.pin(&hash).await
-}
-
-#[tauri::command]
-async fn ipfs_unpin(state: State<'_, AppState>, hash: String) -> Result<(), String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    client.unpin(&hash).await
-}
-
-#[tauri::command]
-async fn ipfs_list_pins(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    client.ls_pins().await
-}
-
-#[tauri::command]
-async fn ipfs_is_online(state: State<'_, AppState>) -> Result<bool, String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    Ok(client.is_online().await)
 }
 
 #[tauri::command]
@@ -71,18 +25,6 @@ async fn p2p_get_peer_count(state: State<'_, AppState>) -> Result<usize, String>
     let p2p = state.p2p.read().await;
     let node = p2p.as_ref().ok_or("P2P not initialized")?;
     Ok(node.get_peer_count().await)
-}
-
-#[tauri::command]
-async fn init_ipfs(state: State<'_, AppState>, api_url: Option<String>) -> Result<bool, String> {
-    let url = api_url.unwrap_or_else(|| "http://127.0.0.1:5001".to_string());
-    let client = IpfsClient::new(&url);
-    let online = client.is_online().await;
-    if online {
-        let mut ipfs = state.ipfs.write().await;
-        *ipfs = Some(client);
-    }
-    Ok(online)
 }
 
 #[tauri::command]
@@ -241,20 +183,12 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(AppState {
-            ipfs: RwLock::new(None),
             p2p: RwLock::new(None),
             server,
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
-            ipfs_add_file,
-            ipfs_cat,
-            ipfs_pin,
-            ipfs_unpin,
-            ipfs_list_pins,
-            ipfs_is_online,
-            init_ipfs,
             p2p_get_peers,
             p2p_get_peer_count,
             init_p2p,

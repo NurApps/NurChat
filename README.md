@@ -5,8 +5,8 @@
 <h1 align="center">NurChat</h1>
 
 <p align="center">
-  Анонимный мессенджер нового поколения с гибридным протоколом<br>
-  <b>Signal + Matrix + Session + Briar + IPFS = NurChat</b>
+  Self-hosted анонимный мессенджер<br>
+  E2EE • Федерация • P2P • Нативное десктоп приложение
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
   <a href="#installation">Установка</a> •
   <a href="#development">Разработка</a> •
   <a href="#federation">Федерация</a> •
-  <a href="#protocol">Протокол</a> •
+  <a href="#docker">Docker</a> •
   <a href="#license">Лицензия</a>
 </p>
 
@@ -24,7 +24,7 @@
 
 ### 🔐 Безопасность
 
-- **E2E шифрование** — X25519 + NaCl sealed box (как Signal)
+- **E2E шифрование** — Double Ratchet (Signal Protocol)
 - **Ed25519 подписи** — верификация сообщений и P2P событий
 - **CSRF защита** — HMAC токены для всех POST запросов
 - **TOTP 2FA** — двухфакторная аутентификация с резервными кодами
@@ -34,22 +34,21 @@
 
 ### 🌐 Федерация
 
-- **Сервер-к-серверу** — Ed25519 подписанные activity (как Matrix)
-- **Адресация** — `user@host:port` (как email)
+- **Сервер-к-серверу** — Ed25519 подписанные activity
+- **Адресация** — `user@host:port`
 - **Авто-обнаружение** — `/.well-known/nurchat.json`
 - **Самостоятельный хостинг** — один запуск = сервер + мессенджер
 
 ### 🕵️ Приватность
 
-- **Без телефона** — регистрация без номера/email (как Session)
-- **Локальное хранение** — всё на вашем сервере (как Briar)
+- **Без телефона** — регистрация без номера/email
+- **Локальное хранение** — данные только на вашем сервере
 - **Эфемерные сообщения** — авто-удаление по таймеру
 - **PIN-код** — блокировка приложения
 
 ### 🔗 P2P
 
 - **WebRTC DataChannel** — прямая передача файлов между пользователями
-- **IPFS** — контент-адресация, кеширование, доступность без центрального сервера
 - **WebSocket** — real-time доставка сообщений, typing indicators, online/offline
 
 ### 📺 Медиа
@@ -76,7 +75,7 @@
 
 ### 💾 Бэкапы
 
-- **Зашифрованные бэкапы** — экспорт чатов и ключей в зашифрованном виде
+- **Зашифрованные бэкапы** — экспорт чатов и ключей
 - **Восстановление** — импорт данных на другом устройстве
 
 ### ✨ Удобство
@@ -90,322 +89,100 @@
 
 ---
 
-## Установка
+## Installation
 
-### Docker (рекомендуется)
+### Десктоп (Windows)
 
-```bash
-# 1. Клонируем репозиторий
-git clone https://github.com/NurApps/NurChat_desktop_beta.git
-cd NurChat_desktop
-
-# 2. Настраиваем переменные окружения
-cp .env.example .env
-# Отредактируйте .env и установите:
-# - ENCRYPTION_KEY (32 байта в hex, например: openssl rand -hex 32)
-# - JWT_SECRET_KEY (для сессий)
-
-# 3. Запускаем через Docker Compose
-docker-compose up -d
-
-# 4. Проверяем статус
-docker-compose ps
-
-# Сервер доступен на http://localhost:8000
-# PostgreSQL на localhost:5432
-# Redis на localhost:6379
-
-# Для локальной разработки (без Docker):
-# - SQLite используется по умолчанию (файл nurchat.db)
-# - Redis опционален (USE_REDIS=false по умолчанию)
-```
-
-### Windows
-
-1. Скачайте `NurChat_*_x64-setup.exe` с [Releases](https://github.com/NurApps/NurChat_desktop_beta/releases)
+1. Скачайте `NurChat_*_x64-setup.exe` с [Releases](https://github.com/NurApps/NurChat_desktop/releases)
 2. Запустите установщик
-3. Приложение автоматически запустит Python сервер
+3. Приложение автоматически запустит сервер (SQLite, zero-config)
 
-### macOS / Linux
+**Системные требования:**
+- Windows 10+ (WebView2 встроен)
+- 200 МБ свободного места
+
+### Docker (сервер / production)
 
 ```bash
-git clone https://github.com/NurApps/NurChat_desktop_beta.git
+git clone https://github.com/NurApps/NurChat_desktop.git
 cd NurChat_desktop
-./start.sh
+cp .env.example .env
+# Отредактируйте .env (DATABASE_URL, REDIS_URL, ключи)
+docker-compose up -d
+# Сервер на http://localhost:8000
 ```
 
-### Требования
-
-- **Python 3.10+** (для сервера)
-- **Node.js 22+** (для фронтенда)
-- **Rust** (для сборки Tauri)
-- **WebView2** (Windows, устанавливается автоматически)
-- **Docker & Docker Compose** (для контейнеризации, опционально)
-
-### Стек технологий
-
-**Frontend:**
-- React 19 + TypeScript 6 + Vite 8
-- Zustand — стейт-менеджмент
-- React Router 7 — навигация
-- i18next — интернационализация
-- TweetNaCl — клиентское E2E шифрование
-- React Window — виртуализация списков
-- DOMPurify — санитайзинг HTML
-- Vitest — тесты
-
-**Backend:**
-- FastAPI 0.135 + Uvicorn
-- SQLAlchemy 2.0 + Alembic (миграции)
-- SQLite (дефолт для локалки) / PostgreSQL 15 (Docker)
-- PyNaCl + cryptography — E2E шифрование
-- python-jose — JWT токены
-- Argon2 — хеширование паролей
-- PyOTP — TOTP 2FA
-- SlowAPI — rate limiting
-- Redis (опционально) — кэш, rate-limiting
-
-**Desktop (Tauri 2.11):**
-- Tauri + Rust — нативная оболочка
-- Плагины: notification, shell, log
-- Reqwest — HTTP-запросы из Rust
-- Tokio — async runtime
-
----
-
-## Development
-
-### Быстрый старт
+### Разработка (macOS / Linux)
 
 ```bash
-# 1. Клонируем
-git clone https://github.com/NurApps/NurChat_desktop_beta.git
+git clone https://github.com/NurApps/NurChat_desktop.git
 cd NurChat_desktop
 
-# 2. Python venv
+# Python
 python -m venv .venv
-.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# 3. Frontend
+# Frontend
 cd frontend && npm install && cd ..
 
-# 4. Запуск (сервер + Tauri)
-./start.bat  # Windows
-# или
-python -m uvicorn server.main:app --port 8000 &  # сервер отдельно
-npx tauri dev  # Tauri отдельно
-```
-
-### Структура проекта
-
-```
-NurChat_desktop/
-├── frontend/           # React 19 + TypeScript 6 + Vite 8
-│   ├── src/
-│   │   ├── components/ # UI компоненты
-│   │   ├── pages/      # Страницы (Chat, Call, Settings...)
-│   │   ├── services/   # API клиент, E2E, P2P
-│   │   └── hooks/      # React hooks
-│   └── public/
-├── server/             # FastAPI 0.135 + SQLAlchemy 2.0
-│   ├── core/           # Models, security, federation, IPFS
-│   ├── routes/         # API endpoints
-│   ├── ws/             # WebSocket managers
-│   └── utils/          # Helpers
-├── shared/             # Общие конфиги, схемы, константы
-├── src-tauri/          # Tauri 2.11 (Rust shell)
-│   └── src/
-│       ├── lib.rs      # Tauri commands
-│       ├── server.rs   # Auto-start Python server
-│       ├── ipfs.rs     # IPFS client
-│       └── p2p.rs      # P2P networking
-└── alembic/            # DB миграции
-```
-
-### Команды
-
-```bash
-# Сервер
-python -m uvicorn server.main:app --port 8000 --reload
-
-# Фронтенд (отдельно, если нужно без Tauri)
-cd frontend && npm run dev  # порт 5173
-
-# Tauri dev (запуск десктопного приложения в dev-режиме)
+# Запуск
+python -m uvicorn server.main:app --port 8000 &
 npx tauri dev
-
-# Tauri build (installer)
-npx tauri build
-
-# Тесты
-pytest test/ -v
-
-# Фронтенд тесты
-cd frontend && npx vitest run
-
-# Фронтенд линтер
-cd frontend && npm run lint
-
-# TypeScript check
-cd frontend && npx tsc --noEmit
 ```
+
+**Требования для разработки:** Python 3.10+, Node.js 22+, Rust, WebView2
 
 ---
 
-## 🔐 Двухфакторная аутентификация (TOTP 2FA)
-
-NurChat поддерживает TOTP (Time-based One-Time Password) для дополнительной защиты аккаунта.
-
-### Настройка 2FA
-
-1. **Войдите в аккаунт** с логином и паролем
-2. **Откройте Настройки** → раздел "Безопасность"
-3. **Нажмите "Включить 2FA"**
-4. **Отсканируйте QR-код** в приложении аутентификации:
-   - Google Authenticator
-   - Authy
-   - Microsoft Authenticator
-   - Любой другой TOTP-совместимый апп
-5. **Введите 6-значный код** из приложения
-6. **Сохраните резервные коды** в безопасном месте!
+## Архитектура
 
 ```
-⚠️ Важно: Резервные коды можно использовать только один раз каждый.
-Если вы потеряете доступ к TOTP и резервным кодам, восстановление невозможно!
+Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI сервер ──> SQLite/PostgreSQL
+                              │                              │
+                              └── IPC commands ──────────────┘
 ```
 
-### Вход с 2FA
-
-После включения 2FA при входе потребуется:
-1. Ввести логин и пароль
-2. Ввести 6-значный код из приложения аутентификации
-   **ИЛИ**
-3. Ввести одноразовый резервный код
-
-### Отключение 2FA
-
-1. Войдите в аккаунт (с TOTP кодом)
-2. Откройте Настройки → Безопасность
-3. Нажмите "Отключить 2FA"
-4. Подтвердите текущим TOTP кодом
-
-### Потеряли доступ?
-
-Если вы потеряли телефон с TOTP приложением:
-- Используйте **резервные коды**, которые вы сохранили при настройке
-- Каждый код можно использовать **только один раз**
-- После использования код становится недействительным
+- **Десктоп:** SQLite (встроенный, без настройки)
+- **Docker/Production:** PostgreSQL + Redis (через docker-compose)
+- **База:** SQLAlchemy ORM, миграции через Alembic
+- **Real-time:** WebSocket (ws://) для сообщений и статусов
+- **Файлы:** локальное хранилище в `media/` (не облако)
+- **P2P:** опционально, через WebRTC + UDP multicast
+- **E2EE:** Double Ratchet (Signal Protocol), X3DH для начального обмена ключами
 
 ---
 
-## 💾 Бэкапы и восстановление
-
-### Создание бэкапа
-
-1. Откройте Настройки → "Бэкапы"
-2. Нажмите "Создать бэкап"
-3. Введите пароль для шифрования бэкапа
-4. Скачайте зашифрованный файл `.nurchat-backup`
-
-**Что включается в бэкап:**
-- Все чаты и сообщения
-- Контакты
-- Ключи шифрования E2E
-- Настройки аккаунта
-
-### Восстановление из бэкапа
-
-1. На новом устройстве откройте страницу "/backup"
-2. Выберите "Восстановить из бэкапа"
-3. Загрузите файл `.nurchat-backup`
-4. Введите пароль шифрования
-5. Дождитесь завершения импорта
-
-```
-⚠️ Важно: Бэкапы зашифрованы алгоритмом AES-256-GCM.
-Без пароля восстановить данные невозможно!
-```
-
----
-
-## 🐳 Docker Compose
-
-### Быстрый старт
-
-```bash
-# Запуск всех сервисов
-docker-compose up -d
-
-# Просмотр логов
-docker-compose logs -f nurchat
-
-# Остановка
-docker-compose down
-
-# Полная очистка (удалит все данные!)
-docker-compose down -v
-```
+## Docker
 
 ### Сервисы
 
 | Сервис | Порт | Описание |
 |--------|------|----------|
-| `nurchat` | 8000 | FastAPI сервер NurChat |
-| `db` | 5432 | PostgreSQL 15 (база данных) |
-| `redis` | 6379 | Redis 7 (кэш, rate-limiting, WebSocket pub/sub) |
+| `nurchat` | 8000 | FastAPI сервер |
+| `db` | 5432 | PostgreSQL 15 |
+| `redis` | 6379 | Redis (presence, кэш) |
 
 ### Переменные окружения
 
-Скопируйте `.env.example` в `.env` и настройте:
-
 ```ini
 # База данных
-# Дефолт для локальной разработки: sqlite:///./nurchat.db
-# Docker: postgresql://nurchat:nurchat_pass@db:5432/nurchat
-DATABASE_URL=sqlite:///./nurchat.db
+DATABASE_URL=postgresql://nurchat:nurchat_pass@db:5432/nurchat
 
-# Redis (опционально, для кэша и rate-limiting)
-USE_REDIS=false
-REDIS_URL=redis://localhost:6379/0
+# Redis
+REDIS_URL=redis://redis:6379/0
+USE_REDIS=true
 
-# Секретные ключи
-ENCRYPTION_KEY=ваш_ключ_шифрования_32_байта_hex
-JWT_SECRET_KEY=ваш_ключ_для_сессий_hex
-
-# Федерация (опционально)
-USE_FEDERATION=false
-FEDERATION_SERVER_NAME=localhost:8000
-
-# CORS
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
-```
-
-### Генерация ключей
-
-```bash
-# ENCRYPTION_KEY (32 байта)
-openssl rand -hex 32
-
-# JWT_SECRET_KEY (32 байта)
-openssl rand -hex 32
-```
-
-### Миграции БД
-
-При первом запуске миграции применяются автоматически. Для ручного применения:
-
-```bash
-docker-compose exec nurchat alembic upgrade head
+# Ключи шифрования (обязательно сменить!)
+ENCRYPTION_KEY=<32 байта hex>
+JWT_SECRET_KEY=<32 байта hex>
 ```
 
 ### Health Check
 
-Сервер имеет health check эндпоинт:
-
 ```bash
 curl http://localhost:8000/health
-# Ответ: {"status": "healthy"}
+# {"status": "healthy"}
 ```
 
 ---
@@ -427,7 +204,7 @@ FEDERATION_SERVER_NAME=your-server.com:8000
 1. **Discovery** — `GET /.well-known/nurchat.json` (публичный ключ сервера)
 2. **User lookup** — `GET /federation/user/{username}`
 3. **Message relay** — `POST /federation/inbox` (подписанное activity)
-4. **Адресация** — `user@host:port` (как email)
+4. **Адресация** — `user@host:port`
 
 ### Протокол
 
@@ -438,32 +215,82 @@ FEDERATION_SERVER_NAME=your-server.com:8000
 
 ---
 
-## Protocol
+## Development
 
-### Гибридный протокол NurChat
+### Структура проекта
 
-Мы взяли лучшее из каждого протокола и смешали:
+```
+NurChat_desktop/
+├── frontend/           # React + TypeScript + Vite
+│   ├── src/
+│   │   ├── components/ # UI компоненты
+│   │   ├── pages/      # Страницы (Chat, Call, Settings...)
+│   │   ├── services/   # API клиент, E2E, P2P
+│   │   └── hooks/      # React hooks
+│   └── public/
+├── server/             # FastAPI + SQLAlchemy
+│   ├── core/           # Models, security, federation
+│   ├── routes/         # API endpoints
+│   ├── ws/             # WebSocket managers
+│   └── utils/          # Helpers
+├── shared/             # Общие конфиги, схемы, константы
+├── src-tauri/          # Rust Tauri backend
+│   └── src/
+│       ├── lib.rs      # Tauri commands
+│       ├── server.rs   # Auto-start Python server
+│       └── p2p.rs      # P2P networking
+└── alembic/            # DB миграции
+```
 
-| Протокол | Что взяли | Зачем |
-|----------|-----------|-------|
-| **Signal** | X25519 + NaCl sealed box | Доказанное E2E шифрование |
-| **Matrix** | Federation (inbox/outbox) | Серверы общаются без единой точки отказа |
-| **Session** | Анонимность без телефона | Приватность регистрации |
-| **Briar** | Локальное хранение, P2P | Автономность от облаков |
-| **IPFS** | Content-addressed файлы | Доступность через CID, кеширование |
-| **Telegram** | UX (группы, файлы, стикеры) | Привычный интерфейс |
+### Команды
 
-### Сравнение
+```bash
+# Сервер
+python -m uvicorn server.main:app --port 8000 --reload
 
-| | Signal | Matrix | Session | Briar | **NurChat** |
-|---|---|---|---|---|---|
-| E2E шифрование | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Федерация | ❌ | ✅ | ❌ | ❌ | ✅ |
-| Без телефона | ❌ | ✅ | ✅ | ✅ | ✅ |
-| P2P | ❌ | ⚠️ | ✅ | ✅ | ✅ |
-| IPFS | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Самостоятельный хостинг | ❌ | ✅ | ✅ | ✅ | ✅ |
-| Нативное десктоп приложение | ❌ | ❌ | ❌ | ❌ | ✅ |
+# Tauri dev
+npx tauri dev
+
+# Tauri build (installer)
+npx tauri build
+
+# Тесты
+pytest test/ -v
+
+# Линтер
+ruff check .
+
+# TypeScript
+cd frontend && npx tsc --noEmit
+```
+
+---
+
+## 🔐 TOTP 2FA
+
+NurChat поддерживает TOTP (Time-based One-Time Password) для дополнительной защиты.
+
+### Настройка
+
+1. Войдите в аккаунт → Настройки → Безопасность
+2. Нажмите "Включить 2FA"
+3. Отсканируйте QR-код в Google Authenticator / Authy / аналоге
+4. Введите 6-значный код
+5. Сохраните резервные коды
+
+### Вход
+
+После включения 2FA при входе потребуется логин + пароль + TOTP код (или резервный код).
+
+---
+
+## 💾 Бэкапы
+
+1. Настройки → Бэкапы → Создать бэкап
+2. Введите пароль шифрования (AES-256-GCM)
+3. Скачайте `.nurchat-backup`
+
+Восстановление — через страницу `/backup`.
 
 ---
 
@@ -472,4 +299,3 @@ FEDERATION_SERVER_NAME=your-server.com:8000
 [GNU AGPL v3](LICENSE) — NurApps 2026
 
 ---
-

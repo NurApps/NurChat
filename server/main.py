@@ -22,7 +22,7 @@ from server.core.database import create_tables
 from server.middleware.csrf import CSRFMiddleware
 
 # Импорты routes
-from server.routes import auth, calls, chat, contacts_groups, files, forward, keys, legal, p2p, ipfs, bookmarks, pins, stats, audit, federation, discovery
+from server.routes import auth, calls, chat, contacts_groups, files, forward, keys, legal, p2p, bookmarks, pins, stats, audit, federation, discovery
 from server.utils.file_cleanup import file_cleanup_service
 from server.utils.logger import logger
 from server.ws.chat_manager import handle_websocket_connection
@@ -44,17 +44,6 @@ async def lifespan(app: FastAPI):
     # Запускаем сервис очистки файлов
     file_cleanup_service.start_cleanup_scheduler()
     logger.info("File cleanup service started")
-
-    # Auto-start IPFS daemon if enabled
-    if settings.USE_IPFS:
-        from server.core import ipfs_manager
-        if ipfs_manager.is_installed() and not ipfs_manager.is_running():
-            result = ipfs_manager.start_daemon()
-            logger.info("IPFS auto-start: %s", result.get("message", "unknown"))
-        elif ipfs_manager.is_running():
-            logger.info("IPFS daemon already running")
-        else:
-            logger.info("IPFS enabled but not installed. Install via /api/ipfs/manager/install")
 
     # Start LAN discovery
     from server.core.discovery import start_discovery
@@ -187,7 +176,6 @@ app.include_router(forward.router, prefix="/api/forward", tags=["Forward"])
 app.include_router(legal.router, prefix="/api/legal", tags=["Legal"])
 app.include_router(contacts_groups.router, prefix="/api/contacts-groups", tags=["Contacts and Groups"])
 app.include_router(p2p.router, prefix="/api/p2p", tags=["P2P"])
-app.include_router(ipfs.router, prefix="/api/ipfs", tags=["IPFS"])
 app.include_router(bookmarks.router, prefix="/api/bookmarks", tags=["Bookmarks"])
 app.include_router(pins.router, tags=["Pinned Messages"])
 app.include_router(stats.router, tags=["Statistics"])

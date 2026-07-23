@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react"
 import DOMPurify from "dompurify"
 import type { MessageResponse, UserResponse } from "../types"
 import { api } from "../services/api"
-import { ipfsGatewayUrl } from "../config"
 import { getAvatarColor } from "../utils/avatar"
 import MediaViewer from "./MediaViewer"
 import VoiceMessage from "./VoiceMessage"
@@ -225,10 +224,8 @@ export default function MessageBubble({
 
   const renderFileContent = () => {
     const mt = message.message_type
+    const imageUrl = message.file_id ? api.getFileUrl(message.file_id) : null
     const fileUrl = message.file_id ? api.getFileUrl(message.file_id) : null
-    // IPFS fallback: use gateway if ipfs_hash is available
-    const ipfsUrl = message.file?.ipfs_hash ? ipfsGatewayUrl(message.file.ipfs_hash) : null
-    const imageUrl = ipfsUrl || fileUrl
     if (mt === "image" && imageUrl) {
       return (
         <div className="msg-file">
@@ -238,7 +235,6 @@ export default function MessageBubble({
             alt={content}
             className="msg-image"
             loading="lazy"
-            onError={(e) => { if (ipfsUrl && fileUrl) (e.target as HTMLImageElement).src = fileUrl }}
             onClick={() => setMediaViewer({ type: "image", url: imageUrl, filename: content || undefined })}
             style={{ cursor: "pointer" }}
           />

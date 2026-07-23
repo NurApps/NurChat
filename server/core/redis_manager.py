@@ -5,15 +5,16 @@ from shared.config import settings
 
 logger = logging.getLogger("nurchat_redis")
 
+_REDIS_UNAVAILABLE: bool = False
 _redis_client = None
 
 
 def get_redis():
-    global _redis_client
+    global _redis_client, _REDIS_UNAVAILABLE
+    if _REDIS_UNAVAILABLE:
+        return None
     if _redis_client is not None:
         return _redis_client
-    if not settings.USE_REDIS:
-        return None
     try:
         import redis as redis_module
         _redis_client = redis_module.from_url(
@@ -26,6 +27,7 @@ def get_redis():
         logger.info("Connected to Redis at %s", settings.REDIS_URL)
         return _redis_client
     except Exception as exc:
+        _REDIS_UNAVAILABLE = True
         logger.warning("Redis unavailable, falling back to in-memory: %s", exc)
         return None
 

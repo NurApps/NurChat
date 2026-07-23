@@ -60,18 +60,6 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_chat_participants_id'), 'chat_participants', ['id'], unique=False)
 
-    op.create_table('plans',
-        sa.Column('id', sa.String(), nullable=False),
-        sa.Column('user_id', sa.String(), nullable=True),
-        sa.Column('task', sa.String(), nullable=True),
-        sa.Column('steps', sa.Text(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=True),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id']),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_plans_id'), 'plans', ['id'], unique=False)
-    op.create_index(op.f('ix_plans_task'), 'plans', ['task'], unique=False)
-
     op.create_table('files',
         sa.Column('id', sa.String(), nullable=False),
         sa.Column('user_id', sa.String(), nullable=True),
@@ -79,7 +67,6 @@ def upgrade() -> None:
         sa.Column('file_path', sa.String(), nullable=True),
         sa.Column('file_type', sa.String(), nullable=True),
         sa.Column('file_size', sa.Integer(), nullable=True),
-        sa.Column('ipfs_hash', sa.String(), nullable=True),
         sa.Column('ttl_days', sa.Integer(), nullable=True),
         sa.Column('uploaded_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=True),
         sa.ForeignKeyConstraint(['user_id'], ['users.id']),
@@ -122,7 +109,6 @@ def upgrade() -> None:
         sa.Column('signature', sa.Text(), nullable=True),
         sa.Column('message_type', sa.String(), nullable=True),
         sa.Column('file_id', sa.String(), nullable=True),
-        sa.Column('plan_id', sa.String(), nullable=True),
         sa.Column('forwarded_from', sa.String(), nullable=True),
         sa.Column('is_deleted', sa.Boolean(), nullable=True),
         sa.Column('deleted_for_all', sa.Boolean(), nullable=True),
@@ -130,7 +116,6 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=True),
         sa.ForeignKeyConstraint(['chat_id'], ['chats.id']),
         sa.ForeignKeyConstraint(['file_id'], ['files.id']),
-        sa.ForeignKeyConstraint(['plan_id'], ['plans.id']),
         sa.ForeignKeyConstraint(['user_id'], ['users.id']),
         sa.PrimaryKeyConstraint('id')
     )
@@ -286,7 +271,6 @@ def downgrade() -> None:
     op.drop_table('group_invites')
     op.drop_table('contacts')
     op.drop_table('files')
-    op.drop_table('plans')
     op.drop_table('chat_participants')
     op.drop_table('chats')
     op.drop_table('users')

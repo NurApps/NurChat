@@ -38,14 +38,14 @@
 - **Identity:** Ed25519 signing key + X25519 encryption key.
 - **1:1 messages:** Double Ratchet.
 - **Group messages:**第一阶段 symmetric group session key, затем переход на MLS.
-- **Files/voice/media:** client-side encryption before upload/IPFS.
+- **Files/voice/media:** client-side encryption before upload.
 - **Backups:** encrypted backup with user-controlled recovery secret.
 
 ### Хранение
 
 - **Local:** SQLite local store.
 - **Server:** encrypted relay messages, identity public keys, discovery metadata.
-- **Attachments:** encrypted blobs on server storage; optional IPFS CIDs.
+- **Attachments:** encrypted blobs on server storage.
 - **History sync:** append-only CRDT/event log.
 
 ---
@@ -248,11 +248,10 @@
 
 ---
 
-## P4 — медиа, файлы и IPFS
+## P4 — медиа и файлы
 
 Файлы:
 
-- `client/services/p2p_ipfs.py`
 - `client/services/message_logic.py`
 - `client/services/media_manager.py`
 - `server/routes/files.py`
@@ -265,13 +264,7 @@
    - file metadata stored server-side;
    - content remains encrypted.
 
-2. **IPFS optional:**
-   - upload encrypted blob;
-   - store CID in CRDT event;
-   - pin/unpin;
-   - fallback to server storage.
-
-3. **Media UX:**
+2. **Media UX:**
    - image preview;
    - video thumbnail;
    - document icon;
@@ -395,8 +388,7 @@ UX-задачи:
 
 3. **Storage:**
    - S3/MinIO for encrypted files;
-   - optional IPFS/Kubo nodes;
-   - cleanup jobs.
+    - cleanup jobs.
 
 4. **Monitoring:**
    - Prometheus;
@@ -436,7 +428,7 @@ UX-задачи:
 ### Для файлов
 
 - обычный режим: encrypted server storage
-- advanced режим: encrypted IPFS blobs + CID in CRDT event
+- advanced режим: encrypted storage with CRDT event log
 
 ### Для групп
 
@@ -452,6 +444,5 @@ UX-задачи:
 3. Включить P2P messaging с relay fallback.
 4. Добавить CRDT/event log и offline queue.
 5. Добавить backup/restore.
-6. Добавить IPFS для attachments.
-7. Перейти на MLS для групп.
+6. Перейти на MLS для групп.
 8. Production deployment, monitoring, security audit.

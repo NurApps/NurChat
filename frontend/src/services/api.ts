@@ -352,35 +352,6 @@ export const api = {
     }
   },
 
-  // IPFS
-  getIPFSStatus: () =>
-    request<{ enabled: boolean; online: boolean; api_url?: string; message: string }>("GET", "/api/ipfs/status"),
-
-  getIPFSGatewayUrl: (hash: string) =>
-    request<{ url: string | null; hash: string }>("GET", `/api/ipfs/gateway-url/${hash}`),
-
-  pinIPFS: (hash: string) =>
-    request<{ success: boolean; hash: string; message: string }>("POST", `/api/ipfs/pin/${hash}`),
-
-  unpinIPFS: (hash: string) =>
-    request<{ success: boolean; hash: string; message: string }>("DELETE", `/api/ipfs/pin/${hash}`),
-
-  // IPFS Manager
-  getIPFSManagerStatus: () =>
-    request<{ installed: boolean; running: boolean; message: string; version?: string }>("GET", "/api/ipfs/manager/status"),
-
-  installIPFS: () =>
-    request<{ success: boolean; message: string }>("POST", "/api/ipfs/manager/install"),
-
-  startIPFS: () =>
-    request<{ success: boolean; message: string }>("POST", "/api/ipfs/manager/start"),
-
-  stopIPFS: () =>
-    request<{ success: boolean; message: string }>("POST", "/api/ipfs/manager/stop"),
-
-  uninstallIPFS: () =>
-    request<{ success: boolean; message: string }>("DELETE", "/api/ipfs/manager/uninstall"),
-
   // E2E Group Keys
   setGroupKey: (chatId: string, encryptedKeys: Record<string, string>) =>
     request<void>("POST", `/api/chat/chats/${chatId}/group-key`, { encrypted_keys: encryptedKeys }),

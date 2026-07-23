@@ -102,9 +102,8 @@ cd NurChat_desktop
 # 2. Настраиваем переменные окружения
 cp .env.example .env
 # Отредактируйте .env и установите:
-# - TOTP_MASTER_KEY (32 байта в hex, например: openssl rand -hex 32)
-# - SECRET_KEY (для сессий)
-# - DATABASE_URL
+# - ENCRYPTION_KEY (32 байта в hex, например: openssl rand -hex 32)
+# - JWT_SECRET_KEY (для сессий)
 
 # 3. Запускаем через Docker Compose
 docker-compose up -d
@@ -115,6 +114,10 @@ docker-compose ps
 # Сервер доступен на http://localhost:8000
 # PostgreSQL на localhost:5432
 # Redis на localhost:6379
+
+# Для локальной разработки (без Docker):
+# - SQLite используется по умолчанию (файл nurchat.db)
+# - Redis опционален (USE_REDIS=false по умолчанию)
 ```
 
 ### Windows
@@ -134,10 +137,39 @@ cd NurChat_desktop
 ### Требования
 
 - **Python 3.10+** (для сервера)
-- **Node.js 22+** (для Tauri фронта)
+- **Node.js 22+** (для фронтенда)
 - **Rust** (для сборки Tauri)
 - **WebView2** (Windows, устанавливается автоматически)
-- **Docker & Docker Compose** (для контейнеризации)
+- **Docker & Docker Compose** (для контейнеризации, опционально)
+
+### Стек технологий
+
+**Frontend:**
+- React 19 + TypeScript 6 + Vite 8
+- Zustand — стейт-менеджмент
+- React Router 7 — навигация
+- i18next — интернационализация
+- TweetNaCl — клиентское E2E шифрование
+- React Window — виртуализация списков
+- DOMPurify — санитайзинг HTML
+- Vitest — тесты
+
+**Backend:**
+- FastAPI 0.135 + Uvicorn
+- SQLAlchemy 2.0 + Alembic (миграции)
+- SQLite (дефолт для локалки) / PostgreSQL 15 (Docker)
+- PyNaCl + cryptography — E2E шифрование
+- python-jose — JWT токены
+- Argon2 — хеширование паролей
+- PyOTP — TOTP 2FA
+- SlowAPI — rate limiting
+- Redis (опционально) — кэш, rate-limiting
+
+**Desktop (Tauri 2.11):**
+- Tauri + Rust — нативная оболочка
+- Плагины: notification, shell, log
+- Reqwest — HTTP-запросы из Rust
+- Tokio — async runtime
 
 ---
 
@@ -169,20 +201,20 @@ npx tauri dev  # Tauri отдельно
 
 ```
 NurChat_desktop/
-├── frontend/           # React + TypeScript + Vite
+├── frontend/           # React 19 + TypeScript 6 + Vite 8
 │   ├── src/
 │   │   ├── components/ # UI компоненты
 │   │   ├── pages/      # Страницы (Chat, Call, Settings...)
 │   │   ├── services/   # API клиент, E2E, P2P
 │   │   └── hooks/      # React hooks
 │   └── public/
-├── server/             # FastAPI + SQLAlchemy
+├── server/             # FastAPI 0.135 + SQLAlchemy 2.0
 │   ├── core/           # Models, security, federation, IPFS
 │   ├── routes/         # API endpoints
 │   ├── ws/             # WebSocket managers
 │   └── utils/          # Helpers
 ├── shared/             # Общие конфиги, схемы, константы
-├── src-tauri/          # Rust Tauri backend
+├── src-tauri/          # Tauri 2.11 (Rust shell)
 │   └── src/
 │       ├── lib.rs      # Tauri commands
 │       ├── server.rs   # Auto-start Python server
@@ -197,7 +229,10 @@ NurChat_desktop/
 # Сервер
 python -m uvicorn server.main:app --port 8000 --reload
 
-# Tauri dev
+# Фронтенд (отдельно, если нужно без Tauri)
+cd frontend && npm run dev  # порт 5173
+
+# Tauri dev (запуск десктопного приложения в dev-режиме)
 npx tauri dev
 
 # Tauri build (installer)
@@ -205,6 +240,12 @@ npx tauri build
 
 # Тесты
 pytest test/ -v
+
+# Фронтенд тесты
+cd frontend && npx vitest run
+
+# Фронтенд линтер
+cd frontend && npm run lint
 
 # TypeScript check
 cd frontend && npx tsc --noEmit
@@ -297,7 +338,7 @@ NurChat поддерживает TOTP (Time-based One-Time Password) для до
 docker-compose up -d
 
 # Просмотр логов
-docker-compose logs -f app
+docker-compose logs -f nurchat
 
 # Остановка
 docker-compose down
@@ -310,9 +351,9 @@ docker-compose down -v
 
 | Сервис | Порт | Описание |
 |--------|------|----------|
-| `app` | 8000 | FastAPI сервер NurChat |
+| `nurchat` | 8000 | FastAPI сервер NurChat |
 | `db` | 5432 | PostgreSQL 15 (база данных) |
-| `redis` | 6379 | Redis (кэш, rate-limiting, WebSocket pub/sub) |
+| `redis` | 6379 | Redis 7 (кэш, rate-limiting, WebSocket pub/sub) |
 
 ### Переменные окружения
 
@@ -320,14 +361,17 @@ docker-compose down -v
 
 ```ini
 # База данных
-DATABASE_URL=postgresql://nurchat:nurchat_pass@db:5432/nurchat
+# Дефолт для локальной разработки: sqlite:///./nurchat.db
+# Docker: postgresql://nurchat:nurchat_pass@db:5432/nurchat
+DATABASE_URL=sqlite:///./nurchat.db
 
-# Redis
-REDIS_URL=redis://redis:6379/0
+# Redis (опционально, для кэша и rate-limiting)
+USE_REDIS=false
+REDIS_URL=redis://localhost:6379/0
 
 # Секретные ключи
-SECRET_KEY=ваш_секретный_ключ_для_сессий
-TOTP_MASTER_KEY=32_байта_hex_строка
+ENCRYPTION_KEY=ваш_ключ_шифрования_32_байта_hex
+JWT_SECRET_KEY=ваш_ключ_для_сессий_hex
 
 # Федерация (опционально)
 USE_FEDERATION=false
@@ -340,10 +384,10 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 ### Генерация ключей
 
 ```bash
-# SECRET_KEY (32 байта)
+# ENCRYPTION_KEY (32 байта)
 openssl rand -hex 32
 
-# TOTP_MASTER_KEY (32 байта)
+# JWT_SECRET_KEY (32 байта)
 openssl rand -hex 32
 ```
 
@@ -352,7 +396,7 @@ openssl rand -hex 32
 При первом запуске миграции применяются автоматически. Для ручного применения:
 
 ```bash
-docker-compose exec app alembic upgrade head
+docker-compose exec nurchat alembic upgrade head
 ```
 
 ### Health Check

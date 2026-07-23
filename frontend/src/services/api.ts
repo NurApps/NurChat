@@ -58,6 +58,9 @@ export const api = {
   getAllUsers: () =>
     request<UserResponse[]>("GET", "/api/auth/users"),
 
+  getUser: (userId: string) =>
+    request<UserResponse>("GET", `/api/auth/user/${userId}`),
+
   // Chats (server: /api/chat prefix)
   getChats: (search?: string) =>
     request<ChatResponse[]>("GET", "/api/chat/chats" + (search ? `?search=${encodeURIComponent(search)}` : "")),

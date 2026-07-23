@@ -22,7 +22,7 @@ export interface P2PMessage {
   created_at: string
 }
 
-type P2PEventType = "peer_found" | "peer_lost" | "message_received" | "message_delivered" | "signaling" | "connected" | "disconnected" | "error" | "peer_connected" | "peer_disconnected" | "file_received_start" | "file_received"
+type P2PEventType = "peer_found" | "peer_lost" | "message_received" | "message_delivered" | "signaling" | "connected" | "disconnected" | "error" | "peer_connected" | "peer_disconnected" | "file_received_start" | "file_received" | "file_sent"
 
 interface P2PEvent {
   type: P2PEventType
@@ -486,11 +486,11 @@ class P2PClient {
     return false
   }
 
-  async sendFile(targetUserId: string, file: File): Promise<boolean> {
+  async sendFile(targetUserId: string, file: File, onProgress?: (sent: number, total: number) => void): Promise<boolean> {
     const dc = this.dataChannels.get(targetUserId)
     if (!dc || dc.readyState !== "open") return false
 
-    const CHUNK_SIZE = 16384 // 16KB
+    const CHUNK_SIZE = 65536 // 64KB
     const fileId = crypto.randomUUID()
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
 
@@ -523,14 +523,16 @@ class P2PClient {
           chunk_data: Array.from(new Uint8Array(arrayBuffer)),
         },
       }))
+      onProgress?.(i + 1, totalChunks)
     }
 
     // Send completion signal
     dc.send(JSON.stringify({
       type: "p2p-file-end",
-      data: { file_id: fileId },
+      data: { file_id: fileId, filename: file.name, file_type: file.type, file_size: file.size },
     }))
 
+    this._emit({ type: "file_sent", data: { file_id: fileId, filename: file.name, file_type: file.type, file_size: file.size, target_user_id: targetUserId } })
     return true
   }
 

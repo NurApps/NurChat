@@ -267,9 +267,8 @@ export default function CallPage() {
   useEffect(() => {
     if (targetUserId) {
       import("../services/api").then(({ api }) => {
-        api.getAllUsers().then((users: { id: string; username?: string; first_name?: string }[]) => {
-          const target = users.find((u) => u.id === targetUserId)
-          if (target) setTargetName(target.username || target.first_name || t("call.audioCall"))
+        api.getUser(targetUserId).then((user) => {
+          setTargetName(user.username || user.first_name || t("call.audioCall"))
         }).catch(() => {})
       })
     }

@@ -245,6 +245,7 @@ class CallResponse(BaseSchema):
     status: str
     started_at: datetime
     ended_at: Optional[datetime] = None
+    ended_by: Optional[str] = None
     duration: Optional[int] = None
 
 class CallHistoryResponse(BaseSchema):

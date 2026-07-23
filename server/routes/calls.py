@@ -1,4 +1,3 @@
-import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, status
@@ -13,9 +12,6 @@ from server.ws.signaling import call_manager
 
 router = APIRouter()
 
-def generate_call_id():
-    """Генерация ID звонка"""
-    return f"call_{secrets.token_hex(16)}"
 
 @router.post("/start-call", response_model=schemas.CallResponse)
 async def start_call(

@@ -72,7 +72,10 @@
     "stop": "Stop",
     "searchInChat": "Search in chat",
     "typingSingular": "typing",
-    "typingPlural": "typing"
+    "typingPlural": "typing",
+    "sendViaP2P": "Send via P2P",
+    "p2pNotConnected": "P2P not connected",
+    "downloading": "Downloading"
   },
   "call": {
     "connecting": "Connecting...",
@@ -106,7 +109,9 @@
     "connFailed": "Connection failed",
     "mic": "Microphone",
     "camera": "Camera",
-    "speaker": "Speaker"
+    "speaker": "Speaker",
+    "screenShare": "Screen sharing",
+    "screenShareFailed": "Failed to start screen sharing"
   },
   "settings": {
     "title": "Settings",

@@ -105,6 +105,7 @@ export default function ChatPage() {
   const [searching, setSearching] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const p2pFileInputRef = useRef<HTMLInputElement>(null)
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -232,10 +233,50 @@ export default function ChatPage() {
             }]
           })
         }
+      } else if (event.type === "file_received_start" && event.data && selectedChat) {
+        const d = event.data
+        const senderId = d.sender_id || d.user_id
+        if (selectedChat.participants.some(p => p.id === senderId)) {
+          const msgId = `p2p_file_${d.file_id}`
+          setMessages((prev) => {
+            if (prev.some(m => m.id === msgId)) return prev
+            const peer = selectedChat.participants.find(p => p.id === senderId)
+            return [...prev, {
+              id: msgId, chat_id: selectedChat.id, user_id: senderId,
+              content: `${d.filename} (${t("chat.downloading")}...)`, message_type: "file",
+              created_at: d.timestamp || new Date().toISOString(),
+              user: peer || currentUser, username: peer?.username || "",
+              first_name: peer?.first_name || "", is_read: true, is_deleted: false,
+              reactions: {},
+            }]
+          })
+        }
+      } else if (event.type === "file_received" && event.data && selectedChat) {
+        const d = event.data
+        const senderId = d.sender_id || d.user_id
+        if (selectedChat.participants.some(p => p.id === senderId)) {
+          const msgId = `p2p_file_${d.file_id}`
+          setMessages((prev) => {
+            const existing = prev.find(m => m.id === msgId)
+            if (existing) {
+              return prev.map(m => m.id === msgId ? { ...m, content: d.filename, file_id: d.url } : m)
+            }
+            const peer = selectedChat.participants.find(p => p.id === senderId)
+            return [...prev, {
+              id: msgId, chat_id: selectedChat.id, user_id: senderId,
+              content: d.filename, message_type: "file",
+              file_id: d.url, file: { id: d.url, filename: d.filename, file_type: d.file_type, file_size: d.file_size, uploaded_at: d.timestamp || new Date().toISOString(), user_id: senderId },
+              created_at: d.timestamp || new Date().toISOString(),
+              user: peer || currentUser, username: peer?.username || "",
+              first_name: peer?.first_name || "", is_read: true, is_deleted: false,
+              reactions: {},
+            }]
+          })
+        }
       }
     })
     return unsub
-  }, [selectedChat, setMessages, currentUser])
+  }, [selectedChat, setMessages, currentUser, t])
 
   useEffect(() => {
     if (selectedChat) chatIdRef.current = selectedChat.id
@@ -452,6 +493,37 @@ export default function ChatPage() {
   }, [searchQuery, selectedChat])
 
   const handleFilePick = useCallback(() => fileInputRef.current?.click(), [])
+
+  const handleP2PFilePick = useCallback(() => p2pFileInputRef.current?.click(), [])
+
+  const handleP2PFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0 || !selectedChat) return
+    const peerId = selectedChat.participants.find(p => p.id !== currentUser.id)?.id
+    if (!peerId || !p2pConnected[peerId]) {
+      setErrorToast(t("chat.p2pNotConnected"))
+      if (p2pFileInputRef.current) p2pFileInputRef.current.value = ""
+      return
+    }
+    setUploading(true)
+    let completed = 0
+    for (const file of files) {
+      try {
+        await p2pClient.sendFile(peerId, file, (sent, total) => setUploadProgress(Math.round((completed + sent / total) / files.length * 100)))
+        addMessage({
+          id: `p2p_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          chat_id: selectedChat.id, user_id: currentUser.id,
+          content: file.name, message_type: "file",
+          created_at: new Date().toISOString(),
+          user: currentUser, is_read: true, is_deleted: false,
+          reactions: {},
+        })
+        completed++
+      } catch { setErrorToast(t("errors.fileUpload", { name: file.name })) }
+    }
+    setUploading(false); setUploadProgress(0)
+    if (p2pFileInputRef.current) p2pFileInputRef.current.value = ""
+  }, [selectedChat, currentUser, p2pConnected, addMessage, setErrorToast, setUploading, setUploadProgress, t])
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -863,6 +935,7 @@ export default function ChatPage() {
                   </div>
                 )}
                 <input ref={fileInputRef} type="file" hidden multiple onChange={handleFileChange} />
+                <input ref={p2pFileInputRef} type="file" hidden multiple onChange={handleP2PFileChange} />
                 <button className="input-btn" title={t("common.emoji")} onClick={() => setShowEmoji(!showEmoji)} disabled={recording || uploading}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
                 </button>
@@ -872,6 +945,11 @@ export default function ChatPage() {
                 <button className="input-btn" title={t("common.file")} disabled={recording || uploading} onClick={handleFilePick}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
                 </button>
+                {selectedChat && !selectedChat.is_group && selectedChat.participants.some(p => p.id !== currentUser.id && p2pConnected[p.id]) && (
+                  <button className="input-btn p2p-send-btn" title={t("chat.sendViaP2P")} disabled={recording || uploading} onClick={handleP2PFilePick}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--p2p-color, #00c853)" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+                  </button>
+                )}
 
                 {uploading ? (
                   <div className="chat-input-uploading">

@@ -328,6 +328,19 @@ async def get_all_users(
         )
 
 
+@router.get("/user/{user_id}", response_model=schemas.UserResponse)
+async def get_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """Получение пользователя по ID"""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return schemas.UserResponse.model_validate(user)
+
+
 @router.post("/logout")
 async def logout(
     token: dict = Depends(verify_token_dependency),

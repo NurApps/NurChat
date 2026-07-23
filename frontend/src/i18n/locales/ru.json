@@ -72,7 +72,10 @@
     "stop": "Остановить",
     "searchInChat": "Поиск в чате",
     "typingSingular": "печатает",
-    "typingPlural": "печатают"
+    "typingPlural": "печатают",
+    "sendViaP2P": "Отправить через P2P",
+    "p2pNotConnected": "P2P не подключён",
+    "downloading": "Загрузка"
   },
   "call": {
     "connecting": "Установка соединения...",

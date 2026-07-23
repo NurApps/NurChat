@@ -94,6 +94,7 @@ export default function SettingsPage() {
     setE2eEnabled(hasKeys())
     api.getStorageInfo?.().then((info: any) => setStorageInfo(info)).catch(() => {})
     getVersion().then(setAppVersion).catch(() => setAppVersion("0.15.0"))
+    loadTotpStatus()
   }, [])
 
   const loadTotpStatus = async () => {

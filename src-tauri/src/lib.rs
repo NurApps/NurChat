@@ -132,6 +132,24 @@ async fn fetch_captcha() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+async fn fetch_register(body: String) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("http://127.0.0.1:8000/api/auth/register")
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("Register request failed: {e}"))?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| format!("Read response failed: {e}"))?;
+    if !status.is_success() {
+        return Err(text);
+    }
+    serde_json::from_str(&text).map_err(|e| format!("Parse failed: {e}"))
+}
+
+#[tauri::command]
 fn minimize_to_tray(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
@@ -202,6 +220,7 @@ pub fn run() {
             init_p2p,
             download_and_open_file,
             fetch_captcha,
+            fetch_register,
             minimize_to_tray,
             share_invite,
         ])

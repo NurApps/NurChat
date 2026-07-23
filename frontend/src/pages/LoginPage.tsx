@@ -149,33 +149,28 @@ export default function LoginPage() {
           return
         }
         
-        const res = await fetch(`${BASE_URL}/api/auth/register`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username: username.trim(),
-            password,
-            first_name: firstName.trim(),
-            last_name: lastName.trim(),
-            captcha_id: captchaId,
-            captcha_code: captchaCode,
-          }),
-        })
-        
-        if (!res.ok) {
-          const errorData = await res.json()
-          if (res.status === 400 && errorData.detail?.includes("CAPTCHA")) {
+        let data: any
+        try {
+          data = await invoke("fetch_register", {
+            body: JSON.stringify({
+              username: username.trim(),
+              password,
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              captcha_id: captchaId,
+              captcha_code: captchaCode,
+            }),
+          })
+        } catch (fetchErr: any) {
+          const errMsg = fetchErr?.message || fetchErr?.toString() || ""
+          if (errMsg.includes("CAPTCHA")) {
             setError("Неверная CAPTCHA. Попробуйте еще раз")
-            loadCaptcha() // Auto-refresh captcha on error
+            loadCaptcha()
             setLoading(false)
             return
           }
-          throw new Error(errorData.detail || "Ошибка регистрации")
+          throw fetchErr
         }
-        
-        const data = await res.json()
         api.setToken(data.access_token)
         localStorage.setItem("user", JSON.stringify(data.user))
         // Save E2E keys on registration (private keys returned once)
@@ -190,8 +185,8 @@ export default function LoginPage() {
         navigate("/chat", { replace: true })
       }
     } catch (err: any) {
-      const msg = err?.message || ""
-      if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED") || msg.includes("ERR_NETWORK")) {
+      const msg = err?.message || err?.toString() || ""
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED") || msg.includes("ERR_NETWORK") || msg.includes("request failed") || msg.includes("error sending request")) {
         setError("Сервер недоступен. Перезапустите приложение или проверьте подключение")
       } else if (err instanceof Error && "status" in err) {
         const apiErr = err as { status: number; message: string; headers?: Headers }

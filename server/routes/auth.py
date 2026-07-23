@@ -1,4 +1,6 @@
+import json as json_lib
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,6 +9,7 @@ from sqlalchemy.orm import Session
 from server.core import models, schemas
 from server.core.database import get_db
 from server.core.security import encryption, security, verify_token_dependency
+from shared.exceptions import AuthenticationError
 from server.utils.captcha import validate_captcha, generate_captcha
 from server.utils.security import (
     hash_password as hash_password_argon2,
@@ -83,22 +86,26 @@ async def register(
                 detail="Username уже занят"
             )
 
-        has_letters = any(c.isalpha() for c in password)
-        is_all_digits = all(c.isdigit() for c in password if c.strip())
-
-        if is_all_digits and len(password) < 4:
+        if len(password) < 8:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пароль из цифр должен содержать минимум 4 цифры"
+                detail="Пароль должен содержать минимум 8 символов"
             )
-
-        if has_letters:
-            latin_letters = [c for c in password if c.isalpha() and c.isascii()]
-            if len(latin_letters) < 4:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Если есть латинские буквы, их должно быть минимум 4"
-                )
+        if not re.search(r"[A-Z]", password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Пароль должен содержать заглавную латинскую букву"
+            )
+        if not re.search(r"[a-z]", password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Пароль должен содержать строчную латинскую букву"
+            )
+        if not re.search(r"\d", password) and not any(not c.isascii() for c in password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Пароль должен содержать хотя бы одну цифру"
+            )
 
         hashed_password = hash_password_argon2(password)
 
@@ -148,8 +155,12 @@ async def register(
             status=None,
             bio=None,
         )
+        refresh_token = security.create_refresh_token(
+            data={"sub": user.id, "username": user.username}
+        )
         return {
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user": response,
             "private_key": keypair['private_key'],
@@ -211,8 +222,12 @@ async def login(
                 status=getattr(user, "status", None),
                 bio=getattr(user, "bio", None),
             )
+            refresh_token = security.create_refresh_token(
+                data={"sub": user.id, "username": user.username}
+            )
             return {
                 "access_token": access_token,
+                "refresh_token": refresh_token,
                 "token_type": "bearer",
                 "user": response,
                 "requires_2fa": True,
@@ -241,8 +256,12 @@ async def login(
             status=getattr(user, "status", None),
             bio=getattr(user, "bio", None),
         )
+        refresh_token = security.create_refresh_token(
+            data={"sub": user.id, "username": user.username}
+        )
         return {
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user": response
         }
@@ -340,7 +359,7 @@ async def update_profile(
 
         if username:
             import re
-            if not re.match(r"^[a-zA-Z0-9]+$", username):
+            if not re.match(r"^[a-zA-Z0-9_]+$", username):
                 raise HTTPException(status_code=400, detail="Username может содержать только латинские буквы и цифры")
             existing = db.query(models.User).filter(
                 models.User.username == username,
@@ -590,10 +609,14 @@ async def verify_2fa_login_with_token(
     access_token = security.create_access_token(
         data={"sub": user.id, "username": user.username}
     )
+    refresh_token = security.create_refresh_token(
+        data={"sub": user.id, "username": user.username}
+    )
 
     logger.info(f"User logged in with 2FA: {user.username}")
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user": schemas.UserResponse.model_validate(user),
     }
@@ -649,7 +672,7 @@ async def get_2fa_status(
     remaining = 0
     if user.backup_codes:
         try:
-            remaining = len(__import__("json").loads(user.backup_codes))
+            remaining = len(json_lib.loads(user.backup_codes))
         except Exception:
             pass
 
@@ -657,4 +680,33 @@ async def get_2fa_status(
         enabled=user.is_2fa_enabled,
         backup_codes_remaining=remaining,
     )
+
+
+@router.post("/refresh")
+@limiter.limit("10/minute")
+async def refresh_token(
+    request: Request,
+    refresh_token_str: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+):
+    """Обновить access токен по refresh токену."""
+    try:
+        payload = security.verify_refresh_token(refresh_token_str)
+        user = db.query(models.User).filter(models.User.id == payload["sub"]).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Пользователь не найден")
+        new_access = security.create_access_token(
+            data={"sub": user.id, "username": user.username}
+        )
+        return {
+            "access_token": new_access,
+            "token_type": "bearer",
+        }
+    except AuthenticationError:
+        raise HTTPException(status_code=401, detail="Невалидный refresh токен")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Refresh token error: {e}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 

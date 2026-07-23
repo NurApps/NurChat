@@ -7,6 +7,7 @@ import ServerBootOverlay from "./components/ServerBootOverlay"
 import Onboarding from "./components/Onboarding"
 import ErrorBoundary from "./components/ErrorBoundary"
 import UpdateBanner from "./components/UpdateBanner"
+import { invoke } from "@tauri-apps/api/core"
 import { e2eWorkerService } from "./services/e2eWorkerService"
 
 const LoginPage = lazy(() => import("./pages/LoginPage"))
@@ -34,6 +35,11 @@ function App() {
   const [serverReady, setServerReady] = useState(false)
 
   // Инициализация E2E Web Worker при старте приложения
+  // Показываем окно только после загрузки React (убирает белый экран)
+  useEffect(() => {
+    invoke("show_main_window").catch(() => {})
+  }, [])
+
   useEffect(() => {
     const initWorker = async () => {
       try {

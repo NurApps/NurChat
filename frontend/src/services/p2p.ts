@@ -1,6 +1,7 @@
 import { WS_BASE } from "../config"
 
 const P2P_WS_URL = `${WS_BASE}/p2p`
+const SIGNAL_WS_URL = `${WS_BASE}/signaling`
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
@@ -52,12 +53,16 @@ interface QueuedMessage {
 
 class P2PClient {
   private ws: WebSocket | null = null
+  private signalWs: WebSocket | null = null
   private userId: string = ""
   private token: string = ""
   private listeners: Map<string, Set<(event: P2PEvent) => void>> = new Map()
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private signalReconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempts = 0
+  private signalReconnectAttempts = 0
   private connected = false
+  private signalConnected = false
   private _onlinePeers: Set<string> = new Set()
   private _directPeers: Set<string> = new Set()
   private _connectingPeers: Set<string> = new Set()
@@ -75,6 +80,7 @@ class P2PClient {
     this.token = token
     this._loadQueuedMessages()
     this._connect()
+    this._connectSignaling()
   }
 
   private _connect() {
@@ -110,14 +116,51 @@ class P2PClient {
     }
   }
 
+  private _connectSignaling() {
+    if (this.signalWs && (this.signalWs.readyState === WebSocket.OPEN || this.signalWs.readyState === WebSocket.CONNECTING)) return
+
+    this.signalWs = new WebSocket(`${SIGNAL_WS_URL}/${this.userId}?token=${encodeURIComponent(this.token)}`)
+
+    this.signalWs.onopen = () => {
+      this.signalConnected = true
+      this.signalReconnectAttempts = 0
+    }
+
+    this.signalWs.onclose = () => {
+      this.signalConnected = false
+      const delay = Math.min(30000, 1000 * Math.pow(2, this.signalReconnectAttempts))
+      this.signalReconnectAttempts++
+      this.signalReconnectTimer = setTimeout(() => this._connectSignaling(), delay)
+    }
+
+    this.signalWs.onerror = () => {
+      this.signalWs?.close()
+    }
+
+    this.signalWs.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+        this._emit({ type: "signaling", data: msg })
+        // Normalize: flatten data.data into top level for _handleOffer/Answer/ICe
+        const normalized = { ...msg.data, sender_id: msg.sender_id }
+        this.handleSignaling(msg.sender_id, normalized)
+      } catch (e) { console.error("[P2P] Signal WS parse error:", e) }
+    }
+  }
+
   disconnect() {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    if (this.signalReconnectTimer) clearTimeout(this.signalReconnectTimer)
     this.peerReconnectTimers.forEach((t) => clearTimeout(t))
     this.peerReconnectTimers.clear()
     this.ws?.close()
     this.ws = null
+    this.signalWs?.close()
+    this.signalWs = null
     this.connected = false
+    this.signalConnected = false
     this.reconnectAttempts = 0
+    this.signalReconnectAttempts = 0
     this.dataChannels.forEach((dc) => dc.close())
     this.peerConnections.forEach((pc) => pc.close())
     this.dataChannels.clear()
@@ -146,8 +189,8 @@ class P2PClient {
     try {
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
-      this.send({
-        type: "p2p-signaling",
+      this.sendSignal({
+        type: "offer",
         target_user_id: targetUserId,
         data: { type: "offer", sdp: pc.localDescription!.toJSON() },
       })
@@ -161,8 +204,8 @@ class P2PClient {
   private _setupPeerConnectionHandlers(targetUserId: string, pc: RTCPeerConnection) {
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        this.send({
-          type: "p2p-signaling",
+        this.sendSignal({
+          type: "ice-candidate",
           target_user_id: targetUserId,
           data: { type: "ice-candidate", candidate: e.candidate.toJSON() },
         })
@@ -206,8 +249,8 @@ class P2PClient {
     try {
       const offer = await pc.createOffer({ iceRestart: true })
       await pc.setLocalDescription(offer)
-      this.send({
-        type: "p2p-signaling",
+      this.sendSignal({
+        type: "offer",
         target_user_id: targetUserId,
         data: { type: "offer", sdp: pc.localDescription!.toJSON() },
       })
@@ -275,8 +318,8 @@ class P2PClient {
       await pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
-      this.send({
-        type: "p2p-signaling",
+      this.sendSignal({
+        type: "answer",
         target_user_id: senderUserId,
         data: { type: "answer", sdp: pc.localDescription!.toJSON() },
       })
@@ -590,6 +633,15 @@ class P2PClient {
     }
   }
 
+  private sendSignal(obj: any) {
+    if (this.signalWs && this.signalWs.readyState === WebSocket.OPEN) {
+      this.signalWs.send(JSON.stringify(obj))
+    } else {
+      // Fallback to main WS if signaling WS not connected
+      this.send(obj)
+    }
+  }
+
   requestSync(limit = 500) {
     this.send({ type: "p2p-sync", limit })
   }
@@ -630,8 +682,11 @@ class P2PClient {
       case "p2p-queued":
         break
       case "p2p-signaling":
-        this._emit({ type: "signaling", data })
-        this.handleSignaling(data.sender_id, data)
+        // Legacy fallback — signaling WS preferred
+        if (!this.signalConnected) {
+          this._emit({ type: "signaling", data })
+          this.handleSignaling(data.sender_id, data)
+        }
         break
       case "p2p-sync":
         if (data.messages) {

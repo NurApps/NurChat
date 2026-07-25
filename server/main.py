@@ -29,6 +29,7 @@ from server.ws.chat_manager import handle_websocket_connection
 from server.ws.notifications import handle_notifications_websocket
 from server.ws.p2p_manager import p2p_manager
 from server.ws.signaling import call_manager
+from server.ws.signaling_p2p import signaling_manager
 from shared.config import settings
 
 
@@ -235,6 +236,26 @@ async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: st
             return
     try:
         await call_manager.handle_signaling(websocket, user_id)
+    finally:
+        release_ws_connection(client_ip)
+
+# WebSocket для P2P signaling (только offer/answer/ICE)
+@app.websocket("/ws/signaling/{user_id}")
+async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if not check_ws_rate_limit(client_ip):
+        await websocket.close(code=4008)
+        return
+    if token:
+        from server.core.security import security as sec, AuthenticationError
+        try:
+            sec.verify_token(token)
+        except AuthenticationError:
+            release_ws_connection(client_ip)
+            await websocket.close(code=4001)
+            return
+    try:
+        await signaling_manager.handle(websocket, user_id)
     finally:
         release_ws_connection(client_ip)
 

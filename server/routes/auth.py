@@ -178,7 +178,7 @@ async def register(
 
 
 @router.post("/login", response_model=schemas.Token)
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def login(
     request: Request,
     user_data: schemas.UserCreate,

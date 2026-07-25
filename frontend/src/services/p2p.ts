@@ -488,49 +488,82 @@ class P2PClient {
 
   async sendFile(targetUserId: string, file: File, onProgress?: (sent: number, total: number) => void): Promise<boolean> {
     const dc = this.dataChannels.get(targetUserId)
-    if (!dc || dc.readyState !== "open") return false
+    if (dc && dc.readyState === "open") {
+      return this._sendFileDirect(targetUserId, file, dc, onProgress)
+    }
+    return this._sendFileRelay(targetUserId, file, onProgress)
+  }
 
-    const CHUNK_SIZE = 65536 // 64KB
+  private async _sendFileDirect(targetUserId: string, file: File, dc: RTCDataChannel, onProgress?: (sent: number, total: number) => void): Promise<boolean> {
+    const CHUNK_SIZE = 65536
     const fileId = crypto.randomUUID()
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
 
-    // Send file metadata
     dc.send(JSON.stringify({
       type: "p2p-file-start",
       data: {
-        file_id: fileId,
-        sender_id: this.userId,
-        filename: file.name,
-        file_size: file.size,
-        file_type: file.type,
-        total_chunks: totalChunks,
-        timestamp: new Date().toISOString(),
+        file_id: fileId, sender_id: this.userId,
+        filename: file.name, file_size: file.size,
+        file_type: file.type, total_chunks, timestamp: new Date().toISOString(),
       },
     }))
 
-    // Send file chunks
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE
       const end = Math.min(start + CHUNK_SIZE, file.size)
       const chunk = file.slice(start, end)
       const arrayBuffer = await chunk.arrayBuffer()
-
       dc.send(JSON.stringify({
         type: "p2p-file-chunk",
-        data: {
-          file_id: fileId,
-          chunk_index: i,
-          chunk_data: Array.from(new Uint8Array(arrayBuffer)),
-        },
+        data: { file_id: fileId, chunk_index: i, chunk_data: Array.from(new Uint8Array(arrayBuffer)) },
       }))
       onProgress?.(i + 1, totalChunks)
     }
 
-    // Send completion signal
     dc.send(JSON.stringify({
       type: "p2p-file-end",
       data: { file_id: fileId, filename: file.name, file_type: file.type, file_size: file.size },
     }))
+
+    this._emit({ type: "file_sent", data: { file_id: fileId, filename: file.name, file_type: file.type, file_size: file.size, target_user_id: targetUserId } })
+    return true
+  }
+
+  private async _sendFileRelay(targetUserId: string, file: File, onProgress?: (sent: number, total: number) => void): Promise<boolean> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false
+
+    const CHUNK_SIZE = 65536
+    const fileId = crypto.randomUUID()
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
+
+    this.send({
+      type: "p2p-file-start",
+      target_user_id: targetUserId,
+      data: {
+        file_id: fileId, sender_id: this.userId,
+        filename: file.name, file_size: file.size,
+        file_type: file.type, total_chunks, timestamp: new Date().toISOString(),
+      },
+    })
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE
+      const end = Math.min(start + CHUNK_SIZE, file.size)
+      const chunk = file.slice(start, end)
+      const arrayBuffer = await chunk.arrayBuffer()
+      this.send({
+        type: "p2p-file-chunk",
+        target_user_id: targetUserId,
+        data: { file_id: fileId, chunk_index: i, chunk_data: Array.from(new Uint8Array(arrayBuffer)) },
+      })
+      onProgress?.(i + 1, totalChunks)
+    }
+
+    this.send({
+      type: "p2p-file-end",
+      target_user_id: targetUserId,
+      data: { file_id: fileId, filename: file.name, file_type: file.type, file_size: file.size },
+    })
 
     this._emit({ type: "file_sent", data: { file_id: fileId, filename: file.name, file_type: file.type, file_size: file.size, target_user_id: targetUserId } })
     return true
@@ -607,9 +640,45 @@ class P2PClient {
           }
         }
         break
+      case "p2p-file-start":
+        this._handleRelayFileStart(data)
+        break
+      case "p2p-file-chunk":
+        this._handleRelayFileChunk(data)
+        break
+      case "p2p-file-end":
+        this._handleRelayFileEnd(data)
+        break
       case "p2p-error":
         this._emit({ type: "error", data })
         break
+    }
+  }
+
+  private _handleRelayFileStart(data: any) {
+    this._incomingFiles.set(data.file_id, {
+      ...data,
+      chunks: new Map(),
+    })
+    this._emit({ type: "file_received_start", data })
+  }
+
+  private _handleRelayFileChunk(data: any) {
+    const file = this._incomingFiles.get(data.file_id)
+    if (file) {
+      file.chunks.set(data.chunk_index, new Uint8Array(data.chunk_data))
+    }
+  }
+
+  private _handleRelayFileEnd(data: any) {
+    const file = this._incomingFiles.get(data.file_id)
+    if (file) {
+      const sortedEntries = Array.from(file.chunks.entries()) as [number, Uint8Array][]
+      sortedEntries.sort((a, b) => a[0] - b[0])
+      const blob = new Blob(sortedEntries.map(e => e[1] as BlobPart), { type: file.file_type })
+      const url = URL.createObjectURL(blob)
+      this._emit({ type: "file_received", data: { ...file, url } })
+      this._incomingFiles.delete(data.file_id)
     }
   }
 

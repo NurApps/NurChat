@@ -78,6 +78,8 @@ class P2PManager:
             await self.deliver_encrypted(user_id, data)
         elif message_type == "p2p-sync":
             await self.sync_pending(user_id, data)
+        elif message_type in ("p2p-file-start", "p2p-file-chunk", "p2p-file-end"):
+            await self.relay_file(user_id, data)
         else:
             logger.warning(f"Unknown P2P message type from {user_id}: {message_type}")
 
@@ -161,6 +163,27 @@ class P2PManager:
                     "message_id": payload.get("message_id"),
                     "queued_at": datetime.now(timezone.utc).isoformat(),
                 },
+            })
+
+    async def relay_file(self, user_id: str, data: dict):
+        target_user_id = data.get("target_user_id")
+        if not target_user_id:
+            await self.send_json(user_id, {"type": "p2p-error", "data": {"reason": "missing_target_user_id"}})
+            return
+
+        payload = data.get("data") or {}
+        if target_user_id in self.active_connections:
+            await self.send_json(target_user_id, {
+                "type": data.get("type"),
+                "data": {
+                    "sender_id": user_id,
+                    **payload,
+                },
+            })
+        else:
+            await self.send_json(user_id, {
+                "type": "p2p-error",
+                "data": {"reason": "target_offline", "detail": "File relay target is offline"},
             })
 
     async def sync_pending(self, user_id: str, data: dict):

@@ -31,8 +31,10 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "externalBin": ["binaries/server"],
-    "resources": [],
+    "externalBin": [],
+    "resources": {
+      "../dist/server.exe": "binaries/server.exe"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

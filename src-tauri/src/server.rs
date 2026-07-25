@@ -209,29 +209,33 @@ fn find_server_exe(app_dir: &Path, res_dir: Option<&Path>) -> Option<PathBuf> {
     // Candidates to check, in order
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    // 1. Sidecar next to the Tauri .exe (NSIS installer)
+    // 1. Sidecar next to the Tauri .exe (NSIS installer / dev builds)
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(dir) = exe_path.parent() {
             candidates.push(dir.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
+            candidates.push(dir.join("binaries").join("server.exe"));
             candidates.push(dir.join("server-x86_64-pc-windows-msvc.exe"));
             candidates.push(dir.join("server.exe"));
         }
     }
 
-    // 2. Tauri resource dir (where externalBin is extracted)
+    // 2. Tauri resource dir (where externalBin is extracted at runtime)
     if let Some(rd) = res_dir {
         candidates.push(rd.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
+        candidates.push(rd.join("binaries").join("server.exe"));
         candidates.push(rd.join("server.exe"));
     }
 
     // 3. app_data_dir and subdirs
     candidates.push(app_dir.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
+    candidates.push(app_dir.join("binaries").join("server.exe"));
     candidates.push(app_dir.join("server.exe"));
     candidates.push(app_dir.join("dist").join("server").join("server.exe"));
 
     // 4. current working directory
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
+        candidates.push(cwd.join("binaries").join("server.exe"));
         candidates.push(cwd.join("server-x86_64-pc-windows-msvc.exe"));
         candidates.push(cwd.join("server.exe"));
     }

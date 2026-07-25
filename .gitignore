@@ -27,6 +27,29 @@ update_key_private.key
 # Agent/IDE workspace files
 .opencode/
 .agents/
+.claude/
+.kiro/
+
+# Database
+nurchat.db
+*.db
+
+# Windows system files
+desktop.ini
+
+# Generated/cache directories
+.nurchat_cache/
+.ruff_cache/
+logs/
+media/
+server/logs/
+server/media/
+server/legal/
+p2pchat/models/
+src-tauri/gen/
+src-tauri/nsis/
+docs/
+frontend/public/fonts/
 
 # IDE specific
 .vscode/

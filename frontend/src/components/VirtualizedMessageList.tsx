@@ -77,6 +77,7 @@ export default function VirtualizedMessageList({
           return (
             <div
               key={msg.id}
+              id={`msg-${msg.id}`}
               style={{
                 position: "absolute",
                 top: actualIndex * ROW_HEIGHT,

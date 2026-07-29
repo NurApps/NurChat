@@ -15,6 +15,16 @@ line-length = 120
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+"server/main.py" = ["E402"]
+"server/core/schemas.py" = ["F405"]
+"shared/exceptions.py" = ["N818"]
+"shared/double_ratchet.py" = ["N806"]
+"server/ws/signaling.py" = ["E501"]
+"alembic/**" = ["E402", "E501"]
+"p2pchat/**" = ["E501"]
+"test/**" = ["E402", "E501"]
+
 [tool.ruff.format]
 quote-style = "double"
 
@@ -34,3 +44,6 @@ exclude = [
 [tool.pytest.ini_options]
 testpaths = ["test"]
 python_files = ["*tests.py"]
+markers = [
+    "integration: marks tests that require a running server (deselect with '-m \"not integration\"')",
+]

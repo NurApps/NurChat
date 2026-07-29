@@ -10,13 +10,12 @@ import base64
 import hashlib
 import hmac
 import struct
-from typing import Optional
 
-from nacl.encoding import HexEncoder
-from nacl.public import PrivateKey, PublicKey, Box
 import nacl.secret
-import nacl.utils
 import nacl.signing
+import nacl.utils
+from nacl.encoding import HexEncoder
+from nacl.public import Box, PrivateKey, PublicKey
 
 
 def hkdf_extract(salt: bytes, ikm: bytes) -> bytes:
@@ -67,17 +66,17 @@ class DoubleRatchetSession:
     """
 
     def __init__(self):
-        self.DHs: Optional[PrivateKey] = None
-        self.DHr: Optional[PublicKey] = None
-        self.RK: Optional[bytes] = None
-        self.CKs: Optional[KDFChain] = None
-        self.CKr: Optional[KDFChain] = None
+        self.DHs: PrivateKey | None = None
+        self.DHr: PublicKey | None = None
+        self.RK: bytes | None = None
+        self.CKs: KDFChain | None = None
+        self.CKr: KDFChain | None = None
         self.Ns: int = 0
         self.Nr: int = 0
         self.PN: int = 0
 
-        self.our_identity_public: Optional[bytes] = None
-        self.their_identity_public: Optional[bytes] = None
+        self.our_identity_public: bytes | None = None
+        self.their_identity_public: bytes | None = None
 
         self._seen_message_ids: set[tuple[str, int]] = set()
 
@@ -91,7 +90,7 @@ class DoubleRatchetSession:
         our_identity_private: PrivateKey,
         their_identity_public: PublicKey,
         their_signed_prekey_public: PublicKey,
-        their_one_time_prekey_public: Optional[PublicKey] = None,
+        their_one_time_prekey_public: PublicKey | None = None,
     ) -> tuple[bytes, PrivateKey]:
         ephemeral = PrivateKey.generate()
         dh1 = Box(our_identity_private, their_signed_prekey_public).shared_key()
@@ -108,7 +107,7 @@ class DoubleRatchetSession:
     def x3dh_receive(
         our_identity_private: PrivateKey,
         our_signed_prekey_private: PrivateKey,
-        our_one_time_prekey_private: Optional[PrivateKey],
+        our_one_time_prekey_private: PrivateKey | None,
         their_identity_public: PublicKey,
         their_ephemeral_public: PublicKey,
     ) -> bytes:
@@ -126,7 +125,7 @@ class DoubleRatchetSession:
         our_identity_private: PrivateKey,
         their_identity_public: PublicKey,
         their_signed_prekey_public: PublicKey,
-        their_one_time_prekey_public: Optional[PublicKey] = None,
+        their_one_time_prekey_public: PublicKey | None = None,
     ):
         sk, ephemeral = self.x3dh_initialize(
             our_identity_private,
@@ -151,7 +150,7 @@ class DoubleRatchetSession:
         self,
         our_identity_private: PrivateKey,
         our_signed_prekey_private: PrivateKey,
-        our_one_time_prekey_private: Optional[PrivateKey],
+        our_one_time_prekey_private: PrivateKey | None,
         their_identity_public: PublicKey,
         their_ephemeral_public: PublicKey,
     ):
@@ -340,7 +339,7 @@ class PreKeyBundle:
         identity_private: PrivateKey,
         signed_prekey_private: PrivateKey,
         num_one_time: int = 100,
-        registration_id: Optional[int] = None,
+        registration_id: int | None = None,
     ) -> "PreKeyBundle":
         if registration_id is None:
             import random

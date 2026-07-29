@@ -1,43 +1,32 @@
-import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification"
+let initialized = false
 
-let permissionGranted = false
+export async function initNotifications(): Promise<boolean> {
+  return requestNotificationPermission()
+}
 
-export async function initNotifications() {
+export async function requestNotificationPermission(): Promise<boolean> {
+  if (initialized) return true
   try {
-    permissionGranted = await isPermissionGranted()
-    if (!permissionGranted) {
-      const result = await requestPermission()
-      permissionGranted = result === "granted"
+    const { isPermissionGranted, requestPermission, sendNotification } = await import("@tauri-apps/plugin-notification")
+    let granted = await isPermissionGranted()
+    if (!granted) {
+      const permission = await requestPermission()
+      granted = permission === "granted"
     }
+    initialized = granted
+    return granted
   } catch {
-    // Tauri not available (dev mode / browser) — use browser Notification API
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission()
-    }
+    return false
   }
 }
 
-export function sendDesktopNotification(title: string, body: string, chatId?: string) {
-  const doSend = () => {
-    try {
-      // Prefer Tauri plugin
+export async function showNotification(title: string, body: string): Promise<void> {
+  try {
+    const { sendNotification, isPermissionGranted } = await import("@tauri-apps/plugin-notification")
+    const granted = await isPermissionGranted()
+    if (granted) {
       sendNotification({ title, body })
-    } catch {
-      // Fallback to browser API
-      if ("Notification" in window && Notification.permission === "granted") {
-        const n = new Notification(title, { body, icon: "/nurchat.png" })
-        if (chatId) {
-          n.onclick = () => {
-            window.location.hash = `#/chat`
-            n.close()
-          }
-        }
-      }
     }
-  }
-
-  // Only notify if window is not focused
-  if (!document.hasFocus()) {
-    doSend()
+  } catch {
   }
 }

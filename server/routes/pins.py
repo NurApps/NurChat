@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from server.core.database import get_db
-from server.core.models import PinnedMessage, Message, Chat, User
+from server.core.models import ChatParticipant, Message, PinnedMessage, User
 from server.core.security import verify_token_dependency
 
 router = APIRouter(prefix="/api/chat", tags=["pins"])
@@ -20,6 +20,13 @@ def pin_message(
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db),
 ):
+    user_id = token["sub"]
+    participant = db.query(ChatParticipant).filter(
+        ChatParticipant.chat_id == chat_id, ChatParticipant.user_id == user_id
+    ).first()
+    if not participant:
+        raise HTTPException(status_code=403, detail="Not a chat participant")
+
     msg = db.query(Message).filter(Message.id == body.message_id, Message.chat_id == chat_id).first()
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -40,6 +47,14 @@ def pin_message(
     return {"detail": "Message pinned"}
 
 
+def _require_participant(chat_id: str, user_id: str, db: Session):
+    p = db.query(ChatParticipant).filter(
+        ChatParticipant.chat_id == chat_id, ChatParticipant.user_id == user_id
+    ).first()
+    if not p:
+        raise HTTPException(status_code=403, detail="Not a chat participant")
+
+
 @router.delete("/chats/{chat_id}/pin-message")
 def unpin_message(
     chat_id: str,
@@ -47,6 +62,7 @@ def unpin_message(
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db),
 ):
+    _require_participant(chat_id, token["sub"], db)
     pinned = db.query(PinnedMessage).filter(
         PinnedMessage.chat_id == chat_id, PinnedMessage.message_id == message_id
     ).first()
@@ -63,7 +79,12 @@ def get_pinned_messages(
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db),
 ):
-    pins = db.query(PinnedMessage).filter(PinnedMessage.chat_id == chat_id).order_by(PinnedMessage.created_at.desc()).all()
+    _require_participant(chat_id, token["sub"], db)
+    pins = (
+        db.query(PinnedMessage)
+        .filter(PinnedMessage.chat_id == chat_id)
+        .order_by(PinnedMessage.created_at.desc()).all()
+    )
     result = []
     for pin in pins:
         msg = db.query(Message).filter(Message.id == pin.message_id).first()

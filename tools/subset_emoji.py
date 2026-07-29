@@ -148,14 +148,14 @@ if __name__ == "__main__":
         sys.exit(1)
 
     try:
+        from fontTools.subset import Options, Subsetter
         from fontTools.ttLib import TTFont
-        from fontTools.subset import Subsetter, Options
     except ImportError:
         print("Installing fonttools...")
         import subprocess
         subprocess.check_call([sys.executable, "-m", "pip", "install", "fonttools", "brotli"])
+        from fontTools.subset import Options, Subsetter
         from fontTools.ttLib import TTFont
-        from fontTools.subset import Subsetter, Options
 
     input_path = sys.argv[1]
     output_path = sys.argv[2]

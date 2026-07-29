@@ -7,7 +7,7 @@ import nacl.secret
 import nacl.signing
 import nacl.utils
 from nacl.encoding import HexEncoder
-from nacl.public import PrivateKey, PublicKey, SealedBox, Box
+from nacl.public import Box, PrivateKey, PublicKey, SealedBox
 
 
 class P2PEncryption:

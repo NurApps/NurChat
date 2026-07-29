@@ -2,13 +2,14 @@
 E2E Encryption Tests for NurChat
 Standalone tests — no server required
 """
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 import nacl.signing
+import pytest
+
 from shared.p2p_encryption import P2PEncryption
 
 

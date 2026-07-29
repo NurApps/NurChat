@@ -6,14 +6,13 @@ from datetime import datetime, timezone
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
+from server.core.redis_manager import publish_presence, set_user_offline, set_user_online
 from shared.constants import WS_EVENTS
-from shared.config import settings
-
-from server.core.redis_manager import publish_presence, set_user_online, set_user_offline
 
 from ..core import models
 from ..core.database import SessionLocal
 from ..core.security import security
+from ..utils.mentions import parse_mentions, resolve_mentioned_users
 
 logger = logging.getLogger("nurchat_ws")
 
@@ -290,9 +289,10 @@ class ChatManager:
                 id=message_id,
                 chat_id=data["chat_id"],
                 user_id=user_id,
-                content=data["content"],  # Уже зашифровано
+                content=data["content"],
                 message_type=data["message_type"],
-                file_id=data.get("file_id")
+                file_id=data.get("file_id"),
+                reply_to_id=data.get("reply_to_id"),
             )
             db.add(message)
             db.commit()
@@ -310,6 +310,24 @@ class ChatManager:
             sender = db.query(models.User).filter(models.User.id == user_id).first()
             sender_username = sender.username if sender else "Unknown"
             logger.debug(f"Message {message_id} saved to DB")
+
+            mentioned_usernames = parse_mentions(data.get("content", ""))
+            if mentioned_usernames:
+                mentioned_users = resolve_mentioned_users(db, mentioned_usernames, data["chat_id"])
+                for mentioned in mentioned_users:
+                    if mentioned.id == user_id:
+                        continue
+                    mention_event = {
+                        "event": "mention",
+                        "data": {
+                            "chat_id": data["chat_id"],
+                            "message_id": message_id,
+                            "mentioned_by": user_id,
+                            "mentioned_by_username": sender_username,
+                            "content_preview": (data.get("content") or "")[:100],
+                        }
+                    }
+                    await self.connection_manager.send_personal_message(mention_event, mentioned.id)
         except Exception as e:
             logger.error(f"Error saving message to DB: {e}")
             db.rollback()
@@ -317,8 +335,6 @@ class ChatManager:
         finally:
             db.close()
 
-        # Сервер больше не дешифрует сообщения - сообщения зашифрованы клиентом
-        # Отправляем как есть, получатель расшифрует на своей стороне
         message_event = {
             "event": WS_EVENTS["MESSAGE"],
             "data": {
@@ -372,19 +388,6 @@ class ChatManager:
             data["chat_id"],
             exclude_user=user_id
         )
-
-        if settings.USE_FEDERATION:
-            try:
-                db = SessionLocal()
-                chat_obj = db.query(models.Chat).filter(models.Chat.id == data["chat_id"]).first()
-                if chat_obj and chat_obj.name and "@" in chat_obj.name:
-                    from server.routes.federation import send_federated_typing
-                    user_obj = db.query(models.User).filter(models.User.id == user_id).first()
-                    if user_obj:
-                        await send_federated_typing(user_obj, chat_obj.name)
-                db.close()
-            except Exception:
-                pass
 
         logger.debug(f"Typing event from {user_id} in chat {data['chat_id']}: {data['is_typing']}")
 

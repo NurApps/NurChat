@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
 from datetime import datetime, timedelta, timezone
 
+from fastapi import APIRouter, Depends
+from sqlalchemy import desc, func
+from sqlalchemy.orm import Session
+
 from server.core.database import get_db
-from server.core.models import Message, Chat, File, ChatParticipant, User
+from server.core.models import ChatParticipant, File, Message, User
 from server.core.security import verify_token_dependency
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
@@ -19,7 +20,7 @@ def get_stats(
 
     # Total counts
     total_messages = db.query(func.count(Message.id)).filter(
-        Message.user_id == user_id, Message.is_deleted == False
+        Message.user_id == user_id, ~Message.is_deleted
     ).scalar() or 0
 
     total_chats = db.query(func.count(ChatParticipant.id)).filter(
@@ -40,7 +41,7 @@ def get_stats(
         .filter(
             Message.user_id == user_id,
             Message.created_at >= thirty_days_ago,
-            Message.is_deleted == False,
+            ~Message.is_deleted,
         )
         .group_by(func.date(Message.created_at))
         .order_by(func.date(Message.created_at))
@@ -59,7 +60,7 @@ def get_stats(
             .filter(
                 Message.chat_id.in_(chat_ids),
                 Message.user_id != user_id,
-                Message.is_deleted == False,
+                ~Message.is_deleted,
             )
             .group_by(Message.user_id)
             .order_by(desc("msg_count"))
@@ -84,7 +85,7 @@ def get_stats(
         )
         .filter(
             Message.user_id == user_id,
-            Message.is_deleted == False,
+            ~Message.is_deleted,
         )
         .group_by(Message.message_type)
         .all()

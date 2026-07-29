@@ -8,6 +8,7 @@ import { useAvatar } from "../hooks/useAvatar"
 import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
 import { checkForUpdates } from "../services/updateService"
+import { useTheme, THEMES } from "../context/ThemeContext"
 import type { UserResponse } from "../types"
 
 type SettingsTab = "profile" | "notifications" | "privacy" | "storage" | "security" | "account"
@@ -77,6 +78,7 @@ export default function SettingsPage() {
   const [totpSetupMode, setTotpSetupMode] = useState<"idle" | "setup" | "enable" | "disable">("idle")
   const [totpBackupCodes, setTotpBackupCodes] = useState<string[]>([])
   const [totpLoading, setTotpLoading] = useState(false)
+  const { theme, setTheme } = useTheme()
 
   useEffect(() => {
     api.getCurrentUser()
@@ -420,6 +422,29 @@ export default function SettingsPage() {
               <button className="settings-save-btn" disabled={saving} onClick={handleSave}>
                 {saving ? "Сохранение..." : "Сохранить"}
               </button>
+
+              <div className="settings-group" style={{ marginTop: 24 }}>
+                <h3 className="settings-group-title">Тема оформления</h3>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      className={`settings-tab ${theme === t.id ? "active" : ""}`}
+                      onClick={() => setTheme(t.id)}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        border: theme === t.id ? "2px solid var(--accent)" : "2px solid transparent",
+                        background: theme === t.id ? "var(--surface-variant)" : "var(--card-bg)",
+                        cursor: "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </>
           )}
 
@@ -731,6 +756,9 @@ export default function SettingsPage() {
                   </button>
                   <button className="settings-action-btn" onClick={() => navigate("/blocked")}>
                     Заблокированные
+                  </button>
+                  <button className="settings-action-btn" onClick={() => navigate("/webhooks")}>
+                    Webhooks
                   </button>
                 </div>
               </div>

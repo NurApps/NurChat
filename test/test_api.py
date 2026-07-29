@@ -1,6 +1,11 @@
+import io
 import re
+
 import pytest
 from fastapi.testclient import TestClient
+from nacl.encoding import HexEncoder
+from nacl.public import PrivateKey
+from nacl.signing import SigningKey
 
 from server.main import app
 from shared.rate_limiter import limiter
@@ -43,8 +48,8 @@ def _reset_limiter():
 
 @pytest.fixture(autouse=True)
 def _clear_db():
-    from server.core.database import SessionLocal
     from server.core import models
+    from server.core.database import SessionLocal
     db = SessionLocal()
     try:
         for table in [models.MessageReadStatus, models.Message,
@@ -194,7 +199,159 @@ class TestChat:
     def test_body_size_limit(self):
         r = client.post(
             "/api/auth/login",
-            content=b"x" * (11 * 1024 * 1024),
+            content=b"x" * (51 * 1024 * 1024),
             headers={"Content-Type": "application/json"},
         )
         assert r.status_code == 413
+
+
+class TestFiles:
+    def _auth_header(self) -> dict:
+        data = _register_user()
+        csrf = _csrf_headers()
+        return {"Authorization": f"Bearer {data['access_token']}", **csrf}
+
+    def test_upload_and_list_files(self):
+        h = self._auth_header()
+        file_content = b"fake_image_data_here"
+        r = client.post(
+            "/api/files/upload",
+            data={"file_type": "image"},
+            files={"file": ("test.png", io.BytesIO(file_content), "image/png")},
+            headers=h,
+        )
+        assert r.status_code == 200, f"Upload failed: {r.text}"
+        data = r.json()
+        assert "id" in data
+        assert data["file_type"] == "image"
+        assert data["filename"] == "test.png"
+        file_id = data["id"]
+
+        r = client.get("/api/files/my-files", headers=h)
+        assert r.status_code == 200
+        files = r.json()
+        assert any(f["id"] == file_id for f in files)
+
+    def test_storage_info(self):
+        h = self._auth_header()
+        r = client.get("/api/files/storage-info", headers=h)
+        assert r.status_code == 200
+        data = r.json()
+        assert "total_size" in data
+        assert "file_count" in data
+        assert "max_storage" in data
+
+    def test_upload_invalid_type_fails(self):
+        h = self._auth_header()
+        r = client.post(
+            "/api/files/upload",
+            data={"file_type": "invalid_type"},
+            files={"file": ("test.txt", io.BytesIO(b"test"), "text/plain")},
+            headers=h,
+        )
+        assert r.status_code == 422
+
+    def test_delete_file(self):
+        h = self._auth_header()
+        file_content = b"delete_me"
+        r = client.post(
+            "/api/files/upload",
+            data={"file_type": "document"},
+            files={"file": ("delete.txt", io.BytesIO(file_content), "text/plain")},
+            headers=h,
+        )
+        assert r.status_code == 200
+        file_id = r.json()["id"]
+
+        r = client.delete(f"/api/files/delete/{file_id}", headers=h)
+        assert r.status_code == 200
+
+        r = client.delete(f"/api/files/delete/{file_id}", headers=h)
+        assert r.status_code == 404
+
+
+class TestKeys:
+    def _auth_header(self) -> dict:
+        data = _register_user("keyuser", "KeyTest123", "KeyUser")
+        csrf = _csrf_headers()
+        return {"Authorization": f"Bearer {data['access_token']}", **csrf}, data["user"]["id"]
+
+    def _generate_signed_prekey(self) -> tuple[str, str]:
+        sk = PrivateKey.generate()
+        signing_sk = SigningKey.generate()
+        pub = sk.public_key.encode(encoder=HexEncoder).decode()
+        sig = signing_sk.sign(sk.public_key.encode()).signature.hex()
+        return pub, sig
+
+    def test_upload_and_get_signed_prekey(self):
+        h, user_id = self._auth_header()
+        pub, sig = self._generate_signed_prekey()
+
+        r = client.post("/api/keys/signed-prekey", params={
+            "public_key": pub, "signature": sig,
+        }, headers=h)
+        assert r.status_code == 200
+
+        r = client.get(f"/api/keys/signed-prekey/{user_id}", headers=h)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["public_key"] == pub
+        assert data["signature"] == sig
+
+    def test_upload_and_get_one_time_prekeys(self):
+        h, user_id = self._auth_header()
+        pub, sig = self._generate_signed_prekey()
+        client.post("/api/keys/signed-prekey", params={
+            "public_key": pub, "signature": sig,
+        }, headers=h)
+
+        r = client.post("/api/keys/one-time", params={"count": 10}, headers=h)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["count"] == 10
+        assert len(data["keys"]) == 10
+
+        r = client.get(f"/api/keys/one-time-count/{user_id}", headers=h)
+        assert r.status_code == 200
+        assert r.json()["count"] == 10
+
+    def test_get_prekey_bundle(self):
+        h, user_id = self._auth_header()
+        pub, sig = self._generate_signed_prekey()
+        client.post("/api/keys/signed-prekey", params={
+            "public_key": pub, "signature": sig,
+        }, headers=h)
+        client.post("/api/keys/one-time", params={"count": 5}, headers=h)
+
+        r = client.get(f"/api/keys/bundle/{user_id}", headers=h)
+        assert r.status_code == 200
+        data = r.json()
+        assert "identity_key" in data
+        assert "signed_prekey" in data
+        assert "one_time_prekey" in data
+        assert data["one_time_prekey"] is not None
+        assert "registration_id" in data
+
+    def test_get_prekey_bundle_consumes_one_time(self):
+        h, user_id = self._auth_header()
+        pub, sig = self._generate_signed_prekey()
+        client.post("/api/keys/signed-prekey", params={
+            "public_key": pub, "signature": sig,
+        }, headers=h)
+        client.post("/api/keys/one-time", params={"count": 3}, headers=h)
+
+        r = client.get(f"/api/keys/bundle/{user_id}", headers=h)
+        assert r.status_code == 200
+
+        r = client.get(f"/api/keys/one-time-count/{user_id}", headers=h)
+        assert r.json()["count"] == 2
+
+    def test_prekey_bundle_not_found(self):
+        h, _ = self._auth_header()
+        r = client.get("/api/keys/bundle/nonexistent_user", headers=h)
+        assert r.status_code == 404
+
+    def test_cleanup_prekeys(self):
+        h, user_id = self._auth_header()
+        r = client.post("/api/keys/cleanup", headers=h)
+        assert r.status_code == 200

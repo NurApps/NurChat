@@ -1,8 +1,5 @@
-import asyncio
-import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 from fastapi import WebSocket
 
@@ -68,10 +65,10 @@ class RemotePeerManager:
             self._user_map.pop(peer.user_id, None)
             logger.info("Remote peer disconnected: %s", node_id)
 
-    def get_peer_by_node(self, node_id: str) -> Optional[RemotePeer]:
+    def get_peer_by_node(self, node_id: str) -> RemotePeer | None:
         return self._peers.get(node_id)
 
-    def get_peer_by_user(self, user_id: str) -> Optional[RemotePeer]:
+    def get_peer_by_user(self, user_id: str) -> RemotePeer | None:
         node_id = self._user_map.get(user_id)
         if node_id:
             return self._peers.get(node_id)

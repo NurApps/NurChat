@@ -1,5 +1,4 @@
 import hashlib
-import struct
 
 
 def generate_safety_number(

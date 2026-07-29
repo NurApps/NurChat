@@ -28,17 +28,12 @@ export default function StatsPage() {
 
   const maxDay = Math.max(...stats.messages_by_day.map(d => d.count), 1)
 
-  const typeIcons: Record<string, string> = {
-    text: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
-    image: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
-    video: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
-    audio: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
-    voice: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
-    file: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
-  }
-
   const typeLabels: Record<string, string> = {
     text: "Текст", image: "Фото", video: "Видео", audio: "Аудио", voice: "Голос", file: "Файлы",
+  }
+
+  const typeEmoji: Record<string, string> = {
+    text: "\u{1F4DD}", image: "\u{1F5BC}", video: "\u{1F3AC}", audio: "\u{1F3B5}", voice: "\u{1F3A4}", file: "\u{1F4C1}",
   }
 
   return (
@@ -102,7 +97,7 @@ export default function StatsPage() {
           <div className="stats-types">
             {Object.entries(stats.message_types).map(([type, count]) => (
               <div key={type} className="stats-type">
-                <span dangerouslySetInnerHTML={{ __html: typeIcons[type] || '' }} />
+                <span>{typeEmoji[type] || "\u{1F4C4}"}</span>
                 <span>{typeLabels[type] || type}</span>
                 <span className="stats-type-count">{count}</span>
               </div>

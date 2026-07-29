@@ -1,9 +1,9 @@
-"""Security utilities: Argon2id hashing, TOTP 2FA, backup codes."""
+"""Security utilities: Argon2id hashing, TOTP 2FA, backup codes, token blacklist."""
 
 import base64
-import hashlib
 import io
 import json
+import os
 import secrets
 import string
 
@@ -12,7 +12,9 @@ import qrcode
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id as Argon2idKDF
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 # ── Argon2id password hashing ──
 
@@ -148,3 +150,54 @@ def verify_backup_code(plain_code: str, hashed_json: str) -> tuple[bool, str]:
             return True, json.dumps(hashes)
 
     return False, hashed_json
+
+
+# ── Master-key TOTP encryption (not password-dependent) ──
+
+_TOTP_MASTER_KEY = os.getenv("TOTP_MASTER_KEY")
+if not _TOTP_MASTER_KEY:
+    _TOTP_MASTER_KEY = secrets.token_urlsafe(32)
+
+def _get_totp_cipher() -> Fernet:
+    key_bytes = _TOTP_MASTER_KEY.encode("utf-8")
+    if len(key_bytes) < 32:
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b"nurchat_totp_salt_v1",
+            iterations=100000,
+        )
+        key_bytes = base64.urlsafe_b64encode(kdf.derive(key_bytes))
+    else:
+        key_bytes = key_bytes[:32].ljust(32, b"=")
+        key_bytes = base64.urlsafe_b64encode(key_bytes)
+    return Fernet(key_bytes)
+
+
+def encrypt_totp_secret(secret: str) -> str:
+    """Encrypt TOTP secret with master key (not password-dependent)."""
+    fernet = _get_totp_cipher()
+    encrypted = fernet.encrypt(secret.encode("utf-8"))
+    return base64.b64encode(encrypted).decode("utf-8")
+
+
+def decrypt_totp_secret(encrypted_secret: str) -> str | None:
+    """Decrypt TOTP secret with master key."""
+    try:
+        fernet = _get_totp_cipher()
+        encrypted_bytes = base64.b64decode(encrypted_secret.encode("utf-8"))
+        decrypted = fernet.decrypt(encrypted_bytes)
+        return decrypted.decode("utf-8")
+    except Exception:
+        return None
+
+
+# ── Token blacklist (JWT revocation) ──
+
+_BLACKLIST: set[str] = set()
+
+def revoke_token(jti: str) -> None:
+    _BLACKLIST.add(jti)
+
+def is_token_revoked(jti: str) -> bool:
+    return jti in _BLACKLIST

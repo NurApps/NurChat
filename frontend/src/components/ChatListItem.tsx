@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import type { ChatResponse, UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
 import { getDraftForChat } from "../utils/drafts"
+import { formatFull, formatRelativeTime } from "../utils/format"
 
 interface Props {
   chat: ChatResponse
@@ -20,12 +21,7 @@ function getDisplayName(chat: ChatResponse, currentUser: UserResponse): string {
 
 function getLastMessageTime(chat: ChatResponse): string {
   if (!chat.last_message?.created_at) return ""
-  try {
-    const d = new Date(chat.last_message.created_at)
-    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-  } catch {
-    return ""
-  }
+  return formatRelativeTime(chat.last_message.created_at)
 }
 
 function getLastMessagePreview(chat: ChatResponse): string {
@@ -91,7 +87,7 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
             )}
             <span className="cli-name">{displayName}</span>
           </div>
-          <span className="cli-time">{lastTime}</span>
+          <span className="cli-time" title={chat.last_message?.created_at ? formatFull(chat.last_message.created_at) : ""}>{lastTime}</span>
           <div className="cli-menu-wrapper" ref={menuRef}>
             <button
               className="cli-menu-btn"

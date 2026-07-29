@@ -97,6 +97,7 @@ export default function ChatPage() {
   const [mentionIndex, setMentionIndex] = useState(-1)
   const [e2eKeys] = useState<E2EKeys | null>(loadE2EKeys)
   const [keyWarning, setKeyWarning] = useState<string | null>(null)
+  const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
@@ -144,6 +145,14 @@ export default function ChatPage() {
     onIncomingCall: setIncomingCall,
     onTypingUsers: socketTypingCb,
     onOnlineUsers: setOnlineUsers,
+    onMention: useCallback((data) => {
+      setToast({
+        id: `mention_${data.message_id}`,
+        title: `@${data.mentioned_by_username}`,
+        body: `упомянул(а) вас: ${data.content_preview}`,
+        chatId: data.chat_id,
+      })
+    }, [setToast]),
     onReactions: useCallback(() => undefined, []),
     onNavigate: navigate,
   })
@@ -212,6 +221,17 @@ export default function ChatPage() {
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150
     if (isNearBottom) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, messagesContainerRef, messagesEndRef])
+
+  useEffect(() => {
+    if (!scrollToMessageId) return
+    const el = document.getElementById(`msg-${scrollToMessageId}`)
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+      el.classList.add("msg-highlighted")
+      setTimeout(() => el.classList.remove("msg-highlighted"), 2000)
+      setScrollToMessageId(null)
+    }
+  }, [scrollToMessageId, messages])
 
   useEffect(() => {
     const unsub = p2pClient.on((event) => {
@@ -563,8 +583,14 @@ export default function ChatPage() {
         } catch { console.error("Voice failed") }
         setUploading(false)
       }
-      mr.start(); setMediaRecorder(mr); setRecording(true)
-      recordingTimerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000)
+      const MAX_DURATION = 300
+      mr.start(); setMediaRecorder(mr); setRecording(true); setRecordingTime(0)
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime((t) => {
+          if (t + 1 >= MAX_DURATION) { mr.stop(); return MAX_DURATION }
+          return t + 1
+        })
+      }, 1000)
     } catch { console.error("Microphone denied") }
   }, [selectedChat, loadChats, addMessage, setUploading, t])
 
@@ -732,9 +758,10 @@ export default function ChatPage() {
             )}
             {tab === "bookmarks" && (
               <div className="list-scroll">
-                <BookmarksList onSelectMessage={(chatId) => {
+                <BookmarksList onSelectMessage={(chatId, messageId) => {
                   const chat = useChatStore.getState().chats.find(c => c.id === chatId)
                   if (chat) { setSelectedChat(chat); setTab("chats") }
+                  if (messageId) setScrollToMessageId(messageId)
                 }} />
               </div>
             )}
@@ -1002,9 +1029,10 @@ export default function ChatPage() {
         <GroupSettings chat={selectedChat} currentUser={currentUser} onClose={() => setShowGroupSettings(false)} onUpdated={loadChats} />
       )}
       {showGlobalSearch && (
-        <GlobalSearch chats={chats} onSelect={(chatId: string) => {
+        <GlobalSearch chats={chats} onSelect={(chatId: string, messageId?: string) => {
           const chat = chats.find(c => c.id === chatId)
           if (chat) { setSelectedChat(chat); setTab("chats") }
+          if (messageId) setScrollToMessageId(messageId)
           setShowGlobalSearch(false)
         }} onClose={() => setShowGlobalSearch(false)} />
       )}

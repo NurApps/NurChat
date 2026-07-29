@@ -4,7 +4,7 @@ import asyncio
 
 from fastapi import APIRouter, Depends
 
-from server.core.discovery import scan_lan, start_discovery
+from server.core.discovery import scan_lan
 from server.core.security import verify_token_dependency
 from server.utils.logger import logger
 

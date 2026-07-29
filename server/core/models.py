@@ -52,11 +52,12 @@ class ChatParticipant(Base):
     __tablename__ = "chat_participants"
     __table_args__ = (
         Index("ix_chat_participants_user_chat", "user_id", "chat_id"),
+        Index("ix_chat_participants_user_pin", "user_id", "is_pinned", "is_muted"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    chat_id = Column(String, ForeignKey("chats.id"))
-    user_id = Column(String, ForeignKey("users.id"))
+    chat_id = Column(String, ForeignKey("chats.id", ondelete="CASCADE"))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
     joined_at = Column(DateTime(timezone=True), server_default=func.now())
     is_pinned = Column(Boolean, default=False)  # Закреплён ли чат для пользователя
     is_muted = Column(Boolean, default=False)  # Отключены ли уведомления для пользователя
@@ -69,25 +70,29 @@ class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (
         Index("ix_messages_chat_created", "chat_id", "created_at"),
+        Index("ix_messages_query", "is_deleted", "chat_id", "created_at"),
+        Index("ix_messages_reply_to", "reply_to_id"),
     )
 
     id = Column(String, primary_key=True, index=True)
-    chat_id = Column(String, ForeignKey("chats.id"))
-    user_id = Column(String, ForeignKey("users.id"))
-    content = Column(Text)  # Плейнтекст или "[encrypted]" если E2E
-    encrypted_content = Column(Text, nullable=True)  # E2E: JSON envelope (ciphertext, signature, timestamp, senderId)
-    signature = Column(Text, nullable=True)  # E2E: Ed25519 signature (base64)
+    chat_id = Column(String, ForeignKey("chats.id", ondelete="CASCADE"), index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    content = Column(Text)
+    encrypted_content = Column(Text, nullable=True)
+    signature = Column(Text, nullable=True)
     message_type = Column(String, default=MESSAGE_TYPES["TEXT"])
-    file_id = Column(String, ForeignKey("files.id"), nullable=True)
-    forwarded_from = Column(String, nullable=True)  # ID оригинального сообщения
+    file_id = Column(String, ForeignKey("files.id", ondelete="SET NULL"), nullable=True)
+    forwarded_from = Column(String, nullable=True)
+    reply_to_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
     is_deleted = Column(Boolean, default=False)
     deleted_for_all = Column(Boolean, default=False)
-    expires_at = Column(DateTime(timezone=True), nullable=True)  # Auto-destruct timer
+    expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="messages")
     chat = relationship("Chat", back_populates="messages")
     file = relationship("File", back_populates="message")
+    reply_to = relationship("Message", remote_side=[id], backref="replies")
 
 class File(Base):
     __tablename__ = "files"
@@ -96,7 +101,7 @@ class File(Base):
     )
 
     id = Column(String, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
     filename = Column(String)
     file_path = Column(String)
     file_type = Column(String)  # image, video, voice, document
@@ -118,8 +123,8 @@ class Contact(Base):
     )
 
     id = Column(String, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"))  # Кто добавил контакт
-    contact_user_id = Column(String, ForeignKey("users.id"))  # Кого добавили в контакты
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))  # Кто добавил контакт
+    contact_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))  # Кого добавили в контакты
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", foreign_keys=[user_id], back_populates="contacts_added")
@@ -132,9 +137,9 @@ class GroupInvite(Base):
     )
 
     id = Column(String, primary_key=True, index=True)
-    group_id = Column(String, ForeignKey("chats.id"))
-    inviter_id = Column(String, ForeignKey("users.id"))  # Кто пригласил
-    invitee_id = Column(String, ForeignKey("users.id"))  # Кого пригласили
+    group_id = Column(String, ForeignKey("chats.id", ondelete="CASCADE"))
+    inviter_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))  # Кто пригласил
+    invitee_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))  # Кого пригласили
     status = Column(String, default="pending")  # pending, accepted, declined
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -147,11 +152,12 @@ class MessageReadStatus(Base):
     __tablename__ = "message_read_status"
     __table_args__ = (
         Index("ix_read_status_message_user", "message_id", "user_id"),
+        Index("ix_read_status_user_read", "user_id", "is_read"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    message_id = Column(String, ForeignKey("messages.id"))
-    user_id = Column(String, ForeignKey("users.id"))
+    message_id = Column(String, ForeignKey("messages.id", ondelete="CASCADE"))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
     is_read = Column(Boolean, default=False)
     read_at = Column(DateTime(timezone=True))
 
@@ -162,12 +168,13 @@ class CallLog(Base):
     __tablename__ = "call_logs"
     __table_args__ = (
         Index("ix_call_logs_callee", "callee_id"),
+        Index("ix_call_logs_caller_started", "caller_id", "started_at"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
     call_id = Column(String, index=True)
-    caller_id = Column(String, ForeignKey("users.id"))
-    callee_id = Column(String, ForeignKey("users.id"))
+    caller_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
+    callee_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
     call_type = Column(String)  # audio или video
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     ended_at = Column(DateTime(timezone=True))
@@ -184,8 +191,8 @@ class MessageReaction(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    message_id = Column(String, ForeignKey("messages.id"))
-    user_id = Column(String, ForeignKey("users.id"))
+    message_id = Column(String, ForeignKey("messages.id", ondelete="CASCADE"))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
     emoji = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -200,8 +207,8 @@ class BlockedUser(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"))  # Кто заблокировал
-    blocked_user_id = Column(String, ForeignKey("users.id"))  # Кого заблокировали
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))  # Кто заблокировал
+    blocked_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))  # Кого заблокировали
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", foreign_keys=[user_id], backref="blocked_users_list")
@@ -216,7 +223,7 @@ class AuditLog(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
     action = Column(String, nullable=False)  # login, logout, message_sent, file_upload, etc.
     details = Column(Text, nullable=True)  # JSON with non-sensitive metadata
     ip_address = Column(String, nullable=True)
@@ -232,8 +239,8 @@ class P2PMessage(Base):
     )
 
     id = Column(String, primary_key=True, index=True)
-    sender_id = Column(String, ForeignKey("users.id"), index=True)
-    recipient_id = Column(String, ForeignKey("users.id"), index=True)
+    sender_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    recipient_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     payload = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     delivered_at = Column(DateTime(timezone=True), nullable=True)
@@ -246,7 +253,7 @@ class P2PBackup(Base):
     __tablename__ = "p2p_backups"
 
     id = Column(String, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     chat_id = Column(String, index=True)
     payload = Column(Text, nullable=False)
     version = Column(Integer, default=1)
@@ -259,9 +266,9 @@ class Bookmark(Base):
     __tablename__ = "bookmarks"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), index=True)
-    message_id = Column(String, ForeignKey("messages.id"), index=True)
-    chat_id = Column(String, ForeignKey("chats.id"), index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    message_id = Column(String, ForeignKey("messages.id", ondelete="CASCADE"), index=True)
+    chat_id = Column(String, ForeignKey("chats.id", ondelete="CASCADE"), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
@@ -273,9 +280,9 @@ class PinnedMessage(Base):
     __tablename__ = "pinned_messages"
 
     id = Column(Integer, primary_key=True, index=True)
-    chat_id = Column(String, ForeignKey("chats.id"), index=True)
-    message_id = Column(String, ForeignKey("messages.id"), index=True)
-    pinned_by = Column(String, ForeignKey("users.id"))
+    chat_id = Column(String, ForeignKey("chats.id", ondelete="CASCADE"), index=True)
+    message_id = Column(String, ForeignKey("messages.id", ondelete="CASCADE"), index=True)
+    pinned_by = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     chat = relationship("Chat")
@@ -287,7 +294,7 @@ class SignedPreKey(Base):
     __tablename__ = "signed_prekeys"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     public_key = Column(Text, nullable=False)
     signature = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True)
@@ -300,7 +307,7 @@ class OneTimePreKey(Base):
     __tablename__ = "one_time_prekeys"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     public_key = Column(Text, nullable=False)
     is_used = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -312,7 +319,7 @@ class KeyRotationLog(Base):
     __tablename__ = "key_rotation_log"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     old_public_key = Column(Text, nullable=True)
     new_public_key = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -320,34 +327,20 @@ class KeyRotationLog(Base):
     user = relationship("User")
 
 
-class FederationServer(Base):
-    __tablename__ = "federation_servers"
+class Webhook(Base):
+    __tablename__ = "webhooks"
 
-    id = Column(Integer, primary_key=True, index=True)
-    server_name = Column(String, unique=True, index=True, nullable=False)  # e.g. "nurchat.example.com:8000"
-    public_key = Column(Text, nullable=False)  # Ed25519 public key (hex)
-    display_name = Column(String, nullable=True)
-    software_version = Column(String, nullable=True)
-    last_seen = Column(DateTime(timezone=True), server_default=func.now())
-    is_blocked = Column(Boolean, default=False)
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    secret = Column(String, nullable=True)
+    events = Column(String, nullable=False)  # comma-separated: message.new,message.edited,message.deleted
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User")
 
 
-class FederationActivity(Base):
-    __tablename__ = "federation_activities"
-    __table_args__ = (
-        Index("ix_fed_activity_sender", "sender_server", "created_at"),
-        Index("ix_fed_activity_type", "activity_type", "created_at"),
-    )
 
-    id = Column(Integer, primary_key=True, index=True)
-    activity_id = Column(String, unique=True, index=True, nullable=False)  # Unique activity ID
-    activity_type = Column(String, nullable=False)  # message, typing, reaction, etc.
-    sender_server = Column(String, nullable=False)
-    sender_user = Column(String, nullable=False)  # username on sender server
-    recipient_server = Column(String, nullable=False)
-    recipient_user = Column(String, nullable=False)
-    payload = Column(Text, nullable=False)  # JSON activity body
-    signature = Column(Text, nullable=False)  # Ed25519 signature (hex)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    processed_at = Column(DateTime(timezone=True), nullable=True)

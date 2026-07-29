@@ -78,8 +78,15 @@ class E2EWorkerService {
   async init(): Promise<boolean> {
     if (this.initialized) return this.useWorker
     this.initialized = true
-    this.useWorker = false
-    return false
+    try {
+      this.worker = new Worker(new URL('../workers/e2eWorker.ts', import.meta.url), { type: 'module' })
+      this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => this.handleResponse(event.data)
+      this.useWorker = true
+    } catch (e) {
+      console.warn('[E2EWorker] Failed to create worker, falling back to main thread:', e)
+      this.useWorker = false
+    }
+    return this.useWorker
   }
 
 

@@ -149,6 +149,9 @@ export default function LoginPage() {
           return
         }
         
+        // Generate E2E keys client-side before registration
+        const { generateKeys, saveKeys } = await import("../services/e2e")
+        const localKeys = generateKeys()
         let data: any
         try {
           data = await invoke("fetch_register", {
@@ -159,6 +162,8 @@ export default function LoginPage() {
               last_name: lastName.trim(),
               captcha_id: captchaId,
               captcha_code: captchaCode,
+              public_key: localKeys.publicKeyHex,
+              signing_public_key: localKeys.signingPublicHex,
             }),
           })
         } catch (fetchErr: any) {
@@ -173,15 +178,13 @@ export default function LoginPage() {
         }
         api.setToken(data.access_token)
         localStorage.setItem("user", JSON.stringify(data.user))
-        // Save E2E keys on registration (private keys returned once)
-        if (data.private_key && data.signing_private_key && data.user) {
-          saveKeys({
-            privateKeyHex: data.private_key,
-            publicKeyHex: data.user.public_key || "",
-            signingPrivateHex: data.signing_private_key,
-            signingPublicHex: data.user.signing_public_key || "",
-          })
-        }
+        // Save locally generated E2E keys (private keys never sent to server)
+        saveKeys({
+          privateKeyHex: localKeys.privateKeyHex,
+          publicKeyHex: localKeys.publicKeyHex,
+          signingPrivateHex: localKeys.signingPrivateHex,
+          signingPublicHex: localKeys.signingPublicHex,
+        })
         navigate("/chat", { replace: true })
       }
     } catch (err: any) {

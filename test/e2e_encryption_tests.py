@@ -12,6 +12,7 @@ from shared.p2p_encryption import P2PEncryption
 
 
 class TestResults:
+    __test__ = False
     def __init__(self):
         self.passed = 0
         self.failed = 0
@@ -138,49 +139,28 @@ def test_encrypt_wrong_key(results):
         results.add_fail("Wrong Key Decryption", str(e))
 
 
-def test_encrypt_key_with_public_key(results):
-    """Тест 6: Шифрование ключа публичным ключом"""
+def test_encrypt_decrypt_key_with_asymmetric_keys(results):
+    """Тест 6+7: Шифрование и дешифрование ключа асимметричной парой"""
     try:
         p2p = P2PEncryption()
 
-        # Генерируем пару ключей
         private_key, public_key = p2p.generate_asymmetric_keys()
+        original_key = p2p.generate_symmetric_key()
 
-        # Ключ для шифрования
-        key_to_encrypt = p2p.generate_symmetric_key()
-
-        # Шифруем публичным ключом
-        encrypted_key = p2p.encrypt_key_with_public_key(key_to_encrypt, public_key)
-
+        encrypted_key = p2p.encrypt_key_with_public_key(original_key, public_key)
         assert encrypted_key is not None, "Зашифрованный ключ не создан"
         assert isinstance(encrypted_key, str), f"Зашифрованный ключ не строка: {type(encrypted_key)}"
 
-        results.add_pass("Encrypt Key With Public Key")
-        return encrypted_key, private_key, key_to_encrypt
-    except Exception as e:
-        results.add_fail("Encrypt Key With Public Key", str(e))
-        return None, None, None
-
-
-def test_decrypt_key_with_private_key(results, encrypted_key, private_key, original_key):
-    """Тест 7: Дешифрование ключа приватным ключом"""
-    try:
-        if not encrypted_key:
-            results.add_fail("Decrypt Key With Private Key", "Нет данных для теста (ошибка в тесте 6)")
-            return
-
-        p2p = P2PEncryption()
-
         decrypted_key = p2p.decrypt_key_with_private_key(encrypted_key, private_key)
-
         assert decrypted_key == original_key, "Расшифрованный ключ не совпадает с оригиналом"
 
-        results.add_pass("Decrypt Key With Private Key")
+        results.add_pass("Encrypt/Decrypt Key With Asymmetric Keys")
     except Exception as e:
-        results.add_fail("Decrypt Key With Private Key", str(e))
+        results.add_fail("Encrypt/Decrypt Key With Asymmetric Keys", str(e))
 
 
 import pytest
+
 
 @pytest.mark.skip(reason="EncryptionManager удалён из кодовой базы")
 def test_encryption_manager_chat_key(results):
@@ -282,8 +262,7 @@ def run_e2e_encryption_tests():
     test_encrypt_wrong_key(results)
 
     # Тесты шифрования ключей
-    encrypted_key, private_key, original_key = test_encrypt_key_with_public_key(results)
-    test_decrypt_key_with_private_key(results, encrypted_key, private_key, original_key)
+    test_encrypt_decrypt_key_with_asymmetric_keys(results)
 
     # Краевые случаи
     test_base64_padding_handling(results)

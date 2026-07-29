@@ -26,10 +26,7 @@ export function useChatActions({
     const text = input.trim()
     if (!text || !selectedChat) return
     let content = text
-    if (replyTo) {
-      const sender = replyTo.user?.username || "Пользователь"
-      content = `↩️ Ответ ${sender}\n${text}`
-    }
+    const replyToId = replyTo?.id
 
     const myKeys = loadE2EKeys()
     let encryptedContent: string | undefined
@@ -77,14 +74,14 @@ export function useChatActions({
 
     if (!sentViaP2P) {
       try {
-        const msg = await api.sendMessage(selectedChat.id, content, "text", undefined, encryptedContent, signature)
+        const msg = await api.sendMessage(selectedChat.id, content, "text", undefined, encryptedContent, signature, undefined, replyToId)
         addMessage(msg)
         loadChats()
       } catch (e) { console.error("Send failed:", e) }
     }
     sendTyping(false)
     return true
-  }, [selectedChat, replyTo, currentUser, loadChats, addMessage, sendTyping])
+  }, [selectedChat, replyTo, currentUser, loadChats, addMessage, sendTyping, replyToId])
 
   const handleReply = useCallback((messageId: string, messages: MessageResponse[]) => {
     const msg = messages.find((m) => m.id === messageId)

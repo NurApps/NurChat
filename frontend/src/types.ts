@@ -13,6 +13,13 @@ export interface UserResponse {
   bio?: string
 }
 
+export interface MessageReplyPreview {
+  id: string
+  content: string
+  user_id: string
+  user: UserResponse
+}
+
 export interface MessageResponse {
   id: string
   content: string
@@ -29,6 +36,8 @@ export interface MessageResponse {
   is_deleted?: boolean
   deleted_for_all?: boolean
   forwarded_from?: string
+  reply_to_id?: string
+  reply_to?: MessageReplyPreview
   reactions?: Record<string, string[]>
   expires_at?: string
   is_pinned?: boolean
@@ -89,4 +98,16 @@ export interface FileUploadResponse {
   ttl_days: number
   uploaded_at: string
   user_id: string
+}
+
+export interface WebhookResponse {
+  id: string
+  user_id: string
+  name: string
+  url: string
+  secret?: string
+  events: string[]
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }

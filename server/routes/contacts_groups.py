@@ -1,8 +1,6 @@
-from datetime import datetime
-from pydantic import BaseModel
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import func
 
 from server.core import models, schemas
@@ -23,28 +21,27 @@ async def get_contacts(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        logger.info(f"Getting contacts for user: {token['sub']}")
-        user_id = token["sub"]
+    logger.info(f"Getting contacts for user: {token['sub']}")
+    user_id = token["sub"]
 
-        contacts = db.query(models.Contact).filter(models.Contact.user_id == user_id).all()
-        result = []
-        for contact in contacts:
-            contact_user = db.query(models.User).filter(models.User.id == contact.contact_user_id).first()
-            result.append(
-                schemas.ContactResponse(
-                    id=contact.id,
-                    user_id=contact.user_id,
-                    contact_user_id=contact.contact_user_id,
-                    created_at=contact.created_at,
-                    user=schemas.UserResponse.model_validate(db.query(models.User).filter(models.User.id == contact.user_id).first()),
-                    contact_user=schemas.UserResponse.model_validate(contact_user) if contact_user else None,
-                )
+    contacts = db.query(models.Contact).options(
+        joinedload(models.Contact.contact_user),
+        joinedload(models.Contact.user),
+    ).filter(models.Contact.user_id == user_id).all()
+    result = []
+    for contact in contacts:
+        result.append(
+            schemas.ContactResponse(
+                id=contact.id,
+                user_id=contact.user_id,
+                contact_user_id=contact.contact_user_id,
+                created_at=contact.created_at,
+                user=schemas.UserResponse.model_validate(contact.user) if contact.user else None,
+                contact_user=schemas.UserResponse.model_validate(contact.contact_user)
+                if contact.contact_user else None,
             )
-        return result
-    except Exception as e:
-        logger.error(f"Get contacts error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        )
+    return result
 
 
 @router.post("/contacts", response_model=schemas.ContactResponse)
@@ -62,7 +59,9 @@ async def add_contact(
         if not contact_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
         if target_id == user_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Нельзя добавить самого себя в контакты")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Нельзя добавить самого себя в контакты"
+            )
         existing_contact = db.query(models.Contact).filter(
             models.Contact.user_id == user_id,
             models.Contact.contact_user_id == target_id
@@ -82,7 +81,9 @@ async def add_contact(
             user_id=contact.user_id,
             contact_user_id=contact.contact_user_id,
             created_at=contact.created_at,
-            user=schemas.UserResponse.model_validate(db.query(models.User).filter(models.User.id == contact.user_id).first()),
+            user=schemas.UserResponse.model_validate(
+                db.query(models.User).filter(models.User.id == contact.user_id).first()
+            ),
             contact_user=schemas.UserResponse.model_validate(contact_user) if contact_user else None,
         )
     except HTTPException:
@@ -90,7 +91,7 @@ async def add_contact(
     except Exception as e:
         logger.error(f"Add contact error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.delete("/contacts/{contact_id}")
@@ -117,7 +118,7 @@ async def remove_contact(
     except Exception as e:
         logger.error(f"Remove contact error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.post("/groups/{group_id}/invites", response_model=schemas.GroupInviteResponse)
@@ -149,7 +150,9 @@ async def invite_to_group(
             models.ChatParticipant.user_id == invitee_id
         ).first()
         if existing_participant:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Пользователь уже является участником группы")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Пользователь уже является участником группы"
+            )
         existing_invite = db.query(models.GroupInvite).filter(
             models.GroupInvite.group_id == group_id,
             models.GroupInvite.invitee_id == invitee_id,
@@ -159,7 +162,9 @@ async def invite_to_group(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Приглашение уже отправлено")
 
         invite_id = security.generate_invite_id()
-        invite = models.GroupInvite(id=invite_id, group_id=group_id, inviter_id=user_id, invitee_id=invitee_id, status="pending")
+        invite = models.GroupInvite(
+            id=invite_id, group_id=group_id, inviter_id=user_id, invitee_id=invitee_id, status="pending"
+        )
         db.add(invite)
         db.commit()
         db.refresh(invite)
@@ -192,7 +197,7 @@ async def invite_to_group(
     except Exception as e:
         logger.error(f"Invite to group error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.get("/groups/invites", response_model=list[schemas.GroupInviteResponse])
@@ -201,37 +206,34 @@ async def get_group_invites(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        logger.info(f"Getting group invites for user: {token['sub']} with status: {status_filter}")
-        user_id = token["sub"]
+    logger.info(f"Getting group invites for user: {token['sub']} with status: {status_filter}")
+    user_id = token["sub"]
 
-        invites = db.query(models.GroupInvite).filter(
-            models.GroupInvite.invitee_id == user_id,
-            models.GroupInvite.status == status_filter
-        ).all()
-        result = []
-        for invite in invites:
-            group_obj = db.query(models.Chat).filter(models.Chat.id == invite.group_id).first()
-            inviter_obj = db.query(models.User).filter(models.User.id == invite.inviter_id).first()
-            invitee_obj = db.query(models.User).filter(models.User.id == invite.invitee_id).first()
-            result.append(
-                schemas.GroupInviteResponse(
-                    id=invite.id,
-                    group_id=invite.group_id,
-                    inviter_id=invite.inviter_id,
-                    invitee_id=invite.invitee_id,
-                    status=invite.status,
-                    created_at=invite.created_at,
-                    updated_at=invite.updated_at,
-                    group=schemas.ChatResponse.model_validate(group_obj) if group_obj else None,
-                    inviter=schemas.UserResponse.model_validate(inviter_obj) if inviter_obj else None,
-                    invitee=schemas.UserResponse.model_validate(invitee_obj) if invitee_obj else None,
-                )
+    invites = db.query(models.GroupInvite).options(
+        joinedload(models.GroupInvite.group),
+        joinedload(models.GroupInvite.inviter),
+        joinedload(models.GroupInvite.invitee),
+    ).filter(
+        models.GroupInvite.invitee_id == user_id,
+        models.GroupInvite.status == status_filter
+    ).all()
+    result = []
+    for invite in invites:
+        result.append(
+            schemas.GroupInviteResponse(
+                id=invite.id,
+                group_id=invite.group_id,
+                inviter_id=invite.inviter_id,
+                invitee_id=invite.invitee_id,
+                status=invite.status,
+                created_at=invite.created_at,
+                updated_at=invite.updated_at,
+                group=schemas.ChatResponse.model_validate(invite.group) if invite.group else None,
+                inviter=schemas.UserResponse.model_validate(invite.inviter) if invite.inviter else None,
+                invitee=schemas.UserResponse.model_validate(invite.invitee) if invite.invitee else None,
             )
-        return result
-    except Exception as e:
-        logger.error(f"Get group invites error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        )
+    return result
 
 
 @router.put("/groups/invites/{invite_id}/accept")
@@ -250,7 +252,9 @@ async def accept_group_invite(
             models.GroupInvite.status == "pending"
         ).first()
         if not invite:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Приглашение не найдено или уже обработано")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Приглашение не найдено или уже обработано"
+            )
         invite.status = "accepted"
         invite.updated_at = func.now()
         db.commit()
@@ -269,7 +273,7 @@ async def accept_group_invite(
     except Exception as e:
         logger.error(f"Accept group invite error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.put("/groups/invites/{invite_id}/decline")
@@ -288,7 +292,9 @@ async def decline_group_invite(
             models.GroupInvite.status == "pending"
         ).first()
         if not invite:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Приглашение не найдено или уже обработано")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Приглашение не найдено или уже обработано"
+            )
         invite.status = "declined"
         invite.updated_at = func.now()
         db.commit()
@@ -298,7 +304,7 @@ async def decline_group_invite(
     except Exception as e:
         logger.error(f"Decline group invite error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 # ─── Group Management ───
@@ -311,13 +317,13 @@ async def rename_group(
     token: dict = Depends(verify_token_dependency)
 ):
     user_id = token["sub"]
-    chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group == True).first()
+    chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group).first()
     if not chat:
         raise HTTPException(status_code=404, detail="Группа не найдена")
     participant = db.query(models.ChatParticipant).filter(
         models.ChatParticipant.chat_id == group_id,
         models.ChatParticipant.user_id == user_id,
-        models.ChatParticipant.is_admin == True
+        models.ChatParticipant.is_admin
     ).first()
     if not participant:
         raise HTTPException(status_code=403, detail="Только админ может переименовать группу")
@@ -334,7 +340,7 @@ async def add_participant(
     token: dict = Depends(verify_token_dependency)
 ):
     user_id = token["sub"]
-    chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group == True).first()
+    chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group).first()
     if not chat:
         raise HTTPException(status_code=404, detail="Группа не найдена")
     caller = db.query(models.ChatParticipant).filter(
@@ -366,13 +372,13 @@ async def remove_participant(
     token: dict = Depends(verify_token_dependency)
 ):
     user_id = token["sub"]
-    chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group == True).first()
+    chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group).first()
     if not chat:
         raise HTTPException(status_code=404, detail="Группа не найдена")
     caller = db.query(models.ChatParticipant).filter(
         models.ChatParticipant.chat_id == group_id,
         models.ChatParticipant.user_id == user_id,
-        models.ChatParticipant.is_admin == True
+        models.ChatParticipant.is_admin
     ).first()
     if not caller and user_id != target_user_id:
         raise HTTPException(status_code=403, detail="Только админ может удалять участников")
@@ -425,7 +431,7 @@ async def set_admin(
     caller = db.query(models.ChatParticipant).filter(
         models.ChatParticipant.chat_id == group_id,
         models.ChatParticipant.user_id == user_id,
-        models.ChatParticipant.is_admin == True
+        models.ChatParticipant.is_admin
     ).first()
     if not caller:
         raise HTTPException(status_code=403, detail="Только админ может назначать админов")
@@ -454,12 +460,14 @@ async def get_group_members(
     ).first()
     if not caller:
         raise HTTPException(status_code=403, detail="Вы не участник группы")
-    participants = db.query(models.ChatParticipant).filter(
+    participants = db.query(models.ChatParticipant).options(
+        joinedload(models.ChatParticipant.user)
+    ).filter(
         models.ChatParticipant.chat_id == group_id
     ).all()
     members = []
     for p in participants:
-        user = db.query(models.User).filter(models.User.id == p.user_id).first()
+        user = p.user
         if user:
             members.append({
                 "id": user.id,

@@ -13,16 +13,30 @@ import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from shared.rate_limiter import limiter
 
 from server.core.database import create_tables
 from server.middleware.csrf import CSRFMiddleware
 
 # Импорты routes
-from server.routes import auth, calls, chat, contacts_groups, files, forward, keys, legal, p2p, bookmarks, pins, stats, audit, federation, discovery
+from server.routes import (
+    audit,
+    auth,
+    bookmarks,
+    calls,
+    chat,
+    contacts_groups,
+    discovery,
+    files,
+    forward,
+    keys,
+    legal,
+    p2p,
+    pins,
+    stats,
+    webhooks,
+)
 from server.utils.file_cleanup import file_cleanup_service
 from server.utils.logger import logger
 from server.ws.chat_manager import handle_websocket_connection
@@ -31,6 +45,7 @@ from server.ws.p2p_manager import p2p_manager
 from server.ws.signaling import call_manager
 from server.ws.signaling_p2p import signaling_manager
 from shared.config import settings
+from shared.rate_limiter import limiter
 
 
 @asynccontextmanager
@@ -77,7 +92,10 @@ app = FastAPI(
     title="NurChat API",
     description="Анонимный мессенджер нового поколения от NurApps",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # CSRF Protection (защита от подделки межсайтовых запросов)
@@ -89,12 +107,10 @@ app.add_middleware(
     token_lifetime_hours=24,
     exempt_paths=[
         "/health",
-        "/docs",
-        "/redoc",
-        "/openapi.json",
         "/api/auth/captcha",
         "/api/auth/login",
         "/api/auth/register",
+        "/api/files/upload",
     ],
 )
 
@@ -104,6 +120,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS — строгий белый список из .env (CORS_ORIGINS) или дефолтные
 import os
+
 _cors_origins_env = os.getenv("CORS_ORIGINS", "")
 if _cors_origins_env:
     _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
@@ -143,12 +160,16 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["X-XSS-Protection"] = "1; mode=block"
+    if not settings.DEBUG:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     if "Content-Security-Policy" not in response.headers:
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; "
-            "img-src 'self' data: blob: http://localhost:* http://127.0.0.1:*; "
-            "media-src 'self' blob: http://localhost:* http://127.0.0.1:*; "
+            "connect-src 'self' http://localhost:5173 http://localhost:8000 http://127.0.0.1:8000 "
+            "ws://localhost:5173 ws://localhost:8000 ws://127.0.0.1:8000 "
+            "https://api.qrserver.com; "
+            "img-src 'self' data: blob: http://localhost:5173 http://localhost:8000 http://127.0.0.1:8000; "
+            "media-src 'self' blob: http://localhost:5173 http://localhost:8000 http://127.0.0.1:8000; "
             "style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; "
             "frame-ancestors 'none'; "
@@ -157,7 +178,7 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 # Body size limit
-MAX_BODY_SIZE = 10 * 1024 * 1024
+MAX_BODY_SIZE = settings.MAX_FILE_SIZE
 
 @app.middleware("http")
 async def limit_body_size(request: Request, call_next):
@@ -165,7 +186,8 @@ async def limit_body_size(request: Request, call_next):
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > MAX_BODY_SIZE:
             from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=413, content={"detail": "Тело запроса слишком большое (макс. 10MB)"})
+            max_mb = MAX_BODY_SIZE // (1024 * 1024)
+            return JSONResponse(status_code=413, content={"detail": f"Тело запроса слишком большое (макс. {max_mb}MB)"})
     return await call_next(request)
 
 # Роуты
@@ -181,9 +203,9 @@ app.include_router(bookmarks.router, prefix="/api/bookmarks", tags=["Bookmarks"]
 app.include_router(pins.router, tags=["Pinned Messages"])
 app.include_router(stats.router, tags=["Statistics"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Audit Logs"])
-app.include_router(federation.router, tags=["Federation"])
 app.include_router(keys.router, prefix="/api/keys", tags=["Keys"])
 app.include_router(discovery.router, prefix="/api/discover", tags=["LAN Discovery"])
+app.include_router(webhooks.router, prefix="/api", tags=["Webhooks"])
 
 # WS rate limiting: max connections per IP
 _ws_connections: dict[str, int] = {}
@@ -199,21 +221,30 @@ def check_ws_rate_limit(ip: str) -> bool:
 def release_ws_connection(ip: str):
     _ws_connections[ip] = max(0, _ws_connections.get(ip, 1) - 1)
 
+async def _verify_ws_token(websocket: WebSocket, token: str | None, client_ip: str) -> bool:
+    if not token:
+        release_ws_connection(client_ip)
+        await websocket.close(code=4001, reason="Token required")
+        return False
+    from server.core.security import AuthenticationError
+    from server.core.security import security as sec
+    try:
+        sec.verify_token(token)
+        return True
+    except AuthenticationError:
+        release_ws_connection(client_ip)
+        await websocket.close(code=4001, reason="Invalid token")
+        return False
+
 # WebSocket для чатов
 @app.websocket("/ws/chat/{user_id}")
-async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if token:
-        from server.core.security import security as sec, AuthenticationError
-        try:
-            sec.verify_token(token)
-        except AuthenticationError:
-            release_ws_connection(client_ip)
-            await websocket.close(code=4001)
-            return
+    if not await _verify_ws_token(websocket, token, client_ip):
+        return
     try:
         await handle_websocket_connection(websocket, user_id)
     finally:
@@ -221,19 +252,13 @@ async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str
 
 # WebSocket для звонков
 @app.websocket("/ws/calls/{user_id}")
-async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if token:
-        from server.core.security import security as sec, AuthenticationError
-        try:
-            sec.verify_token(token)
-        except AuthenticationError:
-            release_ws_connection(client_ip)
-            await websocket.close(code=4001)
-            return
+    if not await _verify_ws_token(websocket, token, client_ip):
+        return
     try:
         await call_manager.handle_signaling(websocket, user_id)
     finally:
@@ -241,19 +266,13 @@ async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: st
 
 # WebSocket для P2P signaling (только offer/answer/ICE)
 @app.websocket("/ws/signaling/{user_id}")
-async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if token:
-        from server.core.security import security as sec, AuthenticationError
-        try:
-            sec.verify_token(token)
-        except AuthenticationError:
-            release_ws_connection(client_ip)
-            await websocket.close(code=4001)
-            return
+    if not await _verify_ws_token(websocket, token, client_ip):
+        return
     try:
         await signaling_manager.handle(websocket, user_id)
     finally:
@@ -261,19 +280,13 @@ async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token
 
 # WebSocket для P2P signalling и relay
 @app.websocket(settings.P2P_SIGNALING_PATH + "/{user_id}")
-async def websocket_p2p_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+async def websocket_p2p_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if token:
-        from server.core.security import security as sec, AuthenticationError
-        try:
-            sec.verify_token(token)
-        except AuthenticationError:
-            release_ws_connection(client_ip)
-            await websocket.close(code=4001)
-            return
+    if not await _verify_ws_token(websocket, token, client_ip):
+        return
     try:
         await p2p_manager.handle_connection(websocket, user_id)
     finally:
@@ -281,7 +294,21 @@ async def websocket_p2p_endpoint(websocket: WebSocket, user_id: str, token: str 
 
 # WebSocket для удалённых P2P пиров (прямое соединение сервер-сервер)
 @app.websocket("/ws/remote/{node_id}")
-async def websocket_remote_endpoint(websocket: WebSocket, node_id: str):
+async def websocket_remote_endpoint(websocket: WebSocket, node_id: str, token: str):
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if not check_ws_rate_limit(client_ip):
+        await websocket.close(code=4008)
+        return
+    if token:
+        from server.core.security import AuthenticationError
+        from server.core.security import security as sec
+        try:
+            sec.verify_token(token)
+        except AuthenticationError:
+            release_ws_connection(client_ip)
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+
     await websocket.accept()
     try:
         hello = await asyncio.wait_for(websocket.receive_json(), timeout=10)
@@ -299,14 +326,12 @@ async def websocket_remote_endpoint(websocket: WebSocket, node_id: str):
             return
         from server.ws.remote import remote_manager
 
-        # If connecting as relay client, find the target through the relay's peer connection
         if is_relay and relay_for:
             peer = remote_manager.get_peer_by_user(relay_for)
             if not peer:
                 await websocket.send_json({"type": "error", "message": "Relay target not connected"})
                 await websocket.close()
                 return
-            # Register as relay client
             await remote_manager.connect(node_id, websocket, address, user_id, is_relay=True)
             await websocket.send_json({"type": "remote_ack", "node_id": node_id, "relayed": True})
         else:
@@ -343,19 +368,13 @@ async def websocket_remote_endpoint(websocket: WebSocket, node_id: str):
 
 # WebSocket для уведомлений
 @app.websocket("/ws/notifications/{user_id}")
-async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, token: str | None = None):
+async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if token:
-        from server.core.security import security as sec, AuthenticationError
-        try:
-            sec.verify_token(token)
-        except AuthenticationError:
-            release_ws_connection(client_ip)
-            await websocket.close(code=4001)
-            return
+    if not await _verify_ws_token(websocket, token, client_ip):
+        return
     try:
         await handle_notifications_websocket(websocket, user_id)
     finally:
@@ -371,6 +390,7 @@ async def health_check():
     redis_ok = False
     try:
         from sqlalchemy import text
+
         from server.core.database import SessionLocal
         db = SessionLocal()
         try:
@@ -398,7 +418,7 @@ async def health_check():
 
 # Prometheus metrics
 if settings.ENABLE_METRICS:
-    from prometheus_client import generate_latest, REGISTRY, Counter, Histogram, Gauge
+    from prometheus_client import REGISTRY, Counter, Gauge, Histogram, generate_latest
 
     http_requests = Counter("nurchat_http_requests_total", "Total HTTP requests", ["method", "endpoint"])
     http_duration = Histogram("nurchat_http_request_duration_seconds", "HTTP request duration", ["endpoint"])
@@ -421,7 +441,6 @@ async def root():
     return {
         "message": "Welcome to NurChat API",
         "version": "1.0.0",
-        "docs": "/docs",
         "health": "/health"
     }
 

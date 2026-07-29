@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from "react"
-import DOMPurify from "dompurify"
+import React, { useState, useEffect, useRef } from "react"
 import type { MessageResponse, UserResponse } from "../types"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
+import { formatTime, formatFull } from "../utils/format"
+import { renderMarkdown } from "../utils/markdown"
 import MediaViewer from "./MediaViewer"
 import VoiceMessage from "./VoiceMessage"
 
@@ -28,44 +29,16 @@ interface Props {
 
 const REACTION_LIST = ["👍", "❤️", "😂", "😮", "😢", "😡"]
 
-function formatTime(ts: string): string {
-  try {
-    return new Date(ts).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-  } catch {
-    return ""
-  }
-}
-
-function highlightText(text: string, query: string): React.ReactNode[] {
-  if (!query.trim()) return [text]
+function renderHighlightedMarkdown(text: string, query: string): React.ReactNode {
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   const parts = text.split(new RegExp(`(${escaped})`, "gi"))
   return parts.map((part, i) =>
     part.toLowerCase() === query.toLowerCase()
       ? <mark key={i} className="search-highlight">{part}</mark>
-      : part
+      : <React.Fragment key={i}>{renderMarkdown(part)}</React.Fragment>
   )
-}
 
-function sanitizeText(text: string): string {
-  return DOMPurify.sanitize(text, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
-}
 
-function parseLinks(text: string): Array<{ type: "text" | "link"; value: string; href?: string }> {
-  const safe = sanitizeText(text)
-  const parts: Array<{ type: "text" | "link"; value: string; href?: string }> = []
-  const re = /(https?:\/\/[^\s<>"\'()]+|[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/[^\s<>"\'()]*)?)/gi
-  let last = 0
-  let m: RegExpExecArray | null
-  while ((m = re.exec(safe)) !== null) {
-    if (m.index > last) parts.push({ type: "text", value: safe.slice(last, m.index) })
-    const url = m[0]
-    parts.push({ type: "link", value: url, href: url.startsWith("http") ? url : `https://${url}` })
-    last = re.lastIndex
-  }
-  if (last < safe.length) parts.push({ type: "text", value: safe.slice(last) })
-  return parts
-}
 
 export default function MessageBubble({
   message, currentUser, isMyMessage, isRead = false, status,
@@ -80,7 +53,6 @@ export default function MessageBubble({
   const menuRef = useRef<HTMLDivElement>(null)
   const content = message.content
   const time = formatTime(message.created_at)
-  const isReply = content.startsWith("↩️ Ответ ")
   const peerId = currentUser.id
 
   useEffect(() => {
@@ -177,45 +149,22 @@ export default function MessageBubble({
         </div>
       )
     }
-    if (isReply) return renderReplyContent()
-    const parts = parseLinks(content)
-    return (
-      <p className="msg-text">
-        {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
-        {parts.map((p, i) =>
-          p.type === "link" ? (
-            <a key={i} href={p.href} target="_blank" rel="noopener noreferrer" className="msg-link">{p.value}</a>
-          ) : (
-            <span key={i}>{highlightQuery ? highlightText(p.value, highlightQuery) : p.value}</span>
-          )
-        )}
-      </p>
-    )
-  }
-
-  const renderReplyContent = () => {
-    const lines = content.split("\n")
-    const quoted = lines[0].replace("↩️ Ответ ", "").trim()
-    const reply = lines.slice(1).join("\n")
-    const parts = parseLinks(reply)
+    const replyTo = message.reply_to
+    const rendered = highlightQuery
+      ? renderHighlightedMarkdown(content, highlightQuery)
+      : renderMarkdown(content)
     return (
       <div className="msg-reply-wrapper">
-        <div className="msg-reply-border">
-          <span className="msg-reply-sender">{quoted}</span>
-          <span className="msg-reply-text">{reply.slice(0, 60)}{reply.length > 60 ? "..." : ""}</span>
-        </div>
-        {reply && (
-          <p className="msg-text">
-            {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
-            {parts.map((p, i) =>
-              p.type === "link" ? (
-                <a key={i} href={p.href} target="_blank" rel="noopener noreferrer" className="msg-link">{p.value}</a>
-              ) : (
-                <span key={i}>{p.value}</span>
-              )
-            )}
-          </p>
+        {replyTo && (
+          <div className="msg-reply-border" onClick={() => {/* scroll to replied message */}}>
+            <span className="msg-reply-sender">{replyTo.user?.username || "Пользователь"}</span>
+            <span className="msg-reply-text">{(replyTo.content || "").slice(0, 60)}{(replyTo.content || "").length > 60 ? "..." : ""}</span>
+          </div>
         )}
+        <p className="msg-text">
+          {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
+          {rendered}
+        </p>
       </div>
     )
   }
@@ -354,11 +303,11 @@ export default function MessageBubble({
           <>
             {renderContent()}
             <div className="msg-footer">
-              <span className="msg-time" title={new Date(message.created_at).toLocaleString("ru-RU")}>
+              <span className="msg-time" title={formatFull(message.created_at)}>
                 {time}
               </span>
               {message.expires_at && (
-                  <span className="msg-ephemeral" title={`Исчезнет ${new Date(message.expires_at).toLocaleString("ru-RU")}`}>
+                  <span className="msg-ephemeral" title={`Исчезнет ${formatFull(message.expires_at)}`}>
                   <span className="msg-ephemeral-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
                 </span>
               )}
@@ -406,6 +355,7 @@ export default function MessageBubble({
       ]
     : [
         { label: "Копировать", action: () => navigator.clipboard.writeText(content) },
+        { label: "Ответить", action: () => onReply?.(message.id) },
         { label: "Переслать", action: () => onForward?.(message.id) },
         { label: isBookmarked ? "Убрать из избранного" : "В избранное", action: () => onBookmark?.(message.id) },
         { label: "Закрепить", action: () => onPin?.(message.id) },

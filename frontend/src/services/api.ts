@@ -1,5 +1,5 @@
 import { BASE_URL } from "../config"
-import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse } from "../types"
+import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse, WebhookResponse } from "../types"
 
 class ApiError extends Error {
   status: number
@@ -68,7 +68,7 @@ export const api = {
   getChatMessages: (chatId: string, skip = 0, limit = 50) =>
     request<MessageResponse[]>("GET", `/api/chat/chats/${chatId}/messages?skip=${skip}&limit=${limit}`),
 
-  sendMessage: (chatId: string, content: string, messageType = "text", fileId?: string, encryptedContent?: string, signature?: string, expiresAt?: string) =>
+  sendMessage: (chatId: string, content: string, messageType = "text", fileId?: string, encryptedContent?: string, signature?: string, expiresAt?: string, replyToId?: string) =>
     request<MessageResponse>("POST", `/api/chat/chats/${chatId}/messages`, {
       chat_id: chatId,
       content,
@@ -77,6 +77,7 @@ export const api = {
       encrypted_content: encryptedContent,
       signature,
       expires_at: expiresAt,
+      reply_to_id: replyToId,
     }),
 
   deleteMessage: (messageId: string, deleteForAll = false) =>
@@ -315,7 +316,7 @@ export const api = {
 
     const tryConnect = (targetHost: string, targetPort: number, viaRelay: boolean): Promise<{ ws: WebSocket; node_id: string }> => {
       return new Promise((resolve, reject) => {
-        const ws = new WebSocket(`ws://${targetHost}:${targetPort}/ws/remote/${encodeURIComponent(token.slice(0, 16))}`)
+        const ws = new WebSocket(`ws://${targetHost}:${targetPort}/ws/remote/${encodeURIComponent(myUserId)}?token=${encodeURIComponent(token)}`)
         const timeout = setTimeout(() => { ws.close(); reject(new Error("Таймаут подключения")) }, 8000)
         ws.onopen = () => {
           clearTimeout(timeout)
@@ -419,22 +420,6 @@ export const api = {
   testConnection: () =>
     request<{ status: string }>("GET", "/api/health"),
 
-  // Federation
-  resolveRemoteUser: (address: string) =>
-    request<{ username: string; display_name: string; public_key: string; server_name: string; is_local: boolean; address?: string }>(
-      "GET", `/api/federation/resolve?address=${encodeURIComponent(address)}`
-    ),
-
-  createRemoteChat: (remoteAddress: string) =>
-    request<{ remote_address: string; display_name: string; public_key: string; server_name: string; username: string }>(
-      "POST", "/api/federation/chat", { remote_address: remoteAddress }
-    ),
-
-  getFederationInfo: () =>
-    request<{ server_name: string; public_key: string; federation_enabled: boolean }>(
-      "GET", "/.well-known/nurchat.json"
-    ),
-
   setToken: (token: string) => {
     localStorage.setItem("token", token)
   },
@@ -458,4 +443,20 @@ export const api = {
       ip_address?: string
       created_at?: string
     }>; actions: Record<string, string> }>("GET", `/api/audit/audit-logs?skip=${skip}&limit=${limit}`),
+
+  // Webhooks
+  getWebhooks: () =>
+    request<WebhookResponse[]>("GET", "/api/webhooks"),
+
+  createWebhook: (data: { name: string; url: string; events: string[]; secret?: string }) =>
+    request<WebhookResponse>("POST", "/api/webhooks", data),
+
+  updateWebhook: (id: string, data: { name?: string; url?: string; events?: string[]; secret?: string; is_active?: boolean }) =>
+    request<WebhookResponse>("PUT", `/api/webhooks/${id}`, data),
+
+  deleteWebhook: (id: string) =>
+    request<void>("DELETE", `/api/webhooks/${id}`),
+
+  testWebhook: (id: string) =>
+    request<{ status: string; message: string }>("POST", `/api/webhooks/${id}/test`),
 }

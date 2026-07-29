@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ from shared.rate_limiter import limiter
 
 from ..core import models, schemas
 from ..core.database import get_db
-from ..core.security import security, verify_token_dependency
+from ..core.security import verify_token_dependency
 from ..core.storage import file_storage
 from ..ws.notifications import notification_manager
 
@@ -71,17 +71,17 @@ async def upload_file(
         await file.seek(0)
         detected_type = _detect_mime_type(header, file.filename or "")
 
-        ALLOWED_MIMES = {
+        allowed_mimes = {
             "image": {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/svg+xml"},
             "video": {"video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/avi"},
             "audio": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/aac", "audio/x-m4a"},
-            "voice": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm"},
+            "voice": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4", "audio/x-m4a"},
             "document": {"application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument",
                          "text/plain", "application/zip", "application/x-rar"},
             "file": set(),
         }
 
-        expected_mimes = ALLOWED_MIMES.get(file_type, set())
+        expected_mimes = allowed_mimes.get(file_type, set())
         if expected_mimes and detected_type and detected_type not in expected_mimes:
             logger.warning(f"User {token['sub']} MIME mismatch: claimed {file_type}, detected {detected_type}")
             raise FileTypeNotAllowedError(f"Файл не соответствует типу {file_type}")
@@ -142,8 +142,8 @@ async def upload_file(
     except FileTooLargeError as e:
         logger.warning(f"File too large error for user {token['sub']}: {e}")
         raise HTTPException(status_code=413, detail=str(e))
-    except FileTypeNotAllowedError:
-        raise
+    except FileTypeNotAllowedError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -162,7 +162,8 @@ async def download_file(
         if not token:
             raise HTTPException(status_code=401, detail="Требуется токен")
 
-        from server.core.security import security as sec, AuthenticationError
+        from server.core.security import AuthenticationError
+        from server.core.security import security as sec
         try:
             payload = sec.verify_token(token)
         except AuthenticationError:
@@ -176,7 +177,10 @@ async def download_file(
             raise HTTPException(status_code=404, detail="Файл не найден")
 
         if file_record.user_id != user_id:
-            message_with_file = db.query(models.Message).filter(models.Message.file_id == file_id).first()
+            message_with_file = db.query(models.Message).filter(
+                models.Message.file_id == file_id,
+                not models.Message.is_deleted
+            ).first()
             if message_with_file:
                 participant = db.query(models.ChatParticipant).filter(
                     models.ChatParticipant.chat_id == message_with_file.chat_id,
@@ -187,9 +191,12 @@ async def download_file(
             else:
                 raise HTTPException(status_code=403, detail="Доступ к файлу запрещен")
 
+        from pathlib import Path
         # Try local file first
         try:
-            file_path = await file_storage.get_file_path(file_id, file_record.user_id)
+            file_path = Path(file_record.file_path)
+            if not file_path.exists():
+                raise FileNotFoundError(f"Файл {file_id} не найден на диске")
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Файл не найден")
 
@@ -198,12 +205,11 @@ async def download_file(
         mime_type = mimetypes.guess_type(file_record.filename or "")[0] or "application/octet-stream"
 
         return FileResponse(path=file_path, filename=file_record.filename, media_type=mime_type)
-
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Download file error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.delete("/delete/{file_id}")
@@ -220,7 +226,7 @@ async def delete_file(
         if not file_record:
             raise HTTPException(status_code=404, detail="Файл не найден")
 
-        success = await file_storage.delete_file(file_id, user_id)
+        success = await file_storage.delete_file(file_id, user_id, file_record.file_path)
         if success:
             db.delete(file_record)
             db.commit()
@@ -231,7 +237,7 @@ async def delete_file(
     except Exception as e:
         logger.error(f"Delete file error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.get("/my-files", response_model=list[schemas.FileResponse])
@@ -241,18 +247,18 @@ async def get_my_files(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        user_id = token["sub"]
-        logger.info(f"Getting files for user: {user_id}, skip: {skip}, limit: {limit}")
+    user_id = token["sub"]
+    logger.info(f"Getting files for user: {user_id}, skip: {skip}, limit: {limit}")
 
-        if limit > 100:
-            limit = 100
+    if limit > 100:
+        limit = 100
 
-        files = db.query(models.File).filter(models.File.user_id == user_id).order_by(models.File.uploaded_at.desc()).offset(skip).limit(limit).all()
-        return [schemas.FileResponse.model_validate(f) for f in files]
-    except Exception as e:
-        logger.error(f"Get user files error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+    files = (
+        db.query(models.File).filter(models.File.user_id == user_id)
+        .order_by(models.File.uploaded_at.desc())
+        .offset(skip).limit(limit).all()
+    )
+    return [schemas.FileResponse.model_validate(f) for f in files]
 
 
 @router.get("/storage-info", response_model=schemas.StorageInfo)
@@ -260,24 +266,27 @@ async def get_storage_info(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        user_id = token["sub"]
-        logger.info(f"Getting storage info for user: {user_id}")
+    user_id = token["sub"]
+    logger.info(f"Getting storage info for user: {user_id}")
 
-        total_size = db.query(func.sum(models.File.file_size)).filter(models.File.user_id == user_id).scalar() or 0
-        files_by_type = db.query(models.File.file_type, func.count(models.File.id), func.sum(models.File.file_size)).filter(models.File.user_id == user_id).group_by(models.File.file_type).all()
-        max_storage = 1024 * 1024 * 1024
-        storage_info = schemas.StorageInfo(
-            total_size=total_size,
-            file_count=sum(count for _, count, _ in files_by_type),
-            files_by_type=[{"type": file_type, "count": count, "size": size or 0} for file_type, count, size in files_by_type],
-            max_storage=max_storage,
-            storage_used_percent=round((total_size / max_storage) * 100, 2),
-        )
-        return storage_info
-    except Exception as e:
-        logger.error(f"Get storage info error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+    total_size = db.query(func.sum(models.File.file_size)).filter(models.File.user_id == user_id).scalar() or 0
+    files_by_type = (
+        db.query(models.File.file_type, func.count(models.File.id), func.sum(models.File.file_size))
+        .filter(models.File.user_id == user_id)
+        .group_by(models.File.file_type).all()
+    )
+    max_storage = 1024 * 1024 * 1024
+    storage_info = schemas.StorageInfo(
+        total_size=total_size,
+        file_count=sum(count for _, count, _ in files_by_type),
+        files_by_type=[
+            {"type": file_type, "count": count, "size": size or 0}
+            for file_type, count, size in files_by_type
+        ],
+        max_storage=max_storage,
+        storage_used_percent=round((total_size / max_storage) * 100, 2),
+    )
+    return storage_info
 
 
 @router.post("/cleanup-expired", response_model=schemas.CleanupResponse)
@@ -290,11 +299,13 @@ async def cleanup_expired_files(
         logger.info(f"Manual cleanup requested by user: {user_id}")
 
         expiry_date = datetime.now(timezone.utc) - timedelta(days=30)
-        expired_files = db.query(models.File).filter(models.File.user_id == user_id, models.File.uploaded_at < expiry_date).all()
+        expired_files = (
+            db.query(models.File).filter(models.File.user_id == user_id, models.File.uploaded_at < expiry_date).all()
+        )
         deleted_count = 0
         for file in expired_files:
             try:
-                success = await file_storage.delete_file(file.id, user_id)
+                success = await file_storage.delete_file(file.id, user_id, file.file_path)
                 if success:
                     db.delete(file)
                     deleted_count += 1
@@ -310,13 +321,15 @@ async def cleanup_expired_files(
             )
         except Exception as notify_error:
             logger.error(f"Failed to send cleanup notification: {notify_error}")
-        return schemas.CleanupResponse(message=f"Удалено {deleted_count} просроченных файлов", deleted_count=deleted_count)
+        return schemas.CleanupResponse(
+            message=f"Удалено {deleted_count} просроченных файлов", deleted_count=deleted_count
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Manual cleanup error: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Ошибка очистки: {str(e)}")
+        raise
 
 
 @router.get("/all", response_model=list[schemas.FileResponse])
@@ -326,15 +339,15 @@ async def get_all_user_files(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        user_id = token["sub"]
-        logger.info(f"Getting all files for user: {user_id}")
+    user_id = token["sub"]
+    logger.info(f"Getting all files for user: {user_id}")
 
-        if limit > 500:
-            limit = 500
+    if limit > 500:
+        limit = 500
 
-        files = db.query(models.File).filter(models.File.user_id == user_id).order_by(models.File.uploaded_at.desc()).offset(skip).limit(limit).all()
-        return [schemas.FileResponse.model_validate(f) for f in files]
-    except Exception as e:
-        logger.error(f"Get all user files error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+    files = (
+        db.query(models.File).filter(models.File.user_id == user_id)
+        .order_by(models.File.uploaded_at.desc())
+        .offset(skip).limit(limit).all()
+    )
+    return [schemas.FileResponse.model_validate(f) for f in files]

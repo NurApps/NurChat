@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
-from shared.constants import CALL_STATUS, CALL_TYPES
+from shared.constants import CALL_STATUS
 
 from ..core import models
 from ..core.database import SessionLocal

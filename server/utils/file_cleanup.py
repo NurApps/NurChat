@@ -40,7 +40,7 @@ class FileCleanupService:
             for file in expired_files:
                 try:
                     # Удаляем физический файл
-                    success = await file_storage.delete_file(file.id, file.user_id)
+                    success = await file_storage.delete_file(file.id, file.user_id, file.file_path)
 
                     if success:
                         # Удаляем запись из БД
@@ -83,7 +83,7 @@ class FileCleanupService:
 
             for file in orphaned_files:
                 try:
-                    success = await file_storage.delete_file(file.id, file.user_id)
+                    success = await file_storage.delete_file(file.id, file.user_id, file.file_path)
                     if success:
                         db.delete(file)
                         deleted_count += 1

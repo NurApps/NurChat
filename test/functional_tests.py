@@ -9,6 +9,7 @@ import sys
 import time
 from datetime import datetime
 
+import pytest
 import requests
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -21,6 +22,7 @@ def random_username():
 BASE_URL = "http://127.0.0.1:8000"
 
 class TestResults:
+    __test__ = False
     def __init__(self):
         self.passed = 0
         self.failed = 0
@@ -74,6 +76,7 @@ def solve_captcha(question: str) -> str:
     return "0"
 
 
+@pytest.mark.integration
 def test_health_check(results):
     """Тест 1: Проверка доступности сервера"""
     try:
@@ -87,6 +90,7 @@ def test_health_check(results):
         results.add_fail("Health Check", str(e))
 
 
+@pytest.mark.integration
 def test_registration(results):
     """Тест 2: Регистрация нового пользователя"""
     try:
@@ -125,6 +129,7 @@ def test_registration(results):
         return None
 
 
+@pytest.mark.integration
 def test_login(results, username, password):
     """Тест 3: Вход пользователя"""
     try:
@@ -147,6 +152,7 @@ def test_login(results, username, password):
         return None
 
 
+@pytest.mark.integration
 def test_get_current_user(results, token):
     """Тест 4: Получение информации о текущем пользователе"""
     try:
@@ -167,6 +173,7 @@ def test_get_current_user(results, token):
         return None
 
 
+@pytest.mark.integration
 def test_create_chat(results, token, user_id, user2_id):
     """Тест 5: Создание чата"""
     try:
@@ -191,6 +198,7 @@ def test_create_chat(results, token, user_id, user2_id):
         return None
 
 
+@pytest.mark.integration
 def test_get_chats(results, token):
     """Тест 6: Получение списка чатов"""
     try:
@@ -210,6 +218,7 @@ def test_get_chats(results, token):
         return []
 
 
+@pytest.mark.integration
 def test_send_message(results, token, chat_id):
     """Тест 7: Отправка сообщения"""
     try:
@@ -238,6 +247,7 @@ def test_send_message(results, token, chat_id):
         return None
 
 
+@pytest.mark.integration
 def test_get_messages(results, token, chat_id):
     """Тест 8: Получение сообщений чата"""
     try:
@@ -262,6 +272,7 @@ def test_get_messages(results, token, chat_id):
         return []
 
 
+@pytest.mark.integration
 def test_mark_as_read(results, token, message_id):
     """Тест 9: Отметка сообщения как прочитанного"""
     try:
@@ -280,6 +291,7 @@ def test_mark_as_read(results, token, message_id):
         return False
 
 
+@pytest.mark.integration
 def test_delete_message(results, token, message_id):
     """Тест 10: Удаление сообщения"""
     try:
@@ -298,6 +310,7 @@ def test_delete_message(results, token, message_id):
         return False
 
 
+@pytest.mark.integration
 def test_invalid_login(results):
     """Тест 11: Вход с неверным паролем"""
     try:
@@ -333,6 +346,7 @@ def _register_with_captcha(username: str, password: str, first_name: str, last_n
     return r.status_code == 200, r
 
 
+@pytest.mark.integration
 def test_duplicate_registration(results, username):
     """Тест 12: Регистрация с занятым username"""
     try:
@@ -347,6 +361,7 @@ def test_duplicate_registration(results, username):
         return False
 
 
+@pytest.mark.integration
 def test_validation_username(results, token):
     """Тест 13: Валидация username (спецсимволы)"""
     try:
@@ -361,6 +376,7 @@ def test_validation_username(results, token):
         return False
 
 
+@pytest.mark.integration
 def test_username_only_letters(results):
     """Тест 14: Username только английские буквы"""
     passed = True
@@ -384,6 +400,7 @@ def test_username_only_letters(results):
     return passed
 
 
+@pytest.mark.integration
 def test_password_min_length(results):
     """Тест 15: Пароль минимум 3 символа"""
     passed = True
@@ -400,6 +417,7 @@ def test_password_min_length(results):
     return passed
 
 
+@pytest.mark.integration
 def test_name_any_letters(results):
     """Тест 16: Имя/фамилия любые буквы"""
     username = random_username()
@@ -411,6 +429,7 @@ def test_name_any_letters(results):
     return False
 
 
+@pytest.mark.integration
 def test_logout(results, token):
     """Тест 18: Выход пользователя"""
     try:

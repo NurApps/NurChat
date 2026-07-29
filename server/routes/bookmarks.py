@@ -1,10 +1,10 @@
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import Optional
+from sqlalchemy.orm import Session
 
 from server.core.database import get_db
-from server.core.models import Bookmark, Message, User
+from server.core.models import Bookmark, Message
 from server.core.security import verify_token_dependency
 
 router = APIRouter(prefix="/api/bookmarks", tags=["bookmarks"])
@@ -17,7 +17,7 @@ class BookmarkCreate(BaseModel):
 
 @router.get("")
 def get_bookmarks(
-    chat_id: Optional[str] = None,
+    chat_id: str | None = None,
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db),
 ):

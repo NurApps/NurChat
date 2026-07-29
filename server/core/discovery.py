@@ -181,8 +181,6 @@ async def _periodic_advert(protocol: DiscoveryProtocol) -> None:
 async def scan_lan(timeout: float = 3.0) -> list[dict]:
     _discovered_peers.clear()
 
-    loop = asyncio.get_running_loop()
-
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("", 0))

@@ -22,6 +22,7 @@ const CallHistoryPage = lazy(() => import("./pages/CallHistoryPage"))
 const AuditLogPage = lazy(() => import("./pages/AuditLogPage"))
 const BackupPage = lazy(() => import("./pages/BackupPage"))
 const BlockedUsersPage = lazy(() => import("./pages/BlockedUsersPage"))
+const WebhooksPage = lazy(() => import("./pages/WebhooksPage"))
 
 function PageLoader() {
   return (
@@ -80,6 +81,7 @@ function App() {
             <Route path="/audit" element={<AuthGuard><AuditLogPage /></AuthGuard>} />
             <Route path="/backup" element={<AuthGuard><BackupPage /></AuthGuard>} />
             <Route path="/blocked" element={<AuthGuard><BlockedUsersPage /></AuthGuard>} />
+            <Route path="/webhooks" element={<AuthGuard><WebhooksPage /></AuthGuard>} />
             <Route path="*" element={<Navigate to="/chat" replace />} />
           </Routes>
         </Suspense>

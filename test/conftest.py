@@ -1,6 +1,8 @@
 import pytest
 
+
 class TestResults:
+    __test__ = False
     def __init__(self):
         self.passed = 0
         self.failed = 0

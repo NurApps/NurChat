@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session, joinedload
 
 from server.core import models, schemas
@@ -9,6 +9,7 @@ from server.core.database import get_db
 from server.core.security import security, verify_token_dependency
 from server.utils.logger import logger
 from shared.exceptions import ChatNotFoundError, MessageNotFoundError
+from shared.rate_limiter import limiter
 
 if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -17,11 +18,42 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, or_
 
+from server.core.cache import chat_cache, user_cache
+from server.core.webhook_delivery import fire_webhooks
+from server.utils.mentions import parse_mentions, resolve_mentioned_users
 from server.ws.chat_manager import connection_manager
 from server.ws.notifications import notification_manager
-from shared.config import settings
 
 router = APIRouter()
+
+
+def _get_participant(db: Session, chat_id: str, user_id: str):
+    cache_key = f"participant:{chat_id}:{user_id}"
+    cached = chat_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    participant = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == chat_id,
+        models.ChatParticipant.user_id == user_id,
+    ).first()
+    chat_cache.set(cache_key, participant, ttl=30)
+    return participant
+
+
+def _get_user_cached(db: Session, user_id: str):
+    cached = user_cache.get(user_id)
+    if cached is not None:
+        return cached
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user:
+        user_cache.set(user_id, user)
+    return user
+
+
+def _invalidate_chat_cache(chat_id: str, user_id: str | None = None):
+    chat_cache.invalidate_pattern(f"participant:{chat_id}:")
+    if user_id:
+        chat_cache.invalidate(f"participant:{chat_id}:{user_id}")
 
 
 @router.get("/chats", response_model=list[schemas.ChatResponse])
@@ -30,94 +62,92 @@ async def get_user_chats(
     token: dict = Depends(verify_token_dependency),
     search: str | None = None
 ):
-    try:
-        user_id = token["sub"]
+    user_id = token["sub"]
 
-        query = db.query(models.Chat).join(models.ChatParticipant).filter(models.ChatParticipant.user_id == user_id)
-        if search:
-            query = query.filter(or_(models.Chat.name.ilike(f"%{search}%"), models.Chat.id.ilike(f"%{search}%")))
-        user_chats = query.all()
-        chat_ids = [c.id for c in user_chats]
+    query = db.query(models.Chat).join(models.ChatParticipant).filter(models.ChatParticipant.user_id == user_id)
+    if search:
+        query = query.filter(or_(models.Chat.name.ilike(f"%{search}%"), models.Chat.id.ilike(f"%{search}%")))
+    user_chats = query.all()
+    chat_ids = [c.id for c in user_chats]
 
-        if not chat_ids:
-            return []
+    if not chat_ids:
+        return []
 
-        # Batch load last messages for all chats
-        last_msg_subq = (
-            db.query(models.Message.chat_id, models.Message.id.label("msg_id"))
-            .filter(models.Message.chat_id.in_(chat_ids))
-            .order_by(models.Message.chat_id, models.Message.created_at.desc())
-            .distinct(models.Message.chat_id)
-            .subquery()
-        )
-        last_messages = {}
-        if chat_ids:
-            msgs = db.query(models.Message).join(
-                last_msg_subq, models.Message.id == last_msg_subq.c.msg_id
-            ).options(joinedload(models.Message.user)).all()
-            last_messages = {m.chat_id: m for m in msgs}
+    # Batch load last messages for all chats
+    last_msg_subq = (
+        db.query(models.Message.chat_id, models.Message.id.label("msg_id"))
+        .filter(models.Message.chat_id.in_(chat_ids))
+        .order_by(models.Message.chat_id, models.Message.created_at.desc())
+        .distinct(models.Message.chat_id)
+        .subquery()
+    )
+    last_messages = {}
+    if chat_ids:
+        msgs = db.query(models.Message).join(
+            last_msg_subq, models.Message.id == last_msg_subq.c.msg_id
+        ).options(joinedload(models.Message.user)).all()
+        last_messages = {m.chat_id: m for m in msgs}
 
-        # Batch load participants
-        all_participants = db.query(models.User, models.ChatParticipant).join(
-            models.ChatParticipant, models.User.id == models.ChatParticipant.user_id
-        ).filter(models.ChatParticipant.chat_id.in_(chat_ids)).all()
-        chat_participants: dict[str, list] = {}
-        user_participant_map: dict[str, dict] = {}
-        for user, participant in all_participants:
-            chat_participants.setdefault(participant.chat_id, []).append(user)
-            if participant.user_id == user_id:
-                user_participant_map[participant.chat_id] = participant
+    # Batch load participants
+    all_participants = db.query(models.User, models.ChatParticipant).join(
+        models.ChatParticipant, models.User.id == models.ChatParticipant.user_id
+    ).filter(models.ChatParticipant.chat_id.in_(chat_ids)).all()
+    chat_participants: dict[str, list] = {}
+    user_participant_map: dict[str, dict] = {}
+    for user, participant in all_participants:
+        chat_participants.setdefault(participant.chat_id, []).append(user)
+        if participant.user_id == user_id:
+            user_participant_map[participant.chat_id] = participant
 
-        # Batch load unread counts
-        unread_counts = {}
-        if chat_ids:
-            unread_rows = (
-                db.query(models.Message.chat_id, func.count().label("cnt"))
-                .join(models.MessageReadStatus, models.MessageReadStatus.message_id == models.Message.id)
-                .filter(
-                    models.Message.chat_id.in_(chat_ids),
-                    models.MessageReadStatus.user_id == user_id,
-                    models.MessageReadStatus.is_read == False
-                )
-                .group_by(models.Message.chat_id)
-                .all()
+    # Batch load unread counts
+    unread_counts = {}
+    if chat_ids:
+        unread_rows = (
+            db.query(models.Message.chat_id, func.count().label("cnt"))
+            .join(models.MessageReadStatus, models.MessageReadStatus.message_id == models.Message.id)
+            .filter(
+                models.Message.chat_id.in_(chat_ids),
+                models.MessageReadStatus.user_id == user_id,
+                ~models.MessageReadStatus.is_read
             )
-            unread_counts = {row.chat_id: row.cnt for row in unread_rows}
+            .group_by(models.Message.chat_id)
+            .all()
+        )
+        unread_counts = {row.chat_id: row.cnt for row in unread_rows}
 
-        chats_response = []
-        for chat in user_chats:
-            try:
-                participant = user_participant_map.get(chat.id)
-                is_pinned = participant.is_pinned if participant else False
-                is_muted = participant.is_muted if participant else False
-                participants = chat_participants.get(chat.id, [])
-                last_message = last_messages.get(chat.id)
-                unread = unread_counts.get(chat.id, 0)
+    chats_response = []
+    for chat in user_chats:
+        try:
+            participant = user_participant_map.get(chat.id)
+            is_pinned = participant.is_pinned if participant else False
+            is_muted = participant.is_muted if participant else False
+            participants = chat_participants.get(chat.id, [])
+            last_message = last_messages.get(chat.id)
+            unread = unread_counts.get(chat.id, 0)
 
-                chats_response.append(schemas.ChatResponse(
-                    id=chat.id, name=chat.name, is_group=chat.is_group, created_at=chat.created_at,
-                    participants=[schemas.UserResponse.model_validate(p) for p in participants],
-                    last_message=schemas.MessageResponse.model_validate(last_message) if last_message else None,
-                    unread_count=unread, is_pinned=is_pinned, is_muted=is_muted,
-                ))
-            except Exception as e:
-                logger.error(f"Error processing chat {chat.id}: {e}")
-                continue
+            chats_response.append(schemas.ChatResponse(
+                id=chat.id, name=chat.name, is_group=chat.is_group, created_at=chat.created_at,
+                participants=[schemas.UserResponse.model_validate(p) for p in participants],
+                last_message=schemas.MessageResponse.model_validate(last_message) if last_message else None,
+                unread_count=unread, is_pinned=is_pinned, is_muted=is_muted,
+            ))
+        except Exception as e:
+            logger.error(f"Error processing chat {chat.id}: {e}")
+            continue
 
-        def get_sort_key(c):
-            if c.last_message and c.last_message.created_at:
-                return (not c.is_pinned, c.last_message.created_at)
-            return (not c.is_pinned, datetime.min.replace(tzinfo=None))
+    def get_sort_key(c):
+        if c.last_message and c.last_message.created_at:
+            return (not c.is_pinned, c.last_message.created_at)
+        return (not c.is_pinned, datetime.min.replace(tzinfo=None))
 
-        chats_response.sort(key=get_sort_key, reverse=True)
-        return chats_response
-    except Exception as e:
-        logger.error(f"Get user chats error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+    chats_response.sort(key=get_sort_key, reverse=True)
+    return chats_response
 
 
 @router.post("/chats", response_model=schemas.ChatResponse)
+@limiter.limit("30/minute")
 async def create_chat(
+    request: Request,
     chat_data: schemas.ChatCreate,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -129,9 +159,12 @@ async def create_chat(
             chat_data.participant_ids.append(user_id)
 
         chat_id = security.generate_chat_id()
-        now = datetime.now(timezone.utc)
 
-        chat = models.Chat(id=chat_id, name=chat_data.name, is_group=chat_data.is_group, is_secret=chat_data.is_secret, disappears_after_seconds=chat_data.disappears_after_seconds)
+        chat = models.Chat(
+            id=chat_id, name=chat_data.name, is_group=chat_data.is_group,
+            is_secret=chat_data.is_secret,
+            disappears_after_seconds=chat_data.disappears_after_seconds,
+        )
         db.add(chat)
         added = 0
         for uid in chat_data.participant_ids:
@@ -148,7 +181,12 @@ async def create_chat(
             if db.query(models.User).filter(models.User.id == uid).first():
                 connection_manager.add_user_to_chat(user_id=uid, chat_id=chat_id)
         logger.info(f"Chat created: {chat_id} with {added} participants")
-        return schemas.ChatResponse(id=chat.id, name=chat.name, is_group=chat.is_group, is_secret=chat.is_secret, disappears_after_seconds=chat.disappears_after_seconds, created_at=chat.created_at, participants=[], last_message=None)
+        return schemas.ChatResponse(
+            id=chat.id, name=chat.name, is_group=chat.is_group,
+            is_secret=chat.is_secret,
+            disappears_after_seconds=chat.disappears_after_seconds,
+            created_at=chat.created_at, participants=[], last_message=None,
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -165,35 +203,40 @@ async def get_chat_messages(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        user_id = token["sub"]
-        logger.info(f"Getting messages for chat {chat_id} by user: {user_id}")
+    user_id = token["sub"]
+    logger.info(f"Getting messages for chat {chat_id} by user: {user_id}")
 
-        participant = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat_id, models.ChatParticipant.user_id == user_id).first()
-        if not participant:
-            logger.warning(f"User {user_id} tried to access chat {chat_id} without permission")
-            raise ChatNotFoundError("Чат не найден или доступ запрещен")
-        if limit > 100:
-            limit = 100
-        messages = db.query(models.Message).options(joinedload(models.Message.user), joinedload(models.Message.file)).filter(models.Message.chat_id == chat_id, models.Message.is_deleted == False).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
-        messages.reverse()
-        processed_messages = []
-        for msg in messages:
-            try:
-                processed_msg = schemas.MessageResponse.model_validate(msg)
-                processed_messages.append(processed_msg)
-            except Exception as e:
-                logger.error(f"Error processing message {msg.id}: {e}")
-        return processed_messages
-    except ChatNotFoundError:
-        raise
-    except Exception as e:
-        logger.error(f"Get chat messages error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+    participant = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == chat_id,
+        models.ChatParticipant.user_id == user_id,
+    ).first()
+    if not participant:
+        logger.warning(f"User {user_id} tried to access chat {chat_id} without permission")
+        raise ChatNotFoundError("Чат не найден или доступ запрещен")
+    if limit > 100:
+        limit = 100
+    messages = (
+        db.query(models.Message)
+        .options(joinedload(models.Message.user), joinedload(models.Message.file))
+        .filter(models.Message.chat_id == chat_id, ~models.Message.is_deleted)
+        .order_by(models.Message.created_at.desc())
+        .offset(skip).limit(limit).all()
+    )
+    messages.reverse()
+    processed_messages = []
+    for msg in messages:
+        try:
+            processed_msg = schemas.MessageResponse.model_validate(msg)
+            processed_messages.append(processed_msg)
+        except Exception as e:
+            logger.error(f"Error processing message {msg.id}: {e}")
+    return processed_messages
 
 
 @router.post("/chats/{chat_id}/messages", response_model=schemas.MessageResponse)
+@limiter.limit("60/minute")
 async def send_message(
+    request: Request,
     chat_id: str,
     message_data: schemas.MessageCreate,
     db: Session = Depends(get_db),
@@ -203,12 +246,16 @@ async def send_message(
         user_id = token["sub"]
         logger.info(f"Sending message to chat {chat_id} by user: {user_id}")
 
-        participant = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat_id, models.ChatParticipant.user_id == user_id).first()
+        participant = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == chat_id,
+            models.ChatParticipant.user_id == user_id,
+        ).first()
         if not participant:
             logger.warning(f"User {user_id} tried to send message to chat {chat_id} without permission")
             raise ChatNotFoundError("Чат не найден или доступ запрещен")
         if not message_data.content.strip():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Содержимое сообщения не может быть пустым")
+            detail = "Содержимое сообщения не может быть пустым"
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
         message_content = message_data.content
         message_id = security.generate_message_id()
 
@@ -222,15 +269,22 @@ async def send_message(
             id=message_id, chat_id=chat_id, user_id=user_id,
             content=message_content, message_type=message_data.message_type,
             file_id=message_data.file_id, forwarded_from=message_data.forwarded_from,
+            reply_to_id=message_data.reply_to_id,
             encrypted_content=encrypted_content, signature=signature,
             expires_at=getattr(message_data, 'expires_at', None),
         )
         db.add(message)
         db.commit()
         db.refresh(message)
-        message_full = db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.id == message_id).first()
+        message_full = db.query(models.Message).options(
+            joinedload(models.Message.user),
+            joinedload(models.Message.reply_to).joinedload(models.Message.user)
+        ).filter(models.Message.id == message_id).first()
         if message_full:
-            participants = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat_id, models.ChatParticipant.user_id != user_id).all()
+            participants = db.query(models.ChatParticipant).filter(
+                models.ChatParticipant.chat_id == chat_id,
+                models.ChatParticipant.user_id != user_id,
+            ).all()
             target_user_ids = [p.user_id for p in participants]
             for uid in target_user_ids:
                 read_status = models.MessageReadStatus(message_id=message_id, user_id=uid, is_read=False)
@@ -239,7 +293,10 @@ async def send_message(
             try:
                 notification_message_data = message_data.model_dump()
                 notification_message_data['content'] = message_data.content
-                await notification_manager.send_message_notification(message_data=notification_message_data, target_user_ids=target_user_ids)
+                await notification_manager.send_message_notification(
+                    message_data=notification_message_data,
+                    target_user_ids=target_user_ids,
+                )
             except Exception as notify_error:
                 logger.error(f"Failed to send notification: {notify_error}")
             try:
@@ -254,6 +311,7 @@ async def send_message(
                         "username": message_full.user.username if message_full.user else "Unknown",
                         "encrypted_content": message_full.encrypted_content,
                         "signature": message_full.signature,
+                        "reply_to_id": message_full.reply_to_id,
                         "timestamp": message_full.created_at.isoformat() if message_full.created_at else None,
                     }
                 }
@@ -262,27 +320,42 @@ async def send_message(
                 logger.error(f"Failed to broadcast message via WebSocket: {ws_error}")
             logger.info(f"Message sent successfully: {message_id} in chat {chat_id}")
 
-            # Federation: deliver to remote server if chat name is a remote address
-            if not chat_id.startswith("chat_"):
-                chat_obj = db.query(models.Chat).filter(models.Chat.id == chat_id).first()
-                if chat_obj and chat_obj.name and "@" in chat_obj.name:
-                    from server.routes.federation import send_federated_message
-                    sender_user = db.query(models.User).filter(models.User.id == user_id).first()
-                    if sender_user:
-                        try:
-                            await send_federated_message(
-                                sender_user=sender_user,
-                                recipient_address=chat_obj.name,
-                                content=message_data.content,
-                                msg_id=message_id,
-                                encrypted_content=encrypted_content,
-                                message_type=message_data.message_type,
-                            )
-                        except Exception as fed_err:
-                            logger.warning(f"Federation delivery failed: {fed_err}")
+            try:
+                mentioned_usernames = parse_mentions(message_data.content)
+                if mentioned_usernames:
+                    mentioned_users = resolve_mentioned_users(db, mentioned_usernames, chat_id)
+                    sender_username = message_full.user.username if message_full.user else "Unknown"
+                    for mentioned in mentioned_users:
+                        if mentioned.id == user_id:
+                            continue
+                        mention_event = {
+                            "event": "mention",
+                            "data": {
+                                "chat_id": chat_id,
+                                "message_id": message_id,
+                                "mentioned_by": user_id,
+                                "mentioned_by_username": sender_username,
+                                "content_preview": (message_data.content or "")[:100],
+                            }
+                        }
+                        await connection_manager.send_personal_message(mention_event, mentioned.id)
+            except Exception as mention_error:
+                logger.error(f"Failed to process mentions: {mention_error}")
+
+            try:
+                await fire_webhooks(db, user_id, "message.new", {
+                    "message_id": message_id,
+                    "chat_id": chat_id,
+                    "content": message_data.content,
+                    "message_type": message_data.message_type,
+                    "user_id": user_id,
+                    "username": message_full.user.username if message_full.user else None,
+                    "timestamp": message_full.created_at.isoformat() if message_full.created_at else None,
+                })
+            except Exception as wh_error:
+                logger.error(f"Failed to fire webhooks: {wh_error}")
 
             return schemas.MessageResponse.model_validate(message_full)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось создать сообщение")
     except ChatNotFoundError:
         raise
     except HTTPException:
@@ -290,7 +363,7 @@ async def send_message(
     except Exception as e:
         logger.error(f"Send message error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.post("/messages/{message_id}/mark-as-read")
@@ -306,16 +379,24 @@ async def mark_message_as_read(
         message = db.query(models.Message).filter(models.Message.id == message_id).first()
         if not message:
             raise MessageNotFoundError("Сообщение не найдено")
-        participant = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == message.chat_id, models.ChatParticipant.user_id == user_id).first()
+        participant = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == message.chat_id,
+            models.ChatParticipant.user_id == user_id,
+        ).first()
         if not participant:
             logger.warning(f"User {user_id} tried to mark message {message_id} as read without permission")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к сообщению")
-        read_status = db.query(models.MessageReadStatus).filter(models.MessageReadStatus.message_id == message_id, models.MessageReadStatus.user_id == user_id).first()
+        read_status = db.query(models.MessageReadStatus).filter(
+            models.MessageReadStatus.message_id == message_id,
+            models.MessageReadStatus.user_id == user_id,
+        ).first()
         if read_status:
             read_status.is_read = True
             read_status.read_at = func.now()
         else:
-            read_status = models.MessageReadStatus(message_id=message_id, user_id=user_id, is_read=True, read_at=func.now())
+            read_status = models.MessageReadStatus(
+                message_id=message_id, user_id=user_id, is_read=True, read_at=func.now(),
+            )
             db.add(read_status)
         db.commit()
         return {"message": "Сообщение отмечено как прочитанное"}
@@ -326,7 +407,7 @@ async def mark_message_as_read(
     except Exception as e:
         logger.error(f"Mark message as read error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.get("/messages/{message_id}/read-count")
@@ -335,30 +416,24 @@ async def get_read_count(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        user_id = token["sub"]
-        message = db.query(models.Message).filter(models.Message.id == message_id).first()
-        if not message:
-            raise HTTPException(status_code=404, detail="Сообщение не найдено")
-        participant = db.query(models.ChatParticipant).filter(
-            models.ChatParticipant.chat_id == message.chat_id,
-            models.ChatParticipant.user_id == user_id
-        ).first()
-        if not participant:
-            raise HTTPException(status_code=403, detail="Нет доступа")
-        total = db.query(models.ChatParticipant).filter(
-            models.ChatParticipant.chat_id == message.chat_id
-        ).count()
-        read_count = db.query(models.MessageReadStatus).filter(
-            models.MessageReadStatus.message_id == message_id,
-            models.MessageReadStatus.is_read == True
-        ).count()
-        return {"read_count": read_count, "total_participants": total}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Get read count error: {e}")
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+    user_id = token["sub"]
+    message = db.query(models.Message).filter(models.Message.id == message_id).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="Сообщение не найдено")
+    participant = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == message.chat_id,
+        models.ChatParticipant.user_id == user_id
+    ).first()
+    if not participant:
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    total = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == message.chat_id
+    ).count()
+    read_count = db.query(models.MessageReadStatus).filter(
+        models.MessageReadStatus.message_id == message_id,
+        models.MessageReadStatus.is_read,
+    ).count()
+    return {"read_count": read_count, "total_participants": total}
 
 
 @router.delete("/messages/{message_id}")
@@ -383,6 +458,16 @@ async def delete_message(
         else:
             message.is_deleted = True
         db.commit()
+
+        try:
+            await fire_webhooks(db, user_id, "message.deleted", {
+                "message_id": message_id,
+                "chat_id": message.chat_id,
+                "user_id": user_id,
+            })
+        except Exception as wh_error:
+            logger.error(f"Failed to fire webhooks: {wh_error}")
+
         return {"message": "Сообщение удалено"}
     except MessageNotFoundError:
         raise
@@ -391,7 +476,7 @@ async def delete_message(
     except Exception as e:
         logger.error(f"Delete message error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.put("/messages/{message_id}/edit")
@@ -424,6 +509,18 @@ async def edit_message(
             }
         }
         await connection_manager.broadcast_to_chat(edit_event, message.chat_id)
+
+        try:
+            await fire_webhooks(db, user_id, "message.edited", {
+                "message_id": message_id,
+                "chat_id": message.chat_id,
+                "new_content": new_content,
+                "user_id": user_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as wh_error:
+            logger.error(f"Failed to fire webhooks: {wh_error}")
+
         return {"message": "Сообщение отредактировано"}
     except MessageNotFoundError:
         raise
@@ -432,7 +529,7 @@ async def edit_message(
     except Exception as e:
         logger.error(f"Edit message error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.post("/chats/{chat_id}/pin")
@@ -446,7 +543,10 @@ async def pin_chat(
         user_id = token["sub"]
         logger.info(f"{'Pinning' if pin else 'Unpinning'} chat {chat_id} for user: {user_id}")
 
-        participant = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat_id, models.ChatParticipant.user_id == user_id).first()
+        participant = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == chat_id,
+            models.ChatParticipant.user_id == user_id,
+        ).first()
         if not participant:
             raise ChatNotFoundError("Чат не найден")
         participant.is_pinned = pin
@@ -459,10 +559,8 @@ async def pin_chat(
     except Exception as e:
         logger.error(f"Pin chat error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
-
-@router.post("/chats/{chat_id}/mute")
 async def mute_chat(
     chat_id: str,
     mute: bool = True,
@@ -473,7 +571,10 @@ async def mute_chat(
         user_id = token["sub"]
         logger.info(f"{'Muting' if mute else 'Unmuting'} chat {chat_id} for user: {user_id}")
 
-        participant = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat_id, models.ChatParticipant.user_id == user_id).first()
+        participant = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == chat_id,
+            models.ChatParticipant.user_id == user_id,
+        ).first()
         if not participant:
             raise ChatNotFoundError("Чат не найден")
         participant.is_muted = mute
@@ -486,11 +587,13 @@ async def mute_chat(
     except Exception as e:
         logger.error(f"Mute chat error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.delete("/chats/{chat_id}")
+@limiter.limit("30/minute")
 async def delete_chat(
+    request: Request,
     chat_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -516,7 +619,7 @@ async def delete_chat(
     except Exception as e:
         logger.error(f"Delete chat error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.post("/block/{blocked_user_id}")
@@ -529,7 +632,10 @@ async def block_user(
         user_id = token["sub"]
         logger.info(f"User {user_id} blocking user {blocked_user_id}")
 
-        existing = db.query(models.BlockedUser).filter(models.BlockedUser.user_id == user_id, models.BlockedUser.blocked_user_id == blocked_user_id).first()
+        existing = db.query(models.BlockedUser).filter(
+            models.BlockedUser.user_id == user_id,
+            models.BlockedUser.blocked_user_id == blocked_user_id,
+        ).first()
         if existing:
             return {"message": "Пользователь уже заблокирован"}
         block = models.BlockedUser(user_id=user_id, blocked_user_id=blocked_user_id)
@@ -539,7 +645,7 @@ async def block_user(
     except Exception as e:
         logger.error(f"Block user error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.delete("/block/{blocked_user_id}")
@@ -552,7 +658,10 @@ async def unblock_user(
         user_id = token["sub"]
         logger.info(f"User {user_id} unblocking user {blocked_user_id}")
 
-        block = db.query(models.BlockedUser).filter(models.BlockedUser.user_id == user_id, models.BlockedUser.blocked_user_id == blocked_user_id).first()
+        block = db.query(models.BlockedUser).filter(
+            models.BlockedUser.user_id == user_id,
+            models.BlockedUser.blocked_user_id == blocked_user_id,
+        ).first()
         if not block:
             raise HTTPException(status_code=404, detail="Блокировка не найдена")
         db.delete(block)
@@ -563,7 +672,7 @@ async def unblock_user(
     except Exception as e:
         logger.error(f"Unblock user error: {e}")
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.get("/block", response_model=list[schemas.BlockedUserResponse])
@@ -571,14 +680,10 @@ async def get_blocked_users(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        user_id = token["sub"]
+    user_id = token["sub"]
 
-        blocked = db.query(models.BlockedUser).filter(models.BlockedUser.user_id == user_id).all()
-        return [schemas.BlockedUserResponse.model_validate(b) for b in blocked]
-    except Exception as e:
-        logger.error(f"Get blocked users error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+    blocked = db.query(models.BlockedUser).filter(models.BlockedUser.user_id == user_id).all()
+    return [schemas.BlockedUserResponse.model_validate(b) for b in blocked]
 
 
 @router.get("/chats/{chat_id}/export")
@@ -591,10 +696,18 @@ async def export_chat(
     try:
         user_id = token["sub"]
 
-        participant = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat_id, models.ChatParticipant.user_id == user_id).first()
+        participant = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == chat_id,
+            models.ChatParticipant.user_id == user_id,
+        ).first()
         if not participant:
             raise HTTPException(status_code=404, detail="Чат не найден")
-        messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.chat_id == chat_id, models.Message.is_deleted == False).order_by(models.Message.created_at.asc()).all()
+        messages = (
+            db.query(models.Message)
+            .options(joinedload(models.Message.user))
+            .filter(models.Message.chat_id == chat_id, ~models.Message.is_deleted)
+            .order_by(models.Message.created_at.asc()).all()
+        )
         chat = db.query(models.Chat).filter(models.Chat.id == chat_id).first()
         if format == "json":
             export_data = {
@@ -604,10 +717,11 @@ async def export_chat(
             }
             for msg in messages:
                 sender = msg.user
+                ts = msg.created_at.isoformat() if hasattr(msg.created_at, 'isoformat') else str(msg.created_at)
                 export_data["messages"].append({
                     "id": msg.id, "sender": sender.username if sender else "Unknown",
                     "content": msg.content, "type": msg.message_type,
-                    "timestamp": msg.created_at.isoformat() if hasattr(msg.created_at, 'isoformat') else str(msg.created_at)
+                    "timestamp": ts,
                 })
             return export_data
         elif format == "txt":
@@ -615,7 +729,8 @@ async def export_chat(
             export_text += "=" * 50 + "\n\n"
             for msg in messages:
                 sender = msg.user
-                ts = msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(msg.created_at, 'strftime') else str(msg.created_at)
+                fmt = "%Y-%m-%d %H:%M:%S"
+                ts = msg.created_at.strftime(fmt) if hasattr(msg.created_at, 'strftime') else str(msg.created_at)
                 export_text += f"[{ts}] {sender.username if sender else 'Unknown'}: {msg.content}\n"
             return {"content": export_text}
         raise HTTPException(status_code=400, detail="Неподдерживаемый формат экспорта")
@@ -623,7 +738,7 @@ async def export_chat(
         raise
     except Exception as e:
         logger.error(f"Export chat error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.get("/chats/{chat_id}/search")
@@ -635,45 +750,49 @@ async def search_messages(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        user_id = token["sub"]
-        participant = db.query(models.ChatParticipant).filter(
-            models.ChatParticipant.chat_id == chat_id,
-            models.ChatParticipant.user_id == user_id
-        ).first()
-        if not participant:
-            raise HTTPException(status_code=404, detail="Чат не найден")
-        if limit > 100:
-            limit = 100
+    user_id = token["sub"]
+    participant = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == chat_id,
+        models.ChatParticipant.user_id == user_id
+    ).first()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Чат не найден")
+    if limit > 100:
+        limit = 100
 
-        # Check if chat has E2E messages (server can't search encrypted content)
-        has_e2e = db.query(models.Message).filter(
-            models.Message.chat_id == chat_id,
-            models.Message.encrypted_content.is_not(None),
-        ).first()
-        if has_e2e:
-            # Return all messages — client will search after decryption
-            messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(
-                models.Message.chat_id == chat_id,
-                models.Message.is_deleted == False
-            ).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
-            return [schemas.MessageResponse.model_validate(m) for m in messages]
+    # Check if chat has E2E messages (server can't search encrypted content)
+    has_e2e = db.query(models.Message).filter(
+        models.Message.chat_id == chat_id,
+        models.Message.encrypted_content.is_not(None),
+    ).first()
+    if has_e2e:
+        messages = (
+            db.query(models.Message)
+            .options(joinedload(models.Message.user))
+            .filter(models.Message.chat_id == chat_id, ~models.Message.is_deleted)
+            .order_by(models.Message.created_at.desc())
+            .offset(skip).limit(limit).all()
+        )
+        return [schemas.MessageResponse.model_validate(m) for m in messages]
 
-        messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(
+    messages = (
+        db.query(models.Message)
+        .options(joinedload(models.Message.user))
+        .filter(
             models.Message.chat_id == chat_id,
             models.Message.content.ilike(f"%{q}%"),
-            models.Message.is_deleted == False
-        ).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
-        return [schemas.MessageResponse.model_validate(m) for m in messages]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Search messages error: {e}")
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+            ~models.Message.is_deleted,
+        )
+        .order_by(models.Message.created_at.desc())
+        .offset(skip).limit(limit).all()
+    )
+    return [schemas.MessageResponse.model_validate(m) for m in messages]
 
 
 @router.post("/messages/{message_id}/react", response_model=list[schemas.ReactionResponse])
+@limiter.limit("60/minute")
 async def toggle_reaction(
+    request: Request,
     message_id: str,
     reaction: schemas.ReactionCreate,
     db: Session = Depends(get_db),
@@ -709,25 +828,14 @@ async def toggle_reaction(
 
         # Broadcast reaction update via WebSocket
         try:
+            reactions_json = [r.model_dump(mode="json") for r in result]
             await connection_manager.broadcast_to_chat(
-                {"event": "reaction_update", "data": {"message_id": message_id, "reactions": [r.model_dump(mode="json") for r in result]}},
+                {"event": "reaction_update", "data": {"message_id": message_id, "reactions": reactions_json}},
                 message.chat_id,
                 exclude_user=user_id
             )
         except Exception as ws_err:
             logger.warning(f"Failed to broadcast reaction: {ws_err}")
-
-        # Federation: send reaction to remote server
-        if settings.USE_FEDERATION:
-            try:
-                chat_obj = db.query(models.Chat).filter(models.Chat.id == message.chat_id).first()
-                if chat_obj and chat_obj.name and "@" in chat_obj.name:
-                    from server.routes.federation import send_federated_reaction
-                    sender_user = db.query(models.User).filter(models.User.id == user_id).first()
-                    if sender_user:
-                        await send_federated_reaction(sender_user, chat_obj.name, message_id, reaction.emoji)
-            except Exception as fed_err:
-                logger.warning(f"Federation reaction failed: {fed_err}")
 
         return result
     except MessageNotFoundError:
@@ -735,7 +843,7 @@ async def toggle_reaction(
     except Exception as e:
         logger.error(f"Toggle reaction error: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+        raise
 
 
 @router.get("/messages/{message_id}/reactions", response_model=list[schemas.ReactionResponse])
@@ -744,26 +852,20 @@ async def get_reactions(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        user_id = token["sub"]
-        message = db.query(models.Message).filter(models.Message.id == message_id).first()
-        if not message:
-            raise MessageNotFoundError("Сообщение не найдено")
-        participant = db.query(models.ChatParticipant).filter(
-            models.ChatParticipant.chat_id == message.chat_id,
-            models.ChatParticipant.user_id == user_id
-        ).first()
-        if not participant:
-            raise HTTPException(status_code=403, detail="Нет доступа")
-        reactions = db.query(models.MessageReaction).options(joinedload(models.MessageReaction.user)).filter(
-            models.MessageReaction.message_id == message_id
-        ).all()
-        return [schemas.ReactionResponse.model_validate(r) for r in reactions]
-    except MessageNotFoundError:
-        raise
-    except Exception as e:
-        logger.error(f"Get reactions error: {e}")
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+    user_id = token["sub"]
+    message = db.query(models.Message).filter(models.Message.id == message_id).first()
+    if not message:
+        raise MessageNotFoundError("Сообщение не найдено")
+    participant = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == message.chat_id,
+        models.ChatParticipant.user_id == user_id
+    ).first()
+    if not participant:
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    reactions = db.query(models.MessageReaction).options(joinedload(models.MessageReaction.user)).filter(
+        models.MessageReaction.message_id == message_id
+    ).all()
+    return [schemas.ReactionResponse.model_validate(r) for r in reactions]
 
 
 # ─── E2E Group Key ───
@@ -832,32 +934,34 @@ async def search_global(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    try:
-        user_id = token["sub"]
-        logger.info(f"Global search by user {user_id}: {q}")
+    user_id = token["sub"]
+    logger.info(f"Global search by user {user_id}: {q}")
 
-        if limit > 100:
-            limit = 100
+    if limit > 100:
+        limit = 100
 
-        user_chat_ids = [
-            chat_id for (chat_id,) in db.query(models.ChatParticipant.chat_id)
-            .filter(models.ChatParticipant.user_id == user_id)
-            .all()
-        ]
+    user_chat_ids = [
+        chat_id for (chat_id,) in db.query(models.ChatParticipant.chat_id)
+        .filter(models.ChatParticipant.user_id == user_id)
+        .all()
+    ]
 
-        if not user_chat_ids:
-            return []
+    if not user_chat_ids:
+        return []
 
-        messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(
+    messages = (
+        db.query(models.Message)
+        .options(joinedload(models.Message.user))
+        .filter(
             models.Message.chat_id.in_(user_chat_ids),
             models.Message.content.ilike(f"%{q}%"),
-            models.Message.is_deleted == False
-        ).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
+            ~models.Message.is_deleted,
+        )
+        .order_by(models.Message.created_at.desc())
+        .offset(skip).limit(limit).all()
+    )
 
-        return [schemas.MessageResponse.model_validate(m) for m in messages]
-    except Exception as e:
-        logger.error(f"Global search error: {e}")
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+    return [schemas.MessageResponse.model_validate(m) for m in messages]
 
 
 # ─── Mark Chat as Read ───
@@ -879,11 +983,15 @@ async def mark_chat_as_read(
         if not participant:
             raise HTTPException(status_code=404, detail="Чат не найден")
 
-        unread_statuses = db.query(models.MessageReadStatus).join(models.Message).filter(
-            models.Message.chat_id == chat_id,
-            models.MessageReadStatus.user_id == user_id,
-            models.MessageReadStatus.is_read == False
-        ).all()
+        unread_statuses = (
+            db.query(models.MessageReadStatus)
+            .join(models.Message)
+            .filter(
+                models.Message.chat_id == chat_id,
+                models.MessageReadStatus.user_id == user_id,
+                ~models.MessageReadStatus.is_read,
+            ).all()
+        )
 
         count = 0
         for status in unread_statuses:
@@ -898,13 +1006,15 @@ async def mark_chat_as_read(
     except Exception as e:
         logger.error(f"Mark chat as read error: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+        raise
 
 
 # ─── Send Message with expires_at ───
 
 @router.post("/chats/{chat_id}/messages-ephemeral", response_model=schemas.MessageResponse)
+@limiter.limit("30/minute")
 async def send_ephemeral_message(
+    request: Request,
     chat_id: str,
     content: str,
     expires_in_seconds: int,
@@ -939,7 +1049,11 @@ async def send_ephemeral_message(
         db.commit()
         db.refresh(message)
 
-        message_full = db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.id == message_id).first()
+        message_full = (
+            db.query(models.Message)
+            .options(joinedload(models.Message.user))
+            .filter(models.Message.id == message_id).first()
+        )
         if message_full:
             participants = db.query(models.ChatParticipant).filter(
                 models.ChatParticipant.chat_id == chat_id,
@@ -976,4 +1090,4 @@ async def send_ephemeral_message(
     except Exception as e:
         logger.error(f"Send ephemeral message error: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+        raise

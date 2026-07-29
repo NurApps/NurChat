@@ -1,5 +1,6 @@
 @echo off
 title NurChat
+set PYTHONUTF8=1
 
 echo === NurChat Dev Launcher ===
 echo.

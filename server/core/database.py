@@ -35,6 +35,7 @@ def create_tables():
     Fallback: если Alembic недоступен — create_all.
     """
     import sys
+
     from server.core import models  # noqa: F401 — registers models
 
     if getattr(sys, 'frozen', False):
@@ -43,6 +44,7 @@ def create_tables():
 
     try:
         from alembic.config import Config
+
         from alembic import command
         alembic_cfg = Config("alembic.ini")
         command.upgrade(alembic_cfg, "head")

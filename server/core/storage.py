@@ -91,11 +91,13 @@ class FileStorage:
                         return file_path
         raise FileNotFoundError(f"Файл {file_id} не найден")
 
-    async def delete_file(self, file_id: str, user_id: str) -> bool:
-        """Удаление файла"""
+    async def delete_file(self, file_id: str, user_id: str, file_path: str | None = None) -> bool:
         try:
-            file_path = await self.get_file_path(file_id, user_id)
-            file_path.unlink()
+            if file_path:
+                path = Path(file_path)
+            else:
+                path = await self.get_file_path(file_id, user_id)
+            path.unlink(missing_ok=True)
             return True
         except FileNotFoundError:
             return False

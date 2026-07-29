@@ -166,14 +166,18 @@ function persistSessions() {
   for (const [chatId, session] of sessionCache) {
     data[chatId] = session.serialize()
   }
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(data))
+  const plain = JSON.stringify(data)
+  const encrypted = _encryptPayload(plain)
+  localStorage.setItem(SESSIONS_KEY, encrypted)
 }
 
 function loadSessions() {
   try {
     const raw = localStorage.getItem(SESSIONS_KEY)
     if (!raw) return
-    const data: Record<string, SerializedSession> = JSON.parse(raw)
+    const decrypted = _decryptPayload(raw)
+    if (!decrypted) return
+    const data: Record<string, SerializedSession> = JSON.parse(decrypted)
     for (const [chatId, serialized] of Object.entries(data)) {
       sessionCache.set(chatId, DoubleRatchetSession.deserialize(serialized))
     }

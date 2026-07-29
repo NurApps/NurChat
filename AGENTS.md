@@ -97,8 +97,6 @@ JWT_SECRET_KEY=<stable hex key>
 
 Optional:
 ```
-USE_FEDERATION=true
-FEDERATION_SERVER_NAME=localhost:8000
 USE_P2P=true
 ```
 

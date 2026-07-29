@@ -4,20 +4,17 @@ Handles signed pre-keys, one-time pre-keys, and bundle publishing.
 """
 
 import hashlib
-import json
-import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from nacl.public import PrivateKey, PublicKey
+from fastapi import APIRouter, Depends, HTTPException, Request
 from nacl.encoding import HexEncoder
-import nacl.signing
+from nacl.public import PrivateKey
+from sqlalchemy.orm import Session
 
 from server.core import models
 from server.core.database import get_db
-from server.core.security import security, verify_token_dependency
+from server.core.security import verify_token_dependency
 from server.utils.logger import logger
-from shared.double_ratchet import PreKeyBundle
+from shared.rate_limiter import limiter
 
 router = APIRouter(tags=["keys"])
 
@@ -25,7 +22,9 @@ ONE_TIME_PREKEY_BATCH = 100
 
 
 @router.post("/signed-prekey")
+@limiter.limit("10/minute")
 async def upload_signed_prekey(
+    request: Request,
     public_key: str,
     signature: str,
     db: Session = Depends(get_db),
@@ -37,7 +36,7 @@ async def upload_signed_prekey(
     # Deactivate old signed pre-keys
     old_keys = db.query(models.SignedPreKey).filter(
         models.SignedPreKey.user_id == user_id,
-        models.SignedPreKey.is_active == True,
+        models.SignedPreKey.is_active,
     ).all()
     for k in old_keys:
         k.is_active = False
@@ -64,7 +63,7 @@ async def get_signed_prekey(
     """Get active signed pre-key for a user."""
     spk = db.query(models.SignedPreKey).filter(
         models.SignedPreKey.user_id == user_id,
-        models.SignedPreKey.is_active == True,
+        models.SignedPreKey.is_active,
     ).order_by(models.SignedPreKey.created_at.desc()).first()
 
     if not spk:
@@ -77,7 +76,9 @@ async def get_signed_prekey(
 
 
 @router.post("/one-time")
+@limiter.limit("10/minute")
 async def upload_one_time_prekeys(
+    request: Request,
     count: int = ONE_TIME_PREKEY_BATCH,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
@@ -107,7 +108,7 @@ async def get_one_time_prekey(
     """Get one unused one-time pre-key for a user and mark it as used."""
     otpk = db.query(models.OneTimePreKey).filter(
         models.OneTimePreKey.user_id == user_id,
-        models.OneTimePreKey.is_used == False,
+        ~models.OneTimePreKey.is_used,
     ).order_by(models.OneTimePreKey.created_at.asc()).first()
 
     if not otpk:
@@ -128,7 +129,7 @@ async def get_one_time_prekey_count(
     """Get remaining one-time pre-key count for a user."""
     count = db.query(models.OneTimePreKey).filter(
         models.OneTimePreKey.user_id == user_id,
-        models.OneTimePreKey.is_used == False,
+        ~models.OneTimePreKey.is_used,
     ).count()
     return {"count": count}
 
@@ -149,7 +150,7 @@ async def get_prekey_bundle(
 
     spk = db.query(models.SignedPreKey).filter(
         models.SignedPreKey.user_id == user_id,
-        models.SignedPreKey.is_active == True,
+        models.SignedPreKey.is_active,
     ).order_by(models.SignedPreKey.created_at.desc()).first()
 
     if not spk:
@@ -157,7 +158,7 @@ async def get_prekey_bundle(
 
     otpk = db.query(models.OneTimePreKey).filter(
         models.OneTimePreKey.user_id == user_id,
-        models.OneTimePreKey.is_used == False,
+        ~models.OneTimePreKey.is_used,
     ).order_by(models.OneTimePreKey.created_at.asc()).first()
 
     if otpk:
@@ -182,7 +183,7 @@ async def cleanup_used_prekeys(
     user_id = token["sub"]
     deleted = db.query(models.OneTimePreKey).filter(
         models.OneTimePreKey.user_id == user_id,
-        models.OneTimePreKey.is_used == True,
+        models.OneTimePreKey.is_used,
     ).delete()
     db.commit()
     if deleted:

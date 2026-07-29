@@ -1,5 +1,6 @@
 import { useCallback, useRef, useEffect } from "react"
 import { WS_BASE } from "../config"
+import { showNotification } from "../services/notifications"
 import type { MessageResponse, UserResponse, ChatResponse } from "../types"
 
 type TypingUsers = Record<string, Record<string, boolean>>
@@ -18,11 +19,12 @@ interface UseChatSocketOptions {
   onTypingUsers: (fn: (prev: TypingUsers) => TypingUsers) => void
   onOnlineUsers: (fn: (prev: OnlineUsers) => OnlineUsers) => void
   onReactions: (fn: (prev: Reactions) => Reactions) => void
+  onMention: (data: { chat_id: string; message_id: string; mentioned_by: string; mentioned_by_username: string; content_preview: string }) => void
   onNavigate: (path: string) => void
 }
 
 export function useChatSocket({
-  currentUser, selectedChat, onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onNavigate,
+  currentUser, selectedChat, onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate,
 }: UseChatSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null)
   const chatIdRef = useRef<string | null>(null)
@@ -71,6 +73,7 @@ export function useChatSocket({
           const sender = data.username || "Пользователь"
           const preview = (data.content || "").slice(0, 50)
           onToast({ id: data.id, title: sender, body: preview, chatId: data.chat_id })
+          showNotification(sender, preview)
         }
         break
       }
@@ -122,8 +125,12 @@ export function useChatSocket({
         onIncomingCall(null)
         break
       }
+      case "mention": {
+        onMention(data)
+        break
+      }
     }
-  }, [currentUser.id, onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onNavigate])
+  }, [currentUser.id, onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate])
 
   useEffect(() => {
     const userId = currentUser.id

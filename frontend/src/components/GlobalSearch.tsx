@@ -14,6 +14,17 @@ interface SearchResult {
   message: MessageResponse
 }
 
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query.trim()) return text
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"))
+  return parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase()
+      ? <mark key={i} className="gs-highlight">{part}</mark>
+      : part
+  )
+}
+
 export default function GlobalSearch({ chats = [], onSelect, onSelectMessage, onClose }: Props) {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
@@ -85,7 +96,7 @@ export default function GlobalSearch({ chats = [], onSelect, onSelectMessage, on
                 <div className="gs-chat-name">{chatName}</div>
                 <div className="gs-message">
                   <span className="gs-sender">{r.message.user?.username || "User"}</span>
-                  <span className="gs-text">{r.message.content.slice(0, 80)}</span>
+                  <span className="gs-text">{highlightText(r.message.content.slice(0, 80), query)}</span>
                 </div>
                 <span className="gs-time">{time}</span>
               </div>

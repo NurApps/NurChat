@@ -1,5 +1,5 @@
-import json
 import logging
+
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger("nurchat_signaling")

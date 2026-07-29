@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -28,11 +27,12 @@ async def generate_p2p_keys(
     private_hex, public_hex = crypto.generate_asymmetric_keys()
 
     # Генерируем signing ключи (Ed25519)
+    from nacl.encoding import HexEncoder
     from nacl.signing import SigningKey
     signing_sk = SigningKey.generate()
     signing_pk = signing_sk.verify_key
-    signing_private_hex = signing_sk.encode(encoder=__import__("nacl.encoding", fromlist=["HexEncoder"]).HexEncoder).hex()
-    signing_public_hex = signing_pk.encode(encoder=__import__("nacl.encoding", fromlist=["HexEncoder"]).HexEncoder).hex()
+    signing_private_hex = signing_sk.encode(encoder=HexEncoder).hex()
+    signing_public_hex = signing_pk.encode(encoder=HexEncoder).hex()
 
     # Сохраняем публичные ключи на сервере
     user = db.query(models.User).filter(models.User.id == token["sub"]).first()
@@ -284,10 +284,9 @@ async def open_port(
     user = db.query(models.User).filter(models.User.id == token["sub"]).first()
     if not user:
         raise HTTPException(status_code=404)
-    if settings.SERVER_HOST != "127.0.0.1":
+    if settings.SERVER_HOST not in ("0.0.0.0", ""):
         return {"message": "Порт уже открыт", "host": settings.SERVER_HOST, "port": settings.SERVER_PORT}
-    settings.SERVER_HOST = "0.0.0.0"
-    logger.warning("SERVER_HOST changed to 0.0.0.0 — сервер открыт для внешних подключений!")
+    logger.warning("Для внешних подключений задайте SERVER_HOST=0.0.0.0 в .env и перезапустите сервер")
     import socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:

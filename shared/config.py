@@ -1,7 +1,6 @@
+import sys
 from pathlib import Path
 from typing import Any
-
-import sys
 
 # Должно быть самым первым — до любого вывода в консоль
 if hasattr(sys.stdout, 'reconfigure'):
@@ -10,7 +9,7 @@ if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(errors='replace')
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -26,13 +25,6 @@ class Settings(BaseSettings):
     USE_FEDERATED_BACKUP: bool = False
     FEDERATED_BACKUP_URL: str | None = None
 
-    # Federation (server-to-server)
-    USE_FEDERATION: bool = True
-    FEDERATION_SERVER_NAME: str = ""  # Public server address, e.g. "nurchat.example.com:8000"
-    FEDERATION_SERVER_KEY_PATH: str = "federation_keys.json"
-    FEDERATION_ACTIVITY_TTL_HOURS: int = 72
-    FEDERATION_MAX_INBOX_SIZE: int = 1000
-    FEDERATION_ALLOWED_SERVERS: str = ""  # Comma-separated whitelist, empty = allow all
     WEBRTC_ICE_SERVERS: str | None = None  # JSON: [{"urls":"stun:...","username":"...","credential":"..."}]
     CLIENT_HOST: str = "localhost"
 
@@ -40,7 +32,7 @@ class Settings(BaseSettings):
     MEDIA_ROOT: str = "media"
     MAX_FILE_SIZE: int = 50 * 1024 * 1024
     FILE_TTL_DAYS: int = 30
-    ENCRYPTION_KEY: str = "your_default_encryption_key_here"
+    ENCRYPTION_KEY: str = ""
     JWT_SECRET_KEY: str = ""  # Auto-generated if empty, separate from ENCRYPTION_KEY
     WS_RECONNECT_TIMEOUT: int = 5
     CLEANUP_INTERVAL_HOURS: int = 6
@@ -95,62 +87,33 @@ def create_directories():
     for directory in directories:
         Path(directory).mkdir(parents=True, exist_ok=True)
 
-create_directories()
 settings = Settings()
 
-_env_written = False
-
-if settings.ENCRYPTION_KEY == "your_default_encryption_key_here":
-    import secrets
+if not settings.ENCRYPTION_KEY:
     import logging
     logging.critical(
-        "[SECURITY] ENCRYPTION_KEY is NOT set in .env! "
-        "Generated a TEMPORARY key. "
-        "All encrypted data will be LOST on restart. "
-        "Set a stable ENCRYPTION_KEY in .env immediately!"
+        "\n" + "!" * 72 + "\n"
+        "[FATAL] ENCRYPTION_KEY is NOT set!\n"
+        "Set a stable ENCRYPTION_KEY in .env or environment variable.\n"
+        "Generate with: python -c \"import secrets; print(secrets.token_hex(32))\"\n"
+        + "!" * 72
     )
-    settings.ENCRYPTION_KEY = secrets.token_hex(32)
-    _env_written = True
+    raise RuntimeError(
+        "ENCRYPTION_KEY is required. Set it in .env or as environment variable."
+    )
 
 if not settings.JWT_SECRET_KEY:
-    import secrets
     import logging
     logging.critical(
-        "[SECURITY] JWT_SECRET_KEY is NOT set in .env! "
-        "Generated a TEMPORARY key. "
-        "All active sessions will be invalidated on restart (users will be logged out). "
-        "Set JWT_SECRET_KEY in .env for production."
+        "\n" + "!" * 72 + "\n"
+        "[FATAL] JWT_SECRET_KEY is NOT set!\n"
+        "Set JWT_SECRET_KEY in .env or environment variable.\n"
+        "Generate with: python -c \"import secrets; print(secrets.token_hex(32))\"\n"
+        + "!" * 72
     )
-    settings.JWT_SECRET_KEY = secrets.token_hex(32)
-    _env_written = True
-
-if _env_written:
-    import os
-    _env_path = Path(os.getcwd()) / ".env"
-    try:
-        _env_lines = []
-        _written_enc = False
-        _written_jwt = False
-        if _env_path.exists():
-            _env_lines = _env_path.read_text().splitlines()
-            _existing = {l.split("=", 1)[0] for l in _env_lines if "=" in l}
-            if "ENCRYPTION_KEY" not in _existing:
-                _env_lines.append(f"ENCRYPTION_KEY={settings.ENCRYPTION_KEY}")
-                _written_enc = True
-            if "JWT_SECRET_KEY" not in _existing:
-                _env_lines.append(f"JWT_SECRET_KEY={settings.JWT_SECRET_KEY}")
-                _written_jwt = True
-            if _written_enc or _written_jwt:
-                _env_path.write_text("\n".join(_env_lines) + "\n")
-        else:
-            _env_path.write_text(
-                f"ENCRYPTION_KEY={settings.ENCRYPTION_KEY}\n"
-                f"JWT_SECRET_KEY={settings.JWT_SECRET_KEY}\n"
-            )
-            _written_enc = True
-        if _written_enc or _written_jwt:
-            logging.getLogger("nurchat").info("Auto-generated keys written to %s", _env_path)
-    except Exception as _exc:
-        logging.getLogger("nurchat").warning("Failed to write .env: %s", _exc)
+    raise RuntimeError(
+        "JWT_SECRET_KEY is required. Set it in .env or as environment variable."
+    )
 
 ENCRYPTION_KEY = settings.ENCRYPTION_KEY.encode()
+

@@ -6,25 +6,31 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
+
 from server.core import models, schemas
+from server.core.audit import client_ip, log_audit
 from server.core.database import get_db
 from server.core.security import encryption, security, verify_token_dependency
-from shared.exceptions import AuthenticationError
-from server.utils.captcha import validate_captcha, generate_captcha
+from server.utils.captcha import generate_captcha, validate_captcha
+from server.utils.logger import logger
 from server.utils.security import (
-    hash_password as hash_password_argon2,
-    verify_password as verify_password_argon2,
-    encrypt_secret,
-    decrypt_secret,
+    decrypt_totp_secret,
+    encrypt_totp_secret,
+    generate_backup_codes,
+    generate_qr_code_base64,
     generate_totp_secret,
     generate_totp_uri,
-    generate_qr_code_base64,
-    verify_totp,
-    generate_backup_codes,
     hash_backup_codes,
     verify_backup_code,
+    verify_totp,
 )
-from server.utils.logger import logger
+from server.utils.security import (
+    hash_password as hash_password_argon2,
+)
+from server.utils.security import (
+    verify_password as verify_password_argon2,
+)
+from shared.exceptions import AuthenticationError
 from shared.rate_limiter import limiter
 
 router = APIRouter()
@@ -58,6 +64,8 @@ async def register(
     last_name: str = Body(default=""),
     captcha_id: str = Body(...),
     captcha_code: str = Body(...),
+    public_key: str = Body(default=""),
+    signing_public_key: str = Body(default=""),
     db: Session = Depends(get_db)
 ):
     """Регистрация пользователя с именем и фамилией"""
@@ -69,7 +77,7 @@ async def register(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Неверная CAPTCHA"
             )
-        
+
         if not first_name or len(first_name.strip()) < 2:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -109,11 +117,14 @@ async def register(
 
         hashed_password = hash_password_argon2(password)
 
+        # Use client-provided keys if available, otherwise generate server-side
         keypair = encryption.generate_keypair()
 
-        # Generate Ed25519 signing keys for E2E message verification
         from shared.p2p_encryption import P2PEncryption
         signing_private_hex, signing_public_hex = P2PEncryption.generate_signing_keys()
+
+        user_public_key = public_key if public_key else keypair['public_key']
+        user_signing_public_key = signing_public_key if signing_public_key else signing_public_hex
 
         user_id = security.generate_user_id()
         now = datetime.now(timezone.utc)
@@ -124,8 +135,8 @@ async def register(
             first_name=first_name.strip(),
             last_name=last_name.strip() if last_name else None,
             hashed_password=hashed_password,
-            public_key=keypair['public_key'],
-            signing_public_key=signing_public_hex,
+            public_key=user_public_key,
+            signing_public_key=user_signing_public_key,
             created_at=now,
             last_seen=now,
             is_online=False,
@@ -136,6 +147,7 @@ async def register(
         db.refresh(user)
 
         logger.info(f"New user registered: {user.username} ({user.first_name} {user.last_name or ''}) (ID: {user.id})")
+        log_audit(user.id, "user_register", {"username": user.username}, ip_address=client_ip(request))
 
         access_token = security.create_access_token(
             data={"sub": user.id, "username": user.username}
@@ -149,8 +161,8 @@ async def register(
             created_at=now,
             last_seen=now,
             is_online=False,
-            public_key=keypair['public_key'],
-            signing_public_key=signing_public_hex,
+            public_key=user_public_key,
+            signing_public_key=user_signing_public_key,
             avatar_path=None,
             status=None,
             bio=None,
@@ -158,14 +170,19 @@ async def register(
         refresh_token = security.create_refresh_token(
             data={"sub": user.id, "username": user.username}
         )
-        return {
+        result = {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
             "user": response,
-            "private_key": keypair['private_key'],
-            "signing_private_key": signing_private_hex,
         }
+        if public_key and signing_public_key:
+            result["private_key"] = ""
+            result["signing_private_key"] = ""
+        else:
+            result["private_key"] = keypair['private_key']
+            result["signing_private_key"] = signing_private_hex
+        return result
     except HTTPException:
         raise
     except Exception as e:
@@ -237,6 +254,7 @@ async def login(
         db.commit()
 
         logger.info(f"User logged in: {user.username} (ID: {user.id})")
+        log_audit(user.id, "user_login", ip_address=client_ip(request))
 
         access_token = security.create_access_token(
             data={"sub": user.id, "username": user.username}
@@ -343,14 +361,22 @@ async def get_user(
 
 @router.post("/logout")
 async def logout(
+    request: Request,
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db)
 ):
-    """Выход пользователя"""
-    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    """Выход пользователя с отзывом токена"""
+    user_id = token["sub"]
+    user = db.query(models.User).filter(models.User.id == user_id).first()
     if user:
         user.is_online = False
         db.commit()
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        security.revoke(auth_header[7:])
+
+    log_audit(user_id, "user_logout", ip_address=client_ip(request))
     return {"message": "Успешный выход"}
 
 
@@ -532,16 +558,14 @@ async def setup_2fa(
     if user.is_2fa_enabled:
         raise HTTPException(status_code=400, detail="2FA уже включена. Сначала отключите.")
 
-    # Generate TOTP secret, encrypted with user's password
+    # Generate TOTP secret, encrypted with master key (not password-dependent)
     secret = generate_totp_secret()
     uri = generate_totp_uri(secret, user.username)
     qr_code = generate_qr_code_base64(uri)
 
-    # Generate backup codes
     codes = generate_backup_codes()
 
-    # Store encrypted secret and hashed backup codes temporarily (not enabled yet)
-    user.totp_secret = encrypt_secret(secret, body.password)
+    user.totp_secret = encrypt_totp_secret(secret)
     user.backup_codes = hash_backup_codes(codes)
     db.commit()
 
@@ -573,8 +597,7 @@ async def enable_2fa(
     if not verify_password_argon2(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Неверный пароль")
 
-    # Decrypt secret and verify the code
-    secret = decrypt_secret(user.totp_secret, body.password)
+    secret = decrypt_totp_secret(user.totp_secret)
     if not secret or not verify_totp(secret, body.code):
         raise HTTPException(status_code=400, detail="Неверный TOTP-код")
 
@@ -599,8 +622,7 @@ async def verify_2fa_login_with_token(
     if not user or not user.is_2fa_enabled:
         raise HTTPException(status_code=400, detail="2FA не активна")
 
-    # Decrypt TOTP secret with password from request
-    secret = decrypt_secret(user.totp_secret, body.password) if user.totp_secret else None
+    secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
     totp_valid = secret and verify_totp(secret, body.code)
 
     # Try backup code
@@ -652,8 +674,7 @@ async def disable_2fa(
     if not verify_password_argon2(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Неверный пароль")
 
-    # Verify code (TOTP or backup)
-    secret = decrypt_secret(user.totp_secret, body.password)
+    secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
     totp_valid = secret and verify_totp(secret, body.code)
 
     backup_valid = False
@@ -686,8 +707,8 @@ async def get_2fa_status(
     if user.backup_codes:
         try:
             remaining = len(json_lib.loads(user.backup_codes))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to parse backup codes: {e}")
 
     return schemas.TwoFAResponse(
         enabled=user.is_2fa_enabled,
@@ -711,8 +732,13 @@ async def refresh_token(
         new_access = security.create_access_token(
             data={"sub": user.id, "username": user.username}
         )
+        new_refresh = security.create_refresh_token(
+            data={"sub": user.id, "username": user.username}
+        )
+        # Rotate refresh token: old one is invalidated by not returning it
         return {
             "access_token": new_access,
+            "refresh_token": new_refresh,
             "token_type": "bearer",
         }
     except AuthenticationError:

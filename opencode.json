@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "pentest-ai": {
+      "type": "local",
+      "command": [
+        "D:/pentest_tools/pentest-ai/venv/Scripts/ptai.exe",
+        "mcp"
+      ],
+      "environment": {
+        "PENTEST_AI_AUP_ACCEPTED": "1"
+      },
+      "enabled": true
+    }
+  }
+}

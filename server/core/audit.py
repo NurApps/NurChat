@@ -3,9 +3,11 @@ Audit logging helper — logs security-relevant events without message content
 """
 import json
 import logging
-from datetime import datetime, timezone
-from server.core.database import get_db
+
+from fastapi import Request
+
 from server.core import models
+from server.core.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,14 @@ AUDIT_ACTIONS = {
     "backup_created": "Бэкап создан",
     "backup_restored": "Бэкап восстановлен",
 }
+
+
+def client_ip(request: Request) -> str:
+    """Extract real client IP from request, respecting X-Forwarded-For."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def log_audit(

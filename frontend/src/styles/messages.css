@@ -64,11 +64,8 @@
   min-width: 80px;
 }
 
-.msg-bubble.mine { background: #dcf8c6; }
+.msg-bubble.mine { background: var(--msg-mine-bg); }
 .msg-bubble.other { background: var(--surface); }
-
-[data-theme="dark"] .msg-bubble.mine { background: #1b5e20; }
-[data-theme="dark"] .msg-bubble.other { background: var(--surface); }
 
 .msg-bubble-inner {
   display: flex;
@@ -86,6 +83,8 @@
 }
 
 .msg-link { color: var(--tg-blue); text-decoration: underline; }
+.msg-code-block { background: var(--code-bg, #1e1e2e); color: var(--code-text, #cdd6f4); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.4; margin: 4px 0; }
+.msg-inline-code { background: var(--code-bg, #1e1e2e); color: var(--code-text, #cdd6f4); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
 
 .msg-footer {
   display: flex;
@@ -538,4 +537,13 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   cursor: pointer;
   animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes msgHighlight {
+  0% { background-color: rgba(42, 171, 238, 0.3); }
+  100% { background-color: transparent; }
+}
+
+.msg-highlighted > .msg-bubble {
+  animation: msgHighlight 2s ease-out;
 }

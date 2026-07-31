@@ -102,6 +102,21 @@ USE_P2P=true
 
 Full reference: `.env.example` and `shared/config.py`.
 
+## Auto-Update (Tauri Updater)
+
+- Uses `tauri-plugin-updater` + `tauri-plugin-process` (Rust) and `@tauri-apps/plugin-updater` + `@tauri-apps/plugin-process` (frontend).
+- Checks GitHub releases via `latest.json` manifest published by `tauri-action@v0` in `.github/workflows/release.yml`.
+- `UpdateBanner.tsx` polls every launch (10s delay), shows version, downloads with progress, installs, relaunches.
+
+**Signing (required for release builds):**
+- Public key is embedded in `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`.
+- Private key lives in `update_key_private.key` (gitignored, minisign format).
+- GitHub Secrets (must be set for the release workflow to build):
+  - `TAURI_SIGNING_PRIVATE_KEY` — contents of `update_key_private.key`
+  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — empty (key has no password)
+- `tauri build` fails without the private key env var; that's expected. `tauri dev` doesn't need it.
+- To regenerate a key if lost: `npx tauri signer generate --ci -w update_key_private.key` then copy `.pub` value into `tauri.conf.json`.
+
 ## Testing
 
 - Test dir: `test/` (singular, not `tests/`)

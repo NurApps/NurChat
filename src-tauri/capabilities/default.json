@@ -5,6 +5,8 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
-    "notification:default"
+    "notification:default",
+    "updater:default",
+    "process:default"
   ]
 }

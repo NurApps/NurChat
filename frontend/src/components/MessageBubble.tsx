@@ -37,8 +37,7 @@ function renderHighlightedMarkdown(text: string, query: string): React.ReactNode
       ? <mark key={i} className="search-highlight">{part}</mark>
       : <React.Fragment key={i}>{renderMarkdown(part)}</React.Fragment>
   )
-
-
+}
 
 export default function MessageBubble({
   message, currentUser, isMyMessage, isRead = false, status,

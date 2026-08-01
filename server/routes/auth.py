@@ -240,17 +240,17 @@ async def anonymous_login(
             db.commit()
             db.refresh(user)
             logger.info(f"Anonymous user registered (ID: {user.id})")
-            log_audit(user.id, "user_register", {"method": "anonymous"}, ip_address=client_ip(request))
+            log_audit(user.id, "user_register", {"method": "anonymous"}, ip_address=client_ip(request))  # type: ignore[arg-type]
         else:
-            user.last_seen = now
-            user.is_online = True
+            user.last_seen = now  # type: ignore[assignment]
+            user.is_online = True  # type: ignore[assignment]
             if signing_public_key.strip():
-                user.signing_public_key = signing_public_key.strip()
+                user.signing_public_key = signing_public_key.strip()  # type: ignore[assignment]
             if display_name.strip() and display_name.strip() != user.first_name:
-                user.first_name = display_name.strip()[:50]
+                user.first_name = display_name.strip()[:50]  # type: ignore[assignment]
             db.commit()
             db.refresh(user)
-            log_audit(user.id, "user_login", {"method": "anonymous"}, ip_address=client_ip(request))
+            log_audit(user.id, "user_login", {"method": "anonymous"}, ip_address=client_ip(request))  # type: ignore[arg-type]
 
         access_token = security.create_access_token(
             data={"sub": user.id, "username": user.username}

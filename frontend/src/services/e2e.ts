@@ -24,10 +24,15 @@ export interface E2EKeys {
 
 const KEYS_KEY = "e2e_keys"
 const SESSIONS_KEY = "e2e_sessions"
+const DEVICE_SECRET_KEY = "device_secret"
 
 function _deriveStorageKey(): Uint8Array {
-  const token = localStorage.getItem("token") || ""
-  const hash = nacl.hash(new TextEncoder().encode(token))
+  let secret = localStorage.getItem(DEVICE_SECRET_KEY)
+  if (!secret) {
+    secret = bytesToHex(nacl.randomBytes(32))
+    localStorage.setItem(DEVICE_SECRET_KEY, secret)
+  }
+  const hash = nacl.hash(new TextEncoder().encode(secret))
   return hash.slice(0, 32)
 }
 

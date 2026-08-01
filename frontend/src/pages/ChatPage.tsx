@@ -473,18 +473,6 @@ export default function ChatPage() {
     try { await api.addContact(userId); setShowAddContact(false); loadContacts() } catch { setErrorToast(t("errors.addContact")) }
   }, [loadContacts, setErrorToast, setShowAddContact, t])
 
-  const handleAddRemoteContact = useCallback(async (address: string) => {
-    try {
-      const result = await api.createRemoteChat(address)
-      const chat = await api.createChat(result.display_name || address, [currentUser.id], false, false, 0)
-      setShowAddContact(false)
-      loadChats()
-      setSelectedChat(chat)
-      setTab("chats")
-      setMessages([])
-    } catch { setErrorToast(t("errors.remoteConnect")) }
-  }, [currentUser.id, loadChats, setMessages, setErrorToast, setShowAddContact, setSelectedChat, setTab, t])
-
   const handleCreateChat = useCallback(async (participantIds: string[], name: string | null, isSecret?: boolean, secretTtl?: number) => {
     try {
       const isGroup = participantIds.length > 1
@@ -1021,7 +1009,7 @@ export default function ChatPage() {
       </div>
 
       {/* Modals */}
-      {showAddContact && <AddContactModal existingContactIds={contacts.map((c) => c.contact_user?.id).filter(Boolean)} currentUserId={currentUser.id} onAdd={handleAddContact} onAddRemote={handleAddRemoteContact} onClose={() => setShowAddContact(false)} />}
+      {showAddContact && <AddContactModal existingContactIds={contacts.map((c) => c.contact_user?.id).filter(Boolean)} currentUserId={currentUser.id} onAdd={handleAddContact} onClose={() => setShowAddContact(false)} />}
       {showCreateChat && <CreateChatModal currentUserId={currentUser.id} onCreate={handleCreateChat} onClose={() => setShowCreateChat(false)} />}
       {showForward && <ForwardModal messageId={showForward} sourceChatId={selectedChat?.id} onForward={handleForward} onClose={() => setShowForward(null)} />}
       {profileUser && <UserProfileModal user={profileUser} onClose={() => setProfileUser(null)} />}

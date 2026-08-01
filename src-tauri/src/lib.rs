@@ -1,16 +1,13 @@
 mod p2p;
-mod server;
 
 use p2p::{P2PNode, P2PConfig, P2PPeerInfo};
-use server::ServerManager;
-use tauri::{Emitter, Manager, State};
+use tauri::{Manager, State};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tauri::menu::{MenuBuilder};
 use tokio::sync::RwLock;
 
 struct AppState {
     p2p: RwLock<Option<P2PNode>>,
-    server: ServerManager,
 }
 
 #[tauri::command]
@@ -61,34 +58,6 @@ async fn download_and_open_file(url: String, token: String, filename: String) ->
     open::that(&temp).map_err(|e| format!("Open failed: {e}"))?;
 
     Ok(path_str)
-}
-
-#[tauri::command]
-async fn fetch_captcha() -> Result<serde_json::Value, String> {
-    let resp = reqwest::get("http://127.0.0.1:8000/api/auth/captcha")
-        .await
-        .map_err(|e| format!("Captcha fetch failed: {e}"))?;
-    resp.json::<serde_json::Value>()
-        .await
-        .map_err(|e| format!("Captcha parse failed: {e}"))
-}
-
-#[tauri::command]
-async fn fetch_register(body: String) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
-    let resp = client
-        .post("http://127.0.0.1:8000/api/auth/register")
-        .header("Content-Type", "application/json")
-        .body(body)
-        .send()
-        .await
-        .map_err(|e| format!("Register request failed: {e}"))?;
-    let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("Read response failed: {e}"))?;
-    if !status.is_success() {
-        return Err(text);
-    }
-    serde_json::from_str(&text).map_err(|e| format!("Parse failed: {e}"))
 }
 
 #[tauri::command]
@@ -179,12 +148,9 @@ mod tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let server = ServerManager::new();
-
     tauri::Builder::default()
         .manage(AppState {
             p2p: RwLock::new(None),
-            server,
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
@@ -195,8 +161,6 @@ pub fn run() {
             p2p_get_peer_count,
             init_p2p,
             download_and_open_file,
-            fetch_captcha,
-            fetch_register,
             check_update,
             get_app_version,
             show_main_window,
@@ -210,51 +174,6 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
-            }
-
-            // Auto-start server
-            let state = app.handle().state::<AppState>();
-
-            // Use app_data_dir for server files, create if missing
-            let app_dir = app.path()
-                .app_data_dir()
-                .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
-            if !app_dir.exists() {
-                let _ = std::fs::create_dir_all(&app_dir);
-            }
-
-            // Also try resource dir for Tauri sidecar
-            let res_dir = app.path()
-                .resource_dir()
-                .ok();
-
-            log::info!("Server app_dir: {:?}", app_dir);
-            log::info!("Server resource_dir: {:?}", res_dir);
-
-            let handle = app.handle().clone();
-            match state.server.start(&app_dir, res_dir.as_deref()) {
-                Ok(()) => {
-                    log::info!("Server process started");
-                    let _ = handle.emit("server-status", serde_json::json!({"status": "starting"}));
-                    // Wait for server in background (60s for embeddable Python download)
-                    std::thread::spawn(move || {
-                        let state = handle.state::<AppState>();
-                        match state.server.wait_ready(60) {
-                            Ok(()) => {
-                                log::info!("Server is ready");
-                                let _ = handle.emit("server-status", serde_json::json!({"status": "ready"}));
-                            }
-                            Err(e) => {
-                                log::error!("Server failed to start: {}", e);
-                                let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
-                            }
-                        }
-                    });
-                }
-                Err(e) => {
-                    log::error!("Failed to start server: {}", e);
-                    let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
-                }
             }
 
             // Tray icon
@@ -278,8 +197,6 @@ pub fn run() {
                             }
                         }
                         "quit" => {
-                            let state = app.state::<AppState>();
-                            state.server.stop();
                             app.exit(0);
                         }
                         _ => {}
@@ -304,7 +221,6 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            let state = app_handle.state::<AppState>();
             match event {
                 tauri::RunEvent::WindowEvent { label, event: win_event, .. } => {
                     if let tauri::WindowEvent::CloseRequested { .. } = win_event {
@@ -312,9 +228,6 @@ pub fn run() {
                             let _ = window.hide();
                         }
                     }
-                }
-                tauri::RunEvent::Exit => {
-                    state.server.stop();
                 }
                 _ => {}
             }

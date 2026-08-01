@@ -52,6 +52,9 @@ export const api = {
   register: (username: string, password: string, first_name?: string, last_name?: string) =>
     request<{ access_token: string; token_type: string; user: UserResponse; private_key?: string; signing_private_key?: string }>("POST", "/api/auth/register", { username, password, first_name, last_name }),
 
+  registerAnonymous: (publicKey: string, signingPublicKey?: string, displayName?: string) =>
+    request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/anonymous", { public_key: publicKey, signing_public_key: signingPublicKey, display_name: displayName }),
+
   getCurrentUser: () =>
     request<UserResponse>("GET", "/api/auth/me"),
 

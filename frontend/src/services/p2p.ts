@@ -547,7 +547,7 @@ class P2PClient {
       data: {
         file_id: fileId, sender_id: this.userId,
         filename: file.name, file_size: file.size,
-        file_type: file.type, total_chunks, timestamp: new Date().toISOString(),
+        file_type: file.type, total_chunks: totalChunks, timestamp: new Date().toISOString(),
       },
     }))
 
@@ -585,7 +585,7 @@ class P2PClient {
       data: {
         file_id: fileId, sender_id: this.userId,
         filename: file.name, file_size: file.size,
-        file_type: file.type, total_chunks, timestamp: new Date().toISOString(),
+        file_type: file.type, total_chunks: totalChunks, timestamp: new Date().toISOString(),
       },
     })
 

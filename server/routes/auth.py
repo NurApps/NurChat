@@ -1,3 +1,4 @@
+import hashlib
 import json as json_lib
 import os
 import re
@@ -191,6 +192,86 @@ async def register(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Внутренняя ошибка сервера"
+        )
+
+
+@router.post("/anonymous", response_model=schemas.Token)
+@limiter.limit("30/minute")
+async def anonymous_login(
+    request: Request,
+    public_key: str = Body(...),
+    signing_public_key: str = Body(default=""),
+    display_name: str = Body(default=""),
+    db: Session = Depends(get_db),
+):
+    """Анонимный вход по публичному ключу (без пароля).
+
+    Идентичность = локальная пара ключей. Relay знает только публичный ключ.
+    Тот же публичный ключ всегда возвращает одного и того же пользователя.
+    """
+    try:
+        public_key = public_key.strip()
+        if len(public_key) < 10:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Невалидный публичный ключ",
+            )
+
+        # Детерминированный username/id из хэша публичного ключа
+        digest = hashlib.sha256(public_key.encode()).hexdigest()
+        username = f"anon_{digest[:20]}"
+        user_id = f"user_{digest[:32]}"
+        now = datetime.now(timezone.utc)
+
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        if not user:
+            user = models.User(
+                id=user_id,
+                username=username,
+                first_name=(display_name.strip() or "Аноним")[:50],
+                hashed_password=None,
+                public_key=public_key,
+                signing_public_key=signing_public_key.strip() or None,
+                created_at=now,
+                last_seen=now,
+                is_online=True,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            logger.info(f"Anonymous user registered (ID: {user.id})")
+            log_audit(user.id, "user_register", {"method": "anonymous"}, ip_address=client_ip(request))
+        else:
+            user.last_seen = now
+            user.is_online = True
+            if signing_public_key.strip():
+                user.signing_public_key = signing_public_key.strip()
+            if display_name.strip() and display_name.strip() != user.first_name:
+                user.first_name = display_name.strip()[:50]
+            db.commit()
+            db.refresh(user)
+            log_audit(user.id, "user_login", {"method": "anonymous"}, ip_address=client_ip(request))
+
+        access_token = security.create_access_token(
+            data={"sub": user.id, "username": user.username}
+        )
+        refresh_token = security.create_refresh_token(
+            data={"sub": user.id, "username": user.username}
+        )
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": schemas.UserResponse.model_validate(user),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Anonymous login error: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Внутренняя ошибка сервера",
         )
 
 

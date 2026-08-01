@@ -1,34 +1,18 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { invoke } from "@tauri-apps/api/core"
 import { api } from "../services/api"
 import { BASE_URL } from "../config"
-import { saveKeys } from "../services/e2e"
+import { loadKeys, generateKeys, saveKeys, hasKeys } from "../services/e2e"
 
 const TG_BLUE = "#2AABEE"
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const [checking, setChecking] = useState(true)
-  const [mode, setMode] = useState<"login" | "register">("login")
-  const [username, setUsername] = useState("")
-  const [password, setPassword] = useState("")
-  const [firstName, setFirstName] = useState("")
-  const [lastName, setLastName] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
+  const [displayName, setDisplayName] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  
-  // CAPTCHA state for registration
-  const [captchaId, setCaptchaId] = useState<string>("")
-  const [captchaQuestion, setCaptchaQuestion] = useState<string>("")
-  const [captchaCode, setCaptchaCode] = useState("")
-  const [refreshingCaptcha, setRefreshingCaptcha] = useState(false)
-  const [captchaError, setCaptchaError] = useState("")
-
-  // TOTP 2FA state for login
-  const [totpRequired, setTotpRequired] = useState(false)
-  const [totpCode, setTotpCode] = useState("")
+  const [isNewIdentity, setIsNewIdentity] = useState(false)
 
   // Auto-login: если токен есть и валиден — сразу в чат
   useEffect(() => {
@@ -48,163 +32,36 @@ export default function LoginPage() {
       })
   }, [navigate])
 
-  // Load CAPTCHA when switching to registration mode
+  // Если нет ни токена, ни ключей — создаём анонимную идентичность
   useEffect(() => {
-    if (mode === "register" && !captchaId) {
-      loadCaptcha()
+    if (checking) return
+    if (!hasKeys()) {
+      const keys = generateKeys()
+      saveKeys(keys)
+      setIsNewIdentity(true)
     }
-  }, [mode])
+  }, [checking])
 
-  const loadCaptcha = async () => {
-    setRefreshingCaptcha(true)
-    try {
-      let data: { captcha_id: string; question: string }
-
-      try {
-        const res = await fetch(`${BASE_URL}/api/auth/captcha`, { signal: AbortSignal.timeout(5000) })
-        data = await res.json()
-      } catch {
-        data = await invoke("fetch_captcha") as { captcha_id: string; question: string }
-      }
-
-      setCaptchaId(data.captcha_id)
-      setCaptchaQuestion(data.question)
-      setCaptchaCode("")
-      setCaptchaError("")
-    } catch (err) {
-      setCaptchaError("Не удалось загрузить капчу: " + (err instanceof Error ? err.message : "ошибка сети"))
-    } finally {
-      setRefreshingCaptcha(false)
-    }
-  }
-
-  const toggleMode = () => {
-    setMode(mode === "login" ? "register" : "login")
+  const handleConnect = async () => {
     setError("")
-  }
-
-  const validate = (): boolean => {
-    if (!username.trim()) { setError("Введите username"); return false }
-    if (username.trim().length < 3) { setError("Username минимум 3 символа"); return false }
-    if (!/^[a-zA-Z0-9]+$/.test(username.trim())) { setError("Только латинские буквы и цифры"); return false }
-    if (mode === "register") {
-      if (!firstName.trim()) { setError("Введите имя"); return false }
-      if (firstName.trim().length < 2) { setError("Имя минимум 2 символа"); return false }
-    }
-    if (!password) { setError("Введите пароль"); return false }
-    if (password.length < 4) { setError("Пароль минимум 4 символа"); return false }
-    return true
-  }
-
-  const handleSubmit = async () => {
-    setError("")
-    if (!validate()) return
     setLoading(true)
-
     try {
-      if (mode === "login") {
-        // If TOTP is required, send the code
-        if (totpRequired) {
-          const res = await fetch(`${BASE_URL}/api/auth/login`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              username: username.trim(),
-              password,
-              totp_code: totpCode,
-            }),
-          })
-
-          if (!res.ok) {
-            const errorData = await res.json()
-            if (res.status === 401 && errorData.detail?.includes("TOTP")) {
-              setError("Неверный код TOTP или резервный код")
-              setLoading(false)
-              return
-            }
-            throw new Error(errorData.detail || "Ошибка входа")
-          }
-
-          const data = await res.json()
-          api.setToken(data.access_token)
-          localStorage.setItem("user", JSON.stringify(data.user))
-          navigate("/chat", { replace: true })
-          return
-        }
-
-        // First login attempt without TOTP
-        const res = await api.login(username.trim(), password)
-        api.setToken(res.access_token)
-        localStorage.setItem("user", JSON.stringify(res.user))
-        // Restore E2E keys from localStorage if available (set during register)
-        // If not available, keys will be generated via P2PStatusPage
-        navigate("/chat", { replace: true })
-      } else {
-        // Registration with CAPTCHA
-        if (!captchaId || !captchaCode) {
-          setError("Пройдите проверку CAPTCHA")
-          setLoading(false)
-          return
-        }
-        
-        // Generate E2E keys client-side before registration
-        const { generateKeys, saveKeys } = await import("../services/e2e")
-        const localKeys = generateKeys()
-        let data: any
-        try {
-          data = await invoke("fetch_register", {
-            body: JSON.stringify({
-              username: username.trim(),
-              password,
-              first_name: firstName.trim(),
-              last_name: lastName.trim(),
-              captcha_id: captchaId,
-              captcha_code: captchaCode,
-              public_key: localKeys.publicKeyHex,
-              signing_public_key: localKeys.signingPublicHex,
-            }),
-          })
-        } catch (fetchErr: any) {
-          const errMsg = fetchErr?.message || fetchErr?.toString() || ""
-          if (errMsg.includes("CAPTCHA")) {
-            setError("Неверная CAPTCHA. Попробуйте еще раз")
-            loadCaptcha()
-            setLoading(false)
-            return
-          }
-          throw fetchErr
-        }
-        api.setToken(data.access_token)
-        localStorage.setItem("user", JSON.stringify(data.user))
-        // Save locally generated E2E keys (private keys never sent to server)
-        saveKeys({
-          privateKeyHex: localKeys.privateKeyHex,
-          publicKeyHex: localKeys.publicKeyHex,
-          signingPrivateHex: localKeys.signingPrivateHex,
-          signingPublicHex: localKeys.signingPublicHex,
-        })
-        navigate("/chat", { replace: true })
+      let keys = loadKeys()
+      if (!keys) {
+        keys = generateKeys()
+        saveKeys(keys)
+        setIsNewIdentity(true)
       }
+      const res = await api.registerAnonymous(keys.publicKeyHex, keys.signingPublicHex, displayName.trim() || undefined)
+      api.setToken(res.access_token)
+      localStorage.setItem("user", JSON.stringify(res.user))
+      navigate("/chat", { replace: true })
     } catch (err: any) {
       const msg = err?.message || err?.toString() || ""
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED") || msg.includes("ERR_NETWORK") || msg.includes("request failed") || msg.includes("error sending request")) {
-        setError("Сервер недоступен. Перезапустите приложение или проверьте подключение")
-      } else if (err instanceof Error && "status" in err) {
-        const apiErr = err as { status: number; message: string; headers?: Headers }
-        // Check for TOTP required header
-        if (apiErr.status === 403 && apiErr.headers?.get("X-TOTP-Required") === "true") {
-          setTotpRequired(true)
-          setError("Требуется код двухфакторной аутентификации")
-          setLoading(false)
-          return
-        }
-        if (apiErr.status === 401) setError("Неверный username или пароль")
-        else if (apiErr.status === 409) setError("Username уже занят")
-        else setError(apiErr.message || "Ошибка сервера")
+        setError(`Relay недоступен: ${BASE_URL}. Проверьте подключение к интернету или адрес relay.`)
       } else {
-        setError("Ошибка подключения к серверу")
+        setError(msg || "Ошибка подключения к relay")
       }
     } finally {
       setLoading(false)
@@ -219,8 +76,6 @@ export default function LoginPage() {
     )
   }
 
-  const isRegister = mode === "register"
-
   return (
     <div className="login-page">
       <div className="login-container">
@@ -232,196 +87,76 @@ export default function LoginPage() {
             </svg>
           </div>
           <h1 className="login-title">NurChat</h1>
-          <p className="login-subtitle">Анонимный исламский мессенджер</p>
+          <p className="login-subtitle">Анонимный мессенджер. E2E-шифрование через relay</p>
         </div>
 
-        {/* Поля */}
-        <div className="login-fields">
-          {isRegister && (
-            <>
-              <div className="field-wrapper">
-                <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-                </svg>
-                <input
-                  className="login-input"
-                  type="text"
-                  placeholder="Имя *"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                />
-              </div>
-              <div className="field-wrapper">
-                <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-                </svg>
-                <input
-                  className="login-input"
-                  type="text"
-                  placeholder="Фамилия (необязательно)"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                />
-              </div>
-              
-              {/* CAPTCHA Field */}
-              <div className="field-wrapper captcha-field">
-                <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                <div className="captcha-container" style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
-                  <span className="captcha-question" style={{ fontSize: "14px", fontWeight: "bold", color: captchaError ? "#e74c3c" : "#333", minWidth: "100px" }}>
-                    {captchaError || captchaQuestion || "Загрузка..."}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={loadCaptcha}
-                    disabled={refreshingCaptcha}
-                    className="captcha-refresh-btn"
-                    style={{
-                      background: "none",
-                      border: "1px solid #ddd",
-                      borderRadius: "4px",
-                      padding: "4px 8px",
-                      cursor: refreshingCaptcha ? "not-allowed" : "pointer",
-                      opacity: refreshingCaptcha ? 0.6 : 1,
-                    }}
-                    title="Обновить CAPTCHA"
-                    aria-label="Обновить CAPTCHA"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: refreshingCaptcha ? "spin 1s linear infinite" : "none" }}>
-                      <polyline points="23 4 23 10 17 10" />
-                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                    </svg>
-                  </button>
-                </div>
-                <input
-                  className="login-input"
-                  type="text"
-                  placeholder="Введите ответ"
-                  value={captchaCode}
-                  onChange={(e) => setCaptchaCode(e.target.value)}
-                  style={{ marginLeft: "8px", maxWidth: "120px" }}
-                />
-              </div>
-            </>
-          )}
+        {isNewIdentity && (
+          <div className="login-hint">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            <p>
+              Создана новая анонимная идентичность.
+              <br />
+              Ключи хранятся только на этом устройстве. Никаких паролей.
+            </p>
+          </div>
+        )}
 
+        {/* Имя (необязательно, хранится на relay как подпись) */}
+        <div className="login-fields">
           <div className="field-wrapper">
             <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
             </svg>
             <input
               className="login-input"
               type="text"
-              placeholder={isRegister ? "Придумайте username (мин. 3 символа)" : "Введите username"}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Имя (необязательно)"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
             />
-          </div>
-
-          <div className="field-wrapper">
-            <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-            <input
-              className="login-input"
-              type={showPassword ? "text" : "password"}
-              placeholder="Пароль"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <button
-              className="password-toggle"
-              onClick={() => setShowPassword(!showPassword)}
-              tabIndex={-1}
-              type="button"
-            >
-              {showPassword ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                  <line x1="1" y1="1" x2="23" y2="23" />
-                </svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
-                </svg>
-              )}
-            </button>
           </div>
         </div>
 
         {error && <p className="login-error">{error}</p>}
 
-        {/* TOTP 2FA Field (shown when required) */}
-        {totpRequired && (
-          <div className="login-fields">
-            <div className="field-wrapper">
-              <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-              <input
-                className="login-input"
-                type="text"
-                placeholder="Код TOTP или резервный код"
-                value={totpCode}
-                onChange={(e) => setTotpCode(e.target.value)}
-                autoFocus
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Кнопки */}
+        {/* Кнопка */}
         <div className="login-actions">
           <button
             className="login-btn"
             disabled={loading}
-            onClick={handleSubmit}
+            onClick={handleConnect}
           >
             {loading ? (
               <span className="btn-loading">
                 <span className="spinner" />
-                {isRegister ? "Регистрация..." : "Вход..."}
+                Подключение...
               </span>
             ) : (
               <span className="btn-content">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  {isRegister ? (
-                    <><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><polyline points="17 8 21 12 17 16" /><line x1="21" y1="12" x2="9" y2="12" /></>
-                  ) : (
-                    <><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></>
-                  )}
+                  <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                  <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                  <line x1="12" y1="20" x2="12.01" y2="20" />
                 </svg>
-                {isRegister ? "Зарегистрироваться" : "Войти"}
+                Подключиться
               </span>
             )}
           </button>
-
-          <button className="switch-mode-btn" onClick={toggleMode}>
-            {isRegister ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Зарегистрироваться"}
-          </button>
         </div>
 
-        {/* Разделитель */}
-        <div className="login-divider">
-          <span className="divider-line" />
-          <span className="divider-text">или</span>
-          <span className="divider-line" />
-        </div>
-
-        {/* Ссылки */}
+        {/* Адрес relay */}
         <div className="login-links">
+          <div className="links-row secondary">
+            <span style={{ fontSize: 12, opacity: 0.7 }}>Relay: {BASE_URL}</span>
+          </div>
           <div className="links-row">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
             <span>Безопасность и приватность</span>
-          </div>
-          <div className="links-row secondary">
-            <button className="link-btn">Политика конфиденциальности</button>
-            <span className="dot">•</span>
-            <button className="link-btn">Пользовательское соглашение</button>
           </div>
         </div>
 
@@ -431,9 +166,9 @@ export default function LoginPage() {
             <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
           </svg>
           <p>
-            Ваши данные защищены end-to-end шифрованием.
+            Сообщения защищены end-to-end шифрованием.
             <br />
-            Имя будет видно другим пользователям.
+            Relay хранит только зашифрованные блобы и не может прочитать содержимое.
           </p>
         </div>
       </div>

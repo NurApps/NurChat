@@ -109,6 +109,7 @@ app.add_middleware(
         "/health",
         "/api/auth/captcha",
         "/api/auth/login",
+        "/api/auth/anonymous",
         "/api/auth/register",
         "/api/files/upload",
     ],

@@ -27,31 +27,6 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: 'pip'
-
-      - name: Install Python deps
-        run: pip install -r requirements.txt pyinstaller
-
-      - name: Build server.exe
-        run: |
-          pyinstaller --onefile --noconsole --name server.exe `
-            --hidden-import "uvicorn.logging" `
-            --hidden-import "uvicorn.loops.auto" `
-            --hidden-import "uvicorn.protocols.http.auto" `
-            --hidden-import "uvicorn.lifespan.on" `
-            --add-data "shared;shared" `
-            --collect-all "multipart" `
-            server\main.py `
-            --noconfirm
-
-      - name: Bundle server.exe into Tauri sidecar
-        run: |
-          copy dist\server.exe src-tauri\binaries\server-x86_64-pc-windows-msvc.exe
-
       - name: Install frontend deps
         working-directory: frontend
         run: npm ci

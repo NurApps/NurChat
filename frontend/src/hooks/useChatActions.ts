@@ -81,7 +81,7 @@ export function useChatActions({
     }
     sendTyping(false)
     return true
-  }, [selectedChat, replyTo, currentUser, loadChats, addMessage, sendTyping, replyToId])
+  }, [selectedChat, replyTo, currentUser, loadChats, addMessage, sendTyping])
 
   const handleReply = useCallback((messageId: string, messages: MessageResponse[]) => {
     const msg = messages.find((m) => m.id === messageId)

@@ -2,30 +2,29 @@
 
 ## What This Is
 
-NurChat — self-hosted anonymous messenger. Tauri v2 desktop app (React + Rust frontend, FastAPI + SQLite backend). AGPL-3.0.
+NurChat — анонимный мессенджер по модели «общий глухой relay». Tauri v2 desktop app (React + Rust frontend, FastAPI + SQLite backend). AGPL-3.0.
+
+Пользователи НЕ запускают свой сервер: один публичный relay (FastAPI) обслуживает всех, а идентичность определяется локальной парой ключей (анонимный вход без пароля). Privat keys хранятся только на устройстве.
 
 ## Quick Start
 
 ```bash
-# One-click (Windows):
-start.bat
-
-# Manual:
-# Terminal 1 — server
+# Relay (нужен ОДИН экземпляр для всех; для разработки можно локально):
+# Terminal 1 — relay
 .venv\Scripts\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 2 — Tauri (handles Vite + Rust build automatically)
 npx tauri dev
 ```
 
-**Critical:** `npx tauri dev` does NOT start the FastAPI server. Server on `:8000` must be running separately. Without it, frontend shows "Сервер недоступен".
+**Critical:** `npx tauri dev` does NOT start the FastAPI relay. A relay must be running separately (or the app must point to a remote one via `VITE_API_HOST`). Without it, frontend shows "Сервер недоступен".
 
 ## Commands
 
 | Action | Command |
 |--------|---------|
-| Start everything | `start.bat` |
-| Server only | `.venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload` |
+| Relay only | `.venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload` |
+| Relay via Docker | `docker-compose up -d` |
 | Tauri dev | `npx tauri dev` |
 | Frontend build | `cd frontend && npm run build` |
 | Frontend dev server | `cd frontend && npm run dev` (port 5173) |
@@ -48,9 +47,9 @@ npx tauri dev
 ## Architecture
 
 ```
-Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI server ──> SQLite
-                              │                              │
-                              └── IPC commands ──────────────┘
+Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI relay ──> SQLite
+                               │                              │
+                               └── IPC commands ──────────────┘
 ```
 
 - **Frontend:** React 19 + Vite 8 + TypeScript 6 + CSS modules (custom properties)
@@ -77,15 +76,19 @@ Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI 
 
 8. **Supabase/Firebase fully removed.** All storage is local. No cloud dependencies.
 
-9. **Tray icon.** App minimizes to system tray on close. Click tray icon to show, click "Выйти" in tray menu to quit. Frontend `invoke("minimize_to_tray")` hides the window.
+9. **Anonymous identity, no passwords.** `POST /api/auth/anonymous` hashes the public key → deterministic `user_id` (`user_{sha256}`) and username (`anon_{...}`). Same key = same user (idempotent). No password/captcha/2FA.
 
-10. **P2P Sharing via `nurchat://`.** Invite URIs: `nurchat://IP:PORT/USER_ID#HASH`. Direct WebSocket connection server-to-server. NAT relay fallback if direct connection fails.
+10. **Tray icon.** App minimizes to system tray on close. Click tray icon to show, click "Выйти" in tray menu to quit. Frontend `invoke("minimize_to_tray")` hides the window.
 
-11. **LAN discovery via UDP multicast.** `239.255.43.21:8002` — `/api/discover/lan` scans local network. "Найти в локальной сети" button in P2P page.
+11. **E2E storage key is `device_secret`, not token.** `_deriveStorageKey()` in `e2e.ts` uses a stable `device_secret` in localStorage because the anonymous token changes on every login — using it would break decryption across restarts.
 
-12. **Onboarding wizard.** Shown on first launch (4 steps). Dismissed with `localStorage.onboarding_seen`.
+12. **P2P Sharing via `nurchat://`.** Invite URIs: `nurchat://IP:PORT/USER_ID#HASH`. Direct WebSocket connection server-to-server. NAT relay fallback if direct connection fails.
 
-13. **ErrorBoundary.** Catches React render errors, shows friendly error page with reload button.
+13. **LAN discovery via UDP multicast.** `239.255.43.21:8002` — `/api/discover/lan` scans local network. "Найти в локальной сети" button in P2P page.
+
+14. **Onboarding wizard.** Shown on first launch (4 steps). Dismissed with `localStorage.onboarding_seen`.
+
+15. **ErrorBoundary.** Catches React render errors, shows friendly error page with reload button.
 
 ## Env Variables
 
@@ -154,7 +157,7 @@ server/routes/keys.py                  ← PreKey API endpoints
 **Server entry:** `server/main.py` — FastAPI app, CORS, routes, WS endpoints, lifespan
 **Config:** `shared/config.py` — Pydantic Settings, reads `.env`
 **Models:** `server/core/models.py` — All SQLAlchemy models (includes `SignedPreKey`, `OneTimePreKey`)
-**Auth:** `server/routes/auth.py` — Register, login, profile, avatar
+**Auth:** `server/routes/auth.py` — Anonymous login (`/api/auth/anonymous`), legacy register/login, profile, avatar
 **Chat:** `server/routes/chat.py` — CRUD, search, reactions, block, export
 **Keys:** `server/routes/keys.py` — PreKey bundle, signed/one-time pre-key API
 **Files:** `server/routes/files.py` — Upload/download (with `?token=`), delete

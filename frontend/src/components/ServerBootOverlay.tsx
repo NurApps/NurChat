@@ -1,59 +1,42 @@
 import { useEffect, useState, useCallback } from "react"
-import { listen } from "@tauri-apps/api/event"
 import { BASE_URL } from "../config"
 
 interface Props {
   onReady: () => void
 }
 
-interface ServerStatus {
-  status: "starting" | "ready" | "failed"
-  error?: string
-}
-
 export default function ServerBootOverlay({ onReady }: Props) {
-  const [phase, setPhase] = useState<"checking" | "starting" | "downloading" | "ready" | "failed">("checking")
+  const [phase, setPhase] = useState<"checking" | "ready" | "failed">("checking")
   const [dots, setDots] = useState("")
   const [elapsed, setElapsed] = useState(0)
   const [errorMsg, setErrorMsg] = useState("")
 
   const checkHealth = useCallback(async () => {
     try {
-      const res = await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(3000) })
+      const res = await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(5000) })
       if (res.ok) {
         setPhase("ready")
         onReady()
-      }
-    } catch {}
-  }, [onReady])
-
-  // Listen for Tauri events from Rust
-  useEffect(() => {
-    const unlisten = listen<ServerStatus>("server-status", (event) => {
-      const s = event.payload
-      if (s.status === "ready") {
-        setPhase("ready")
-        onReady()
-      } else if (s.status === "failed") {
+      } else {
         setPhase("failed")
-        setErrorMsg(s.error || "Неизвестная ошибка")
-      } else if (s.status === "starting") {
-        setPhase("starting")
+        setErrorMsg(`Relay ответил с кодом ${res.status}`)
       }
-    })
-    return () => { unlisten.then(fn => fn()) }
+    } catch {
+      setPhase("failed")
+      setErrorMsg("Relay недоступен по сети")
+    }
   }, [onReady])
 
-  // Initial health check
+  // Poll relay health until reachable
   useEffect(() => {
     checkHealth()
-    const interval = setInterval(checkHealth, 2000)
+    const interval = setInterval(checkHealth, 3000)
     return () => clearInterval(interval)
   }, [checkHealth])
 
   // Animate dots
   useEffect(() => {
-    if (phase !== "starting" && phase !== "downloading") return
+    if (phase !== "checking") return
     const id = setInterval(() => {
       setDots((d) => (d.length >= 3 ? "" : d + "."))
     }, 500)
@@ -62,17 +45,10 @@ export default function ServerBootOverlay({ onReady }: Props) {
 
   // Elapsed timer
   useEffect(() => {
-    if (phase === "ready" || phase === "failed") return
+    if (phase === "ready") return
     const id = setInterval(() => setElapsed((s) => s + 1), 1000)
     return () => clearInterval(id)
   }, [phase])
-
-  // Phase after 10s: show "downloading"
-  useEffect(() => {
-    if (phase === "starting" && elapsed >= 10) {
-      setPhase("downloading")
-    }
-  }, [elapsed, phase])
 
   if (phase === "ready") return null
 
@@ -83,43 +59,28 @@ export default function ServerBootOverlay({ onReady }: Props) {
     checkHealth()
   }
 
-  const handleOpenLogs = () => {
-    // TODO: open log file
-  }
-
   return (
     <div className="server-boot-overlay">
       <div className="server-boot-card">
         {phase === "failed" ? (
           <>
             <div className="server-boot-icon error">✕</div>
-            <h2>Сервер не запустился</h2>
+            <h2>Relay недоступен</h2>
             <p className="server-boot-error">{errorMsg}</p>
-            <div className="server-boot-hint">
-              <p>Возможные решения:</p>
-              <ul>
-                <li>Установите Python 3.10+ и добавьте в PATH</li>
-                <li>Или положите <code>server.exe</code> рядом с приложением</li>
-              </ul>
-            </div>
+            <p className="server-boot-hint">
+              Подключение к: <code>{BASE_URL}</code>
+            </p>
             <div className="server-boot-actions">
               <button onClick={handleRetry}>Повторить</button>
-              <button onClick={handleOpenLogs}>Открыть логи</button>
             </div>
           </>
         ) : (
           <>
             <div className="spinner" />
-            <h2>
-              {phase === "downloading"
-                ? "Установка зависимостей"
-                : "Запуск сервера"}
-              {dots}
-            </h2>
-            <p>
-              {phase === "downloading"
-                ? `Скачивание Python и установка пакетов (${elapsed}с)`
-                : `Пожалуйста, подождите (${elapsed}с)`}
+            <h2>Подключение к relay{dots}</h2>
+            <p>Пожалуйста, подождите ({elapsed}с)</p>
+            <p className="server-boot-hint">
+              Relay: <code>{BASE_URL}</code>
             </p>
           </>
         )}

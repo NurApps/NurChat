@@ -25,7 +25,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:5173 http://localhost:8000 http://127.0.0.1:8000 ws://localhost:5173 ws://localhost:8000 ws://127.0.0.1:8000 https://api.qrserver.com; img-src 'self' data: blob: http://localhost:5173 http://localhost:8000 http://127.0.0.1:8000; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self'; media-src 'self' blob: data:"
+      "csp": "default-src 'self'; connect-src 'self' https: wss: http://localhost:5173 http://localhost:8000 http://127.0.0.1:8000 ws://localhost:5173 ws://localhost:8000 ws://127.0.0.1:8000 https://api.qrserver.com; img-src 'self' data: blob: https: http: ws:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self'; media-src 'self' blob: data: https: http:"
     }
   },
   "plugins": {
@@ -40,9 +40,7 @@
     "active": true,
     "targets": ["nsis"],
     "externalBin": [],
-    "resources": {
-      "../dist/server.exe": "binaries/server.exe"
-    },
+    "resources": {},
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

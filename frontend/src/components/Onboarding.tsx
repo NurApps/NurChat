@@ -17,10 +17,11 @@ export default function Onboarding() {
   if (!show) return null
 
   const steps = [
-    { icon: "🔓", title: "1. Откройте порт", desc: "Нажмите «Открыть порт» — ваш сервер станет доступен другим пользователям." },
-    { icon: "📋", title: "2. Скопируйте ссылку", desc: "Нажмите «Копировать» — получите уникальную ссылку-приглашение." },
-    { icon: "📤", title: "3. Отправьте другу", desc: "Киньте ссылку в Telegram, WhatsApp, email — друг вставит её и подключится напрямую." },
-    { icon: "💬", title: "4. Общайтесь!", desc: "Все сообщения идут напрямую между вашими серверами. Без VPS, без посредников." },
+    { icon: "🔐", title: "1. Анонимная идентичность", desc: "Никаких паролей и почты. При первом запуске приложение создаёт пару ключей прямо на устройстве — это и есть ваш аккаунт." },
+    { icon: "💾", title: "2. Ключи — только у вас", desc: "Приватные ключи никогда не покидают устройство. Кто получит копию ключей — получит доступ к вашей переписке. Сделайте резервную копию в разделе «Бэкап»." },
+    { icon: "🔒", title: "3. E2E-шифрование", desc: "Каждое сообщение шифруется на вашем устройстве и расшифровывается только у собеседника. Relay хранит лишь зашифрованные блобы и не может прочитать содержимое." },
+    { icon: "🌐", title: "4. Общий relay", desc: "Один общий relay обслуживает всех пользователей. Вам не нужно устанавливать и настраивать собственный сервер — всё работает из коробки." },
+    { icon: "💬", title: "5. Общайтесь!", desc: "Нажмите «Подключиться» — и вы в сети. Поделитесь своим ID, чтобы друзья нашли вас." },
   ]
 
   return (
@@ -29,17 +30,17 @@ export default function Onboarding() {
       display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999,
     }}>
       <div style={{
-        background: "white", borderRadius: 16, padding: 32, maxWidth: 420,
+        background: "white", borderRadius: 16, padding: 32, maxWidth: 440,
         width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
       }}>
         <h3 style={{ margin: "0 0 4px", fontSize: 22 }}>🚀 Добро пожаловать в NurChat!</h3>
         <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 24px" }}>
-          Децентрализованный мессенджер. Ваши данные — только у вас.
+          Анонимный мессенджер с E2E-шифрованием через relay.
         </p>
 
         <div style={{
           display: "flex", gap: 16, alignItems: "flex-start",
-          background: "#f3f4f6", borderRadius: 12, padding: 20, minHeight: 100,
+          background: "#f3f4f6", borderRadius: 12, padding: 20, minHeight: 110,
         }}>
           <div style={{ fontSize: 36, lineHeight: 1 }}>{steps[step].icon}</div>
           <div>

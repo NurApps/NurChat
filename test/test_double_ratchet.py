@@ -19,8 +19,8 @@ class TestKDFChain:
     def test_chain_advances(self):
         key = b"\x01" * 32
         chain = KDFChain(key)
-        msg_key1, chain2 = chain.next_message_key()
-        msg_key2, chain3 = chain2.next_message_key()
+        msg_key1, chain2 = chain.next_message_key(b"")
+        msg_key2, chain3 = chain2.next_message_key(b"")
         assert msg_key1 != msg_key2
         assert chain2.step == 1
         assert chain3.step == 2
@@ -29,8 +29,8 @@ class TestKDFChain:
         key = b"\x02" * 32
         chain1 = KDFChain(key)
         chain2 = KDFChain(key)
-        mk1a, _ = chain1.next_message_key()
-        mk1b, _ = chain2.next_message_key()
+        mk1a, _ = chain1.next_message_key(b"")
+        mk1b, _ = chain2.next_message_key(b"")
         assert mk1a == mk1b
 
 

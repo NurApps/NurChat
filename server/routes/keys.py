@@ -8,6 +8,7 @@ import hashlib
 from fastapi import APIRouter, Depends, HTTPException, Request
 from nacl.encoding import HexEncoder
 from nacl.public import PrivateKey
+from nacl.signing import VerifyKey
 from sqlalchemy.orm import Session
 
 from server.core import models
@@ -19,6 +20,19 @@ from shared.rate_limiter import limiter
 router = APIRouter(tags=["keys"])
 
 ONE_TIME_PREKEY_BATCH = 100
+
+
+def _verify_spk_signature(identity_key_hex: str, spk_hex: str, signature_hex: str) -> bool:
+    """Verify Ed25519 signature over SPK public key using identity key."""
+    try:
+        identity_pub = bytes.fromhex(identity_key_hex)
+        spk_pub = bytes.fromhex(spk_hex)
+        signature = bytes.fromhex(signature_hex)
+        vk = VerifyKey(identity_pub)
+        vk.verify(spk_pub, signature)
+        return True
+    except Exception:
+        return False
 
 
 @router.post("/signed-prekey")
@@ -33,7 +47,13 @@ async def upload_signed_prekey(
     """Upload signed pre-key (X3DH signed pre-key)."""
     user_id = token["sub"]
 
-    # Deactivate old signed pre-keys
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user or not user.public_key:
+        raise HTTPException(status_code=400, detail="User has no identity key")
+
+    if not _verify_spk_signature(user.public_key, public_key, signature):
+        raise HTTPException(status_code=400, detail="Invalid SPK signature")
+
     old_keys = db.query(models.SignedPreKey).filter(
         models.SignedPreKey.user_id == user_id,
         models.SignedPreKey.is_active,

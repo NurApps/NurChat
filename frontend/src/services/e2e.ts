@@ -4,6 +4,7 @@ import {
   decode as base64Decode,
 } from "base64-arraybuffer"
 import { DoubleRatchetSession, type RatchetEnvelope, type SerializedSession } from "./doubleRatchet"
+import { api } from "./api"
 
 export type { RatchetEnvelope } from "./doubleRatchet"
 
@@ -98,6 +99,106 @@ export function generateKeys(): E2EKeys {
   }
 }
 
+// ─── Pre-Key Management (SPK / OPK) ───
+
+const SPK_STORAGE_KEY = "e2e_spk"
+const OPK_STORAGE_KEY = "e2e_opks"
+
+export interface StoredSPK {
+  publicKeyHex: string
+  secretKeyHex: string
+  signatureHex: string
+}
+
+export function loadSPK(): StoredSPK | null {
+  try {
+    const raw = localStorage.getItem(SPK_STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export function saveSPK(spk: StoredSPK) {
+  localStorage.setItem(SPK_STORAGE_KEY, JSON.stringify(spk))
+}
+
+export function loadOPKs(): string[] {
+  try {
+    const raw = localStorage.getItem(OPK_STORAGE_KEY)
+    if (!raw) return []
+    return JSON.parse(raw)
+  } catch {
+    return []
+  }
+}
+
+export function saveOPKs(keys: string[]) {
+  localStorage.setItem(OPK_STORAGE_KEY, JSON.stringify(keys))
+}
+
+export function removeOPK(pubHex: string) {
+  const keys = loadOPKs().filter((k) => k !== pubHex)
+  saveOPKs(keys)
+}
+
+export async function setupPreKeys(myKeys: E2EKeys): Promise<void> {
+  const existing = loadSPK()
+  if (existing) return
+
+  const spkKp = nacl.box.keyPair()
+  const spkPubHex = bytesToHex(spkKp.publicKey)
+  const spkSecHex = bytesToHex(spkKp.secretKey)
+  const signature = nacl.sign.detached(
+    spkKp.publicKey,
+    hexToBytes(myKeys.signingPrivateHex),
+  )
+  const sigHex = bytesToHex(signature)
+
+  try {
+    await api.uploadSignedPrekey(spkPubHex, sigHex)
+    saveSPK({ publicKeyHex: spkPubHex, secretKeyHex: spkSecHex, signatureHex: sigHex })
+  } catch (err) {
+    console.warn("[E2E] Failed to upload SPK:", err)
+  }
+
+  try {
+    const opkCount = await api.getOneTimePrekeyCount(myKeys.publicKeyHex)
+    if (opkCount.count < 20) {
+      await api.uploadOneTimePrekeys(100)
+    }
+  } catch (err) {
+    console.warn("[E2E] Failed to upload OPKs:", err)
+  }
+}
+
+export async function fetchAndVerifyBundle(
+  userId: string,
+): Promise<{ signedPrekeyHex: string; oneTimePrekeyHex?: string } | null> {
+  try {
+    const bundle = await api.getBundle(userId)
+
+    const sigValid = nacl.sign.detached.verify(
+      hexToBytes(bundle.signed_prekey),
+      hexToBytes(bundle.signed_prekey_signature),
+      hexToBytes(bundle.identity_key),
+    )
+    if (!sigValid) {
+      console.warn("[E2E] SPK signature verification failed for", userId)
+      return null
+    }
+
+    return {
+      signedPrekeyHex: bundle.signed_prekey,
+      oneTimePrekeyHex: bundle.one_time_prekey ?? undefined,
+    }
+  } catch (err) {
+    console.warn("[E2E] Failed to fetch bundle for", userId, err)
+    return null
+  }
+}
+
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
   for (let i = 0; i < hex.length; i += 2) {
@@ -128,19 +229,34 @@ export async function getOrCreateSession(
   let session: DoubleRatchetSession
 
   if (isInitiator) {
+    let spkHex = theirSignedPrekeyHex
+    let otpkHex = theirOneTimePrekeyHex
+
+    if (!spkHex) {
+      const bundle = await fetchAndVerifyBundle(theirPublicKeyHex)
+      if (bundle) {
+        spkHex = bundle.signedPrekeyHex
+        otpkHex = bundle.oneTimePrekeyHex
+      } else {
+        spkHex = theirPublicKeyHex
+      }
+    }
+
     session = new DoubleRatchetSession()
     await session.initializeAsAlice({
       ourIdentitySecret: hexToBytes(myKeys.privateKeyHex),
       theirIdentityPublic: hexToBytes(theirPublicKeyHex),
-      theirSignedPrekeyPublic: hexToBytes(theirSignedPrekeyHex || theirPublicKeyHex),
-      theirOneTimePrekeyPublic: theirOneTimePrekeyHex ? hexToBytes(theirOneTimePrekeyHex) : undefined,
+      theirSignedPrekeyPublic: hexToBytes(spkHex),
+      theirOneTimePrekeyPublic: otpkHex ? hexToBytes(otpkHex) : undefined,
     })
   } else {
-    const prekeySecret = hexToBytes(myKeys.privateKeyHex)
+    const spk = loadSPK()
+    const spkSecret = spk ? hexToBytes(spk.secretKeyHex) : hexToBytes(myKeys.privateKeyHex)
+
     session = new DoubleRatchetSession()
     await session.initializeAsBob({
-      ourIdentitySecret: prekeySecret,
-      ourSignedPrekeySecret: prekeySecret,
+      ourIdentitySecret: hexToBytes(myKeys.privateKeyHex),
+      ourSignedPrekeySecret: spkSecret,
       ourOneTimePrekeySecret: null,
       theirIdentityPublic: hexToBytes(theirPublicKeyHex),
       theirEphemeralPublic: hexToBytes(theirSignedPrekeyHex || theirPublicKeyHex),
@@ -227,10 +343,13 @@ export async function decryptMessage(
     const ratchetEnvelope: RatchetEnvelope = JSON.parse(envelope.ciphertext)
     let session = getSession(chatId)
     if (!session) {
+      const spk = loadSPK()
+      const spkSecret = spk ? hexToBytes(spk.secretKeyHex) : hexToBytes(myKeys.privateKeyHex)
+
       session = new DoubleRatchetSession()
       await session.initializeAsBob({
         ourIdentitySecret: hexToBytes(myKeys.privateKeyHex),
-        ourSignedPrekeySecret: hexToBytes(myKeys.privateKeyHex),
+        ourSignedPrekeySecret: spkSecret,
         ourOneTimePrekeySecret: null,
         theirIdentityPublic: hexToBytes(senderPublicKeyHex),
         theirEphemeralPublic: hexToBytes(ratchetEnvelope.header.dh),

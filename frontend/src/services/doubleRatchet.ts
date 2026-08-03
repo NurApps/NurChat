@@ -11,6 +11,10 @@ import {
   decode as base64Decode,
 } from "base64-arraybuffer"
 
+const MAX_SKIP_GAP = 2000
+const MAX_SKIPPED = 1000
+const PROTOCOL_VERSION = 3
+
 // ─── Helpers ───
 
 function hexToBytes(hex: string): Uint8Array {
@@ -73,9 +77,11 @@ class KDFChain {
     this.step = step
   }
 
-  async nextMessageKey(): Promise<{ msgKey: Uint8Array; chain: KDFChain }> {
-    const nextKey = await hkdf(new Uint8Array(0), this.key, new TextEncoder().encode("chain_next"), 32)
-    const msgKey = await hkdf(new Uint8Array(0), this.key, new TextEncoder().encode("chain_out"), 32)
+  async nextMessageKey(ad: Uint8Array): Promise<{ msgKey: Uint8Array; chain: KDFChain }> {
+    const infoMsg = u8Concat(ad, new TextEncoder().encode("|nurchat:msg"))
+    const infoChain = u8Concat(ad, new TextEncoder().encode("|nurchat:chain"))
+    const msgKey = await hkdf(new Uint8Array(0), this.key, infoMsg, 32)
+    const nextKey = await hkdf(new Uint8Array(0), this.key, infoChain, 32)
     return { msgKey, chain: new KDFChain(nextKey, this.step + 1) }
   }
 }
@@ -90,11 +96,11 @@ export interface RatchetHeader {
 
 export interface RatchetEnvelope {
   header: RatchetHeader
-  ciphertext: string   // base64
-  ad: string           // base64 encoded associated data
+  ciphertext: string   // base64 (nonce + encrypted ad + plaintext)
 }
 
 export interface SerializedSession {
+  version: number
   DHs: string | null
   DHr: string | null
   RK: string | null
@@ -107,6 +113,8 @@ export interface SerializedSession {
   PN: number
   our_id: string | null
   their_id: string | null
+  skipped: Record<string, string>
+  seen: string[]
 }
 
 // ─── Double Ratchet Session ───
@@ -123,11 +131,12 @@ export class DoubleRatchetSession {
   ourIdentityPublic: Uint8Array | null = null
   theirIdentityPublic: Uint8Array | null = null
   private seenMessageIds = new Set<string>()
+  private skippedKeys = new Map<string, Uint8Array>()
 
   private associatedData(): Uint8Array {
     const a = this.ourIdentityPublic || new Uint8Array(0)
     const b = this.theirIdentityPublic || new Uint8Array(0)
-    return u8Concat(a, b)
+    return u8Compare(a, b) < 0 ? u8Concat(a, b) : u8Concat(b, a)
   }
 
   static async x3dhInitialize(
@@ -285,11 +294,12 @@ export class DoubleRatchetSession {
 
     if (!this.CKs) throw new Error("Sending chain still null after ratchet")
 
-    const { msgKey, chain } = await this.CKs.nextMessageKey()
+    const ad = this.associatedData()
+    const { msgKey, chain } = await this.CKs.nextMessageKey(ad)
     this.CKs = chain
 
     const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
-    const msgBytes = new TextEncoder().encode(plaintext)
+    const msgBytes = u8Concat(ad, new TextEncoder().encode(plaintext))
     const ciphertext = nacl.secretbox(msgBytes, nonce, msgKey)
 
     const ciphertextWithNonce = new Uint8Array(nonce.length + ciphertext.length)
@@ -304,23 +314,26 @@ export class DoubleRatchetSession {
       ns: this.Ns,
     }
 
-    const ad = this.associatedData()
-
     this.Ns += 1
 
     return {
       header,
       ciphertext: base64Encode(ciphertextWithNonce.buffer as ArrayBuffer),
-      ad: base64Encode(ad.buffer as ArrayBuffer),
     }
   }
 
   async decryptMessage(envelope: RatchetEnvelope): Promise<string> {
     const { dh, pn, ns } = envelope.header
 
+    const ad = this.associatedData()
     const msgId = `${dh}:${ns}`
-    if (this.seenMessageIds.has(msgId)) {
-      throw new Error("Replay attack detected — duplicate message ID")
+
+    const skipped = this.skippedKeys.get(msgId)
+    if (skipped) {
+      if (this.seenMessageIds.has(msgId)) throw new Error("Replay attack detected")
+      this.skippedKeys.delete(msgId)
+      this.seenMessageIds.add(msgId)
+      return this.decryptWithKey(envelope, skipped, msgId)
     }
 
     const theirRatchet = hexToBytes(dh)
@@ -336,16 +349,32 @@ export class DoubleRatchetSession {
       throw new Error(`Message number ${ns} is in the past (chain at ${this.CKr.step})`)
     }
 
-    let chain = this.CKr
-    while (chain.step < ns) {
-      const result = await chain.nextMessageKey()
-      chain = result.chain
+    if (ns - this.CKr.step > MAX_SKIP_GAP) {
+      throw new Error("Message gap too large")
     }
 
-    const { msgKey, chain: nextChain } = await chain.nextMessageKey()
-    this.CKr = nextChain
-    this.Nr += 1
+    while (this.CKr.step < ns) {
+      const res = await this.CKr.nextMessageKey(ad)
+      this.CKr = res.chain
+      const skipId = `${dh}:${this.CKr.step - 1}`
+      if (!this.seenMessageIds.has(skipId) && !this.skippedKeys.has(skipId)) {
+        this.skippedKeys.set(skipId, res.msgKey)
+        if (this.skippedKeys.size > MAX_SKIPPED) {
+          const oldest = this.skippedKeys.keys().next().value as string
+          this.skippedKeys.delete(oldest)
+        }
+      }
+    }
 
+    const res = await this.CKr.nextMessageKey(ad)
+    this.CKr = res.chain
+    return this.decryptWithKey(envelope, res.msgKey, msgId)
+  }
+
+  private async decryptWithKey(envelope: RatchetEnvelope, msgKey: Uint8Array, msgId: string): Promise<string> {
+    if (this.seenMessageIds.has(msgId)) {
+      throw new Error("Replay attack detected")
+    }
     this.seenMessageIds.add(msgId)
     if (this.seenMessageIds.size > 10000) {
       this.seenMessageIds = new Set([...this.seenMessageIds].slice(-5000))
@@ -355,13 +384,23 @@ export class DoubleRatchetSession {
     const nonce = ciphertextBytes.subarray(0, nacl.secretbox.nonceLength)
     const ciphertext = ciphertextBytes.subarray(nacl.secretbox.nonceLength)
 
-    const plaintext = nacl.secretbox.open(ciphertext, nonce, msgKey)
-    if (!plaintext) throw new Error("Decryption failed")
-    return new TextDecoder().decode(plaintext)
+    const payload = nacl.secretbox.open(ciphertext, nonce, msgKey)
+    if (!payload) throw new Error("Decryption failed")
+
+    const ad = this.associatedData()
+    if (payload.length < ad.length || !u8Equal(payload.subarray(0, ad.length), ad)) {
+      throw new Error("Associated data mismatch")
+    }
+    return new TextDecoder().decode(payload.subarray(ad.length))
   }
 
   serialize(): SerializedSession {
+    const skipped: Record<string, string> = {}
+    this.skippedKeys.forEach((v, k) => {
+      skipped[k] = base64Encode(v.buffer as ArrayBuffer)
+    })
     return {
+      version: PROTOCOL_VERSION,
       DHs: this.DHs ? bytesToHex(this.DHs.publicKey) + ":" + bytesToHex(this.DHs.secretKey) : null,
       DHr: this.DHr ? bytesToHex(this.DHr) : null,
       RK: this.RK ? base64Encode(this.RK.buffer as ArrayBuffer) : null,
@@ -374,10 +413,15 @@ export class DoubleRatchetSession {
       PN: this.PN,
       our_id: this.ourIdentityPublic ? base64Encode(this.ourIdentityPublic.buffer as ArrayBuffer) : null,
       their_id: this.theirIdentityPublic ? base64Encode(this.theirIdentityPublic.buffer as ArrayBuffer) : null,
+      skipped,
+      seen: [...this.seenMessageIds].slice(-2000),
     }
   }
 
   static deserialize(data: SerializedSession): DoubleRatchetSession {
+    if (data.version !== PROTOCOL_VERSION) {
+      throw new Error("Session protocol version mismatch")
+    }
     const s = new DoubleRatchetSession()
 
     if (data.DHs) {
@@ -405,6 +449,18 @@ export class DoubleRatchetSession {
     if (data.their_id) {
       s.theirIdentityPublic = new Uint8Array(base64Decode(data.their_id))
     }
+    if (data.skipped) {
+      for (const [k, v] of Object.entries(data.skipped)) {
+        try {
+          s.skippedKeys.set(k, new Uint8Array(base64Decode(v)))
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    if (data.seen) {
+      s.seenMessageIds = new Set(data.seen)
+    }
     return s
   }
 }
@@ -415,4 +471,13 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
     if (a[i] !== b[i]) return false
   }
   return true
+}
+
+const u8Equal = bytesEqual
+
+function u8Compare(a: Uint8Array, b: Uint8Array): number {
+  for (let i = 0; i < a.length && i < b.length; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1
+  }
+  return a.length - b.length
 }

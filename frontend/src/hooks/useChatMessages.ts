@@ -1,12 +1,20 @@
 import { useState, useCallback, useRef } from "react"
 import { api } from "../services/api"
 import { decryptMessage, isE2EEnabled, type E2EKeys } from "../services/e2e"
-import { getGroupKeyForChat, decryptGroupMessage } from "../services/groupE2E"
+import { fetchGroupKey, decryptGroupMessage } from "../services/groupE2E"
 import type { ChatResponse, MessageResponse, UserResponse } from "../types"
 
 interface UseChatMessagesOptions {
   currentUser: UserResponse
   e2eKeys: E2EKeys | null
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16)
+  }
+  return bytes
 }
 
 export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions) {
@@ -21,9 +29,9 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
     const peer = chat.participants.find(p => p.id !== currentUser.id)
     if (!peer?.public_key) return msgs
 
-    let groupKey: CryptoKey | null = null
+    let groupKey: Uint8Array | null = null
     if (chat.is_group) {
-      try { groupKey = await getGroupKeyForChat(chat.id) } catch {}
+      try { groupKey = await fetchGroupKey(chat.id, hexToBytes(e2eKeys.privateKeyHex), hexToBytes(peer.public_key)) } catch {}
     }
 
     const results: MessageResponse[] = []
@@ -33,7 +41,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
           const envelope = JSON.parse(msg.encrypted_content)
           if (envelope.group_encrypted && groupKey) {
             try {
-              const plain = await decryptGroupMessage(envelope.group_encrypted, groupKey)
+              const plain = decryptGroupMessage(envelope.group_encrypted, groupKey)
               results.push({ ...msg, content: plain || "[не удалось расшифровать]" })
             } catch {
               results.push({ ...msg, content: "[ошибка расшифровки группы]" })

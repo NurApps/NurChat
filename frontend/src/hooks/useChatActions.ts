@@ -2,7 +2,15 @@ import { useState, useCallback } from "react"
 import { api } from "../services/api"
 import { p2pClient } from "../services/p2p"
 import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled } from "../services/e2e"
-import { getGroupKeyForChat, encryptGroupMessage } from "../services/groupE2E"
+import { fetchGroupKey, encryptGroupMessage } from "../services/groupE2E"
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16)
+  }
+  return bytes
+}
 import type { ChatResponse, MessageResponse, UserResponse } from "../types"
 
 interface UseChatActionsOptions {
@@ -45,11 +53,14 @@ export function useChatActions({
 
     if (!encryptedContent && selectedChat.is_group) {
       try {
-        const groupKey = await getGroupKeyForChat(selectedChat.id)
-        if (groupKey) {
-          const encrypted = await encryptGroupMessage(content, groupKey)
-          encryptedContent = JSON.stringify({ group_encrypted: encrypted })
-          content = "[encrypted]"
+        const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
+        if (myKeys && peer?.public_key) {
+          const groupKey = await fetchGroupKey(selectedChat.id, hexToBytes(myKeys.privateKeyHex), hexToBytes(peer.public_key))
+          if (groupKey) {
+            const encrypted = encryptGroupMessage(content, groupKey)
+            encryptedContent = JSON.stringify({ group_encrypted: encrypted })
+            content = "[encrypted]"
+          }
         }
       } catch (e) { console.error("Group E2E failed:", e) }
     }

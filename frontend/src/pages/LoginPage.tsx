@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import { BASE_URL } from "../config"
-import { loadKeys, generateKeys, saveKeys, hasKeys } from "../services/e2e"
+import { loadKeys, generateKeys, saveKeys, hasKeys, setupPreKeys } from "../services/e2e"
 
 const TG_BLUE = "#2AABEE"
 
@@ -24,6 +24,8 @@ export default function LoginPage() {
     api.getCurrentUser()
       .then((user) => {
         localStorage.setItem("user", JSON.stringify(user))
+        const keys = loadKeys()
+        if (keys) setupPreKeys(keys).catch(() => {})
         navigate("/chat", { replace: true })
       })
       .catch(() => {
@@ -55,6 +57,7 @@ export default function LoginPage() {
       const res = await api.registerAnonymous(keys.publicKeyHex, keys.signingPublicHex, displayName.trim() || undefined)
       api.setToken(res.access_token)
       localStorage.setItem("user", JSON.stringify(res.user))
+      setupPreKeys(keys).catch(() => {})
       navigate("/chat", { replace: true })
     } catch (err: any) {
       const msg = err?.message || err?.toString() || ""

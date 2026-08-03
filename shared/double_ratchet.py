@@ -17,6 +17,10 @@ import nacl.utils
 from nacl.encoding import HexEncoder
 from nacl.public import Box, PrivateKey, PublicKey
 
+MAX_SKIP_GAP = 2000
+MAX_SKIPPED = 1000
+PROTOCOL_VERSION = 3
+
 
 def hkdf_extract(salt: bytes, ikm: bytes) -> bytes:
     return hmac.new(salt, ikm, hashlib.sha256).digest()
@@ -44,9 +48,11 @@ class KDFChain:
         self.key = key
         self.step = step
 
-    def next_message_key(self) -> tuple[bytes, "KDFChain"]:
-        msg_key = hkdf(b"", self.key, b"msg_out", 32)
-        next_key = hkdf(b"", self.key, b"msg_next", 32)
+    def next_message_key(self, ad: bytes) -> tuple[bytes, "KDFChain"]:
+        info_msg = ad + b"|nurchat:msg"
+        info_chain = ad + b"|nurchat:chain"
+        msg_key = hkdf(b"", self.key, info_msg, 32)
+        next_key = hkdf(b"", self.key, info_chain, 32)
         return msg_key, KDFChain(next_key, self.step + 1)
 
 
@@ -79,9 +85,14 @@ class DoubleRatchetSession:
         self.their_identity_public: bytes | None = None
 
         self._seen_message_ids: set[tuple[str, int]] = set()
+        self._skipped_keys: dict[str, bytes] = {}
 
     def _associated_data(self) -> bytes:
-        return (self.our_identity_public or b"") + (self.their_identity_public or b"")
+        a = self.our_identity_public or b""
+        b = self.their_identity_public or b""
+        if a < b:
+            return a + b
+        return b + a
 
     # ─── X3DH ───
 
@@ -203,22 +214,22 @@ class DoubleRatchetSession:
             else:
                 raise ValueError("No sending chain available")
 
-        msg_key, self.CKs = self.CKs.next_message_key()
+        ad = self._associated_data()
+        msg_key, self.CKs = self.CKs.next_message_key(ad)
         nonce = nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE)
         box = nacl.secret.SecretBox(msg_key)
-        ciphertext = box.encrypt(plaintext.encode("utf-8"), nonce)
+        payload = ad + plaintext.encode("utf-8")
+        ciphertext = box.encrypt(payload, nonce)
 
         header = {
             "dh": self.DHs.public_key.encode(encoder=HexEncoder).decode(),
             "pn": self.PN,
             "ns": self.Ns,
         }
-        ad = self._associated_data()
 
         envelope = {
             "header": header,
             "ciphertext": base64.b64encode(ciphertext).decode("utf-8"),
-            "ad": base64.b64encode(ad).decode("utf-8"),
         }
 
         self.Ns += 1
@@ -232,11 +243,18 @@ class DoubleRatchetSession:
         pn = header["pn"]
         ns = header["ns"]
 
-        their_ratchet = PublicKey(bytes.fromhex(dh_hex))
+        ad = self._associated_data()
 
         msg_id = (dh_hex, ns)
-        if msg_id in self._seen_message_ids:
-            raise ValueError("Replay attack detected")
+        skipped_key = self._skipped_keys.get(f"{dh_hex}:{ns}")
+        if skipped_key is not None:
+            if msg_id in self._seen_message_ids:
+                raise ValueError("Replay attack detected")
+            del self._skipped_keys[f"{dh_hex}:{ns}"]
+            self._seen_message_ids.add(msg_id)
+            return self._decrypt_with_key(envelope, skipped_key, msg_id)
+
+        their_ratchet = PublicKey(bytes.fromhex(dh_hex))
 
         if self.DHr is None or their_ratchet.encode() != self.DHr.encode():
             self.PN = pn
@@ -246,28 +264,45 @@ class DoubleRatchetSession:
             raise ValueError("No receiving chain available")
 
         if ns < self.CKr.step:
+            if msg_id in self._seen_message_ids:
+                raise ValueError("Replay attack detected")
             raise ValueError(f"Message number {ns} is in the past (chain at {self.CKr.step})")
 
-        chain = self.CKr
-        while chain.step < ns:
-            _, chain = chain.next_message_key()
+        if ns - self.CKr.step > MAX_SKIP_GAP:
+            raise ValueError("Message gap too large")
 
-        msg_key, self.CKr = chain.next_message_key()
-        self.Nr += 1
+        while self.CKr.step < ns:
+            skip_key, self.CKr = self.CKr.next_message_key(ad)
+            skip_id = f"{dh_hex}:{self.CKr.step - 1}"
+            if skip_id not in self._seen_message_ids and skip_id not in self._skipped_keys:
+                self._skipped_keys[skip_id] = skip_key
+                if len(self._skipped_keys) > MAX_SKIPPED:
+                    self._skipped_keys.pop(next(iter(self._skipped_keys)))
 
+        msg_key, self.CKr = self.CKr.next_message_key(ad)
+        return self._decrypt_with_key(envelope, msg_key, msg_id)
+
+    def _decrypt_with_key(self, envelope: dict, msg_key: bytes, msg_id: tuple[str, int]) -> str:
+        if msg_id in self._seen_message_ids:
+            raise ValueError("Replay attack detected")
         self._seen_message_ids.add(msg_id)
         if len(self._seen_message_ids) > 10000:
             self._seen_message_ids = set(list(self._seen_message_ids)[-5000:])
 
         ciphertext_bytes = base64.b64decode(envelope["ciphertext"])
         box = nacl.secret.SecretBox(msg_key)
-        plaintext = box.decrypt(ciphertext_bytes)
-        return plaintext.decode("utf-8")
+        payload = box.decrypt(ciphertext_bytes)
+
+        ad = self._associated_data()
+        if len(payload) < len(ad) or payload[: len(ad)] != ad:
+            raise ValueError("Associated data mismatch")
+        return payload[len(ad) :].decode("utf-8")
 
     # ─── Serialization ───
 
     def serialize(self) -> dict:
         return {
+            "version": PROTOCOL_VERSION,
             "DHs": self.DHs.encode(encoder=HexEncoder).decode() if self.DHs else None,
             "DHr": self.DHr.encode(encoder=HexEncoder).decode() if self.DHr else None,
             "RK": base64.b64encode(self.RK).decode() if self.RK else None,
@@ -280,10 +315,14 @@ class DoubleRatchetSession:
             "PN": self.PN,
             "our_id": base64.b64encode(self.our_identity_public).decode() if self.our_identity_public else None,
             "their_id": base64.b64encode(self.their_identity_public).decode() if self.their_identity_public else None,
+            "skipped": {k: base64.b64encode(v).decode() for k, v in self._skipped_keys.items()},
+            "seen": [f"{dh}:{ns}" for dh, ns in list(self._seen_message_ids)[-2000:]],
         }
 
     @staticmethod
     def deserialize(data: dict) -> "DoubleRatchetSession":
+        if data.get("version", 0) != PROTOCOL_VERSION:
+            raise ValueError("Session protocol version mismatch")
         s = DoubleRatchetSession()
         if data.get("DHs"):
             s.DHs = PrivateKey(bytes.fromhex(data["DHs"]))
@@ -302,6 +341,18 @@ class DoubleRatchetSession:
             s.our_identity_public = base64.b64decode(data["our_id"])
         if data.get("their_id"):
             s.their_identity_public = base64.b64decode(data["their_id"])
+        skipped = data.get("skipped") or {}
+        for k, v in skipped.items():
+            try:
+                s._skipped_keys[k] = base64.b64decode(v)
+            except Exception:
+                continue
+        for item in data.get("seen") or []:
+            try:
+                dh, ns = item.rsplit(":", 1)
+                s._seen_message_ids.add((dh, int(ns)))
+            except Exception:
+                continue
         return s
 
 

@@ -1,4 +1,4 @@
-# План доведения NurChat до полноценного P2P/Federated мессенджера
+# План доведения NurChat до полноценного P2P мессенджера
 
 ## Короткий ответ по текущему взаимодействию
 
@@ -274,7 +274,7 @@
 
 ---
 
-## P5 — federation и backup
+## P5 — backup и офлайн-доставка
 
 Файлы:
 
@@ -290,7 +290,7 @@
    - upload encrypted backup;
    - restore on new device.
 
-2. **Federation mode:**
+2. **Офлайн-доставка (relay):**
    - server stores only encrypted blobs;
    - relay offline messages;
    - optional home-server routing;

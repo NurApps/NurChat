@@ -22,9 +22,6 @@ class Settings(BaseSettings):
     P2P_RELAY_STORE_MESSAGES: bool = True
     P2P_PENDING_LIMIT: int = 500
     P2P_DISCOVERY_TTL_SECONDS: int = 300
-    USE_FEDERATED_BACKUP: bool = False
-    FEDERATED_BACKUP_URL: str | None = None
-
     WEBRTC_ICE_SERVERS: str | None = None  # JSON: [{"urls":"stun:...","username":"...","credential":"..."}]
     CLIENT_HOST: str = "localhost"
 

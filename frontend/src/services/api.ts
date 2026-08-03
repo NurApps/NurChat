@@ -462,4 +462,20 @@ export const api = {
 
   testWebhook: (id: string) =>
     request<{ status: string; message: string }>("POST", `/api/webhooks/${id}/test`),
+
+  // Pre-keys (E2E)
+  uploadSignedPrekey: (publicKey: string, signature: string) =>
+    request<{ status: string }>("POST", `/api/keys/signed-prekey?public_key=${encodeURIComponent(publicKey)}&signature=${encodeURIComponent(signature)}`),
+
+  uploadOneTimePrekeys: (count: number = 100) =>
+    request<{ count: number; keys: string[] }>("POST", `/api/keys/one-time?count=${count}`),
+
+  getBundle: (userId: string) =>
+    request<{ identity_key: string; signed_prekey: string; signed_prekey_signature: string; one_time_prekey: string | null; registration_id: number }>("GET", `/api/keys/bundle/${userId}`),
+
+  getOneTimePrekeyCount: (userId: string) =>
+    request<{ count: number }>("GET", `/api/keys/one-time-count/${userId}`),
+
+  cleanupPrekeys: () =>
+    request<{ deleted: number }>("POST", `/api/keys/cleanup`),
 }

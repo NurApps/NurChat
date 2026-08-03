@@ -6,14 +6,13 @@
 
 <p align="center">
   Self-hosted анонимный мессенджер<br>
-  E2EE • Федерация • P2P • Нативное десктоп приложение
+  E2EE • P2P • Нативное десктоп приложение
 </p>
 
 <p align="center">
   <a href="#features">Фичи</a> •
   <a href="#installation">Установка</a> •
   <a href="#development">Разработка</a> •
-  <a href="#federation">Федерация</a> •
   <a href="#docker">Docker</a> •
   <a href="#license">Лицензия</a>
 </p>
@@ -24,20 +23,15 @@
 
 ### 🔐 Безопасность
 
-- **E2E шифрование** — Double Ratchet (Signal Protocol)
+- **E2E шифрование** — Double Ratchet (Signal Protocol), AD аутентифицирован через Poly1305
+- **X3DH** — начальный обмен ключами с Signed Pre-Keys + One-Time Pre-Keys
+- **Верификация SPK** — Ed25519 подписи сервер-side и клиент-side
 - **Ed25519 подписи** — верификация сообщений и P2P событий
 - **CSRF защита** — HMAC токены для всех POST запросов
 - **TOTP 2FA** — двухфакторная аутентификация с резервными кодами
 - **CAPTCHA** — защита от ботов при регистрации
 - **Вращение ключей** — авто-ротация с уведомлением контактов
-- **Групповое E2E** — зашифрованный group key для групп
-
-### 🌐 Федерация
-
-- **Сервер-к-серверу** — Ed25519 подписанные activity
-- **Адресация** — `user@host:port`
-- **Авто-обнаружение** — `/.well-known/nurchat.json`
-- **Самостоятельный хостинг** — один запуск = сервер + мессенджер
+- **Групповое E2E** — X25519 ECDH + secretbox для групповых ключей
 
 ### 🕵️ Приватность
 
@@ -93,7 +87,7 @@
 
 ### Десктоп (Windows)
 
-1. Скачайте `NurChat_*_x64-setup.exe` с [Releases](https://github.com/NurApps/NurChat_desktop/releases)
+1. Скачайте `NurChat_*_x64-setup.exe` с [Releases](https://github.com/NurApps/NurChat/releases)
 2. Запустите установщик
 3. Приложение автоматически запустит сервер (SQLite, zero-config)
 
@@ -104,8 +98,8 @@
 ### Docker (сервер / production)
 
 ```bash
-git clone https://github.com/NurApps/NurChat_desktop.git
-cd NurChat_desktop
+git clone https://github.com/NurApps/NurChat.git
+cd NurChat
 cp .env.example .env
 # Отредактируйте .env (DATABASE_URL, REDIS_URL, ключи)
 docker-compose up -d
@@ -115,8 +109,8 @@ docker-compose up -d
 ### Разработка (macOS / Linux)
 
 ```bash
-git clone https://github.com/NurApps/NurChat_desktop.git
-cd NurChat_desktop
+git clone https://github.com/NurApps/NurChat.git
+cd NurChat
 
 # Python
 python -m venv .venv
@@ -149,7 +143,8 @@ Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI 
 - **Real-time:** WebSocket (ws://) для сообщений и статусов
 - **Файлы:** локальное хранилище в `media/` (не облако)
 - **P2P:** опционально, через WebRTC + UDP multicast
-- **E2EE:** Double Ratchet (Signal Protocol), X3DH для начального обмена ключами
+- **E2EE:** Double Ratchet (Signal Protocol), X3DH с Signed/One-Time Pre-Keys, AD в ciphertext
+- **Групповое E2E:** X25519 ECDH + XSalsa20-Poly1305 для ключей групп
 
 ---
 
@@ -187,40 +182,12 @@ curl http://localhost:8000/health
 
 ---
 
-## Federation
-
-NurChat поддерживает федерацию — серверы общаются друг с другом.
-
-### Включение
-
-```bash
-# .env
-USE_FEDERATION=true
-FEDERATION_SERVER_NAME=your-server.com:8000
-```
-
-### Как работает
-
-1. **Discovery** — `GET /.well-known/nurchat.json` (публичный ключ сервера)
-2. **User lookup** — `GET /federation/user/{username}`
-3. **Message relay** — `POST /federation/inbox` (подписанное activity)
-4. **Адресация** — `user@host:port`
-
-### Протокол
-
-- Каждый сервер генерирует Ed25519 ключ при старте
-- Activity подписываются серверным ключом
-- Получатель верифицирует подпись через `/.well-known/nurchat.json`
-- E2E шифрование сохраняется — сервер видит только зашифрованный контент
-
----
-
 ## Development
 
 ### Структура проекта
 
 ```
-NurChat_desktop/
+NurChat/
 ├── frontend/           # React + TypeScript + Vite
 │   ├── src/
 │   │   ├── components/ # UI компоненты
@@ -229,15 +196,14 @@ NurChat_desktop/
 │   │   └── hooks/      # React hooks
 │   └── public/
 ├── server/             # FastAPI + SQLAlchemy
-│   ├── core/           # Models, security, federation
+│   ├── core/           # Models, security
 │   ├── routes/         # API endpoints
 │   ├── ws/             # WebSocket managers
 │   └── utils/          # Helpers
 ├── shared/             # Общие конфиги, схемы, константы
 ├── src-tauri/          # Rust Tauri backend
 │   └── src/
-│       ├── lib.rs      # Tauri commands
-│       ├── server.rs   # Auto-start Python server
+│       ├── lib.rs      # Tauri commands + tray
 │       └── p2p.rs      # P2P networking
 └── alembic/            # DB миграции
 ```

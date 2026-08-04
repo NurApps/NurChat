@@ -50,10 +50,17 @@ class Settings(BaseSettings):
         file_secret_settings,
     ):
         import os
+        import sys
 
         from pydantic_settings.sources import DotEnvSettingsSource
 
-        env_path = Path(__file__).resolve().parent.parent / ".env"
+        # When frozen (PyInstaller), look for .env next to the exe
+        if getattr(sys, 'frozen', False):
+            exe_dir = Path(sys.executable).resolve().parent
+            env_path = exe_dir / ".env"
+        else:
+            env_path = Path(__file__).resolve().parent.parent / ".env"
+
         if not env_path.exists():
             env_path = Path(os.getcwd()) / ".env"
 

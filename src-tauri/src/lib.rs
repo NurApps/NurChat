@@ -2,10 +2,13 @@ use p2p_lib::{P2PNode, P2PConfig, P2PPeerInfo};
 use tauri::{Manager, State, Emitter};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tauri::menu::{MenuBuilder};
+use tauri_plugin_shell::ShellExt;
 use tokio::sync::RwLock;
+use std::sync::Mutex;
 
 struct AppState {
     p2p: RwLock<Option<P2PNode>>,
+    server_child: Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
 }
 
 #[tauri::command]
@@ -298,6 +301,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             p2p: RwLock::new(None),
+            server_child: Mutex::new(None),
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
@@ -335,6 +339,46 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
+            }
+
+            // Spawn bundled relay server (only in production builds)
+            if !cfg!(debug_assertions) {
+                let sidecar_command = app.shell().sidecar("server").unwrap();
+                let (rx, child) = sidecar_command.spawn().expect("Failed to spawn server sidecar");
+                // Store child process handle for cleanup
+                let state = app.state::<AppState>();
+                *state.server_child.lock().unwrap() = Some(child);
+                // Log server output
+                tokio::spawn(async move {
+                    use tauri_plugin_shell::process::CommandEvent;
+                    let mut rx = rx;
+                    while let Some(event) = rx.recv().await {
+                        match event {
+                            CommandEvent::Stdout(line) => println!("[Server] {}", String::from_utf8_lossy(&line)),
+                            CommandEvent::Stderr(line) => eprintln!("[Server] {}", String::from_utf8_lossy(&line)),
+                            _ => {}
+                        }
+                    }
+                });
+            }
+
+            // Wait for server to be ready (poll /api/health)
+            if !cfg!(debug_assertions) {
+                let handle = app.handle().clone();
+                tokio::spawn(async move {
+                    use std::time::Duration;
+                    for _ in 0..30 {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        if let Ok(resp) = reqwest::get("http://127.0.0.1:8000/api/health").await {
+                            if resp.status().is_success() {
+                                println!("[NurChat] Server is ready");
+                                let _ = handle.emit("server-ready", ());
+                                return;
+                            }
+                        }
+                    }
+                    eprintln!("[NurChat] Server failed to start within 15s");
+                });
             }
 
             // Tray icon
@@ -388,6 +432,15 @@ pub fn run() {
                         if let Some(window) = app_handle.get_webview_window(&label) {
                             let _ = window.hide();
                         }
+                    }
+                }
+                tauri::RunEvent::ExitRequested { .. } => {
+                    // Kill the bundled server process
+                    let state = app_handle.state::<AppState>();
+                    let mut guard = state.server_child.lock().unwrap();
+                    if let Some(child) = guard.take() {
+                        let _ = child.kill();
+                        println!("[NurChat] Server process killed");
                     }
                 }
                 _ => {}

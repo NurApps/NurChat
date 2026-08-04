@@ -20,7 +20,7 @@ import { useChatActions } from "../hooks/useChatActions"
 import { useChatTyping } from "../hooks/useChatTyping"
 import { loadKeys as loadE2EKeys, decryptMessage, type E2EKeys } from "../services/e2e"
 import { checkKeyStatus } from "../services/keyVerification"
-import { initNotifications } from "../services/notifications"
+import { initNotifications, showNotification } from "../services/notifications"
 import { clearPin } from "../services/pinLock"
 import { getActiveCall, endCall, toggleMute, toggleVideo, onCallEvent, type CallInfo } from "../services/callService"
 import { avatarUrl } from "../config"
@@ -390,6 +390,28 @@ export default function ChatPage() {
   useEffect(() => {
     if (selectedChat) chatIdRef.current = selectedChat.id
   }, [selectedChat, chatIdRef])
+
+  // P2P notification listener — shows desktop notifications for messages in other chats
+  useEffect(() => {
+    const unsub = onP2PBridgeEvent((event) => {
+      if (event.type === "message_received" && event.data) {
+        const d = event.data
+        const currentChatId = useChatStore.getState().selectedChat?.id
+        const chats = useChatStore.getState().chats
+        // Find which chat this sender belongs to
+        const senderChat = chats.find(c =>
+          c.participants.some(p => p.id === d.sender_id) && c.id !== currentChatId
+        )
+        if (senderChat) {
+          const sender = senderChat.participants.find(p => p.id === d.sender_id)
+          const name = sender?.username || sender?.first_name || "Пользователь"
+          const preview = (d.content || "").slice(0, 50)
+          showNotification(name, preview)
+        }
+      }
+    })
+    return unsub
+  }, [])
 
   // Call event listener
   useEffect(() => {

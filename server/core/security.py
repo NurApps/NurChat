@@ -1,8 +1,9 @@
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from nacl import public
 
@@ -39,7 +40,7 @@ class SecurityManager:
         to_encode = data.copy()
         expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
         to_encode.update({"exp": expire, "type": "refresh", "jti": secrets.token_hex(16)})
-        return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        return cast(str, jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM))
 
     @staticmethod
     def revoke(token_str: str) -> None:
@@ -57,7 +58,7 @@ class SecurityManager:
         """Верификация JWT токена"""
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            return payload
+            return cast(dict, payload)
         except JWTError:
             raise AuthenticationError("Невалидный токен")
 
@@ -68,7 +69,7 @@ class SecurityManager:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             if payload.get("type") != "refresh":
                 raise AuthenticationError("Неверный тип токена")
-            return payload
+            return cast(dict, payload)
         except JWTError:
             raise AuthenticationError("Невалидный refresh токен")
 
@@ -141,7 +142,7 @@ class EncryptionManager:
         except Exception as e:
             raise Exception(f"Ошибка дешифрования: {e}")
 
-async def verify_token_dependency(credentials: HTTPBearer = Depends(security_scheme)) -> dict:
+async def verify_token_dependency(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)) -> dict:
     """FastAPI dependency to extract and verify JWT token from Authorization header"""
     token = credentials.credentials
     try:
@@ -153,7 +154,7 @@ async def verify_token_dependency(credentials: HTTPBearer = Depends(security_sch
                 detail="Token revoked",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        return payload
+        return cast(dict, payload)
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

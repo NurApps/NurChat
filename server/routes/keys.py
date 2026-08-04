@@ -51,7 +51,8 @@ async def upload_signed_prekey(
     if not user or not user.public_key:
         raise HTTPException(status_code=400, detail="User has no identity key")
 
-    if not _verify_spk_signature(user.public_key, public_key, signature):
+    identity_key = user.signing_public_key or user.public_key
+    if not _verify_spk_signature(identity_key, public_key, signature):
         raise HTTPException(status_code=400, detail="Invalid SPK signature")
 
     old_keys = db.query(models.SignedPreKey).filter(
@@ -186,7 +187,7 @@ async def get_prekey_bundle(
         db.commit()
 
     return {
-        "identity_key": user.public_key,
+        "identity_key": user.signing_public_key or user.public_key,
         "signed_prekey": spk.public_key,
         "signed_prekey_signature": spk.signature,
         "one_time_prekey": otpk.public_key if otpk else None,

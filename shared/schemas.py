@@ -77,7 +77,9 @@ class ChatCreate(BaseSchema):
     is_group: bool = False
     is_secret: bool = False
     disappears_after_seconds: int = 0
-    participant_ids: list[str] = Field(..., min_items=1, max_items=100, description="Chat must have 1-100 participants")
+    participant_ids: list[str] = Field(
+        ..., min_length=1, max_length=100, description="Chat must have 1-100 participants"
+    )
 
     @field_validator('name')
     @classmethod
@@ -208,7 +210,7 @@ class TwoFAResponse(BaseSchema):
 # Forward
 class ForwardRequest(BaseSchema):
     message_id: str = Field(..., min_length=1, max_length=100)
-    target_chat_ids: list[str] = Field(..., min_items=1, max_items=50, description="Can forward to 1-50 chats")
+    target_chat_ids: list[str] = Field(..., min_length=1, max_length=50, description="Can forward to 1-50 chats")
 
 # Contacts
 class ContactBase(BaseSchema):

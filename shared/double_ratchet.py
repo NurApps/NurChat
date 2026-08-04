@@ -188,6 +188,8 @@ class DoubleRatchetSession:
     # ─── DH Ratchet ───
 
     def _dh_ratchet_send(self):
+        if self.DHr is None or self.RK is None:
+            raise ValueError("DH ratchet not initialized")
         ratchet_private = PrivateKey.generate()
         dh_shared = Box(ratchet_private, self.DHr).shared_key()
         derived = hkdf(self.RK, dh_shared, b"DoubleRatchet_Ratchet", 64)
@@ -198,6 +200,8 @@ class DoubleRatchetSession:
         self.DHs = ratchet_private
 
     def _dh_ratchet_recv(self, their_public: PublicKey):
+        if self.DHs is None or self.RK is None:
+            raise ValueError("DH ratchet not initialized")
         dh_shared = Box(self.DHs, their_public).shared_key()
         derived = hkdf(self.RK, dh_shared, b"DoubleRatchet_Ratchet", 64)
         self.RK = derived[:32]
@@ -215,12 +219,14 @@ class DoubleRatchetSession:
                 raise ValueError("No sending chain available")
 
         ad = self._associated_data()
+        assert self.CKs is not None
         msg_key, self.CKs = self.CKs.next_message_key(ad)
         nonce = nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE)
         box = nacl.secret.SecretBox(msg_key)
         payload = ad + plaintext.encode("utf-8")
         ciphertext = box.encrypt(payload, nonce)
 
+        assert self.DHs is not None
         header = {
             "dh": self.DHs.public_key.encode(encoder=HexEncoder).decode(),
             "pn": self.PN,

@@ -24,17 +24,25 @@ def _solve_captcha() -> tuple[str, str]:
     assert r.status_code == 200
     data = r.json()
     q = data["question"]
-    nums = re.findall(r"\d+", q)
-    answer = str(int(nums[0]) + int(nums[1])) if len(nums) >= 2 else "0"
-    return data["captcha_id"], answer
+    nums = [int(n) for n in re.findall(r"\d+", q)]
+    if "×" in q or "x" in q:
+        answer = nums[0] * nums[1]
+    elif "-" in q:
+        answer = nums[0] - nums[1]
+    else:
+        answer = nums[0] + nums[1]
+    return data["captcha_id"], str(answer)
 
 
-def _register_user(username="testuser", password="TestPass123", first_name="Test") -> dict:
+def _register_user(username="testuser", password="TestPass123", first_name="Test",
+                   public_key="", signing_public_key="") -> dict:
     cid, ans = _solve_captcha()
     csrf = _csrf_headers()
     r = client.post("/api/auth/register", json={
         "username": username, "password": password,
         "first_name": first_name,
+        "public_key": public_key,
+        "signing_public_key": signing_public_key,
         "captcha_id": cid, "captcha_code": ans,
     }, headers=csrf)
     assert r.status_code == 200, f"Register failed: {r.text}"
@@ -271,21 +279,32 @@ class TestFiles:
 
 
 class TestKeys:
-    def _auth_header(self) -> dict:
-        data = _register_user("keyuser", "KeyTest123", "KeyUser")
-        csrf = _csrf_headers()
-        return {"Authorization": f"Bearer {data['access_token']}", **csrf}, data["user"]["id"]
+    def _identity(self):
+        box_kp = PrivateKey.generate()
+        sign_sk = SigningKey.generate()
+        return (
+            box_kp.public_key.encode(encoder=HexEncoder).decode(),
+            sign_sk.verify_key.encode(encoder=HexEncoder).decode(),
+            sign_sk,
+        )
 
-    def _generate_signed_prekey(self) -> tuple[str, str]:
+    def _auth_header(self):
+        pub_key, sign_pub, sign_sk = self._identity()
+        data = _register_user("keyuser", "KeyTest123", "KeyUser",
+                              public_key=pub_key, signing_public_key=sign_pub)
+        csrf = _csrf_headers()
+        headers = {"Authorization": f"Bearer {data['access_token']}", **csrf}
+        return headers, data["user"]["id"], sign_sk
+
+    def _generate_signed_prekey(self, sign_sk: SigningKey) -> tuple[str, str]:
         sk = PrivateKey.generate()
-        signing_sk = SigningKey.generate()
         pub = sk.public_key.encode(encoder=HexEncoder).decode()
-        sig = signing_sk.sign(sk.public_key.encode()).signature.hex()
+        sig = sign_sk.sign(sk.public_key.encode()).signature.hex()
         return pub, sig
 
     def test_upload_and_get_signed_prekey(self):
-        h, user_id = self._auth_header()
-        pub, sig = self._generate_signed_prekey()
+        h, user_id, sign_sk = self._auth_header()
+        pub, sig = self._generate_signed_prekey(sign_sk)
 
         r = client.post("/api/keys/signed-prekey", params={
             "public_key": pub, "signature": sig,
@@ -299,8 +318,8 @@ class TestKeys:
         assert data["signature"] == sig
 
     def test_upload_and_get_one_time_prekeys(self):
-        h, user_id = self._auth_header()
-        pub, sig = self._generate_signed_prekey()
+        h, user_id, sign_sk = self._auth_header()
+        pub, sig = self._generate_signed_prekey(sign_sk)
         client.post("/api/keys/signed-prekey", params={
             "public_key": pub, "signature": sig,
         }, headers=h)
@@ -316,8 +335,8 @@ class TestKeys:
         assert r.json()["count"] == 10
 
     def test_get_prekey_bundle(self):
-        h, user_id = self._auth_header()
-        pub, sig = self._generate_signed_prekey()
+        h, user_id, sign_sk = self._auth_header()
+        pub, sig = self._generate_signed_prekey(sign_sk)
         client.post("/api/keys/signed-prekey", params={
             "public_key": pub, "signature": sig,
         }, headers=h)
@@ -333,8 +352,8 @@ class TestKeys:
         assert "registration_id" in data
 
     def test_get_prekey_bundle_consumes_one_time(self):
-        h, user_id = self._auth_header()
-        pub, sig = self._generate_signed_prekey()
+        h, user_id, sign_sk = self._auth_header()
+        pub, sig = self._generate_signed_prekey(sign_sk)
         client.post("/api/keys/signed-prekey", params={
             "public_key": pub, "signature": sig,
         }, headers=h)
@@ -347,11 +366,11 @@ class TestKeys:
         assert r.json()["count"] == 2
 
     def test_prekey_bundle_not_found(self):
-        h, _ = self._auth_header()
+        h, _, _ = self._auth_header()
         r = client.get("/api/keys/bundle/nonexistent_user", headers=h)
         assert r.status_code == 404
 
     def test_cleanup_prekeys(self):
-        h, user_id = self._auth_header()
+        h, _, _ = self._auth_header()
         r = client.post("/api/keys/cleanup", headers=h)
         assert r.status_code == 200

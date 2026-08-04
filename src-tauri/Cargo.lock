@@ -81,6 +81,7 @@ version = "0.16.0"
 dependencies = [
  "log",
  "open",
+ "p2p-lib",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2747,6 +2748,15 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "p2p-lib"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

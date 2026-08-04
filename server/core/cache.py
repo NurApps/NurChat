@@ -1,6 +1,6 @@
 import time
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -41,7 +41,7 @@ class TTLCache:
                 key = f"{fn.__name__}:{args}:{kwargs}"
                 cached = self.get(key)
                 if cached is not None:
-                    return cached
+                    return cast(T, cached)
                 result = fn(*args, **kwargs)
                 self.set(key, result, ttl)
                 return result

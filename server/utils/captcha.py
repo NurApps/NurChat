@@ -67,7 +67,7 @@ class CaptchaManager:
         expected_answer = captcha_data["answer"].strip().lower()
         user_answer = str(answer).strip().lower()
 
-        is_valid = expected_answer == user_answer
+        is_valid: bool = expected_answer == user_answer
 
         if is_valid:
             del self._captcha_store[captcha_id]

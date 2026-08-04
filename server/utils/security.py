@@ -159,7 +159,8 @@ if not _TOTP_MASTER_KEY:
     _TOTP_MASTER_KEY = secrets.token_urlsafe(32)
 
 def _get_totp_cipher() -> Fernet:
-    key_bytes = _TOTP_MASTER_KEY.encode("utf-8")
+    master_key = _TOTP_MASTER_KEY or secrets.token_urlsafe(32)
+    key_bytes = master_key.encode("utf-8")
     if len(key_bytes) < 32:
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),

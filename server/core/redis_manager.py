@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 from shared.config import settings
 
@@ -9,8 +10,15 @@ _REDIS_UNAVAILABLE: bool = False
 _redis_client = None
 
 
+def _redis_enabled() -> bool:
+    """Explicit switch: honor USE_REDIS env (pydantic types bool defaults as Literal)."""
+    return os.getenv("USE_REDIS", "true").strip().lower() not in ("0", "false", "no")
+
+
 def get_redis():
     global _redis_client, _REDIS_UNAVAILABLE
+    if not _redis_enabled():
+        return None
     if _REDIS_UNAVAILABLE:
         return None
     if _redis_client is not None:
@@ -28,7 +36,11 @@ def get_redis():
         return _redis_client
     except Exception as exc:
         _REDIS_UNAVAILABLE = True
-        logger.warning("Redis unavailable, falling back to in-memory: %s", exc)
+        logger.error(
+            "Redis unavailable at %s — presence/online tracking degraded "
+            "(explicit mode: USE_REDIS=%s). Fix REDIS_URL or set USE_REDIS=false: %s",
+            settings.REDIS_URL, settings.USE_REDIS, exc,
+        )
         return None
 
 

@@ -7,6 +7,7 @@ import struct
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import cast
 
 from server.utils.logger import logger
 from shared.config import settings
@@ -49,7 +50,7 @@ class LanPeer:
 
 _discovered_peers: dict[str, LanPeer] = {}
 _discovery_task: asyncio.Task | None = None
-_discovery_server: asyncio.DatagramServer | None = None
+_discovery_server: asyncio.DatagramTransport | None = None
 
 
 async def _build_advert(current_user_id: str | None, current_username: str | None) -> bytes:
@@ -69,7 +70,7 @@ def _get_external_ip() -> str:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
+        return str(s.getsockname()[0])
     except Exception:
         return "127.0.0.1"
     finally:
@@ -86,8 +87,8 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         self._current_user_id = user_id
         self._current_username = username
 
-    def connection_made(self, transport: asyncio.DatagramTransport) -> None:
-        self.transport = transport
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        self.transport = cast(asyncio.DatagramTransport, transport)
 
     def datagram_received(self, data: bytes, addr: tuple) -> None:
         try:
@@ -144,7 +145,7 @@ async def start_discovery(current_user_id: str | None = None, current_username: 
 
     protocol = DiscoveryProtocol()
     protocol.set_user(current_user_id, current_username)
-    _discovery_server = await loop.create_datagram_endpoint(
+    _discovery_server, _ = await loop.create_datagram_endpoint(
         lambda: protocol,
         sock=sock,
     )
@@ -159,7 +160,7 @@ async def stop_discovery() -> None:
         _discovery_task.cancel()
         _discovery_task = None
     if _discovery_server:
-        _discovery_server[0].close()
+        _discovery_server.close()
         _discovery_server = None
     _discovered_peers.clear()
     logger.info("LAN discovery stopped")
@@ -203,7 +204,8 @@ async def scan_lan(timeout: float = 3.0) -> list[dict]:
             sock=listen_sock,
         )
         await asyncio.sleep(timeout)
-        proto[0].close()
+        if proto.transport:
+            proto.transport.close()
 
     listen_task = asyncio.create_task(_listen())
     await asyncio.sleep(0.1)

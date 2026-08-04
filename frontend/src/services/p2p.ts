@@ -1,3 +1,16 @@
+/**
+ * LEGACY P2P stack — WebRTC DataChannel + relay/signaling WebSockets.
+ *
+ * DEPRECATED in favor of `./p2pService.ts` (direct TCP via p2p-lib Rust crate).
+ * Per architecture the relay only wakes a client; delivery should be E2E over TCP.
+ *
+ * Still wired into ChatPage/useChatActions/P2PStatusPage for the active send path
+ * and file transfer until the TCP layer gains user_id↔peer_id mapping + file
+ * delivery. Do NOT extend; migrate callers to p2pService as those gaps close.
+ *
+ * @deprecated
+ */
+
 import { WS_BASE } from "../config"
 
 const P2P_WS_URL = `${WS_BASE}/p2p`

@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session, joinedload
@@ -93,7 +94,7 @@ async def get_user_chats(
         models.ChatParticipant, models.User.id == models.ChatParticipant.user_id
     ).filter(models.ChatParticipant.chat_id.in_(chat_ids)).all()
     chat_participants: dict[str, list] = {}
-    user_participant_map: dict[str, dict] = {}
+    user_participant_map: dict[str, Any] = {}
     for user, participant in all_participants:
         chat_participants.setdefault(participant.chat_id, []).append(user)
         if participant.user_id == user_id:
@@ -710,7 +711,7 @@ async def export_chat(
         )
         chat = db.query(models.Chat).filter(models.Chat.id == chat_id).first()
         if format == "json":
-            export_data = {
+            export_data: dict[str, Any] = {
                 "chat_name": chat.name if chat.name else f"Чат {chat_id}",
                 "export_date": datetime.now(timezone.utc).isoformat(),
                 "messages": []

@@ -19,9 +19,9 @@ class P2PEncryption:
     """
 
     def __init__(self):
-        self.symmetric_key = None
-        self.private_key: PrivateKey = None
-        self.public_key: PublicKey = None
+        self.symmetric_key: bytes | None = None
+        self.private_key: PrivateKey | None = None
+        self.public_key: PublicKey | None = None
 
     def set_asymmetric_keys(self, private_key_hex: str):
         """Установка асимметричных ключей пользователя"""
@@ -46,7 +46,7 @@ class P2PEncryption:
         public_key = private_key.public_key
         return private_key.encode(encoder=HexEncoder), public_key.encode(encoder=HexEncoder)
 
-    def create_shared_key(self, password: str, salt: bytes = None) -> tuple[bytes, bytes]:
+    def create_shared_key(self, password: str, salt: bytes | None = None) -> tuple[bytes, bytes]:
         """
         Создает общий ключ из пароля с использованием Scrypt.
         """
@@ -103,7 +103,7 @@ class P2PEncryption:
         encrypted_keys = {}
         for pub_key_hex in participant_public_keys:
             try:
-                public_key = PublicKey(pub_key_hex, encoder=HexEncoder)
+                public_key = PublicKey(bytes.fromhex(pub_key_hex))
                 sealed_box = SealedBox(public_key)
                 encrypted_key = sealed_box.encrypt(session_key)
                 encrypted_keys[pub_key_hex] = base64.b64encode(encrypted_key).decode('utf-8')
@@ -140,11 +140,16 @@ class P2PEncryption:
         except Exception as e:
             raise ValueError(f"Не удалось зашифровать ключ: {e}")
 
-    def decrypt_key_with_private_key(self, encrypted_key: str, private_key: bytes = None) -> bytes:
+    def decrypt_key_with_private_key(self, encrypted_key: str, private_key: bytes | None = None) -> bytes:
         """
         Расшифровывает ключ с использованием приватного ключа.
         """
-        pk_bytes = private_key if private_key else self.private_key.encode()
+        if private_key is None:
+            if self.private_key is None:
+                raise ValueError("Private key not set")
+            pk_bytes = self.private_key.encode()
+        else:
+            pk_bytes = private_key
         pk = PrivateKey(pk_bytes, encoder=HexEncoder)
         unseal_box = SealedBox(pk)
         encrypted_key_bytes = base64.b64decode(encrypted_key)

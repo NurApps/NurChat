@@ -220,7 +220,8 @@ class DoubleRatchetSession:
                 raise ValueError("No sending chain available")
 
         # Force DH ratchet every KEY_ROTATION_INTERVAL messages for extra forward secrecy
-        if self.CKs is not None and self.CKs.step >= KEY_ROTATION_INTERVAL and self.CKr is not None and self.DHr is not None:
+        if (self.CKs is not None and self.CKs.step >= KEY_ROTATION_INTERVAL
+                and self.CKr is not None and self.DHr is not None):
             self._dh_ratchet_send()
 
         ad = self._associated_data()

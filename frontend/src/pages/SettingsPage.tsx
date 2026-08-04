@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { getVersion } from "@tauri-apps/api/app"
-import { open } from "@tauri-apps/plugin-shell"
 import { api } from "../services/api"
 import { BASE_URL, avatarUrl } from "../config"
 import { useAvatar } from "../hooks/useAvatar"
 import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
 import { checkForUpdates } from "../services/updateService"
+import { platform } from "../services/platform"
 import { useTheme, THEMES } from "../context/ThemeContext"
 import type { UserResponse } from "../types"
 
@@ -95,7 +94,7 @@ export default function SettingsPage() {
   useEffect(() => {
     setE2eEnabled(hasKeys())
     api.getStorageInfo?.().then((info: any) => setStorageInfo(info)).catch(() => {})
-    getVersion().then(setAppVersion).catch(() => setAppVersion("0.15.0"))
+    platform.getAppVersion().then(setAppVersion).catch(() => setAppVersion("0.15.0"))
     loadTotpStatus()
   }, [])
 
@@ -803,7 +802,7 @@ export default function SettingsPage() {
                     {updateStatus === "checking" ? "Проверка..." : "Проверить обновления"}
                   </button>
                   {updateStatus === "available" && (
-                    <button className="settings-action-btn" onClick={() => open(updateUrl)}>
+                    <button className="settings-action-btn" onClick={() => platform.openExternal(updateUrl)}>
                       Скачать {appVersion}
                     </button>
                   )}

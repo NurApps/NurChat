@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
-import { invoke } from "@tauri-apps/api/core"
 import { api } from "../services/api"
+import { platform } from "../services/platform"
 import styles from "./P2PShare.module.css"
 
 interface RemotePeer {
@@ -150,7 +150,7 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
                   📋 Копировать
                 </button>
                 <button className={styles.shareBtn} onClick={async () => {
-                  try { await invoke("share_invite", { uri: inviteUri }); setStatus("Отправлено!") }
+                  try { await platform.shareInvite(inviteUri); setStatus("Отправлено!") }
                   catch { setStatus("Ошибка отправки") }
                 }}>
                   📤 Отправить другу

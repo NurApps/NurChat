@@ -7,7 +7,7 @@ import ServerBootOverlay from "./components/ServerBootOverlay"
 import Onboarding from "./components/Onboarding"
 import ErrorBoundary from "./components/ErrorBoundary"
 import UpdateBanner from "./components/UpdateBanner"
-import { invoke } from "@tauri-apps/api/core"
+import { platform } from "./services/platform"
 import { e2eWorkerService } from "./services/e2eWorkerService"
 
 const LoginPage = lazy(() => import("./pages/LoginPage"))
@@ -17,6 +17,7 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage"))
 const ProfilePage = lazy(() => import("./pages/ProfilePage"))
 const LegalPage = lazy(() => import("./pages/LegalPage"))
 const P2PStatusPage = lazy(() => import("./pages/P2PStatusPage"))
+const P2PPage = lazy(() => import("./pages/P2PPage"))
 const StatsPage = lazy(() => import("./pages/StatsPage"))
 const CallHistoryPage = lazy(() => import("./pages/CallHistoryPage"))
 const AuditLogPage = lazy(() => import("./pages/AuditLogPage"))
@@ -38,7 +39,7 @@ function App() {
   // Инициализация E2E Web Worker при старте приложения
   // Показываем окно только после загрузки React (убирает белый экран)
   useEffect(() => {
-    invoke("show_main_window").catch(() => {})
+    platform.showMainWindow()
   }, [])
 
   useEffect(() => {
@@ -76,6 +77,7 @@ function App() {
             <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
             <Route path="/legal" element={<AuthGuard><LegalPage /></AuthGuard>} />
             <Route path="/p2p" element={<AuthGuard><P2PStatusPage /></AuthGuard>} />
+            <Route path="/p2p/connect" element={<AuthGuard><P2PPage /></AuthGuard>} />
             <Route path="/stats" element={<AuthGuard><StatsPage /></AuthGuard>} />
             <Route path="/calls" element={<AuthGuard><CallHistoryPage /></AuthGuard>} />
             <Route path="/audit" element={<AuthGuard><AuditLogPage /></AuthGuard>} />

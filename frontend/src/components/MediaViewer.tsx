@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from "react"
 import { api } from "../services/api"
-import { invoke } from "@tauri-apps/api/core"
+import { platform } from "../services/platform"
 
 interface MediaViewerProps {
   type: "image" | "video" | "document"
@@ -33,11 +33,7 @@ export default function MediaViewer({ type, url, filename, fileId, onClose }: Me
     if (!token) { setDocError(true); return }
     setOpening(true)
     try {
-      await invoke("download_and_open_file", {
-        url,
-        token,
-        filename: filename || "file",
-      })
+      await platform.downloadAndOpenFile(url, token, filename || "file")
     } catch (e) {
       console.error("Open file failed:", e)
       setDocError(true)

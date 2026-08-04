@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useTheme } from "../context/useTheme"
-import { invoke } from "@tauri-apps/api/core"
+import { platform } from "../services/platform"
 
 interface Props {
   username: string
@@ -95,7 +95,7 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
             </svg>
           )}
         </button>
-        <button className="topbar-btn" title="Свернуть в трей" onClick={() => invoke("minimize_to_tray")}>
+        <button className="topbar-btn" title="Свернуть в трей" onClick={() => platform.minimizeToTray()}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="5" y1="19" x2="19" y2="19" />
             <polyline points="5 14 12 7 19 14" />

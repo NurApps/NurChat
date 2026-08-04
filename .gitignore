@@ -18,9 +18,6 @@ target/
 *.env.*
 .mimocode/
 
-# Federation signing keys (auto-generated, NEVER commit)
-federation_keys.json
-
 # Update signing key (NEVER commit — add to GitHub Secrets as UPDATE_KEY)
 update_key_private.key
 

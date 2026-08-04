@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { check } from "@tauri-apps/plugin-updater"
-import { relaunch } from "@tauri-apps/plugin-process"
+import { platform } from "../services/platform"
 
 interface UpdateProgress {
   downloaded: number
@@ -15,6 +15,7 @@ export default function UpdateBanner() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!platform.isTauri) return
     const timer = setTimeout(async () => {
       try {
         const update = await check()
@@ -51,14 +52,14 @@ export default function UpdateBanner() {
         }
         setProgress({ downloaded, contentLength })
       })
-      await relaunch()
+      await platform.relaunchApp()
     } catch (e) {
       setError(String(e))
       setInstalling(false)
     }
   }
 
-  if (!version || dismissed) return null
+  if (!platform.isTauri || !version || dismissed) return null
 
   const pct = progress && progress.contentLength > 0
     ? Math.min(100, Math.round((progress.downloaded / progress.contentLength) * 100))

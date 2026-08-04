@@ -27,13 +27,9 @@ def upgrade() -> None:
     op.create_index('ix_audit_logs_user_action', 'audit_logs', ['user_id', 'created_at'], unique=False)
     op.create_index('ix_audit_logs_action', 'audit_logs', ['action'], unique=False)
     op.create_index('ix_p2p_messages_recipient_created', 'p2p_messages', ['recipient_id', 'created_at'], unique=False)
-    op.create_index('ix_fed_activity_sender', 'federation_activities', ['sender_server', 'created_at'], unique=False)
-    op.create_index('ix_fed_activity_type', 'federation_activities', ['activity_type', 'created_at'], unique=False)
 
 
 def downgrade() -> None:
-    op.drop_index('ix_fed_activity_type', table_name='federation_activities')
-    op.drop_index('ix_fed_activity_sender', table_name='federation_activities')
     op.drop_index('ix_p2p_messages_recipient_created', table_name='p2p_messages')
     op.drop_index('ix_audit_logs_action', table_name='audit_logs')
     op.drop_index('ix_audit_logs_user_action', table_name='audit_logs')

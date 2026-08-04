@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react"
 import { api } from "../services/api"
-import { p2pClient } from "../services/p2p"
+import { sendP2PTextMessage, isPeerConnected } from "../services/p2pBridge"
 import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled } from "../services/e2e"
 import { fetchGroupKey, encryptGroupMessage } from "../services/groupE2E"
 
@@ -68,10 +68,10 @@ export function useChatActions({
     let sentViaP2P = false
     if (!selectedChat.is_group && selectedChat.participants.length === 2) {
       const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
-      if (peer) {
+      if (peer && isPeerConnected(peer.id)) {
         const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`
         const payload = encryptedContent || content
-        const sent = p2pClient.sendMessageOrQueue(peer.id, msgId, payload)
+        const sent = sendP2PTextMessage(peer.id, msgId, payload)
         sentViaP2P = true
         addMessage({
           id: msgId, chat_id: selectedChat.id, user_id: currentUser.id,

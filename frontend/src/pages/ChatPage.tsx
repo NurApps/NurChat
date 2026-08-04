@@ -2,7 +2,14 @@ import { useState, useCallback, useRef, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import { p2pClient } from "../services/p2p"
+import {
+  initP2PBridge,
+  onP2PBridgeEvent,
+  isPeerConnected,
+  getPeerId,
+  registerPeer,
+  connectToUser,
+} from "../services/p2pBridge"
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts"
 import { useChatSocket } from "../hooks/useChatSocket"
 import { useChatMessages } from "../hooks/useChatMessages"
@@ -189,16 +196,14 @@ export default function ChatPage() {
   }, [loadChats, loadContacts, loadInvites])
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    const user = JSON.parse(localStorage.getItem("user") || "null")
     const p2pKeys = localStorage.getItem("p2p_keys")
-    if (user && token && p2pKeys && !p2pClient.isConnected) {
-      p2pClient.connect(user.id, token)
+    if (p2pKeys) {
+      initP2PBridge()
     }
   }, [])
 
   useEffect(() => {
-    const unsub = p2pClient.on((event) => {
+    const unsub = onP2PBridgeEvent((event) => {
       if (event.type === "peer_connected" && event.data?.user_id) {
         setP2pConnected((prev) => ({ ...prev, [event.data.user_id]: true }))
       } else if (event.type === "peer_disconnected" && event.data?.user_id) {
@@ -207,15 +212,10 @@ export default function ChatPage() {
           delete next[event.data.user_id]
           return next
         })
-      } else if (event.type === "peer_found" && event.data?.user_id) {
-        if (selectedChat && !selectedChat.is_group && selectedChat.participants.length === 2) {
-          const peer = selectedChat.participants.find(p => p.id === event.data.user_id)
-          if (peer) p2pClient.initiateDirectConnection(peer.id)
-        }
       }
     })
     return unsub
-  }, [selectedChat, setP2pConnected])
+  }, [setP2pConnected])
 
   useEffect(() => {
     const container = messagesContainerRef.current
@@ -236,37 +236,37 @@ export default function ChatPage() {
   }, [scrollToMessageId, messages])
 
   useEffect(() => {
-    const unsub = p2pClient.on((event) => {
+    const unsub = onP2PBridgeEvent((event) => {
       if (event.type === "message_received" && event.data && selectedChat) {
         const d = event.data
-        const senderId = d.sender_id || d.user_id
+        const senderId = d.sender_id
         if (selectedChat.participants.some(p => p.id === senderId)) {
-          const msgId = d.message_id || d.id || `p2p_${Date.now()}`
+          const msgId = d.message_id || `p2p_${Date.now()}`
           setMessages((prev) => {
             if (prev.some(m => m.id === msgId)) return prev
             const peer = selectedChat.participants.find(p => p.id === senderId)
             return [...prev, {
               id: msgId, chat_id: selectedChat.id, user_id: senderId,
               content: d.content || "[encrypted]", message_type: "text",
-              created_at: d.timestamp || d.created_at || new Date().toISOString(),
+              created_at: new Date().toISOString(),
               user: peer || currentUser, username: peer?.username || "",
               first_name: peer?.first_name || "", is_read: true, is_deleted: false,
-              encrypted_content: d.encrypted_content, reactions: {},
+              reactions: {},
             }]
           })
         }
       } else if (event.type === "file_received_start" && event.data && selectedChat) {
         const d = event.data
-        const senderId = d.sender_id || d.user_id
+        const senderId = d.sender_id
         if (selectedChat.participants.some(p => p.id === senderId)) {
-          const msgId = `p2p_file_${d.file_id}`
+          const msgId = d.message_id || `p2p_file_${Date.now()}`
           setMessages((prev) => {
             if (prev.some(m => m.id === msgId)) return prev
             const peer = selectedChat.participants.find(p => p.id === senderId)
             return [...prev, {
               id: msgId, chat_id: selectedChat.id, user_id: senderId,
-              content: `${d.filename} (${t("chat.downloading")}...)`, message_type: "file",
-              created_at: d.timestamp || new Date().toISOString(),
+              content: `${d.file_name} (${t("chat.downloading")}...)`, message_type: "file",
+              created_at: new Date().toISOString(),
               user: peer || currentUser, username: peer?.username || "",
               first_name: peer?.first_name || "", is_read: true, is_deleted: false,
               reactions: {},
@@ -275,20 +275,20 @@ export default function ChatPage() {
         }
       } else if (event.type === "file_received" && event.data && selectedChat) {
         const d = event.data
-        const senderId = d.sender_id || d.user_id
+        const senderId = d.sender_id
         if (selectedChat.participants.some(p => p.id === senderId)) {
-          const msgId = `p2p_file_${d.file_id}`
+          const msgId = d.message_id || `p2p_file_${Date.now()}`
           setMessages((prev) => {
             const existing = prev.find(m => m.id === msgId)
             if (existing) {
-              return prev.map(m => m.id === msgId ? { ...m, content: d.filename, file_id: d.url } : m)
+              return prev.map(m => m.id === msgId ? { ...m, file_id: d.file_id } : m)
             }
             const peer = selectedChat.participants.find(p => p.id === senderId)
             return [...prev, {
               id: msgId, chat_id: selectedChat.id, user_id: senderId,
-              content: d.filename, message_type: "file",
-              file_id: d.url, file: { id: d.url, filename: d.filename, file_type: d.file_type, file_size: d.file_size, uploaded_at: d.timestamp || new Date().toISOString(), user_id: senderId },
-              created_at: d.timestamp || new Date().toISOString(),
+              content: d.file_id, message_type: "file",
+              file_id: d.file_id,
+              created_at: new Date().toISOString(),
               user: peer || currentUser, username: peer?.username || "",
               first_name: peer?.first_name || "", is_read: true, is_deleted: false,
               reactions: {},
@@ -337,7 +337,7 @@ export default function ChatPage() {
 
     if (!chat.is_group && chat.participants.length === 2) {
       const peer = chat.participants.find(p => p.id !== currentUser.id)
-      if (peer) p2pClient.initiateDirectConnection(peer.id)
+      if (peer) registerPeer(peer.id, peer.public_key || "")
     }
   }, [currentUser, loadChats, loadMessages, setPinnedMessage, setMessages, setReplyTo, setHasMore, setSelectedChat, setShowEmoji, setShowStickers, setInput, t])
 
@@ -509,8 +509,8 @@ export default function ChatPage() {
   const handleP2PFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0 || !selectedChat) return
-    const peerId = selectedChat.participants.find(p => p.id !== currentUser.id)?.id
-    if (!peerId || !p2pConnected[peerId]) {
+    const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
+    if (!peer || !isPeerConnected(peer.id)) {
       setErrorToast(t("chat.p2pNotConnected"))
       if (p2pFileInputRef.current) p2pFileInputRef.current.value = ""
       return
@@ -519,21 +519,15 @@ export default function ChatPage() {
     let completed = 0
     for (const file of files) {
       try {
-        await p2pClient.sendFile(peerId, file, (sent, total) => setUploadProgress(Math.round((completed + sent / total) / files.length * 100)))
-        addMessage({
-          id: `p2p_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-          chat_id: selectedChat.id, user_id: currentUser.id,
-          content: file.name, message_type: "file",
-          created_at: new Date().toISOString(),
-          user: currentUser, is_read: true, is_deleted: false,
-          reactions: {},
-        })
-        completed++
+        const fileType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "file"
+        const uploaded = await api.uploadFile(file, fileType, (p) => setUploadProgress(((completed + p) / files.length) * 100))
+        const msg = await api.sendMessage(selectedChat.id, file.name, fileType, uploaded.id)
+        addMessage(msg); completed++
       } catch { setErrorToast(t("errors.fileUpload", { name: file.name })) }
     }
     setUploading(false); setUploadProgress(0)
     if (p2pFileInputRef.current) p2pFileInputRef.current.value = ""
-  }, [selectedChat, currentUser, p2pConnected, addMessage, setErrorToast, setUploading, setUploadProgress, t])
+  }, [selectedChat, currentUser, addMessage, setErrorToast, setUploading, setUploadProgress, t])
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -794,9 +788,7 @@ export default function ChatPage() {
                             const peerId = peer?.id || ""
                             const isOnline = onlineUsers[peerId]
                             const isP2P = !!p2pConnected[peerId]
-                            const isConnecting = p2pClient.connectingPeers.has(peerId)
                             if (isOnline && isP2P) return t("common.p2pOnline")
-                            if (isOnline && isConnecting) return t("common.p2pConnecting")
                             if (isOnline) return t("common.online")
                             return t("common.offline")
                           })()}

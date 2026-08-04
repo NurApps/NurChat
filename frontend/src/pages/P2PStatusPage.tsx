@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
-import { p2pClient } from "../services/p2p"
+import {
+  initP2PBridge,
+  onP2PBridgeEvent,
+  getConnectedUserIds,
+  isPeerConnected,
+} from "../services/p2pBridge"
 import P2PShare from "../components/P2PShare"
 
 interface P2PKeys {
@@ -28,7 +33,7 @@ export default function P2PStatusPage() {
   const [peers, setPeers] = useState<P2PPeer[]>([])
   const [peerQuery, setPeerQuery] = useState("")
   const [searching, setSearching] = useState(false)
-  const [p2pConnected, setP2pConnected] = useState(false)
+  const [connectedCount, setConnectedCount] = useState(0)
   const [msg, setMsg] = useState("")
 
   useEffect(() => {
@@ -40,11 +45,15 @@ export default function P2PStatusPage() {
       } catch { /* ignore */ }
     }
 
-    setP2pConnected(p2pClient.isConnected)
+    // Init TCP node if keys exist
+    if (stored) {
+      initP2PBridge()
+    }
 
-    const unsub = p2pClient.on((event) => {
-      if (event.type === "connected") setP2pConnected(true)
-      if (event.type === "disconnected") setP2pConnected(false)
+    const unsub = onP2PBridgeEvent((event) => {
+      if (event.type === "peer_connected" || event.type === "peer_disconnected") {
+        setConnectedCount(getConnectedUserIds().length)
+      }
     })
 
     return unsub
@@ -66,15 +75,8 @@ export default function P2PStatusPage() {
       setHasKeys(true)
       setMsg("P2P ключи сгенерированы и сохранены")
 
-      // Reconnect P2P with new keys
-      if (p2pClient.isConnected) {
-        p2pClient.disconnect()
-      }
-      const token = localStorage.getItem("token")
-      const user = JSON.parse(localStorage.getItem("user") || "null")
-      if (user && token) {
-        p2pClient.connect(user.id, token)
-      }
+      // Start TCP node with new keys
+      initP2PBridge()
     } catch (e: any) {
       setMsg(e.message || "Ошибка генерации ключей")
     } finally {
@@ -95,29 +97,6 @@ export default function P2PStatusPage() {
     setSearching(false)
   }, [peerQuery])
 
-  const handleConnectP2P = useCallback(() => {
-    const token = localStorage.getItem("token")
-    const user = JSON.parse(localStorage.getItem("user") || "null")
-    if (user && token) {
-      p2pClient.connect(user.id, token)
-      setMsg("P2P подключение...")
-    }
-  }, [])
-
-  const handleDisconnectP2P = useCallback(() => {
-    p2pClient.disconnect()
-    setP2pConnected(false)
-  }, [])
-
-  const handleSyncPending = useCallback(async () => {
-    try {
-      p2pClient.requestSync()
-      setMsg("Запрос синхронизации отправлен")
-    } catch (e: any) {
-      setMsg("Ошибка синхронизации")
-    }
-  }, [])
-
   return (
     <div className="settings-page">
       <div className="settings-header">
@@ -134,9 +113,9 @@ export default function P2PStatusPage() {
         <div className="settings-fields">
           <h3 style={{ marginTop: 0 }}>Статус</h3>
           <div className="profile-field">
-            <span className="profile-field-label">P2P соединение</span>
-            <span className="profile-field-value" style={{ color: p2pConnected ? "#4CAF50" : "#f44336" }}>
-              {p2pConnected ? "Подключено" : "Отключено"}
+            <span className="profile-field-label">TCP P2P нода</span>
+            <span className="profile-field-value" style={{ color: hasKeys ? "#4CAF50" : "#ff9800" }}>
+              {hasKeys ? "Активна" : "Не настроена"}
             </span>
           </div>
           <div className="profile-field">
@@ -145,9 +124,13 @@ export default function P2PStatusPage() {
               {hasKeys ? "Настроены" : "Не сгенерированы"}
             </span>
           </div>
+          <div className="profile-field">
+            <span className="profile-field-label">Подключённых пиров</span>
+            <span className="profile-field-value">{connectedCount}</span>
+          </div>
         </div>
 
-        {/* P2P Sharing (direct server-to-server) */}
+        {/* P2P Sharing (invite links, QR) */}
         <div className="settings-fields" style={{ marginTop: 16 }}>
           <P2PShare />
         </div>
@@ -160,22 +143,9 @@ export default function P2PStatusPage() {
               {generating ? "Генерация..." : "Сгенерировать P2P ключи"}
             </button>
           ) : (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {!p2pConnected ? (
-                <button className="settings-save-btn" onClick={handleConnectP2P}>
-                  Подключить P2P
-                </button>
-              ) : (
-                <>
-                  <button className="avatar-btn" onClick={handleSyncPending}>
-                    Синхронизировать
-                  </button>
-                  <button className="avatar-btn danger" onClick={handleDisconnectP2P}>
-                    Отключить P2P
-                  </button>
-                </>
-              )}
-            </div>
+            <button className="settings-save-btn" onClick={handleGenerateKeys} disabled={generating}>
+              {generating ? "Генерация..." : "Перегенерировать ключи"}
+            </button>
           )}
         </div>
 
@@ -222,8 +192,8 @@ export default function P2PStatusPage() {
                 {peers.map((peer) => (
                   <div key={peer.user_id} className="profile-field">
                     <span className="profile-field-label">@{peer.username}</span>
-                    <span className="profile-field-value" style={{ color: peer.is_online ? "#4CAF50" : "#999" }}>
-                      {peer.is_online ? "онлайн" : "офлайн"}
+                    <span className="profile-field-value" style={{ color: isPeerConnected(peer.user_id) ? "#4CAF50" : "#999" }}>
+                      {isPeerConnected(peer.user_id) ? "P2P" : peer.is_online ? "онлайн" : "офлайн"}
                     </span>
                   </div>
                 ))}

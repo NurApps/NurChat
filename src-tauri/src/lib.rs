@@ -108,6 +108,24 @@ async fn p2p_send_online_status(state: State<'_, AppState>, target: String, is_o
 }
 
 #[tauri::command]
+async fn p2p_send_message_edit(state: State<'_, AppState>, target: String, msg_id: String, new_content: String) -> Result<(), String> {
+    use p2p_lib::P2PMessage;
+    let p2p = state.p2p.read().await;
+    let node = p2p.as_ref().ok_or("P2P not initialized")?;
+    let from = node.get_self_peer_id().await.unwrap_or_default();
+    node.send_to_peer_raw(&target, &P2PMessage::MessageEdit { from, msg_id, new_content }).await
+}
+
+#[tauri::command]
+async fn p2p_send_message_delete(state: State<'_, AppState>, target: String, msg_id: String, delete_for_all: bool) -> Result<(), String> {
+    use p2p_lib::P2PMessage;
+    let p2p = state.p2p.read().await;
+    let node = p2p.as_ref().ok_or("P2P not initialized")?;
+    let from = node.get_self_peer_id().await.unwrap_or_default();
+    node.send_to_peer_raw(&target, &P2PMessage::MessageDelete { from, msg_id, delete_for_all }).await
+}
+
+#[tauri::command]
 fn p2p_get_invite_link(_state: State<'_, AppState>) -> Result<String, String> {
     // This will be called synchronously, but we need the port
     // In practice, the frontend will get the port first and construct the link
@@ -297,6 +315,8 @@ pub fn run() {
             p2p_send_reaction,
             p2p_send_typing,
             p2p_send_online_status,
+            p2p_send_message_edit,
+            p2p_send_message_delete,
             p2p_get_invite_link,
             init_p2p,
             p2p_start_lan_discovery,

@@ -122,6 +122,18 @@ pub enum P2PMessage {
         from: String,
         is_online: bool,
     },
+    /// Edit a message.
+    MessageEdit {
+        from: String,
+        msg_id: String,
+        new_content: String,
+    },
+    /// Delete a message.
+    MessageDelete {
+        from: String,
+        msg_id: String,
+        delete_for_all: bool,
+    },
     Ack { ok: bool },
 }
 
@@ -495,6 +507,24 @@ impl P2PNode {
                         "type": "p2p-online-status",
                         "from": from,
                         "is_online": is_online,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
+                P2PMessage::MessageEdit { from, msg_id, new_content } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-message-edit",
+                        "from": from,
+                        "msg_id": msg_id,
+                        "new_content": new_content,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
+                P2PMessage::MessageDelete { from, msg_id, delete_for_all } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-message-delete",
+                        "from": from,
+                        "msg_id": msg_id,
+                        "delete_for_all": delete_for_all,
                     }))?;
                     let _ = tx.send(app_msg);
                 }

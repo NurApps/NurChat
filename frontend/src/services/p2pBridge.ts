@@ -30,6 +30,8 @@ export type P2PBridgeEvent =
   | { type: "reaction_received"; data: { sender_id: string; msg_id: string; emoji: string; add: boolean } }
   | { type: "typing_received"; data: { sender_id: string; chat_id: string; is_typing: boolean } }
   | { type: "online_status_received"; data: { sender_id: string; is_online: boolean } }
+  | { type: "message_edit_received"; data: { sender_id: string; msg_id: string; new_content: string } }
+  | { type: "message_delete_received"; data: { sender_id: string; msg_id: string; delete_for_all: boolean } }
 
 type Listener = (event: P2PBridgeEvent) => void
 
@@ -287,6 +289,24 @@ export async function initP2PBridge(): Promise<void> {
           is_online: payload.is_online as boolean,
         },
       })
+    } else if (type === "p2p-message-edit") {
+      emit({
+        type: "message_edit_received",
+        data: {
+          sender_id: senderUserId,
+          msg_id: payload.msg_id as string,
+          new_content: payload.new_content as string,
+        },
+      })
+    } else if (type === "p2p-message-delete") {
+      emit({
+        type: "message_delete_received",
+        data: {
+          sender_id: senderUserId,
+          msg_id: payload.msg_id as string,
+          delete_for_all: payload.delete_for_all as boolean,
+        },
+      })
     }
   })
 
@@ -482,6 +502,32 @@ export async function sendP2POnlineStatus(userId: string, isOnline: boolean): Pr
     return true
   } catch (err) {
     console.error("[P2P Bridge] Online status send failed:", err)
+    return false
+  }
+}
+
+export async function sendP2PMessageEdit(userId: string, msgId: string, newContent: string): Promise<boolean> {
+  const peerId = userToPeer.get(userId)
+  if (!peerId || !connectedPeers.has(peerId)) return false
+  try {
+    const { invoke } = await import("@tauri-apps/api/core")
+    await invoke("p2p_send_message_edit", { target: peerId, msgId, newContent })
+    return true
+  } catch (err) {
+    console.error("[P2P Bridge] Message edit send failed:", err)
+    return false
+  }
+}
+
+export async function sendP2PMessageDelete(userId: string, msgId: string, deleteForAll: boolean): Promise<boolean> {
+  const peerId = userToPeer.get(userId)
+  if (!peerId || !connectedPeers.has(peerId)) return false
+  try {
+    const { invoke } = await import("@tauri-apps/api/core")
+    await invoke("p2p_send_message_delete", { target: peerId, msgId, deleteForAll })
+    return true
+  } catch (err) {
+    console.error("[P2P Bridge] Message delete send failed:", err)
     return false
   }
 }

@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react"
 import { api } from "../services/api"
-import { sendP2PTextMessage, sendP2PGroupMessage, isPeerConnected, sendP2PReaction } from "../services/p2pBridge"
+import { sendP2PTextMessage, sendP2PGroupMessage, isPeerConnected, sendP2PReaction, sendP2PMessageEdit, sendP2PMessageDelete } from "../services/p2pBridge"
 import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled } from "../services/e2e"
 import { fetchGroupKey, encryptGroupMessageRatcheted } from "../services/groupE2E"
 
@@ -177,6 +177,17 @@ export function useChatActions({
   }, [setErrorToast])
 
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
+    // Try P2P first for 1-on-1 chats
+    if (selectedChat && !selectedChat.is_group && selectedChat.participants.length === 2) {
+      const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
+      if (peer && isPeerConnected(peer.id)) {
+        const sent = await sendP2PMessageEdit(peer.id, messageId, newContent)
+        if (sent) {
+          setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, content: newContent } : m))
+          return
+        }
+      }
+    }
     try {
       await api.editMessage(messageId, newContent)
       setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, content: newContent } : m))
@@ -184,9 +195,24 @@ export function useChatActions({
       setErrorToast("Не удалось отредактировать")
       console.error("Edit failed:", e)
     }
-  }, [setErrorToast, setMessages])
+  }, [selectedChat, currentUser.id, setErrorToast, setMessages])
 
   const handleDeleteMessage = useCallback(async (messageId: string, deleteForAll = false) => {
+    // Try P2P first for 1-on-1 chats
+    if (selectedChat && !selectedChat.is_group && selectedChat.participants.length === 2) {
+      const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
+      if (peer && isPeerConnected(peer.id)) {
+        const sent = await sendP2PMessageDelete(peer.id, messageId, deleteForAll)
+        if (sent) {
+          if (deleteForAll) {
+            setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, is_deleted: true, deleted_for_all: true } : m))
+          } else {
+            setMessages((prev) => prev.filter((m) => m.id !== messageId))
+          }
+          return
+        }
+      }
+    }
     try {
       await api.deleteMessage(messageId, deleteForAll)
       if (deleteForAll) {
@@ -198,7 +224,7 @@ export function useChatActions({
       setErrorToast("Не удалось удалить")
       console.error("Delete failed:", e)
     }
-  }, [setErrorToast, setMessages])
+  }, [selectedChat, currentUser.id, setErrorToast, setMessages])
 
   const handlePinMessage = useCallback(async (messageId: string) => {
     if (!selectedChat) return

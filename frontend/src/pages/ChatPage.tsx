@@ -382,6 +382,20 @@ export default function ChatPage() {
       } else if (event.type === "online_status_received" && event.data) {
         const d = event.data
         setOnlineUsers((prev) => ({ ...prev, [d.sender_id]: d.is_online }))
+      } else if (event.type === "message_edit_received" && event.data && selectedChat) {
+        const d = event.data
+        if (selectedChat.participants.some(p => p.id === d.sender_id)) {
+          setMessages((prev) => prev.map((m) => m.id === d.msg_id ? { ...m, content: d.new_content } : m))
+        }
+      } else if (event.type === "message_delete_received" && event.data && selectedChat) {
+        const d = event.data
+        if (selectedChat.participants.some(p => p.id === d.sender_id)) {
+          if (d.delete_for_all) {
+            setMessages((prev) => prev.map((m) => m.id === d.msg_id ? { ...m, is_deleted: true, deleted_for_all: true } : m))
+          } else {
+            setMessages((prev) => prev.filter((m) => m.id !== d.msg_id))
+          }
+        }
       }
     })
     return unsub

@@ -262,6 +262,14 @@ export default function ChatPage() {
           setMessages((prev) => {
             if (prev.some(m => m.id === msgId)) return prev
             const peer = selectedChat.participants.find(p => p.id === senderId)
+            // Resolve reply_to preview from local messages
+            let replyTo = undefined
+            if (d.reply_to_id) {
+              const quoted = prev.find(m => m.id === d.reply_to_id)
+              if (quoted) {
+                replyTo = { id: quoted.id, content: quoted.content, user_id: quoted.user_id, user: quoted.user || currentUser }
+              }
+            }
             return [...prev, {
               id: msgId, chat_id: selectedChat.id, user_id: senderId,
               content: d.content || "[encrypted]", message_type: "text",
@@ -269,6 +277,8 @@ export default function ChatPage() {
               user: peer || currentUser, username: peer?.username || "",
               first_name: peer?.first_name || "", is_read: true, is_deleted: false,
               reactions: {},
+              reply_to_id: d.reply_to_id || undefined,
+              reply_to: replyTo,
             }]
           })
         }

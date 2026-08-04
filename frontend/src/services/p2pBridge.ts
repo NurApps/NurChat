@@ -382,17 +382,17 @@ async function _refreshConnectedPeers(): Promise<void> {
 
 // ─── Send text message ───
 
-export function sendP2PTextMessage(userId: string, messageId: string, content: string): boolean {
+export function sendP2PTextMessage(userId: string, messageId: string, content: string, replyToId?: string): boolean {
   const peerId = userToPeer.get(userId)
+  const payload = JSON.stringify({ type: "chat_message", message_id: messageId, content, reply_to_id: replyToId || null })
   if (!peerId || !connectedPeers.has(peerId)) {
     const queue = messageQueue.get(userId) || []
-    queue.push(JSON.stringify({ type: "chat_message", message_id: messageId, content }))
+    queue.push(payload)
     if (queue.length > 50) queue.shift()
     messageQueue.set(userId, queue)
     return false
   }
 
-  const payload = JSON.stringify({ type: "chat_message", message_id: messageId, content })
   sendP2PMessage(peerId, payload).catch(err => {
     console.error("[P2P Bridge] send failed:", err)
     const queue = messageQueue.get(userId) || []

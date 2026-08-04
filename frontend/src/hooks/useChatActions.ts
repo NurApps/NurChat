@@ -71,13 +71,15 @@ export function useChatActions({
       if (peer && isPeerConnected(peer.id)) {
         const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`
         const payload = encryptedContent || content
-        const sent = sendP2PTextMessage(peer.id, msgId, payload)
+        const sent = sendP2PTextMessage(peer.id, msgId, payload, replyToId)
         sentViaP2P = true
         addMessage({
           id: msgId, chat_id: selectedChat.id, user_id: currentUser.id,
           content: encryptedContent ? text : content, message_type: "text",
           created_at: new Date().toISOString(), user: currentUser, is_read: true,
           is_deleted: false, encrypted_content: encryptedContent, signature, reactions: {},
+          reply_to_id: replyToId || undefined,
+          reply_to: replyTo ? { id: replyTo.id, content: replyTo.content, user_id: replyTo.user_id, user: replyTo.user } : undefined,
         })
         if (sent) loadChats()
       }

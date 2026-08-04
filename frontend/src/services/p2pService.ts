@@ -80,6 +80,32 @@ export async function sendP2PMessage(target: string, payload: string): Promise<v
   await invoke("p2p_send_message", { target, payload })
 }
 
+export async function sendP2PFile(target: string, fileId: string, fileName: string, fileData: number[], mimeType: string): Promise<void> {
+  await invoke("p2p_send_file", { target, fileId, fileName, fileData, mimeType })
+}
+
+let fileUnlisten: UnlistenFn | null = null
+
+export function onP2PFileEvent(handler: (payload: Record<string, unknown>) => void): () => void {
+  if (!fileUnlisten) {
+    listen("p2p-message", (event) => {
+      const payload = event.payload as Record<string, unknown>
+      const type = payload.type as string
+      if (type?.startsWith("p2p-file-")) {
+        handler(payload)
+      }
+    }).then((unlisten) => {
+      fileUnlisten = unlisten
+    })
+  }
+  return async () => {
+    if (fileUnlisten) {
+      fileUnlisten()
+      fileUnlisten = null
+    }
+  }
+}
+
 export async function startLANDiscovery(): Promise<void> {
   await invoke("p2p_start_lan_discovery")
 }

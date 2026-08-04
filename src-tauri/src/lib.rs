@@ -51,6 +51,13 @@ async fn p2p_send_message(state: State<'_, AppState>, target: String, payload: S
 }
 
 #[tauri::command]
+async fn p2p_send_file(state: State<'_, AppState>, target: String, file_id: String, file_name: String, file_data: Vec<u8>, mime_type: String) -> Result<(), String> {
+    let p2p = state.p2p.read().await;
+    let node = p2p.as_ref().ok_or("P2P not initialized")?;
+    node.send_file(&target, &file_id, &file_name, &file_data, &mime_type).await
+}
+
+#[tauri::command]
 fn p2p_get_invite_link(_state: State<'_, AppState>) -> Result<String, String> {
     // This will be called synchronously, but we need the port
     // In practice, the frontend will get the port first and construct the link
@@ -234,6 +241,7 @@ pub fn run() {
             p2p_get_port,
             p2p_connect_peer,
             p2p_send_message,
+            p2p_send_file,
             p2p_get_invite_link,
             init_p2p,
             p2p_start_lan_discovery,

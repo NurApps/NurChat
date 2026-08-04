@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { generateInviteLink, parseInviteLink, connectToPeer, getPeerCount, initP2P, getLocalIP, startLANDiscovery } from "../services/p2pService"
+import { saveKnownPeer } from "../services/p2pBridge"
 import { loadKeys } from "../services/e2e"
 import QRCode from "../components/QRCode"
 
@@ -43,6 +44,7 @@ export default function P2PPage() {
 
     try {
       await connectToPeer(parsed.ip, parsed.port, parsed.publicKey)
+      saveKnownPeer(`peer_${parsed.publicKey.slice(0, 8)}`, parsed.ip, parsed.port, parsed.publicKey)
       setStatus("connected")
       setConnectedPeer(parsed.publicKey.slice(0, 8) + "...")
       setScanInput("")

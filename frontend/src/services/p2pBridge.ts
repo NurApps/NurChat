@@ -2,11 +2,20 @@
  * P2P Bridge — user_id ↔ peer_id mapping and event routing.
  * Connects the canonical TCP p2pService to the ChatPage UI.
  *
- * Legacy p2pClient used WebRTC + signaling; this module replaces it with
- * direct TCP via p2pService + Tauri events.
+ * Supports text messages and file transfer via TCP.
+ * Files are sent as base64-encoded chunks (64KB each) through Rust p2p-lib.
+ * Known peers are persisted in localStorage and auto-reconnected on startup.
  */
 
-import { initP2P, onP2PMessage, connectToPeer, sendP2PMessage, getPeers, type P2PPeer } from "./p2pService"
+import {
+  initP2P,
+  onP2PMessage,
+  sendP2PFile,
+  connectToPeer,
+  sendP2PMessage,
+  getPeers,
+  type P2PPeer,
+} from "./p2pService"
 
 // ─── Types ───
 
@@ -14,37 +23,82 @@ export type P2PBridgeEvent =
   | { type: "peer_connected"; data: { user_id: string } }
   | { type: "peer_disconnected"; data: { user_id: string } }
   | { type: "message_received"; data: { sender_id: string; content: string; message_id?: string } }
-  | { type: "file_received_start"; data: { sender_id: string; file_name: string; message_id: string } }
-  | { type: "file_received"; data: { sender_id: string; file_id: string; message_id: string } }
+  | { type: "file_received"; data: { sender_id: string; file_id: string; file_name: string; file_size: number; mime_type: string; file_data: Uint8Array } }
 
 type Listener = (event: P2PBridgeEvent) => void
+
+interface KnownPeer {
+  userId: string
+  address: string
+  port: number
+  publicKey: string
+}
+
+// ─── File assembly state ───
+
+interface IncomingFile {
+  sender_id: string
+  file_id: string
+  file_name: string
+  file_size: number
+  mime_type: string
+  chunks: Map<number, Uint8Array>
+  total_received: number
+}
+
+const incomingFiles = new Map<string, IncomingFile>()
 
 // ─── State ───
 
 const listeners = new Set<Listener>()
 let unlistenP2P: (() => void) | null = null
+let unlistenFile: (() => void) | null = null
 let initialized = false
 
-/**
- * peerId → userId mapping (public_key_hex → user_{sha256}).
- * Populated by registerPeer / discoverPeer.
- */
 const peerToUser = new Map<string, string>()
-
-/**
- * userId → peerId reverse mapping.
- */
 const userToPeer = new Map<string, string>()
-
-/**
- * Currently connected TCP peer_ids.
- */
 const connectedPeers = new Set<string>()
+const messageQueue = new Map<string, string[]>()
+
+const KNOWN_PEERS_KEY = "p2p_known_peers"
+
+// ─── Known peers persistence ───
+
+function loadKnownPeers(): KnownPeer[] {
+  try {
+    const raw = localStorage.getItem(KNOWN_PEERS_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveKnownPeers(peers: KnownPeer[]): void {
+  localStorage.setItem(KNOWN_PEERS_KEY, JSON.stringify(peers))
+}
 
 /**
- * Message queue for offline peers (userId → queued payloads).
+ * Save a peer to persistent storage for auto-reconnect on next startup.
  */
-const messageQueue = new Map<string, string[]>()
+export function saveKnownPeer(userId: string, address: string, port: number, publicKey: string): void {
+  const peers = loadKnownPeers()
+  const existing = peers.findIndex(p => p.userId === userId)
+  const entry: KnownPeer = { userId, address, port, publicKey }
+  if (existing >= 0) {
+    peers[existing] = entry
+  } else {
+    peers.push(entry)
+  }
+  saveKnownPeers(peers)
+}
+
+/**
+ * Remove a peer from persistent storage.
+ */
+export function removeKnownPeer(userId: string): void {
+  const peers = loadKnownPeers().filter(p => p.userId !== userId)
+  saveKnownPeers(peers)
+}
 
 // ─── Listener management ───
 
@@ -61,40 +115,24 @@ export function onP2PBridgeEvent(listener: Listener): () => void {
 
 // ─── Peer registration ───
 
-/**
- * Register a mapping: userId ↔ peerId (public_key_hex).
- * Call this when loading chat participants or from invite flow.
- */
 export function registerPeer(userId: string, publicKeyHex: string) {
   peerToUser.set(publicKeyHex, userId)
   userToPeer.set(userId, publicKeyHex)
 }
 
-/**
- * Get peer_id for a user_id.
- */
 export function getPeerId(userId: string): string | undefined {
   return userToPeer.get(userId)
 }
 
-/**
- * Get user_id for a peer_id.
- */
 export function getUserId(peerId: string): string | undefined {
   return peerToUser.get(peerId)
 }
 
-/**
- * Check if a peer is currently connected via TCP.
- */
 export function isPeerConnected(userId: string): boolean {
   const peerId = userToPeer.get(userId)
   return peerId ? connectedPeers.has(peerId) : false
 }
 
-/**
- * Get all connected user_ids.
- */
 export function getConnectedUserIds(): string[] {
   return [...connectedPeers]
     .map(peerId => peerToUser.get(peerId))
@@ -103,16 +141,13 @@ export function getConnectedUserIds(): string[] {
 
 // ─── Initialization ───
 
-/**
- * Initialize the P2P bridge. Safe to call multiple times.
- */
 export async function initP2PBridge(): Promise<void> {
   if (initialized) return
   initialized = true
 
   await initP2P()
 
-  // Subscribe to inbound TCP messages
+  // Subscribe to inbound TCP text messages
   unlistenP2P = await onP2PMessage(async (msg) => {
     const senderUserId = peerToUser.get(msg.from)
     if (!senderUserId) {
@@ -120,7 +155,6 @@ export async function initP2PBridge(): Promise<void> {
       return
     }
 
-    // Try to parse structured payload
     try {
       const parsed = JSON.parse(msg.payload)
 
@@ -133,27 +167,8 @@ export async function initP2PBridge(): Promise<void> {
             message_id: parsed.message_id,
           },
         })
-      } else if (parsed.type === "file_start") {
-        emit({
-          type: "file_received_start",
-          data: {
-            sender_id: senderUserId,
-            file_name: parsed.file_name || "file",
-            message_id: parsed.message_id || `msg_${Date.now()}`,
-          },
-        })
-      } else if (parsed.type === "file_chunk") {
-        emit({
-          type: "file_received",
-          data: {
-            sender_id: senderUserId,
-            file_id: parsed.file_id || "",
-            message_id: parsed.message_id || "",
-          },
-        })
       }
     } catch {
-      // Raw string payload — treat as plain message
       emit({
         type: "message_received",
         data: {
@@ -164,16 +179,114 @@ export async function initP2PBridge(): Promise<void> {
     }
   })
 
+  // Subscribe to inbound TCP file events
+  unlistenFile = onP2PFileEvent((payload) => {
+    const type = payload.type as string
+    const from = payload.from as string
+    const senderUserId = peerToUser.get(from)
+    if (!senderUserId) {
+      console.warn("[P2P Bridge] File from unknown peer:", from)
+      return
+    }
+
+    if (type === "p2p-file-start") {
+      const fileId = payload.file_id as string
+      incomingFiles.set(fileId, {
+        sender_id: senderUserId,
+        file_id: fileId,
+        file_name: payload.file_name as string,
+        file_size: payload.file_size as number,
+        mime_type: payload.mime_type as string,
+        chunks: new Map(),
+        total_received: 0,
+      })
+    } else if (type === "p2p-file-chunk") {
+      const fileId = payload.file_id as string
+      const file = incomingFiles.get(fileId)
+      if (file) {
+        const offset = payload.offset as number
+        const data = payload.data as string
+        const binaryStr = atob(data)
+        const bytes = new Uint8Array(binaryStr.length)
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i)
+        }
+        file.chunks.set(offset, bytes)
+        file.total_received += bytes.length
+      }
+    } else if (type === "p2p-file-end") {
+      const fileId = payload.file_id as string
+      const file = incomingFiles.get(fileId)
+      if (file) {
+        const sortedOffsets = [...file.chunks.keys()].sort((a, b) => a - b)
+        const totalSize = sortedOffsets.reduce((sum, off) => sum + (file.chunks.get(off)?.length || 0), 0)
+        const assembled = new Uint8Array(totalSize)
+        let pos = 0
+        for (const offset of sortedOffsets) {
+          const chunk = file.chunks.get(offset)
+          if (chunk) {
+            assembled.set(chunk, pos)
+            pos += chunk.length
+          }
+        }
+
+        emit({
+          type: "file_received",
+          data: {
+            sender_id: senderUserId,
+            file_id: file.file_id,
+            file_name: file.file_name,
+            file_size: file.file_size,
+            mime_type: file.mime_type,
+            file_data: assembled,
+          },
+        })
+
+        incomingFiles.delete(fileId)
+      }
+    }
+  })
+
+  // Auto-reconnect to known peers
+  _autoConnectKnownPeers()
+
   // Refresh connected peers list periodically
   _refreshConnectedPeers()
 }
 
+/**
+ * Auto-connect to previously known peers on startup.
+ * Silently ignores failures (peers may be offline).
+ */
+async function _autoConnectKnownPeers(): Promise<void> {
+  const known = loadKnownPeers()
+  for (const peer of known) {
+    try {
+      registerPeer(peer.userId, peer.publicKey)
+      await connectToUser(peer.address, peer.port, peer.publicKey)
+      console.log("[P2P Bridge] Auto-reconnected to:", peer.userId)
+    } catch {
+      // Peer may be offline — that's fine
+    }
+  }
+}
+
+function onP2PFileEvent(handler: (payload: Record<string, unknown>) => void): () => void {
+  let unlisten: (() => void) | null = null
+  import("@tauri-apps/api/event").then(({ listen }) => {
+    listen("p2p-message", (event) => {
+      const payload = event.payload as Record<string, unknown>
+      const type = payload.type as string
+      if (type?.startsWith("p2p-file-")) {
+        handler(payload)
+      }
+    }).then((fn) => { unlisten = fn })
+  })
+  return () => { unlisten?.() }
+}
+
 // ─── Connection management ───
 
-/**
- * Connect to a peer by address/port/publicKey.
- * The publicKey is used as peer_id in TCP.
- */
 export async function connectToUser(
   address: string,
   port: number,
@@ -188,15 +301,11 @@ export async function connectToUser(
   }
 }
 
-/**
- * Refresh connected peers from p2pService.
- */
 async function _refreshConnectedPeers(): Promise<void> {
   try {
     const tcpPeers = await getPeers()
     const currentIds = new Set(tcpPeers.map(p => p.peer_id))
 
-    // Detect newly connected
     for (const peerId of currentIds) {
       if (!connectedPeers.has(peerId)) {
         connectedPeers.add(peerId)
@@ -207,7 +316,6 @@ async function _refreshConnectedPeers(): Promise<void> {
       }
     }
 
-    // Detect disconnected
     for (const peerId of connectedPeers) {
       if (!currentIds.has(peerId)) {
         connectedPeers.delete(peerId)
@@ -221,7 +329,6 @@ async function _refreshConnectedPeers(): Promise<void> {
     // p2pService not available (web mode)
   }
 
-  // Re-check periodically
   if (initialized) {
     setTimeout(_refreshConnectedPeers, 5000)
   }
@@ -229,18 +336,12 @@ async function _refreshConnectedPeers(): Promise<void> {
 
 // ─── Send text message ───
 
-/**
- * Send a text message via P2P TCP.
- * If the peer is not connected, queue the message.
- * Returns true if sent immediately, false if queued.
- */
 export function sendP2PTextMessage(userId: string, messageId: string, content: string): boolean {
   const peerId = userToPeer.get(userId)
   if (!peerId || !connectedPeers.has(peerId)) {
-    // Queue for later delivery
     const queue = messageQueue.get(userId) || []
     queue.push(JSON.stringify({ type: "chat_message", message_id: messageId, content }))
-    if (queue.length > 50) queue.shift() // cap
+    if (queue.length > 50) queue.shift()
     messageQueue.set(userId, queue)
     return false
   }
@@ -248,7 +349,6 @@ export function sendP2PTextMessage(userId: string, messageId: string, content: s
   const payload = JSON.stringify({ type: "chat_message", message_id: messageId, content })
   sendP2PMessage(peerId, payload).catch(err => {
     console.error("[P2P Bridge] send failed:", err)
-    // Re-queue
     const queue = messageQueue.get(userId) || []
     queue.push(payload)
     messageQueue.set(userId, queue)
@@ -256,29 +356,31 @@ export function sendP2PTextMessage(userId: string, messageId: string, content: s
   return true
 }
 
-/**
- * Send a file start notification via P2P.
- */
-export function sendP2PFileStart(userId: string, messageId: string, fileName: string): void {
-  const peerId = userToPeer.get(userId)
-  if (!peerId || !connectedPeers.has(peerId)) return
+// ─── Send file via P2P TCP ───
 
-  const payload = JSON.stringify({ type: "file_start", message_id: messageId, file_name: fileName })
-  sendP2PMessage(peerId, payload).catch(() => {})
+export async function sendP2PFileMessage(
+  userId: string,
+  fileId: string,
+  fileName: string,
+  fileData: Uint8Array,
+  mimeType: string,
+): Promise<boolean> {
+  const peerId = userToPeer.get(userId)
+  if (!peerId || !connectedPeers.has(peerId)) {
+    console.warn("[P2P Bridge] Cannot send file — peer offline:", userId)
+    return false
+  }
+
+  try {
+    await sendP2PFile(peerId, fileId, fileName, Array.from(fileData), mimeType)
+    return true
+  } catch (err) {
+    console.error("[P2P Bridge] File send failed:", err)
+    return false
+  }
 }
 
-/**
- * Send a file received confirmation via P2P.
- */
-export function sendP2PFileReceived(userId: string, messageId: string, fileId: string): void {
-  const peerId = userToPeer.get(userId)
-  if (!peerId || !connectedPeers.has(peerId)) return
-
-  const payload = JSON.stringify({ type: "file_chunk", message_id: messageId, file_id: fileId })
-  sendP2PMessage(peerId, payload).catch(() => {})
-}
-
-// ─── Flush queued messages (called when a peer connects) ───
+// ─── Flush queued messages ───
 
 export function flushMessageQueue(userId: string): void {
   const queue = messageQueue.get(userId)
@@ -300,9 +402,14 @@ export function destroyP2PBridge(): void {
     unlistenP2P()
     unlistenP2P = null
   }
+  if (unlistenFile) {
+    unlistenFile()
+    unlistenFile = null
+  }
   initialized = false
   connectedPeers.clear()
   peerToUser.clear()
   userToPeer.clear()
   messageQueue.clear()
+  incomingFiles.clear()
 }

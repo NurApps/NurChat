@@ -9,6 +9,7 @@ import {
   getPeerId,
   registerPeer,
   connectToUser,
+  sendP2PFileMessage,
 } from "../services/p2pBridge"
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts"
 import { useChatSocket } from "../hooks/useChatSocket"
@@ -255,33 +256,29 @@ export default function ChatPage() {
             }]
           })
         }
-      } else if (event.type === "file_received_start" && event.data && selectedChat) {
+      } else if (event.type === "file_received" && event.data && selectedChat) {
         const d = event.data
         const senderId = d.sender_id
         if (selectedChat.participants.some(p => p.id === senderId)) {
-          const msgId = d.message_id || `p2p_file_${Date.now()}`
+          const msgId = `p2p_file_${d.file_id}`
+          const blob = new Blob([d.file_data], { type: d.mime_type })
+          const blobUrl = URL.createObjectURL(blob)
           setMessages((prev) => {
-            if (prev.some(m => m.id === msgId)) return prev
+            const existing = prev.find(m => m.id === msgId)
+            if (existing) {
+              return prev.map(m => m.id === msgId ? { ...m, file_id: d.file_id, content: blobUrl } : m)
+            }
             const peer = selectedChat.participants.find(p => p.id === senderId)
             return [...prev, {
               id: msgId, chat_id: selectedChat.id, user_id: senderId,
-              content: `${d.file_name} (${t("chat.downloading")}...)`, message_type: "file",
+              content: blobUrl, message_type: "file",
+              file_id: d.file_id,
               created_at: new Date().toISOString(),
               user: peer || currentUser, username: peer?.username || "",
               first_name: peer?.first_name || "", is_read: true, is_deleted: false,
               reactions: {},
             }]
           })
-        }
-      } else if (event.type === "file_received" && event.data && selectedChat) {
-        const d = event.data
-        const senderId = d.sender_id
-        if (selectedChat.participants.some(p => p.id === senderId)) {
-          const msgId = d.message_id || `p2p_file_${Date.now()}`
-          setMessages((prev) => {
-            const existing = prev.find(m => m.id === msgId)
-            if (existing) {
-              return prev.map(m => m.id === msgId ? { ...m, file_id: d.file_id } : m)
             }
             const peer = selectedChat.participants.find(p => p.id === senderId)
             return [...prev, {
@@ -519,10 +516,18 @@ export default function ChatPage() {
     let completed = 0
     for (const file of files) {
       try {
-        const fileType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "file"
-        const uploaded = await api.uploadFile(file, fileType, (p) => setUploadProgress(((completed + p) / files.length) * 100))
-        const msg = await api.sendMessage(selectedChat.id, file.name, fileType, uploaded.id)
-        addMessage(msg); completed++
+        const arrayBuffer = await file.arrayBuffer()
+        const fileData = new Uint8Array(arrayBuffer)
+        const fileId = `file_${Date.now()}_${Math.random().toString(36).slice(2)}`
+        const sent = await sendP2PFileMessage(peer.id, fileId, file.name, fileData, file.type || "application/octet-stream")
+        if (sent) {
+          const fileType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "file"
+          const uploaded = await api.uploadFile(file, fileType, (p) => setUploadProgress(((completed + p) / files.length) * 100))
+          const msg = await api.sendMessage(selectedChat.id, file.name, fileType, uploaded.id, undefined, undefined, fileId)
+          addMessage(msg); completed++
+        } else {
+          setErrorToast(t("chat.p2pNotConnected"))
+        }
       } catch { setErrorToast(t("errors.fileUpload", { name: file.name })) }
     }
     setUploading(false); setUploadProgress(0)

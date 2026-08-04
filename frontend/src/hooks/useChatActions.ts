@@ -83,6 +83,29 @@ export function useChatActions({
       }
     }
 
+    // Group E2E via P2P TCP: send encrypted message to each connected participant
+    if (!sentViaP2P && selectedChat.is_group && encryptedContent) {
+      const otherParticipants = selectedChat.participants.filter(p => p.id !== currentUser.id)
+      const connectedViaP2P = otherParticipants.filter(p => isPeerConnected(p.id))
+
+      if (connectedViaP2P.length > 0) {
+        const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`
+        let allSent = true
+        for (const peer of connectedViaP2P) {
+          const sent = sendP2PTextMessage(peer.id, msgId, encryptedContent)
+          if (!sent) allSent = false
+        }
+        sentViaP2P = allSent
+        addMessage({
+          id: msgId, chat_id: selectedChat.id, user_id: currentUser.id,
+          content: text, message_type: "text",
+          created_at: new Date().toISOString(), user: currentUser, is_read: true,
+          is_deleted: false, encrypted_content: encryptedContent, signature, reactions: {},
+        })
+        if (sentViaP2P) loadChats()
+      }
+    }
+
     if (!sentViaP2P) {
       try {
         const msg = await api.sendMessage(selectedChat.id, content, "text", undefined, encryptedContent, signature, undefined, replyToId)

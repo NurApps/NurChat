@@ -5,6 +5,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::{broadcast, mpsc, RwLock};
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
+
 const LAN_MULTICAST_ADDR: &str = "239.255.43.21";
 const LAN_MULTICAST_PORT: u16 = 8002;
 
@@ -54,6 +57,23 @@ pub enum P2PMessage {
         peer_id: String,
         public_key: String,
         port: u16,
+    },
+    FileStart {
+        from: String,
+        file_id: String,
+        file_name: String,
+        file_size: u64,
+        mime_type: String,
+    },
+    FileChunk {
+        from: String,
+        file_id: String,
+        offset: u64,
+        data: String,
+    },
+    FileEnd {
+        from: String,
+        file_id: String,
     },
     Ack { ok: bool },
 }
@@ -287,6 +307,35 @@ impl P2PNode {
                     peers.write().await.insert(pid.clone(), info);
                     println!("[P2P] LAN peer discovered: {}", pid);
                 }
+                P2PMessage::FileStart { from, file_id, file_name, file_size, mime_type } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-file-start",
+                        "from": from,
+                        "file_id": file_id,
+                        "file_name": file_name,
+                        "file_size": file_size,
+                        "mime_type": mime_type,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
+                P2PMessage::FileChunk { from, file_id, offset, data } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-file-chunk",
+                        "from": from,
+                        "file_id": file_id,
+                        "offset": offset,
+                        "data": data,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
+                P2PMessage::FileEnd { from, file_id } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-file-end",
+                        "from": from,
+                        "file_id": file_id,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
                 P2PMessage::Ack { .. } => {}
             }
         }
@@ -369,6 +418,103 @@ impl P2PNode {
             }
         }
         Err("No relay peer available".to_string())
+    }
+
+    /// Send a file to a peer in chunks via TCP.
+    /// Reads the file, splits into 64KB chunks, base64-encodes, and sends
+    /// FileStart → FileChunk* → FileEnd messages.
+    pub async fn send_file(
+        &self,
+        target: &str,
+        file_id: &str,
+        file_name: &str,
+        file_data: &[u8],
+        mime_type: &str,
+    ) -> Result<(), String> {
+        let from = self.get_self_peer_id().await.unwrap_or_default();
+        let file_size = file_data.len() as u64;
+
+        // Send FileStart
+        let start = P2PMessage::FileStart {
+            from: from.clone(),
+            file_id: file_id.to_string(),
+            file_name: file_name.to_string(),
+            file_size,
+            mime_type: mime_type.to_string(),
+        };
+        self.send_raw(target, &start).await?;
+
+        // Send chunks (64KB each)
+        const CHUNK_SIZE: usize = 65536;
+        let mut offset = 0u64;
+        for chunk in file_data.chunks(CHUNK_SIZE) {
+            let encoded = BASE64.encode(chunk);
+            let chunk_msg = P2PMessage::FileChunk {
+                from: from.clone(),
+                file_id: file_id.to_string(),
+                offset,
+                data: encoded,
+            };
+            self.send_raw(target, &chunk_msg).await?;
+            offset += chunk.len() as u64;
+        }
+
+        // Send FileEnd
+        let end = P2PMessage::FileEnd {
+            from: from.clone(),
+            file_id: file_id.to_string(),
+        };
+        self.send_raw(target, &end).await?;
+
+        Ok(())
+    }
+
+    /// Send a raw P2PMessage to a target peer via existing writer, direct TCP, or relay.
+    async fn send_raw(&self, target: &str, msg: &P2PMessage) -> Result<(), String> {
+        let json = serde_json::to_string(msg).map_err(|e| e.to_string())?;
+
+        // Try existing writer
+        {
+            let writers = self.writers.read().await;
+            if let Some(writer) = writers.get(target) {
+                if writer.tx.send(format!("{}\n", json)).await.is_ok() {
+                    return Ok(());
+                }
+            }
+        }
+
+        // Try direct TCP connection if we know the address
+        let should_try_direct = {
+            let peers = self.peers.read().await;
+            peers.get(target).map(|p| p.port > 0).unwrap_or(false)
+        };
+
+        if should_try_direct {
+            let addr = {
+                let peers = self.peers.read().await;
+                peers.get(target).map(|p| format!("{}:{}", p.address, p.port))
+            };
+
+            if let Some(addr) = addr {
+                if let Ok(mut stream) = TcpStream::connect(&addr).await {
+                    let hello = P2PMessage::Hello {
+                        peer_id: self.get_self_peer_id().await.unwrap_or_default(),
+                        public_key: String::new(),
+                        signing_public_key: String::new(),
+                    };
+                    let hello_json = serde_json::to_string(&hello).map_err(|e| e.to_string())?;
+                    let _ = stream.write_all(hello_json.as_bytes()).await;
+                    let _ = stream.write_all(b"\n").await;
+
+                    let _ = stream.write_all(json.as_bytes()).await;
+                    let _ = stream.write_all(b"\n").await;
+                    return Ok(());
+                }
+            }
+        }
+
+        // Fallback: try relay
+        self.relay_message(target, &json).await
     }
 
     pub async fn get_port(&self) -> u16 {
@@ -551,5 +697,66 @@ mod tests {
         ).await.expect("timed out waiting for message").expect("channel closed");
 
         assert!(msg.contains("hello p2p"), "unexpected msg: {}", msg);
+    }
+
+    #[tokio::test]
+    async fn test_p2p_file_transfer() {
+        let config1 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true };
+        let config2 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true };
+
+        let node1 = P2PNode::new(config1);
+        let node2 = P2PNode::new(config2);
+        node1.set_self_peer_id("node1".to_string()).await;
+        node2.set_self_peer_id("node2".to_string()).await;
+
+        let _port1 = node1.start().await.unwrap();
+        let port2 = node2.start().await.unwrap();
+
+        let mut rx = node2.subscribe();
+
+        node1.add_peer(P2PPeerInfo {
+            peer_id: "node2".to_string(),
+            public_key: "pk2".to_string(),
+            address: "127.0.0.1".to_string(),
+            port: port2,
+        }).await;
+
+        // Send a small file (200 bytes)
+        let file_data = vec![0xABu8; 200];
+        node1.send_file("node2", "file_001", "test.bin", &file_data, "application/octet-stream").await.unwrap();
+
+        // Should receive 3 messages: FileStart, FileChunk, FileEnd
+        let mut received_start = false;
+        let mut received_chunk = false;
+        let mut received_end = false;
+
+        for _ in 0..3 {
+            let msg = tokio::time::timeout(
+                tokio::time::Duration::from_secs(2),
+                rx.recv(),
+            ).await.expect("timed out waiting for file message").expect("channel closed");
+
+            if msg.contains("p2p-file-start") {
+                received_start = true;
+                assert!(msg.contains("file_001"));
+                assert!(msg.contains("test.bin"));
+                assert!(msg.contains("application/octet-stream"));
+            } else if msg.contains("p2p-file-chunk") {
+                received_chunk = true;
+                assert!(msg.contains("file_001"));
+                // Verify base64 decodes to original data
+                let parsed: serde_json::Value = serde_json::from_str(&msg).unwrap();
+                let encoded = parsed["data"].as_str().unwrap();
+                let decoded = BASE64.decode(encoded).unwrap();
+                assert_eq!(decoded, file_data);
+            } else if msg.contains("p2p-file-end") {
+                received_end = true;
+                assert!(msg.contains("file_001"));
+            }
+        }
+
+        assert!(received_start, "missing FileStart");
+        assert!(received_chunk, "missing FileChunk");
+        assert!(received_end, "missing FileEnd");
     }
 }

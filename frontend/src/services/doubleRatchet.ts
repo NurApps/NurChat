@@ -377,7 +377,7 @@ export class DoubleRatchetSession {
     }
     this.seenMessageIds.add(msgId)
     if (this.seenMessageIds.size > 10000) {
-      this.seenMessageIds = new Set([...this.seenMessageIds].slice(-5000))
+      this.trimSeen()
     }
 
     const ciphertextBytes = new Uint8Array(base64Decode(envelope.ciphertext))
@@ -392,6 +392,15 @@ export class DoubleRatchetSession {
       throw new Error("Associated data mismatch")
     }
     return new TextDecoder().decode(payload.subarray(ad.length))
+  }
+
+  private trimSeen(): void {
+    const sorted = [...this.seenMessageIds].sort((a, b) => {
+      const nsA = parseInt(a.split(":")[1], 10)
+      const nsB = parseInt(b.split(":")[1], 10)
+      return nsA - nsB
+    })
+    this.seenMessageIds = new Set(sorted.slice(-5000))
   }
 
   serialize(): SerializedSession {
@@ -414,7 +423,9 @@ export class DoubleRatchetSession {
       our_id: this.ourIdentityPublic ? base64Encode(this.ourIdentityPublic.buffer as ArrayBuffer) : null,
       their_id: this.theirIdentityPublic ? base64Encode(this.theirIdentityPublic.buffer as ArrayBuffer) : null,
       skipped,
-      seen: [...this.seenMessageIds].slice(-2000),
+      seen: [...this.seenMessageIds]
+        .sort((a, b) => parseInt(a.split(":")[1], 10) - parseInt(b.split(":")[1], 10))
+        .slice(-2000),
     }
   }
 

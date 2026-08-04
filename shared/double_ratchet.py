@@ -293,7 +293,7 @@ class DoubleRatchetSession:
             raise ValueError("Replay attack detected")
         self._seen_message_ids.add(msg_id)
         if len(self._seen_message_ids) > 10000:
-            self._seen_message_ids = set(list(self._seen_message_ids)[-5000:])
+            self._trim_seen()
 
         ciphertext_bytes = base64.b64decode(envelope["ciphertext"])
         box = nacl.secret.SecretBox(msg_key)
@@ -303,6 +303,12 @@ class DoubleRatchetSession:
         if len(payload) < len(ad) or payload[: len(ad)] != ad:
             raise ValueError("Associated data mismatch")
         return payload[len(ad) :].decode("utf-8")
+
+    def _trim_seen(self):
+        """Remove the oldest seen message IDs (by ns, then by dh hex for tiebreak)."""
+        self._seen_message_ids = set(
+            sorted(self._seen_message_ids, key=lambda t: (t[1], t[0]))[-5000:]
+        )
 
     # ─── Serialization ───
 
@@ -322,7 +328,7 @@ class DoubleRatchetSession:
             "our_id": base64.b64encode(self.our_identity_public).decode() if self.our_identity_public else None,
             "their_id": base64.b64encode(self.their_identity_public).decode() if self.their_identity_public else None,
             "skipped": {k: base64.b64encode(v).decode() for k, v in self._skipped_keys.items()},
-            "seen": [f"{dh}:{ns}" for dh, ns in list(self._seen_message_ids)[-2000:]],
+            "seen": [f"{dh}:{ns}" for dh, ns in sorted(self._seen_message_ids, key=lambda t: (t[1], t[0]))[-2000:]],
         }
 
     @staticmethod
@@ -397,7 +403,17 @@ class PreKeyBundle:
         signed_prekey_private: PrivateKey,
         num_one_time: int = 100,
         registration_id: int | None = None,
+        signing_private: nacl.signing.SigningKey | None = None,
     ) -> "PreKeyBundle":
+        """
+        Generate a pre-key bundle.
+
+        The SPK signature must be created with the user's Ed25519 signing key.
+        In production the signing key is independent from the X25519 identity
+        key (see User.signing_public_key). The identity_private fallback below
+        exists only for legacy Python tests and MUST NOT be used to emulate
+        the JS client.
+        """
         if registration_id is None:
             import random
             registration_id = random.randint(1, 0xFFFFFF)
@@ -405,7 +421,12 @@ class PreKeyBundle:
         identity_pub = identity_private.public_key
         signed_prekey_pub = signed_prekey_private.public_key
 
-        sign_key = nacl.signing.SigningKey(identity_private.encode())
+        if signing_private is None:
+            # Legacy fallback: derive an Ed25519 key from the X25519 identity
+            # seed. Produces bundles the real client/server would reject.
+            sign_key = nacl.signing.SigningKey(identity_private.encode())
+        else:
+            sign_key = signing_private
         signature = sign_key.sign(signed_prekey_pub.encode()).signature
 
         one_time = [PrivateKey.generate().public_key for _ in range(num_one_time)]

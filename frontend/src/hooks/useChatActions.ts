@@ -43,7 +43,7 @@ export function useChatActions({
       try {
         const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
         if (peer?.public_key) {
-          const envelope = await encryptMessage(content, myKeys, peer.public_key, selectedChat.id, currentUser.id)
+          const envelope = await encryptMessage(content, myKeys, peer.public_key, selectedChat.id, currentUser.id, peer.id)
           encryptedContent = JSON.stringify(envelope)
           signature = envelope.signature
           content = "[encrypted]"

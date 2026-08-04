@@ -220,6 +220,7 @@ export async function getOrCreateSession(
   myKeys: E2EKeys,
   theirPublicKeyHex: string,
   isInitiator: boolean,
+  theirUserId?: string,
   theirSignedPrekeyHex?: string,
   theirOneTimePrekeyHex?: string,
 ): Promise<DoubleRatchetSession> {
@@ -233,7 +234,7 @@ export async function getOrCreateSession(
     let otpkHex = theirOneTimePrekeyHex
 
     if (!spkHex) {
-      const bundle = await fetchAndVerifyBundle(theirPublicKeyHex)
+      const bundle = await fetchAndVerifyBundle(theirUserId || theirPublicKeyHex)
       if (bundle) {
         spkHex = bundle.signedPrekeyHex
         otpkHex = bundle.oneTimePrekeyHex
@@ -316,8 +317,9 @@ export async function encryptMessage(
   theirPublicKeyHex: string,
   chatId: string,
   senderId: string,
+  theirUserId?: string,
 ): Promise<EncryptedEnvelope> {
-  const session = await getOrCreateSession(chatId, myKeys, theirPublicKeyHex, true)
+  const session = await getOrCreateSession(chatId, myKeys, theirPublicKeyHex, true, theirUserId)
   const envelope = await session.encryptMessage(plaintext)
   const signature = nacl.sign.detached(
     new TextEncoder().encode(plaintext),

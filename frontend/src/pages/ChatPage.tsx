@@ -221,8 +221,18 @@ export default function ChatPage() {
     const unsub = onP2PBridgeEvent((event) => {
       if (event.type === "peer_connected" && event.data?.user_id) {
         setP2pConnected((prev) => ({ ...prev, [event.data.user_id]: true }))
-        // Broadcast online status to connected peer
         sendP2POnlineStatus(event.data.user_id, true)
+        // TOFU: verify P2P peer's key
+        const chat = useChatStore.getState().selectedChat
+        if (chat && !chat.is_group && chat.participants.length === 2) {
+          const peer = chat.participants.find(p => p.id === event.data.user_id)
+          if (peer?.public_key) {
+            const status = checkKeyStatus(peer.id, peer.public_key)
+            if (status === "changed") {
+              setKeyWarning(t("chat.keyChanged", { name: peer.username || peer.first_name }))
+            }
+          }
+        }
       } else if (event.type === "peer_disconnected" && event.data?.user_id) {
         setP2pConnected((prev) => {
           const next = { ...prev }

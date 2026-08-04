@@ -111,6 +111,7 @@ export default function UserProfileModal({ user, onClose }: Props) {
 
         {showSafetyNumber && user.public_key && (
           <SafetyNumberModal
+            theirUserId={user.id}
             theirPublicKey={user.public_key}
             theirUsername={user.username || user.first_name || "пользователь"}
             onClose={() => setShowSafetyNumber(false)}

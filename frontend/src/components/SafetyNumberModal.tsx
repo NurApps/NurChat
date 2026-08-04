@@ -4,12 +4,13 @@ import { loadKeys } from "../services/e2e"
 import { markKeyVerified } from "../services/keyVerification"
 
 interface Props {
+  theirUserId: string
   theirPublicKey: string
   theirUsername: string
   onClose: () => void
 }
 
-export default function SafetyNumberModal({ theirPublicKey, theirUsername, onClose }: Props) {
+export default function SafetyNumberModal({ theirUserId, theirPublicKey, theirUsername, onClose }: Props) {
   const [safetyNumber, setSafetyNumber] = useState<string | null>(null)
   const [verifyInput, setVerifyInput] = useState("")
   const [verified, setVerified] = useState<boolean | null>(null)
@@ -38,7 +39,7 @@ export default function SafetyNumberModal({ theirPublicKey, theirUsername, onClo
     setVerified(result)
     if (result) {
       // Mark key as verified
-      markKeyVerified(theirPublicKey)
+      markKeyVerified(theirUserId)
     }
   }
 

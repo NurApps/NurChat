@@ -65,6 +65,22 @@ async fn p2p_send_group(state: State<'_, AppState>, group_id: String, msg_id: St
 }
 
 #[tauri::command]
+async fn p2p_send_call_signaling(state: State<'_, AppState>, target: String, call_id: String, signal_type: String, data: String) -> Result<(), String> {
+    use p2p_lib::P2PMessage;
+    let p2p = state.p2p.read().await;
+    let node = p2p.as_ref().ok_or("P2P not initialized")?;
+    let from = node.get_self_peer_id().await.unwrap_or_default();
+    let msg = match signal_type.as_str() {
+        "offer" => P2PMessage::CallOffer { from, call_id, sdp: data },
+        "answer" => P2PMessage::CallAnswer { from, call_id, sdp: data },
+        "candidate" => P2PMessage::CallCandidate { from, call_id, candidate: data },
+        "hangup" => P2PMessage::CallHangup { from, call_id },
+        _ => return Err(format!("Unknown signal type: {}", signal_type)),
+    };
+    node.send_to_peer_raw(&target, &msg).await
+}
+
+#[tauri::command]
 fn p2p_get_invite_link(_state: State<'_, AppState>) -> Result<String, String> {
     // This will be called synchronously, but we need the port
     // In practice, the frontend will get the port first and construct the link
@@ -250,6 +266,7 @@ pub fn run() {
             p2p_send_message,
             p2p_send_file,
             p2p_send_group,
+            p2p_send_call_signaling,
             p2p_get_invite_link,
             init_p2p,
             p2p_start_lan_discovery,

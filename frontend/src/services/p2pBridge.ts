@@ -17,6 +17,7 @@ import {
   getPeers,
   type P2PPeer,
 } from "./p2pService"
+import { initCallSignaling } from "./callService"
 
 // ─── Types ───
 
@@ -261,6 +262,9 @@ export async function initP2PBridge(): Promise<void> {
 
   // Auto-reconnect to known peers
   _autoConnectKnownPeers()
+
+  // Initialize call signaling listener
+  initCallSignaling()
 
   // Refresh connected peers list periodically
   _refreshConnectedPeers()

@@ -112,7 +112,13 @@
     "camera": "Camera",
     "speaker": "Speaker",
     "screenShare": "Screen sharing",
-    "screenShareFailed": "Failed to start screen sharing"
+    "screenShareFailed": "Failed to start screen sharing",
+    "connected": "Connected",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "hangup": "End call",
+    "startVideo": "Turn on camera",
+    "stopVideo": "Turn off camera"
   },
   "settings": {
     "title": "Settings",

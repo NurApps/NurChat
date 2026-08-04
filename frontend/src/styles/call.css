@@ -122,3 +122,103 @@
 .call-btn.accept { background: #43a047; width: 64px; height: 64px; }
 .call-btn.control { background: #546e7a; width: 52px; height: 52px; }
 .call-btn.control.off { background: #e53935; }
+
+/* ─── Call Overlay (in-chat) ─── */
+
+.call-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.2s ease;
+}
+
+.call-overlay-header {
+  position: absolute;
+  top: 16px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 101;
+}
+
+.call-overlay-status {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.call-overlay-timer {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.call-remote-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.call-local-video {
+  position: absolute;
+  bottom: 100px;
+  right: 16px;
+  width: 120px;
+  height: 90px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  z-index: 101;
+}
+
+.call-overlay-controls {
+  position: absolute;
+  bottom: 24px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  z-index: 101;
+}
+
+.call-control-btn {
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, transform 0.1s;
+  backdrop-filter: blur(8px);
+}
+
+.call-control-btn:hover { background: rgba(255, 255, 255, 0.25); }
+.call-control-btn:active { transform: scale(0.95); }
+.call-control-btn.active { background: rgba(229, 57, 53, 0.8); }
+.call-control-btn.hangup {
+  width: 64px;
+  height: 64px;
+  background: #e53935;
+}
+.call-control-btn.hangup:hover { background: #c62828; }

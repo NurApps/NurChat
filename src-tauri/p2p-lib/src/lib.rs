@@ -84,6 +84,26 @@ pub enum P2PMessage {
         msg_id: String,
         payload: String,
     },
+    /// WebRTC call signaling: offer/answer/candidate/hangup.
+    CallOffer {
+        from: String,
+        call_id: String,
+        sdp: String,
+    },
+    CallAnswer {
+        from: String,
+        call_id: String,
+        sdp: String,
+    },
+    CallCandidate {
+        from: String,
+        call_id: String,
+        candidate: String,
+    },
+    CallHangup {
+        from: String,
+        call_id: String,
+    },
     Ack { ok: bool },
 }
 
@@ -398,6 +418,41 @@ impl P2PNode {
                         let _ = writer_tx.send(format!("{}\n", fwd_json)).await;
                     }
                 }
+                P2PMessage::CallOffer { from, call_id, sdp } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-call-offer",
+                        "from": from,
+                        "call_id": call_id,
+                        "sdp": sdp,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
+                P2PMessage::CallAnswer { from, call_id, sdp } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-call-answer",
+                        "from": from,
+                        "call_id": call_id,
+                        "sdp": sdp,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
+                P2PMessage::CallCandidate { from, call_id, candidate } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-call-candidate",
+                        "from": from,
+                        "call_id": call_id,
+                        "candidate": candidate,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
+                P2PMessage::CallHangup { from, call_id } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-call-hangup",
+                        "from": from,
+                        "call_id": call_id,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
                 P2PMessage::Ack { .. } => {}
             }
         }
@@ -617,6 +672,11 @@ impl P2PNode {
 
         // Fallback: try relay
         self.relay_message(target, &json).await
+    }
+
+    /// Send any P2PMessage to a target peer (for signaling, etc).
+    pub async fn send_to_peer_raw(&self, target: &str, msg: &P2PMessage) -> Result<(), String> {
+        self.send_raw(target, msg).await
     }
 
     pub async fn get_port(&self) -> u16 {

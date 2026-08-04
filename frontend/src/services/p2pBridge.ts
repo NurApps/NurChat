@@ -364,6 +364,7 @@ export async function connectToUser(
   const userId = peerToUser.get(publicKeyHex)
   if (userId) {
     emit({ type: "peer_connected", data: { user_id: userId } })
+    flushMessageQueue(userId)
   }
 }
 
@@ -378,6 +379,7 @@ async function _refreshConnectedPeers(): Promise<void> {
         const userId = peerToUser.get(peerId)
         if (userId) {
           emit({ type: "peer_connected", data: { user_id: userId } })
+          flushMessageQueue(userId)
         }
       }
     }

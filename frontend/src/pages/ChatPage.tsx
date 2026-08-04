@@ -10,6 +10,8 @@ import {
   registerPeer,
   connectToUser,
   sendP2PFileMessage,
+  sendP2PTyping,
+  sendP2POnlineStatus,
 } from "../services/p2pBridge"
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts"
 import { useChatSocket } from "../hooks/useChatSocket"
@@ -181,7 +183,15 @@ export default function ChatPage() {
     const chatId = useChatStore.getState().selectedChat?.id
     if (!chatId) return
     sendTypingRaw(isTyping, chatId)
-  }, [sendTypingRaw])
+    // Also send via P2P if peer is connected
+    const chat = useChatStore.getState().selectedChat
+    if (chat && !chat.is_group && chat.participants.length === 2) {
+      const peer = chat.participants.find(p => p.id !== currentUser.id)
+      if (peer && isPeerConnected(peer.id)) {
+        sendP2PTyping(peer.id, chatId, isTyping)
+      }
+    }
+  }, [sendTypingRaw, currentUser.id])
 
   const {
     replyTo, setReplyTo, showForward, setShowForward, pinnedMessage, setPinnedMessage,
@@ -211,6 +221,8 @@ export default function ChatPage() {
     const unsub = onP2PBridgeEvent((event) => {
       if (event.type === "peer_connected" && event.data?.user_id) {
         setP2pConnected((prev) => ({ ...prev, [event.data.user_id]: true }))
+        // Broadcast online status to connected peer
+        sendP2POnlineStatus(event.data.user_id, true)
       } else if (event.type === "peer_disconnected" && event.data?.user_id) {
         setP2pConnected((prev) => {
           const next = { ...prev }
@@ -329,6 +341,27 @@ export default function ChatPage() {
             return { ...m, reactions: msgReactions }
           }))
         }
+      } else if (event.type === "typing_received" && event.data) {
+        const d = event.data
+        const chatId = d.chat_id
+        if (chatId) {
+          useChatStore.getState().setTypingUsers((prev) => ({
+            ...prev,
+            [chatId]: { ...prev[chatId], [d.sender_id]: d.is_typing }
+          }))
+          if (d.is_typing) {
+            setTimeout(() => {
+              useChatStore.getState().setTypingUsers((prev) => {
+                const chatTyping = { ...prev[chatId] }
+                delete chatTyping[d.sender_id]
+                return { ...prev, [chatId]: chatTyping }
+              })
+            }, 4000)
+          }
+        }
+      } else if (event.type === "online_status_received" && event.data) {
+        const d = event.data
+        setOnlineUsers((prev) => ({ ...prev, [d.sender_id]: d.is_online }))
       }
     })
     return unsub

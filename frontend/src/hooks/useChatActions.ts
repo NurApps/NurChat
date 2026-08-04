@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react"
 import { api } from "../services/api"
-import { sendP2PTextMessage, sendP2PGroupMessage, isPeerConnected } from "../services/p2pBridge"
+import { sendP2PTextMessage, sendP2PGroupMessage, isPeerConnected, sendP2PReaction } from "../services/p2pBridge"
 import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled } from "../services/e2e"
 import { fetchGroupKey, encryptGroupMessage } from "../services/groupE2E"
 
@@ -119,6 +119,7 @@ export function useChatActions({
 
   const handleReaction = useCallback(async (messageId: string, emoji: string, add: boolean) => {
     const peerId = currentUser.id
+    // Optimistic update
     setMessages((prev) => prev.map((m) => {
       if (m.id !== messageId) return m
       const msgReactions = { ...(m.reactions || {}) }
@@ -129,6 +130,17 @@ export function useChatActions({
       else delete msgReactions[emoji]
       return { ...m, reactions: msgReactions }
     }))
+
+    // Try P2P first for 1-on-1 chats
+    if (selectedChat && !selectedChat.is_group && selectedChat.participants.length === 2) {
+      const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
+      if (peer && isPeerConnected(peer.id)) {
+        const sent = await sendP2PReaction(peer.id, messageId, emoji, add)
+        if (sent) return
+      }
+    }
+
+    // Fallback to server API
     try {
       const serverReactions = await api.toggleReaction(messageId, emoji)
       const grouped: Record<string, string[]> = {}
@@ -138,6 +150,7 @@ export function useChatActions({
       }
       setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, reactions: grouped } : m))
     } catch {
+      // Rollback optimistic update
       setMessages((prev) => prev.map((m) => {
         if (m.id !== messageId) return m
         const msgReactions = { ...(m.reactions || {}) }
@@ -149,7 +162,7 @@ export function useChatActions({
         return { ...m, reactions: msgReactions }
       }))
     }
-  }, [currentUser.id, setMessages])
+  }, [currentUser.id, selectedChat, setMessages])
 
   const handleForward = useCallback(async (messageId: string, targetChatIds: string[]) => {
     try {

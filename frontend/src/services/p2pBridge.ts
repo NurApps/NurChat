@@ -27,6 +27,9 @@ export type P2PBridgeEvent =
   | { type: "message_received"; data: { sender_id: string; content: string; message_id?: string } }
   | { type: "group_received"; data: { sender_id: string; group_id: string; msg_id: string; content: string } }
   | { type: "file_received"; data: { sender_id: string; file_id: string; file_name: string; file_size: number; mime_type: string; file_data: Uint8Array } }
+  | { type: "reaction_received"; data: { sender_id: string; msg_id: string; emoji: string; add: boolean } }
+  | { type: "typing_received"; data: { sender_id: string; chat_id: string; is_typing: boolean } }
+  | { type: "online_status_received"; data: { sender_id: string; is_online: boolean } }
 
 type Listener = (event: P2PBridgeEvent) => void
 
@@ -257,6 +260,33 @@ export async function initP2PBridge(): Promise<void> {
 
         incomingFiles.delete(fileId)
       }
+    } else if (type === "p2p-reaction") {
+      emit({
+        type: "reaction_received",
+        data: {
+          sender_id: senderUserId,
+          msg_id: payload.msg_id as string,
+          emoji: payload.emoji as string,
+          add: payload.add as boolean,
+        },
+      })
+    } else if (type === "p2p-typing") {
+      emit({
+        type: "typing_received",
+        data: {
+          sender_id: senderUserId,
+          chat_id: payload.chat_id as string,
+          is_typing: payload.is_typing as boolean,
+        },
+      })
+    } else if (type === "p2p-online-status") {
+      emit({
+        type: "online_status_received",
+        data: {
+          sender_id: senderUserId,
+          is_online: payload.is_online as boolean,
+        },
+      })
     }
   })
 
@@ -413,6 +443,45 @@ export async function sendP2PGroupMessage(
     return true
   } catch (err) {
     console.error("[P2P Bridge] Group send failed:", err)
+    return false
+  }
+}
+
+export async function sendP2PReaction(userId: string, msgId: string, emoji: string, add: boolean): Promise<boolean> {
+  const peerId = userToPeer.get(userId)
+  if (!peerId || !connectedPeers.has(peerId)) return false
+  try {
+    const { invoke } = await import("@tauri-apps/api/core")
+    await invoke("p2p_send_reaction", { target: peerId, msgId, emoji, add })
+    return true
+  } catch (err) {
+    console.error("[P2P Bridge] Reaction send failed:", err)
+    return false
+  }
+}
+
+export async function sendP2PTyping(userId: string, chatId: string, isTyping: boolean): Promise<boolean> {
+  const peerId = userToPeer.get(userId)
+  if (!peerId || !connectedPeers.has(peerId)) return false
+  try {
+    const { invoke } = await import("@tauri-apps/api/core")
+    await invoke("p2p_send_typing", { target: peerId, chatId, isTyping })
+    return true
+  } catch (err) {
+    console.error("[P2P Bridge] Typing send failed:", err)
+    return false
+  }
+}
+
+export async function sendP2POnlineStatus(userId: string, isOnline: boolean): Promise<boolean> {
+  const peerId = userToPeer.get(userId)
+  if (!peerId || !connectedPeers.has(peerId)) return false
+  try {
+    const { invoke } = await import("@tauri-apps/api/core")
+    await invoke("p2p_send_online_status", { target: peerId, isOnline })
+    return true
+  } catch (err) {
+    console.error("[P2P Bridge] Online status send failed:", err)
     return false
   }
 }

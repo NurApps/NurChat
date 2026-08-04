@@ -314,6 +314,21 @@ export default function ChatPage() {
             }]
           })
         }
+      } else if (event.type === "reaction_received" && event.data && selectedChat) {
+        const d = event.data
+        const senderId = d.sender_id
+        if (selectedChat.participants.some(p => p.id === senderId)) {
+          setMessages((prev) => prev.map((m) => {
+            if (m.id !== d.msg_id) return m
+            const msgReactions = { ...(m.reactions || {}) }
+            const reactors = [...(msgReactions[d.emoji] || [])]
+            if (d.add) { if (!reactors.includes(senderId)) reactors.push(senderId) }
+            else { const idx = reactors.indexOf(senderId); if (idx >= 0) reactors.splice(idx, 1) }
+            if (reactors.length > 0) msgReactions[d.emoji] = reactors
+            else delete msgReactions[d.emoji]
+            return { ...m, reactions: msgReactions }
+          }))
+        }
       }
     })
     return unsub

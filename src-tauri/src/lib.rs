@@ -81,6 +81,33 @@ async fn p2p_send_call_signaling(state: State<'_, AppState>, target: String, cal
 }
 
 #[tauri::command]
+async fn p2p_send_reaction(state: State<'_, AppState>, target: String, msg_id: String, emoji: String, add: bool) -> Result<(), String> {
+    use p2p_lib::P2PMessage;
+    let p2p = state.p2p.read().await;
+    let node = p2p.as_ref().ok_or("P2P not initialized")?;
+    let from = node.get_self_peer_id().await.unwrap_or_default();
+    node.send_to_peer_raw(&target, &P2PMessage::Reaction { from, msg_id, emoji, add }).await
+}
+
+#[tauri::command]
+async fn p2p_send_typing(state: State<'_, AppState>, target: String, chat_id: String, is_typing: bool) -> Result<(), String> {
+    use p2p_lib::P2PMessage;
+    let p2p = state.p2p.read().await;
+    let node = p2p.as_ref().ok_or("P2P not initialized")?;
+    let from = node.get_self_peer_id().await.unwrap_or_default();
+    node.send_to_peer_raw(&target, &P2PMessage::Typing { from, chat_id, is_typing }).await
+}
+
+#[tauri::command]
+async fn p2p_send_online_status(state: State<'_, AppState>, target: String, is_online: bool) -> Result<(), String> {
+    use p2p_lib::P2PMessage;
+    let p2p = state.p2p.read().await;
+    let node = p2p.as_ref().ok_or("P2P not initialized")?;
+    let from = node.get_self_peer_id().await.unwrap_or_default();
+    node.send_to_peer_raw(&target, &P2PMessage::OnlineStatus { from, is_online }).await
+}
+
+#[tauri::command]
 fn p2p_get_invite_link(_state: State<'_, AppState>) -> Result<String, String> {
     // This will be called synchronously, but we need the port
     // In practice, the frontend will get the port first and construct the link
@@ -267,6 +294,9 @@ pub fn run() {
             p2p_send_file,
             p2p_send_group,
             p2p_send_call_signaling,
+            p2p_send_reaction,
+            p2p_send_typing,
+            p2p_send_online_status,
             p2p_get_invite_link,
             init_p2p,
             p2p_start_lan_discovery,

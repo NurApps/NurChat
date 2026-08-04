@@ -104,6 +104,24 @@ pub enum P2PMessage {
         from: String,
         call_id: String,
     },
+    /// Reaction to a message: add or remove emoji.
+    Reaction {
+        from: String,
+        msg_id: String,
+        emoji: String,
+        add: bool,
+    },
+    /// Typing indicator.
+    Typing {
+        from: String,
+        chat_id: String,
+        is_typing: bool,
+    },
+    /// Online status ping.
+    OnlineStatus {
+        from: String,
+        is_online: bool,
+    },
     Ack { ok: bool },
 }
 
@@ -450,6 +468,33 @@ impl P2PNode {
                         "type": "p2p-call-hangup",
                         "from": from,
                         "call_id": call_id,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
+                P2PMessage::Reaction { from, msg_id, emoji, add } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-reaction",
+                        "from": from,
+                        "msg_id": msg_id,
+                        "emoji": emoji,
+                        "add": add,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
+                P2PMessage::Typing { from, chat_id, is_typing } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-typing",
+                        "from": from,
+                        "chat_id": chat_id,
+                        "is_typing": is_typing,
+                    }))?;
+                    let _ = tx.send(app_msg);
+                }
+                P2PMessage::OnlineStatus { from, is_online } => {
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-online-status",
+                        "from": from,
+                        "is_online": is_online,
                     }))?;
                     let _ = tx.send(app_msg);
                 }

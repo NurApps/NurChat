@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from "react"
 import { api } from "../services/api"
 import { decryptMessage, isE2EEnabled, type E2EKeys } from "../services/e2e"
-import { fetchGroupKey, decryptGroupMessage } from "../services/groupE2E"
+import { fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
 import type { ChatResponse, MessageResponse, UserResponse } from "../types"
 
 interface UseChatMessagesOptions {
@@ -41,7 +41,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
           const envelope = JSON.parse(msg.encrypted_content)
           if (envelope.group_encrypted && groupKey) {
             try {
-              const plain = decryptGroupMessage(envelope.group_encrypted, groupKey)
+              const plain = await decryptGroupMessageRatcheted(envelope.group_encrypted, groupKey, chat.id)
               results.push({ ...msg, content: plain || "[не удалось расшифровать]" })
             } catch {
               results.push({ ...msg, content: "[ошибка расшифровки группы]" })

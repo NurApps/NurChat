@@ -2,7 +2,7 @@ import { useState, useCallback } from "react"
 import { api } from "../services/api"
 import { sendP2PTextMessage, sendP2PGroupMessage, isPeerConnected, sendP2PReaction } from "../services/p2pBridge"
 import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled } from "../services/e2e"
-import { fetchGroupKey, encryptGroupMessage } from "../services/groupE2E"
+import { fetchGroupKey, encryptGroupMessageRatcheted } from "../services/groupE2E"
 
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
@@ -57,7 +57,7 @@ export function useChatActions({
         if (myKeys && peer?.public_key) {
           const groupKey = await fetchGroupKey(selectedChat.id, hexToBytes(myKeys.privateKeyHex), hexToBytes(peer.public_key))
           if (groupKey) {
-            const encrypted = encryptGroupMessage(content, groupKey)
+            const encrypted = await encryptGroupMessageRatcheted(content, groupKey, selectedChat.id)
             encryptedContent = JSON.stringify({ group_encrypted: encrypted })
             content = "[encrypted]"
           }

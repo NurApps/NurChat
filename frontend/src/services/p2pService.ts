@@ -84,6 +84,10 @@ export async function sendP2PFile(target: string, fileId: string, fileName: stri
   await invoke("p2p_send_file", { target, fileId, fileName, fileData, mimeType })
 }
 
+export async function sendP2PGroup(groupId: string, msgId: string, payload: string): Promise<void> {
+  await invoke("p2p_send_group", { groupId, msgId, payload })
+}
+
 let fileUnlisten: UnlistenFn | null = null
 
 export function onP2PFileEvent(handler: (payload: Record<string, unknown>) => void): () => void {

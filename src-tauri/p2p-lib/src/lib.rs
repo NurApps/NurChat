@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::{broadcast, mpsc, RwLock};
@@ -19,7 +20,7 @@ pub struct P2PPeerInfo {
     pub port: u16,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct P2PConfig {
     pub listen_port: u16,
     pub max_peers: usize,
@@ -75,6 +76,14 @@ pub enum P2PMessage {
         from: String,
         file_id: String,
     },
+    /// Group message: sender broadcasts to all peers in the mesh.
+    /// Each peer deduplicates by msg_id and forwards to its other peers.
+    GroupDirect {
+        from: String,
+        group_id: String,
+        msg_id: String,
+        payload: String,
+    },
     Ack { ok: bool },
 }
 
@@ -89,6 +98,7 @@ pub struct P2PNode {
     config: P2PConfig,
     listener_port: Arc<RwLock<u16>>,
     self_peer_id: Arc<RwLock<Option<String>>>,
+    seen_messages: Arc<RwLock<HashMap<String, Instant>>>,
 }
 
 impl P2PNode {
@@ -101,6 +111,7 @@ impl P2PNode {
             config,
             listener_port: Arc::new(RwLock::new(0)),
             self_peer_id: Arc::new(RwLock::new(None)),
+            seen_messages: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -118,6 +129,8 @@ impl P2PNode {
         let tx = self.tx.clone();
         let max_peers = self.config.max_peers;
         let relay_enabled = self.config.relay_enabled;
+        let seen_messages = self.seen_messages.clone();
+        let self_peer_id = self.self_peer_id.clone();
 
         tokio::spawn(async move {
             loop {
@@ -127,8 +140,10 @@ impl P2PNode {
                         let peers = peers.clone();
                         let writers = writers.clone();
                         let tx = tx.clone();
+                        let seen_messages = seen_messages.clone();
+                        let self_peer_id = self_peer_id.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = Self::handle_connection(stream, peers, writers, tx, max_peers, relay_enabled).await {
+                            if let Err(e) = Self::handle_connection(stream, peers, writers, tx, max_peers, relay_enabled, seen_messages, self_peer_id).await {
                                 eprintln!("[P2P] Connection error: {}", e);
                             }
                         });
@@ -219,6 +234,8 @@ impl P2PNode {
         tx: broadcast::Sender<String>,
         max_peers: usize,
         relay_enabled: bool,
+        seen_messages: Arc<RwLock<HashMap<String, Instant>>>,
+        self_peer_id: Arc<RwLock<Option<String>>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let (reader, mut writer) = stream.into_split();
         let mut lines = BufReader::new(reader).lines();
@@ -335,6 +352,51 @@ impl P2PNode {
                         "file_id": file_id,
                     }))?;
                     let _ = tx.send(app_msg);
+                }
+                P2PMessage::GroupDirect { from, group_id, msg_id, payload } => {
+                    // Deduplication: skip if already seen
+                    {
+                        let mut seen = seen_messages.write().await;
+                        // Cleanup expired entries (>60s)
+                        let now = Instant::now();
+                        seen.retain(|_, ts| now.duration_since(*ts).as_secs() < 60);
+                        // Check and insert
+                        if seen.contains_key(&msg_id) {
+                            continue;
+                        }
+                        seen.insert(msg_id.clone(), now);
+                    }
+
+                    // Broadcast to frontend
+                    let app_msg = serde_json::to_string(&serde_json::json!({
+                        "type": "p2p-group-direct",
+                        "from": from,
+                        "group_id": group_id,
+                        "msg_id": msg_id,
+                        "payload": payload,
+                    }))?;
+                    let _ = tx.send(app_msg);
+
+                    // Forward to all other connected peers (mesh routing)
+                    let self_id = self_peer_id.read().await.clone().unwrap_or_default();
+                    let writers_snapshot: Vec<(String, mpsc::Sender<String>)> = {
+                        let writers_guard = writers.read().await;
+                        writers_guard.iter()
+                            .filter(|(pid, _)| **pid != from && **pid != self_id)
+                            .map(|(pid, w)| (pid.clone(), w.tx.clone()))
+                            .collect()
+                    };
+
+                    for (_pid, writer_tx) in writers_snapshot {
+                        let fwd = P2PMessage::GroupDirect {
+                            from: from.clone(),
+                            group_id: group_id.clone(),
+                            msg_id: msg_id.clone(),
+                            payload: payload.clone(),
+                        };
+                        let fwd_json = serde_json::to_string(&fwd).unwrap_or_default();
+                        let _ = writer_tx.send(format!("{}\n", fwd_json)).await;
+                    }
                 }
                 P2PMessage::Ack { .. } => {}
             }
@@ -465,6 +527,46 @@ impl P2PNode {
             file_id: file_id.to_string(),
         };
         self.send_raw(target, &end).await?;
+
+        Ok(())
+    }
+
+    /// Send a group message to all connected peers via TCP.
+    /// Each peer will forward to its own peers (mesh routing) with dedup.
+    pub async fn send_group(
+        &self,
+        group_id: &str,
+        msg_id: &str,
+        payload: &str,
+    ) -> Result<(), String> {
+        let from = self.get_self_peer_id().await.unwrap_or_default();
+
+        let msg = P2PMessage::GroupDirect {
+            from: from.clone(),
+            group_id: group_id.to_string(),
+            msg_id: msg_id.to_string(),
+            payload: payload.to_string(),
+        };
+
+        // Send to all connected peers
+        let writers_snapshot: Vec<(String, mpsc::Sender<String>)> = {
+            let writers = self.writers.read().await;
+            writers.iter()
+                .map(|(pid, w)| (pid.clone(), w.tx.clone()))
+                .collect()
+        };
+
+        let mut sent = 0;
+        for (_pid, writer_tx) in writers_snapshot {
+            let json = serde_json::to_string(&msg).map_err(|e| e.to_string())?;
+            if writer_tx.send(format!("{}\n", json)).await.is_ok() {
+                sent += 1;
+            }
+        }
+
+        if sent == 0 {
+            return Err("No connected peers for group message".to_string());
+        }
 
         Ok(())
     }

@@ -256,6 +256,24 @@ export default function ChatPage() {
             }]
           })
         }
+      } else if (event.type === "group_received" && event.data && selectedChat) {
+        const d = event.data
+        const senderId = d.sender_id
+        if (selectedChat.is_group && selectedChat.participants.some(p => p.id === senderId)) {
+          const msgId = d.msg_id || `p2p_group_${Date.now()}`
+          setMessages((prev) => {
+            if (prev.some(m => m.id === msgId)) return prev
+            const peer = selectedChat.participants.find(p => p.id === senderId)
+            return [...prev, {
+              id: msgId, chat_id: selectedChat.id, user_id: senderId,
+              content: d.content || "[encrypted]", message_type: "text",
+              created_at: new Date().toISOString(),
+              user: peer || currentUser, username: peer?.username || "",
+              first_name: peer?.first_name || "", is_read: true, is_deleted: false,
+              reactions: {},
+            }]
+          })
+        }
       } else if (event.type === "file_received" && event.data && selectedChat) {
         const d = event.data
         const senderId = d.sender_id

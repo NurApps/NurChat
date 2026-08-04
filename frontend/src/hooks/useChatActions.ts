@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react"
 import { api } from "../services/api"
-import { sendP2PTextMessage, isPeerConnected } from "../services/p2pBridge"
+import { sendP2PTextMessage, sendP2PGroupMessage, isPeerConnected } from "../services/p2pBridge"
 import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled } from "../services/e2e"
 import { fetchGroupKey, encryptGroupMessage } from "../services/groupE2E"
 
@@ -83,19 +83,14 @@ export function useChatActions({
       }
     }
 
-    // Group E2E via P2P TCP: send encrypted message to each connected participant
+    // Group E2E via P2P TCP mesh: send encrypted message to all connected peers at once
     if (!sentViaP2P && selectedChat.is_group && encryptedContent) {
-      const otherParticipants = selectedChat.participants.filter(p => p.id !== currentUser.id)
-      const connectedViaP2P = otherParticipants.filter(p => isPeerConnected(p.id))
+      const hasConnectedPeer = selectedChat.participants.some(p => p.id !== currentUser.id && isPeerConnected(p.id))
 
-      if (connectedViaP2P.length > 0) {
+      if (hasConnectedPeer) {
         const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`
-        let allSent = true
-        for (const peer of connectedViaP2P) {
-          const sent = sendP2PTextMessage(peer.id, msgId, encryptedContent)
-          if (!sent) allSent = false
-        }
-        sentViaP2P = allSent
+        const sent = await sendP2PGroupMessage(selectedChat.id, msgId, encryptedContent)
+        sentViaP2P = sent
         addMessage({
           id: msgId, chat_id: selectedChat.id, user_id: currentUser.id,
           content: text, message_type: "text",

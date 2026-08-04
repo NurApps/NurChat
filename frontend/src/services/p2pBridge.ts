@@ -11,6 +11,7 @@ import {
   initP2P,
   onP2PMessage,
   sendP2PFile,
+  sendP2PGroup,
   connectToPeer,
   sendP2PMessage,
   getPeers,
@@ -23,6 +24,7 @@ export type P2PBridgeEvent =
   | { type: "peer_connected"; data: { user_id: string } }
   | { type: "peer_disconnected"; data: { user_id: string } }
   | { type: "message_received"; data: { sender_id: string; content: string; message_id?: string } }
+  | { type: "group_received"; data: { sender_id: string; group_id: string; msg_id: string; content: string } }
   | { type: "file_received"; data: { sender_id: string; file_id: string; file_name: string; file_size: number; mime_type: string; file_data: Uint8Array } }
 
 type Listener = (event: P2PBridgeEvent) => void
@@ -179,17 +181,27 @@ export async function initP2PBridge(): Promise<void> {
     }
   })
 
-  // Subscribe to inbound TCP file events
+  // Subscribe to inbound TCP file and group events
   unlistenFile = onP2PFileEvent((payload) => {
     const type = payload.type as string
     const from = payload.from as string
     const senderUserId = peerToUser.get(from)
     if (!senderUserId) {
-      console.warn("[P2P Bridge] File from unknown peer:", from)
+      console.warn("[P2P Bridge] Event from unknown peer:", from)
       return
     }
 
-    if (type === "p2p-file-start") {
+    if (type === "p2p-group-direct") {
+      emit({
+        type: "group_received",
+        data: {
+          sender_id: senderUserId,
+          group_id: payload.group_id as string,
+          msg_id: payload.msg_id as string,
+          content: payload.payload as string,
+        },
+      })
+    } else if (type === "p2p-file-start") {
       const fileId = payload.file_id as string
       incomingFiles.set(fileId, {
         sender_id: senderUserId,
@@ -376,6 +388,27 @@ export async function sendP2PFileMessage(
     return true
   } catch (err) {
     console.error("[P2P Bridge] File send failed:", err)
+    return false
+  }
+}
+
+// ─── Send group message via P2P TCP ───
+
+/**
+ * Send an encrypted group message to all connected peers via TCP mesh.
+ * The message is broadcast by Rust p2p-lib to all connected peers,
+ * who then forward it to their own peers (with dedup).
+ */
+export async function sendP2PGroupMessage(
+  groupId: string,
+  msgId: string,
+  payload: string,
+): Promise<boolean> {
+  try {
+    await sendP2PGroup(groupId, msgId, payload)
+    return true
+  } catch (err) {
+    console.error("[P2P Bridge] Group send failed:", err)
     return false
   }
 }

@@ -20,6 +20,7 @@ from nacl.public import Box, PrivateKey, PublicKey
 MAX_SKIP_GAP = 2000
 MAX_SKIPPED = 1000
 PROTOCOL_VERSION = 3
+KEY_ROTATION_INTERVAL = 100
 
 
 def hkdf_extract(salt: bytes, ikm: bytes) -> bytes:
@@ -217,6 +218,10 @@ class DoubleRatchetSession:
                 self._dh_ratchet_send()
             else:
                 raise ValueError("No sending chain available")
+
+        # Force DH ratchet every KEY_ROTATION_INTERVAL messages for extra forward secrecy
+        if self.CKs is not None and self.CKs.step >= KEY_ROTATION_INTERVAL and self.CKr is not None and self.DHr is not None:
+            self._dh_ratchet_send()
 
         ad = self._associated_data()
         assert self.CKs is not None

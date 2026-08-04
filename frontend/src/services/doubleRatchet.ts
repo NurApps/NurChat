@@ -14,6 +14,7 @@ import {
 const MAX_SKIP_GAP = 2000
 const MAX_SKIPPED = 1000
 const PROTOCOL_VERSION = 3
+const KEY_ROTATION_INTERVAL = 100
 
 // ─── Helpers ───
 
@@ -290,6 +291,11 @@ export class DoubleRatchetSession {
       } else {
         throw new Error("No sending chain available — ratchet first")
       }
+    }
+
+    // Force DH ratchet every KEY_ROTATION_INTERVAL messages for extra forward secrecy
+    if (this.CKs && this.CKs.step >= KEY_ROTATION_INTERVAL && this.CKr && this.DHr) {
+      await this.dhRatchetSend()
     }
 
     if (!this.CKs) throw new Error("Sending chain still null after ratchet")

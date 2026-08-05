@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import { BASE_URL } from "../config"
-import { loadKeys, generateKeys, saveKeys, hasKeys, setupPreKeys } from "../services/e2e"
+import { loadKeys, setupPreKeys } from "../services/e2e"
 
 const TG_BLUE = "#2AABEE"
 
@@ -167,32 +167,6 @@ export default function LoginPage() {
         setError(`Relay недоступен: ${BASE_URL}`)
       } else {
         setError(msg || "Неверный username или пароль")
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleAnonymous = async () => {
-    setError("")
-    setLoading(true)
-    try {
-      let keys = loadKeys()
-      if (!keys) {
-        keys = generateKeys()
-        saveKeys(keys)
-      }
-      const res = await api.registerAnonymous(keys.publicKeyHex, keys.signingPublicHex)
-      api.setToken(res.access_token)
-      localStorage.setItem("user", JSON.stringify(res.user))
-      setupPreKeys(keys).catch(() => {})
-      navigate("/chat", { replace: true })
-    } catch (err: any) {
-      const msg = err?.message || err?.toString() || ""
-      if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED")) {
-        setError(`Relay недоступен: ${BASE_URL}`)
-      } else {
-        setError(msg || "Ошибка подключения")
       }
     } finally {
       setLoading(false)
@@ -381,29 +355,6 @@ export default function LoginPage() {
                 {tab === "register" ? "Зарегистрироваться" : "Войти"}
               </span>
             )}
-          </button>
-        </div>
-
-        {/* Divider */}
-        <div className="login-divider">
-          <div className="divider-line" />
-          <span className="divider-text">или</span>
-          <div className="divider-line" />
-        </div>
-
-        {/* Anonymous */}
-        <div className="login-actions">
-          <button
-            className="login-btn anonymous-btn"
-            disabled={loading}
-            onClick={handleAnonymous}
-          >
-            <span className="btn-content">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-              Анонимный вход
-            </span>
           </button>
         </div>
 

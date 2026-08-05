@@ -92,7 +92,7 @@ export default function SettingsPage() {
   }, [navigate])
 
   useEffect(() => {
-    setE2eEnabled(hasKeys())
+    hasKeys().then(setE2eEnabled).catch(() => setE2eEnabled(false))
     api.getStorageInfo?.().then((info: any) => setStorageInfo(info)).catch(() => {})
     platform.getAppVersion().then(setAppVersion).catch(() => setAppVersion("0.15.0"))
     loadTotpStatus()
@@ -228,9 +228,9 @@ export default function SettingsPage() {
     }
   }
 
-  const handleClearE2EKeys = () => {
+  const handleClearE2EKeys = async () => {
     if (!confirm("Вы уверены? Вы не сможете расшифровать старые сообщения.")) return
-    clearKeys()
+    await clearKeys()
     setE2eEnabled(false)
     setMsg("E2E ключи удалены")
   }

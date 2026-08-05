@@ -156,7 +156,7 @@ export default function BackupPage() {
     setCreating(true)
     setMsg("")
     try {
-      const keys = loadKeys()
+      const keys = await loadKeys()
       if (!keys) {
         setMsg("Сначала сгенерируйте E2E ключи в настройках")
         return
@@ -214,7 +214,7 @@ export default function BackupPage() {
         return
       }
 
-      saveKeys(keys)
+      await saveKeys(keys)
       setMsg("Бэкап восстановлен! Ключи обновлены.")
       setShowRestoreModal(false)
       setRestorePassword("")

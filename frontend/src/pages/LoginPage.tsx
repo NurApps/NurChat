@@ -40,9 +40,9 @@ export default function LoginPage() {
       return
     }
     api.getCurrentUser()
-      .then((user) => {
+      .then(async (user) => {
         localStorage.setItem("user", JSON.stringify(user))
-        const keys = loadKeys()
+        const keys = await loadKeys()
         if (keys) setupPreKeys(keys).catch(() => {})
         navigate("/chat", { replace: true })
       })
@@ -120,13 +120,13 @@ export default function LoginPage() {
       if (res.private_key) {
         const pubHex = res.user.public_key || ""
         const signPub = res.user.signing_public_key || ""
-        saveKeys({
+        await saveKeys({
           privateKeyHex: res.private_key,
           publicKeyHex: pubHex,
           signingPrivateHex: res.signing_private_key || "",
           signingPublicHex: signPub,
         })
-        const keys = loadKeys()
+        const keys = await loadKeys()
         if (keys) setupPreKeys(keys).catch(() => {})
       }
 
@@ -158,7 +158,7 @@ export default function LoginPage() {
       const res = await api.login(loginUsername.trim(), loginPassword)
       api.setToken(res.access_token)
       localStorage.setItem("user", JSON.stringify(res.user))
-      const keys = loadKeys()
+      const keys = await loadKeys()
       if (keys) setupPreKeys(keys).catch(() => {})
       navigate("/chat", { replace: true })
     } catch (err: any) {

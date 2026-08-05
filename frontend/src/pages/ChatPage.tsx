@@ -107,7 +107,7 @@ export default function ChatPage() {
 
   const [mentionQuery, setMentionQuery] = useState("")
   const [mentionIndex, setMentionIndex] = useState(-1)
-  const [e2eKeys] = useState<E2EKeys | null>(loadE2EKeys)
+  const [e2eKeys, setE2eKeys] = useState<E2EKeys | null>(null)
   const [keyWarning, setKeyWarning] = useState<string | null>(null)
   const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
@@ -202,6 +202,11 @@ export default function ChatPage() {
     sendTyping,
     setErrorToast: (msg) => { if (msg !== null) setErrorToast(msg) },
   })
+
+  // Load E2E keys asynchronously
+  useEffect(() => {
+    loadE2EKeys().then(setE2eKeys).catch(() => setE2eKeys(null))
+  }, [])
 
   useEffect(() => {
     loadChats()

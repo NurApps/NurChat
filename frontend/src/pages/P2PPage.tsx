@@ -17,7 +17,7 @@ export default function P2PPage() {
     const init = async () => {
       const port = await initP2P()
       const ip = await getLocalIP()
-      const keys = loadKeys()
+      const keys = await loadKeys()
       if (keys && port) {
         setInviteLink(generateInviteLink(keys.publicKeyHex, port, ip))
       }

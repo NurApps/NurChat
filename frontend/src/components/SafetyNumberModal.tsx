@@ -18,10 +18,11 @@ export default function SafetyNumberModal({ theirUserId, theirPublicKey, theirUs
   const [showQR, setShowQR] = useState(false)
 
   useEffect(() => {
-    const keys = loadKeys()
-    if (keys) {
-      generateSafetyNumber(keys.publicKeyHex, theirPublicKey).then(setSafetyNumber)
-    }
+    loadKeys().then((keys) => {
+      if (keys) {
+        generateSafetyNumber(keys.publicKeyHex, theirPublicKey).then(setSafetyNumber)
+      }
+    }).catch(() => {})
   }, [theirPublicKey])
 
   const handleCopy = () => {
@@ -33,7 +34,7 @@ export default function SafetyNumberModal({ theirUserId, theirPublicKey, theirUs
   }
 
   const handleVerify = async () => {
-    const keys = loadKeys()
+    const keys = await loadKeys()
     if (!keys || !safetyNumber) return
     const result = await verifySafetyNumber(keys.publicKeyHex, theirPublicKey, verifyInput)
     setVerified(result)

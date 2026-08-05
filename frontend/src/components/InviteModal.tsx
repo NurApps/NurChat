@@ -13,9 +13,8 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
 
   useEffect(() => {
     if (isOpen) {
-      const keys = loadKeys()
-      if (keys) {
-        ;(async () => {
+      loadKeys().then(async (keys) => {
+        if (keys) {
           try {
             const port = await initP2P()
             const ip = await getLocalIP()
@@ -23,8 +22,8 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
           } catch (err) {
             console.error("[Invite] failed to build link:", err)
           }
-        })()
-      }
+        }
+      }).catch(() => {})
     }
   }, [isOpen])
 

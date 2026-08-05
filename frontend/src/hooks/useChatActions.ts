@@ -36,7 +36,7 @@ export function useChatActions({
     let content = text
     const replyToId = replyTo?.id
 
-    const myKeys = loadE2EKeys()
+    const myKeys = await loadE2EKeys()
     let encryptedContent: string | undefined
     let signature: string | undefined
     if (myKeys && isE2EEnabled(selectedChat.participants, myKeys)) {

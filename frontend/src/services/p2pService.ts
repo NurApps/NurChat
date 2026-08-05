@@ -28,7 +28,7 @@ let messageUnlisten: (() => void) | null = null
 export async function initP2P(): Promise<number> {
   if (initialized) return myPort
   try {
-    const keys = loadKeys()
+    const keys = await loadKeys()
     const peerId = keys?.publicKeyHex
     myPort = await invoke<number>("init_p2p", { listenPort: 0, peerId })
     initialized = true

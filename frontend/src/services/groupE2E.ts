@@ -7,9 +7,18 @@
  *
  * Group ratchet: each message derives a unique message key via HKDF chain.
  * Forward secrecy: compromising the current chain key only exposes future messages.
+ *
+ * Uses @noble/curves + @noble/ciphers (audited by cure53, Sep 2024).
  */
 
-import nacl from "tweetnacl"
+import {
+  boxBefore,
+  secretboxEncrypt,
+  secretboxDecrypt,
+  secretboxNonceLength,
+  randomBytes,
+  sha512,
+} from "./cryptoAdapter"
 import { encode as base64Encode, decode as base64Decode } from "base64-arraybuffer"
 import { api } from "./api"
 
@@ -27,7 +36,7 @@ function hexToBytes(hex: string): Uint8Array {
 
 // Generate a random group key (32 bytes)
 export function generateGroupKey(): Uint8Array {
-  return nacl.randomBytes(32)
+  return randomBytes(32)
 }
 
 // Wrap group key for a participant using X25519 ECDH + secretbox
@@ -35,9 +44,9 @@ export function generateGroupKey(): Uint8Array {
 // theirPublicKey: recipient's X25519 public key (bytes, 32)
 // Returns: base64(nonce || encrypted_key)
 function wrapKeyForUser(groupKey: Uint8Array, mySecretKey: Uint8Array, theirPublicKey: Uint8Array): string {
-  const sharedSecret = nacl.box.before(theirPublicKey, mySecretKey)
-  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
-  const encrypted = nacl.secretbox(groupKey, nonce, sharedSecret)
+  const sharedSecret = boxBefore(theirPublicKey, mySecretKey)
+  const nonce = randomBytes(secretboxNonceLength)
+  const encrypted = secretboxEncrypt(groupKey, nonce, sharedSecret)
   const combined = new Uint8Array(nonce.length + encrypted.length)
   combined.set(nonce)
   combined.set(encrypted, nonce.length)
@@ -50,21 +59,21 @@ function wrapKeyForUser(groupKey: Uint8Array, mySecretKey: Uint8Array, theirPubl
 // wrappedB64: base64(nonce || encrypted_key)
 function unwrapKeyForUser(wrappedB64: string, mySecretKey: Uint8Array, theirPublicKey: Uint8Array): Uint8Array | null {
   try {
-    const sharedSecret = nacl.box.before(theirPublicKey, mySecretKey)
+    const sharedSecret = boxBefore(theirPublicKey, mySecretKey)
     const combined = new Uint8Array(base64Decode(wrappedB64))
-    const nonce = combined.subarray(0, nacl.secretbox.nonceLength)
-    const ciphertext = combined.subarray(nacl.secretbox.nonceLength)
-    return nacl.secretbox.open(ciphertext, nonce, sharedSecret) ?? null
+    const nonce = combined.subarray(0, secretboxNonceLength)
+    const ciphertext = combined.subarray(secretboxNonceLength)
+    return secretboxDecrypt(ciphertext, nonce, sharedSecret)
   } catch {
     return null
   }
 }
 
-// Encrypt message with group key using nacl.secretbox (XSalsa20-Poly1305)
+// Encrypt message with group key using secretbox (XSalsa20-Poly1305)
 export function encryptGroupMessage(content: string, groupKey: Uint8Array): string {
-  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
+  const nonce = randomBytes(secretboxNonceLength)
   const msgBytes = new TextEncoder().encode(content)
-  const ciphertext = nacl.secretbox(msgBytes, nonce, groupKey)
+  const ciphertext = secretboxEncrypt(msgBytes, nonce, groupKey)
   const result = new Uint8Array(nonce.length + ciphertext.length)
   result.set(nonce)
   result.set(ciphertext, nonce.length)
@@ -75,9 +84,9 @@ export function encryptGroupMessage(content: string, groupKey: Uint8Array): stri
 export function decryptGroupMessage(encryptedB64: string, groupKey: Uint8Array): string | null {
   try {
     const data = new Uint8Array(base64Decode(encryptedB64))
-    const nonce = data.subarray(0, nacl.secretbox.nonceLength)
-    const ciphertext = data.subarray(nacl.secretbox.nonceLength)
-    const plaintext = nacl.secretbox.open(ciphertext, nonce, groupKey)
+    const nonce = data.subarray(0, secretboxNonceLength)
+    const ciphertext = data.subarray(secretboxNonceLength)
+    const plaintext = secretboxDecrypt(ciphertext, nonce, groupKey)
     return plaintext ? new TextDecoder().decode(plaintext) : null
   } catch {
     return null
@@ -160,12 +169,12 @@ async function _groupChainNext(chainKey: Uint8Array, step: number): Promise<{ ms
 }
 
 async function _hmacDerive(key: Uint8Array, info: Uint8Array): Promise<Uint8Array> {
-  // Simple HKDF-like: extract-and-expand using NaCl
+  // Simple HKDF-like: extract-and-expand using SHA-512
   const combined = new Uint8Array(key.length + info.length)
   combined.set(key)
   combined.set(info, key.length)
   // Hash with SHA-512 then take first 32 bytes
-  const hash = nacl.hash(combined)
+  const hash = await sha512(combined)
   return hash.slice(0, 32)
 }
 
@@ -186,9 +195,9 @@ export async function encryptGroupMessageRatcheted(
   const chainKeyBytes = base64Decode(state.chainKey)
   const { msgKey, nextChain } = await _groupChainNext(chainKeyBytes, state.step)
 
-  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
+  const nonce = randomBytes(secretboxNonceLength)
   const msgBytes = new TextEncoder().encode(content)
-  const ciphertext = nacl.secretbox(msgBytes, nonce, msgKey)
+  const ciphertext = secretboxEncrypt(msgBytes, nonce, msgKey)
 
   // Envelope: step (4 bytes big-endian) || nonce || ciphertext
   const stepBytes = new Uint8Array(4)
@@ -224,10 +233,10 @@ export async function decryptGroupMessageRatcheted(
     const data = new Uint8Array(base64Decode(encryptedB64))
 
     // Parse envelope: step (4 bytes) || nonce || ciphertext
-    if (data.length < 4 + nacl.secretbox.nonceLength) return null
+    if (data.length < 4 + secretboxNonceLength) return null
     const step = new DataView(data.buffer, data.byteOffset, 4).getUint32(0, false)
-    const nonce = data.subarray(4, 4 + nacl.secretbox.nonceLength)
-    const ciphertext = data.subarray(4 + nacl.secretbox.nonceLength)
+    const nonce = data.subarray(4, 4 + secretboxNonceLength)
+    const ciphertext = data.subarray(4 + secretboxNonceLength)
 
     const states = _loadRatchetStates()
     let state = states[chatId]
@@ -240,7 +249,7 @@ export async function decryptGroupMessageRatcheted(
     const skipId = `${step}`
     if (state.skippedKeys[skipId]) {
       const msgKey = base64Decode(state.skippedKeys[skipId])
-      const plaintext = nacl.secretbox.open(ciphertext, nonce, msgKey)
+      const plaintext = secretboxDecrypt(ciphertext, nonce, msgKey)
       if (plaintext) {
         delete state.skippedKeys[skipId]
         states[chatId] = state
@@ -263,7 +272,7 @@ export async function decryptGroupMessageRatcheted(
 
       // Derive the actual message key
       const { msgKey, nextChain } = await _groupChainNext(chainKeyBytes, step)
-      const plaintext = nacl.secretbox.open(ciphertext, nonce, msgKey)
+      const plaintext = secretboxDecrypt(ciphertext, nonce, msgKey)
 
       // Advance state
       state.chainKey = base64Encode(nextChain.buffer as ArrayBuffer)

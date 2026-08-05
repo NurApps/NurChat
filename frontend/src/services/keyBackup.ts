@@ -12,8 +12,8 @@ interface BackupMeta {
   keyCount: number
 }
 
-export function exportKeys(password: string): { backup: string; meta: BackupMeta } | null {
-  const keys = loadKeys()
+export async function exportKeys(password: string): Promise<{ backup: string; meta: BackupMeta } | null> {
+  const keys = await loadKeys()
   if (!keys) return null
 
   const data = JSON.stringify(keys)
@@ -31,7 +31,7 @@ export function exportKeys(password: string): { backup: string; meta: BackupMeta
   return { backup, meta }
 }
 
-export function importKeys(backupStr: string, password: string): boolean {
+export async function importKeys(backupStr: string, password: string): Promise<boolean> {
   try {
     if (!backupStr.startsWith("NURCHAT_E2E_BACKUP_v1:")) return false
 
@@ -43,7 +43,7 @@ export function importKeys(backupStr: string, password: string): boolean {
       return false
     }
 
-    saveKeys(keys)
+    await saveKeys(keys)
     return true
   } catch {
     return false

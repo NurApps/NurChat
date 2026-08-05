@@ -9,6 +9,7 @@ import ErrorBoundary from "./components/ErrorBoundary"
 import UpdateBanner from "./components/UpdateBanner"
 import { platform } from "./services/platform"
 import { e2eWorkerService } from "./services/e2eWorkerService"
+import { initSecureStorage } from "./services/secureStorage"
 
 const LoginPage = lazy(() => import("./pages/LoginPage"))
 const ChatPage = lazy(() => import("./pages/ChatPage"))
@@ -51,6 +52,15 @@ function App() {
         console.error('[App] Failed to initialize E2E Worker:', error)
       }
     }
+
+    // Initialize secure storage (migrate from localStorage if needed)
+    initSecureStorage().then((result) => {
+      if (result.migrated) {
+        console.log('[App] Secure storage migration complete')
+      }
+    }).catch((err) => {
+      console.error('[App] Failed to init secure storage:', err)
+    })
 
     initWorker()
 

@@ -121,3 +121,9 @@ develop-eggs/
 .installed.cfg
 lib/
 lib64/
+
+# Internal planning documents
+*.plan.md
+DEVELOPMENT_PLAN.md
+CRYPTO_MILITARY_PLAN.md
+P2P_MIGRATION_PLAN.md

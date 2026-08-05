@@ -333,18 +333,6 @@ export default function ChatPage() {
               reactions: {},
             }]
           })
-            }
-            const peer = selectedChat.participants.find(p => p.id === senderId)
-            return [...prev, {
-              id: msgId, chat_id: selectedChat.id, user_id: senderId,
-              content: d.file_id, message_type: "file",
-              file_id: d.file_id,
-              created_at: new Date().toISOString(),
-              user: peer || currentUser, username: peer?.username || "",
-              first_name: peer?.first_name || "", is_read: true, is_deleted: false,
-              reactions: {},
-            }]
-          })
         }
       } else if (event.type === "reaction_received" && event.data && selectedChat) {
         const d = event.data

@@ -93,6 +93,9 @@ export const api = {
   editMessage: (messageId: string, content: string) =>
     request<MessageResponse>("PUT", `/api/chat/messages/${messageId}/edit?new_content=${encodeURIComponent(content)}`),
 
+  getEditHistory: (messageId: string) =>
+    request<{ message_id: string; current_content: string; edited_at: string | null; history: Array<{ content: string; edited_at: string }> }>("GET", `/api/chat/messages/${messageId}/edit-history`),
+
   rotateKey: (newPublicKey: string) =>
     request<{ status: string; old_key: string }>("POST", "/api/auth/profile/rotate-key", { new_public_key: newPublicKey }),
 

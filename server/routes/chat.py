@@ -500,7 +500,26 @@ async def edit_message(
         if message.user_id != user_id:
             logger.warning(f"User {user_id} tried to edit message {message_id} not owned by them")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нельзя редактировать чужое сообщение")
+
+        # Save previous content to edit_history
+        import json
+        history = []
+        if message.edit_history:
+            try:
+                history = json.loads(message.edit_history)
+            except (json.JSONDecodeError, TypeError):
+                history = []
+        history.append({
+            "content": message.content,
+            "edited_at": message.edited_at.isoformat() if message.edited_at else message.created_at.isoformat() if message.created_at else None,
+        })
+        # Keep last 50 edits max
+        if len(history) > 50:
+            history = history[-50:]
+
         message.content = new_content
+        message.edited_at = datetime.now(timezone.utc)
+        message.edit_history = json.dumps(history, ensure_ascii=False)
         db.commit()
         edit_event = {
             "event": "edit_message",
@@ -509,6 +528,7 @@ async def edit_message(
                 "chat_id": message.chat_id,
                 "new_content": new_content,
                 "edited_by": user_id,
+                "edited_at": message.edited_at.isoformat(),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         }
@@ -534,6 +554,33 @@ async def edit_message(
         logger.error(f"Edit message error: {e}")
         db.rollback()
         raise
+
+
+@router.get("/messages/{message_id}/edit-history")
+async def get_edit_history(
+    message_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """Get edit history for a message."""
+    import json
+    message = db.query(models.Message).filter(models.Message.id == message_id).first()
+    if not message:
+        raise MessageNotFoundError("Сообщение не найдено")
+
+    history = []
+    if message.edit_history:
+        try:
+            history = json.loads(message.edit_history)
+        except (json.JSONDecodeError, TypeError):
+            history = []
+
+    return {
+        "message_id": message_id,
+        "current_content": message.content,
+        "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+        "history": history,
+    }
 
 
 @router.post("/chats/{chat_id}/pin")

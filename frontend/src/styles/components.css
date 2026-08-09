@@ -242,6 +242,22 @@
   flex-shrink: 0;
 }
 
+/* Pinned messages modal */
+.pinned-modal { max-width: 480px; max-height: 70vh; }
+.pinned-list { max-height: 60vh; overflow-y: auto; }
+.pinned-item {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pinned-item:hover { background: var(--hover); }
+.pinned-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.pinned-item-user { font-weight: 600; font-size: 13px; color: var(--text-primary); }
+.pinned-item-date { font-size: 11px; color: var(--text-secondary); }
+.pinned-item-content { font-size: 14px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pinned-loading, .pinned-empty { padding: 24px; text-align: center; color: var(--text-secondary); }
+
 /* Server boot overlay */
 .server-boot-overlay {
   position: fixed;

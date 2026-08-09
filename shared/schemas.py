@@ -151,6 +151,7 @@ class MessageResponse(MessageBase):
     is_deleted: bool = False
     deleted_for_all: bool = False
     is_read: bool = False
+    edited_at: datetime | None = None
     created_at: datetime
 
 # File

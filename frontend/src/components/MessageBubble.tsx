@@ -307,6 +307,9 @@ export default function MessageBubble({
               <span className="msg-time" title={formatFull(message.created_at)}>
                 {time}
               </span>
+              {message.edited_at && (
+                <span className="msg-edited" title={t("chat.edited")}>{t("chat.editedShort")}</span>
+              )}
               {message.expires_at && (
                   <span className="msg-ephemeral" title={t("chat.expiresAt", { time: formatFull(message.expires_at) })}>
                   <span className="msg-ephemeral-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>

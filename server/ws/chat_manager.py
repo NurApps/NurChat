@@ -451,7 +451,24 @@ class ChatManager:
                 models.Message.user_id == user_id
             ).first()
             if message:
+                # Save to edit_history
+                import json
+                history = []
+                if message.edit_history:
+                    try:
+                        history = json.loads(message.edit_history)
+                    except (json.JSONDecodeError, TypeError):
+                        history = []
+                history.append({
+                    "content": message.content,
+                    "edited_at": message.edited_at.isoformat() if message.edited_at else message.created_at.isoformat() if message.created_at else None,
+                })
+                if len(history) > 50:
+                    history = history[-50:]
+
                 message.content = data["new_content"]
+                message.edited_at = datetime.now(timezone.utc)
+                message.edit_history = json.dumps(history, ensure_ascii=False)
                 db.commit()
                 logger.info(f"Message {data['message_id']} edited by {user_id}")
         except Exception as e:
@@ -467,6 +484,7 @@ class ChatManager:
                 "chat_id": data["chat_id"],
                 "new_content": data["new_content"],
                 "edited_by": user_id,
+                "edited_at": datetime.now(timezone.utc).isoformat(),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         }

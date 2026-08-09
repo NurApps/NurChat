@@ -98,7 +98,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
         m.id === data.message_id ? { ...m, is_deleted: true, deleted_for_all: data.delete_for_all || false } : m
       ))
     } else if (data._edit) {
-      setMessages((prev) => prev.map((m) => m.id === data.message_id ? { ...m, content: data.content } : m))
+      setMessages((prev) => prev.map((m) => m.id === data.message_id ? { ...m, content: data.content, edited_at: data.edited_at || m.edited_at } : m))
     } else {
       setMessages((prev) => [...prev, data])
     }

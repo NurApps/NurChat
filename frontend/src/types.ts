@@ -32,6 +32,7 @@ export interface MessageResponse {
   signature?: string
   user: UserResponse
   created_at: string
+  edited_at?: string
   is_read?: boolean
   is_deleted?: boolean
   deleted_for_all?: boolean

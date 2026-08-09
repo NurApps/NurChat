@@ -46,6 +46,7 @@ import { ChatListSkeleton, MessageListSkeleton } from "../components/Skeleton"
 import LinkPreview from "../components/LinkPreview"
 import MessageInfoModal from "../components/MessageInfoModal"
 import InviteModal from "../components/InviteModal"
+import { PinnedMessagesModal } from "../components/PinnedMessagesModal"
 import type { UserResponse, MessageResponse } from "../types"
 
 import { getDraft, saveDraft, removeDraft } from "../utils/drafts"
@@ -118,6 +119,7 @@ export default function ChatPage() {
   const [searchResults, setSearchResults] = useState<MessageResponse[]>([])
   const [searching, setSearching] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [showPinnedModal, setShowPinnedModal] = useState(false)
   const [activeCall, setActiveCall] = useState<CallInfo | null>(null)
   const [callMuted, setCallMuted] = useState(false)
   const [callVideoOff, setCallVideoOff] = useState(false)
@@ -1053,10 +1055,7 @@ export default function ChatPage() {
               {/* Messages */}
               <div className="chat-messages" ref={messagesContainerRef}>
                 {pinnedMessage && (
-                  <div className="pinned-banner" onClick={() => {
-                    const el = document.getElementById(`msg-${pinnedMessage.id}`)
-                    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
-                  }}>
+                  <div className="pinned-banner" onClick={() => setShowPinnedModal(true)}>
                     <span className="pinned-banner-icon">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L12 22" /><path d="M17 7L12 2L7 7" /></svg>
                     </span>
@@ -1295,6 +1294,17 @@ export default function ChatPage() {
       )}
       {showMessageInfo && <MessageInfoModal messageId={showMessageInfo} onClose={() => setShowMessageInfo(null)} />}
       {showInviteModal && <InviteModal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} />}
+      {showPinnedModal && selectedChat && (
+        <PinnedMessagesModal
+          chatId={selectedChat.id}
+          isOpen={showPinnedModal}
+          onClose={() => setShowPinnedModal(false)}
+          onMessageClick={(msgId) => {
+            const el = document.getElementById(`msg-${msgId}`)
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
+          }}
+        />
+      )}
     </div>
   )
 }

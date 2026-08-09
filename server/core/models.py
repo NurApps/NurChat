@@ -87,6 +87,8 @@ class Message(Base):
     is_deleted = Column(Boolean, default=False)
     deleted_for_all = Column(Boolean, default=False)
     expires_at = Column(DateTime(timezone=True), nullable=True)
+    edited_at = Column(DateTime(timezone=True), nullable=True)
+    edit_history = Column(Text, nullable=True)  # JSON array of {content, edited_at}
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="messages")

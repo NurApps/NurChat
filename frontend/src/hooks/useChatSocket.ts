@@ -91,7 +91,7 @@ export function useChatSocket({
       }
       case "edit_message": {
         if (data.message_id && data.new_content) {
-          onMessage({ ...data, _edit: true, content: data.new_content })
+          onMessage({ ...data, _edit: true, content: data.new_content, edited_at: data.edited_at })
         }
         break
       }

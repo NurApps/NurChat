@@ -95,6 +95,7 @@
 }
 
 .msg-time { font-size: 11px; color: var(--text-secondary); }
+.msg-edited { font-size: 11px; color: var(--text-secondary); margin-left: 4px; }
 
 .msg-status { font-size: 11px; line-height: 1; }
 .msg-status.read { color: var(--tg-green); }

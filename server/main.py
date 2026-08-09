@@ -35,6 +35,7 @@ from server.routes import (
     p2p,
     pins,
     stats,
+    transparency,
     webhooks,
 )
 from server.utils.file_cleanup import file_cleanup_service
@@ -146,7 +147,15 @@ app.add_middleware(
 # Глобальный обработчик исключений
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    global _error_count, _request_count
+    _error_count += 1
+    _request_count += 1
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    # Check error rate threshold
+    if _request_count > 100:
+        error_rate = (_error_count / _request_count) * 100
+        if error_rate > settings.ERROR_RATE_WARN:
+            logger.warning(f"Error rate ({error_rate:.1f}%) exceeds threshold ({settings.ERROR_RATE_WARN}%)")
     return JSONResponse(
         status_code=500,
         content={"detail": "Внутренняя ошибка сервера"},
@@ -207,16 +216,27 @@ app.include_router(audit.router, prefix="/api/audit", tags=["Audit Logs"])
 app.include_router(keys.router, prefix="/api/keys", tags=["Keys"])
 app.include_router(discovery.router, prefix="/api/discover", tags=["LAN Discovery"])
 app.include_router(webhooks.router, prefix="/api", tags=["Webhooks"])
+app.include_router(transparency.router, prefix="/api/transparency", tags=["Transparency"])
 
 # WS rate limiting: max connections per IP
 _ws_connections: dict[str, int] = {}
 WS_MAX_PER_IP = 10
 
+_error_count = 0
+_request_count = 0
+
+
 def check_ws_rate_limit(ip: str) -> bool:
+    global _request_count
+    _request_count += 1
     count = _ws_connections.get(ip, 0)
     if count >= WS_MAX_PER_IP:
         return False
     _ws_connections[ip] = count + 1
+    # Check WS connection threshold
+    total_ws = sum(_ws_connections.values())
+    if total_ws > settings.WS_CONNECTIONS_WARN:
+        logger.warning(f"WS connections ({total_ws}) exceed threshold ({settings.WS_CONNECTIONS_WARN})")
     return True
 
 def release_ws_connection(ip: str):

@@ -9,6 +9,9 @@ use tokio::sync::{broadcast, mpsc, RwLock};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
+pub mod nat;
+pub mod hole_punch;
+
 const LAN_MULTICAST_ADDR: &str = "239.255.43.21";
 const LAN_MULTICAST_PORT: u16 = 8002;
 

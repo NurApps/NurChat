@@ -121,6 +121,7 @@ class MessageCreate(BaseSchema):
     encrypted_content: str | None = None
     signature: str | None = None
     expires_at: datetime | None = None
+    sealed_sender: bool = Field(default=False, description="Message uses sealed sender (relay cannot see sender)")
 
     @field_validator('content')
     @classmethod

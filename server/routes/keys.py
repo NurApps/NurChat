@@ -12,6 +12,7 @@ from nacl.signing import VerifyKey
 from sqlalchemy.orm import Session
 
 from server.core import models
+from server.core.cache import prekey_cache
 from server.core.database import get_db
 from server.core.security import verify_token_dependency
 from server.utils.logger import logger
@@ -71,6 +72,9 @@ async def upload_signed_prekey(
     db.add(spk)
     db.commit()
 
+    prekey_cache.invalidate(f"spk:{user_id}")
+    prekey_cache.invalidate(f"bundle:{user_id}")
+
     logger.info(f"Signed pre-key uploaded for user {user_id}")
     return {"status": "ok"}
 
@@ -82,6 +86,11 @@ async def get_signed_prekey(
     token: dict = Depends(verify_token_dependency),
 ):
     """Get active signed pre-key for a user."""
+    cache_key = f"spk:{user_id}"
+    cached = prekey_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     spk = db.query(models.SignedPreKey).filter(
         models.SignedPreKey.user_id == user_id,
         models.SignedPreKey.is_active,
@@ -90,10 +99,12 @@ async def get_signed_prekey(
     if not spk:
         raise HTTPException(status_code=404, detail="No signed pre-key found")
 
-    return {
+    result = {
         "public_key": spk.public_key,
         "signature": spk.signature,
     }
+    prekey_cache.set(cache_key, result)
+    return result
 
 
 @router.post("/one-time")
@@ -116,6 +127,7 @@ async def upload_one_time_prekeys(
         keys_data.append(pub_hex)
 
     db.commit()
+    prekey_cache.invalidate(f"bundle:{user_id}")
     logger.info(f"Uploaded {count} one-time pre-keys for user {user_id}")
     return {"count": count, "keys": keys_data}
 
@@ -165,6 +177,11 @@ async def get_prekey_bundle(
     Get a pre-key bundle for X3DH session establishment.
     Returns identity key, signed pre-key, and one one-time pre-key.
     """
+    cache_key = f"bundle:{user_id}"
+    cached = prekey_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -185,14 +202,20 @@ async def get_prekey_bundle(
     if otpk:
         otpk.is_used = True
         db.commit()
+        prekey_cache.invalidate(cache_key)
 
-    return {
+    result = {
         "identity_key": user.signing_public_key or user.public_key,
         "signed_prekey": spk.public_key,
         "signed_prekey_signature": spk.signature,
         "one_time_prekey": otpk.public_key if otpk else None,
         "registration_id": int(hashlib.sha256(user.id.encode()).hexdigest()[:6], 16) & 0xFFFFFF,
     }
+
+    if not otpk:
+        prekey_cache.set(cache_key, result, ttl=10)
+
+    return result
 
 
 @router.post("/cleanup")

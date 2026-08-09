@@ -263,8 +263,11 @@ async def send_message(
         # E2E: store encrypted envelope if provided
         encrypted_content = message_data.encrypted_content
         signature = message_data.signature
+        sealed_sender = getattr(message_data, 'sealed_sender', False)
         if encrypted_content:
             message_content = "[encrypted]"
+            if sealed_sender:
+                logger.info(f"Message {message_id} sent via sealed sender (metadata protected)")
 
         message = models.Message(
             id=message_id, chat_id=chat_id, user_id=user_id,

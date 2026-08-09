@@ -2755,6 +2755,8 @@ name = "p2p-lib"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
+ "rand 0.8.6",
  "serde",
  "serde_json",
  "tokio",

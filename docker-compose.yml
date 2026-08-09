@@ -54,6 +54,21 @@ services:
     networks:
       - nurchat-network
 
+  coturn:
+    image: coturn/coturn:latest
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "49152-49200:49152-49200/udp"
+    volumes:
+      - ./infra/coturn.conf:/etc/turnserver.conf
+    restart: unless-stopped
+    command: ["-c", "/etc/turnserver.conf"]
+    networks:
+      - nurchat-network
+
 volumes:
   postgres_data:
   redis_data:

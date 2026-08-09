@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     P2P_PENDING_LIMIT: int = 500
     P2P_DISCOVERY_TTL_SECONDS: int = 300
     WEBRTC_ICE_SERVERS: str | None = None  # JSON: [{"urls":"stun:...","username":"...","credential":"..."}]
+    TURN_SERVERS: str | None = None  # JSON: [{"urls":"turn:...","username":"...","credential":"..."}]
+    TURN_USERNAME: str = "nurchat"
+    TURN_CREDENTIAL: str = "CHANGE_ME_IN_PRODUCTION"
+    STUN_SERVERS: str = "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
     CLIENT_HOST: str = "localhost"
 
     CLIENT_PORT: int = 8001
@@ -39,6 +43,10 @@ class Settings(BaseSettings):
     ENABLE_METRICS: bool = False
     LOG_LEVEL: str = "INFO"
     LOG_TO_FILE: bool = True
+
+    # Alert thresholds
+    WS_CONNECTIONS_WARN: int = 100
+    ERROR_RATE_WARN: float = 5.0
 
     @classmethod
     def settings_customise_sources(

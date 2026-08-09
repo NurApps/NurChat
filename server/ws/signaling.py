@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timezone
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -13,6 +14,8 @@ from .notifications import notification_manager
 
 logger = logging.getLogger("nurchat_ws")
 
+PENDING_MESSAGE_TTL_SECONDS = 24 * 60 * 60  # 24 hours
+
 class CallManager:
     """Менеджер звонков через WebRTC для NurChat"""
 
@@ -20,7 +23,7 @@ class CallManager:
         self.active_calls: dict[str, dict] = {}  # {call_id: call_data}
         self.user_calls: dict[str, str] = {}     # {user_id: call_id}
         self.call_websockets: dict[str, WebSocket] = {}  # {user_id: websocket}
-        self.pending_messages: dict[str, list[dict]] = {}  # {user_id: [messages]}
+        self.pending_messages: dict[str, list[dict]] = {}  # {user_id: [{"msg": ..., "ts": ...}]}
 
     async def handle_signaling(self, websocket: WebSocket, user_id: str):
         """Обработка WebRTC сигналов"""
@@ -88,9 +91,18 @@ class CallManager:
 
     async def _handle_call_request(self, user_id: str, data: dict):
         """Обработка запроса на звонок"""
-        target_user_id = data["target_user_id"]
-        call_id = data["call_id"]
+        target_user_id = data.get("target_user_id")
+        call_id = data.get("call_id")
         call_type = data.get("call_type", "audio")
+
+        if not target_user_id or not call_id:
+            await self._send_to_user(user_id, {
+                "type": "call-failed",
+                "call_id": call_id or "unknown",
+                "reason": "invalid_request",
+                "message": "Missing target_user_id or call_id"
+            })
+            return
 
         # Проверяем, что целевой пользователь существует и онлайн
         if not connection_manager.is_user_online(target_user_id):
@@ -370,18 +382,22 @@ class CallManager:
         else:
             if user_id not in self.pending_messages:
                 self.pending_messages[user_id] = []
-            self.pending_messages[user_id].append(message)
+            self.pending_messages[user_id].append({"msg": message, "ts": time.time()})
             logger.debug(f"Buffered message for {user_id} (not on calls WS yet)")
             return True
 
     async def _flush_pending_messages(self, user_id: str):
-        """Отправка буферизированных сообщений при подключении"""
+        """Отправка буферизированных сообщений при подключении (с TTL)"""
         if user_id in self.pending_messages:
+            now = time.time()
             messages = self.pending_messages.pop(user_id)
-            for msg in messages:
+            for entry in messages:
+                if now - entry["ts"] > PENDING_MESSAGE_TTL_SECONDS:
+                    logger.debug(f"Discarding expired pending message for {user_id}")
+                    continue
                 if user_id in self.call_websockets:
                     try:
-                        await self.call_websockets[user_id].send_json(msg)
+                        await self.call_websockets[user_id].send_json(entry["msg"])
                     except Exception:
                         break
 

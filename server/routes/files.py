@@ -95,7 +95,6 @@ async def upload_file(
             logger.warning(f"User {token['sub']} tried to upload file too large: {file_size} bytes")
             raise FileTooLargeError(f"Файл слишком большой. Максимум: {max_file_size} байт")
 
-        file_content = await file.read()
         user_id = token["sub"]
 
         file_info = await file_storage.save_file(file, user_id, file_type)
@@ -109,7 +108,7 @@ async def upload_file(
             filename=file.filename,
             file_path=file_path,
             file_type=file_type,
-            file_size=len(file_content),
+            file_size=file_info["file_size"],
             ttl_days=30,
             uploaded_at=now,
         )
@@ -122,7 +121,7 @@ async def upload_file(
             filename=file.filename,
             file_path=file_path,
             file_type=file_type,
-            file_size=len(file_content),
+            file_size=file_info["file_size"],
             uploaded_at=now,
             user_id=user_id,
             ttl_days=30,

@@ -1,4 +1,6 @@
 use p2p_lib::{P2PNode, P2PConfig, P2PPeerInfo};
+use p2p_lib::nat;
+use p2p_lib::hole_punch::{HolePuncher, TurnServer, PeerEndpoint};
 use tauri::{Manager, State, Emitter};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tauri::menu::{MenuBuilder};
@@ -169,6 +171,57 @@ async fn p2p_start_lan_discovery(state: State<'_, AppState>) -> Result<(), Strin
 }
 
 #[tauri::command]
+async fn p2p_detect_nat(stun_servers: Option<Vec<String>>) -> Result<nat::NatInfo, String> {
+    let servers = stun_servers.unwrap_or_else(|| {
+        vec![
+            "stun.l.google.com:19302".to_string(),
+            "stun1.l.google.com:19302".to_string(),
+        ]
+    });
+    let refs: Vec<&str> = servers.iter().map(|s| s.as_str()).collect();
+    nat::detect_nat(&refs).await
+}
+
+#[tauri::command]
+async fn p2p_hole_punch(
+    local_port: u16,
+    remote_public_ip: String,
+    remote_public_port: u16,
+    remote_peer_id: String,
+    remote_nat_type: String,
+    stun_servers: Option<Vec<String>>,
+    turn_servers_json: Option<String>,
+) -> Result<String, String> {
+    let stun = stun_servers.unwrap_or_else(|| {
+        vec![
+            "stun.l.google.com:19302".to_string(),
+            "stun1.l.google.com:19302".to_string(),
+            "stun.ekiga.net:3478".to_string(),
+        ]
+    });
+
+    let turn: Vec<TurnServer> = if let Some(json) = turn_servers_json {
+        serde_json::from_str(&json).unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    let puncher = HolePuncher::new(stun, turn);
+
+    let remote = PeerEndpoint {
+        peer_id: remote_peer_id,
+        public_ip: remote_public_ip,
+        public_port: remote_public_port,
+        nat_type: remote_nat_type,
+    };
+
+    let result = puncher.connect_with_fallback(local_port, &remote).await?;
+
+    // Return connection info (stream is kept alive by the caller via TcpStream)
+    Ok(format!("{:?}", result.method))
+}
+
+#[tauri::command]
 async fn get_local_ip() -> Result<String, String> {
     use std::net::ToSocketAddrs;
     // Determine the outbound LAN IP by connecting a UDP socket to a public
@@ -324,6 +377,8 @@ pub fn run() {
             p2p_get_invite_link,
             init_p2p,
             p2p_start_lan_discovery,
+            p2p_detect_nat,
+            p2p_hole_punch,
             get_local_ip,
             download_and_open_file,
             check_update,

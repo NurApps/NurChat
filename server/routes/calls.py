@@ -165,10 +165,15 @@ async def get_ice_servers(token: dict = Depends(verify_token_dependency)):
     import json
 
     from shared.config import settings
-    default_ice = [
-        {"urls": "stun:stun.l.google.com:19302"},
-        {"urls": "stun:stun1.l.google.com:19302"},
+
+    # Parse STUN servers
+    stun_list = [
+        {"urls": s.strip()}
+        for s in settings.STUN_SERVERS.split(",")
+        if s.strip()
     ]
+
+    # Parse custom ICE servers (takes precedence)
     if settings.WEBRTC_ICE_SERVERS:
         try:
             custom = json.loads(settings.WEBRTC_ICE_SERVERS)
@@ -176,4 +181,23 @@ async def get_ice_servers(token: dict = Depends(verify_token_dependency)):
                 return {"ice_servers": custom}
         except Exception:
             pass
-    return {"ice_servers": default_ice}
+
+    # Use TURN_SERVERS config if set, with credentials from config
+    if settings.TURN_SERVERS:
+        try:
+            turn_list = json.loads(settings.TURN_SERVERS)
+            if isinstance(turn_list, list) and len(turn_list) > 0:
+                return {"ice_servers": turn_list}
+        except Exception:
+            pass
+
+    # Fallback: build TURN entry from TURN_USERNAME/TURN_CREDENTIAL if set
+    if settings.TURN_CREDENTIAL != "CHANGE_ME_IN_PRODUCTION":
+        turn_server = {
+            "urls": ["turn:nurchat-turn:3478?transport=tcp"],
+            "username": settings.TURN_USERNAME,
+            "credential": settings.TURN_CREDENTIAL,
+        }
+        return {"ice_servers": stun_list + [turn_server]}
+
+    return {"ice_servers": stun_list}

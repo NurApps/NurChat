@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { check } from "@tauri-apps/plugin-updater"
 import { platform } from "../services/platform"
 
@@ -8,6 +9,7 @@ interface UpdateProgress {
 }
 
 export default function UpdateBanner() {
+  const { t } = useTranslation()
   const [version, setVersion] = useState<string | null>(null)
   const [dismissed, setDismissed] = useState(false)
   const [installing, setInstalling] = useState(false)
@@ -69,7 +71,7 @@ export default function UpdateBanner() {
     <div className="update-banner">
       {installing ? (
         <div className="update-banner-installing">
-          <span>Скачивание обновления {version}… {pct}%</span>
+          <span>{t("updates.downloading", { version })} {pct}%</span>
           {progress && progress.contentLength > 0 && (
             <div className="update-banner-progress">
               <div className="update-banner-progress-bar" style={{ width: `${pct}%` }} />
@@ -79,10 +81,10 @@ export default function UpdateBanner() {
         </div>
       ) : (
         <>
-          <span>Доступна новая версия {version}</span>
+          <span>{t("updates.newVersion", { version })}</span>
           <div className="update-banner-actions">
-            <button onClick={handleInstall}>Обновить</button>
-            <button onClick={() => setDismissed(true)} aria-label="Закрыть">✕</button>
+            <button onClick={handleInstall}>{t("updates.install")}</button>
+            <button onClick={() => setDismissed(true)} aria-label={t("updates.close")}>✕</button>
           </div>
         </>
       )}

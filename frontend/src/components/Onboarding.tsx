@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 
 export default function Onboarding() {
+  const { t } = useTranslation()
   const [show, setShow] = useState(false)
   const [step, setStep] = useState(0)
 
@@ -17,11 +19,11 @@ export default function Onboarding() {
   if (!show) return null
 
   const steps = [
-    { icon: "🔐", title: "1. Анонимная идентичность", desc: "Никаких паролей и почты. При первом запуске приложение создаёт пару ключей прямо на устройстве — это и есть ваш аккаунт." },
-    { icon: "💾", title: "2. Ключи — только у вас", desc: "Приватные ключи никогда не покидают устройство. Кто получит копию ключей — получит доступ к вашей переписке. Сделайте резервную копию в разделе «Бэкап»." },
-    { icon: "🔒", title: "3. E2E-шифрование", desc: "Каждое сообщение шифруется на вашем устройстве и расшифровывается только у собеседника. Relay хранит лишь зашифрованные блобы и не может прочитать содержимое." },
-    { icon: "🌐", title: "4. Общий relay", desc: "Один общий relay обслуживает всех пользователей. Вам не нужно устанавливать и настраивать собственный сервер — всё работает из коробки." },
-    { icon: "💬", title: "5. Общайтесь!", desc: "Нажмите «Подключиться» — и вы в сети. Поделитесь своим ID, чтобы друзья нашли вас." },
+    { icon: "🔐", title: t("onboarding.step1Title"), desc: t("onboarding.step1Desc") },
+    { icon: "💾", title: t("onboarding.step2Title"), desc: t("onboarding.step2Desc") },
+    { icon: "🔒", title: t("onboarding.step3Title"), desc: t("onboarding.step3Desc") },
+    { icon: "🌐", title: t("onboarding.step4Title"), desc: t("onboarding.step4Desc") },
+    { icon: "💬", title: t("onboarding.step5Title"), desc: t("onboarding.step5Desc") },
   ]
 
   return (
@@ -33,9 +35,9 @@ export default function Onboarding() {
         background: "white", borderRadius: 16, padding: 32, maxWidth: 440,
         width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
       }}>
-        <h3 style={{ margin: "0 0 4px", fontSize: 22 }}>🚀 Добро пожаловать в NurChat!</h3>
+        <h3 style={{ margin: "0 0 4px", fontSize: 22 }}>🚀 {t("onboarding.welcome")}</h3>
         <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 24px" }}>
-          Анонимный мессенджер с E2E-шифрованием через relay.
+          {t("onboarding.subtitle")}
         </p>
 
         <div style={{
@@ -61,17 +63,17 @@ export default function Onboarding() {
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={dismiss} style={{
             background: "none", border: "none", color: "#9ca3af", cursor: "pointer", padding: "8px 16px", fontSize: 14,
-          }}>Пропустить</button>
+          }}>{t("onboarding.skip")}</button>
           {step < steps.length - 1 ? (
             <button onClick={() => setStep(s => s + 1)} style={{
               background: "#2563eb", color: "white", border: "none", borderRadius: 8,
               padding: "10px 24px", fontSize: 14, cursor: "pointer", fontWeight: 600,
-            }}>Далее →</button>
+            }}>{t("chat.next")} →</button>
           ) : (
             <button onClick={dismiss} style={{
               background: "#2563eb", color: "white", border: "none", borderRadius: 8,
               padding: "10px 24px", fontSize: 14, cursor: "pointer", fontWeight: 600,
-            }}>Начать! 🎉</button>
+            }}>{t("onboarding.start")}</button>
           )}
         </div>
       </div>

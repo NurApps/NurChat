@@ -94,11 +94,17 @@ export function createSealedSenderEnvelope(
   combined.set(nonce)
   combined.set(encryptedMetadata, nonce.length)
 
-  // 6. Cleanup ephemeral secret key
-  zeroizeKeypair(ephemeralKp)
+  // 6. Extract public key BEFORE zeroizing (public key is not secret, but we need it)
+  const ephemeralPubHex = bytesToHex(ephemeralKp.publicKey)
+
+  // 7. Cleanup ephemeral secret key (zeroize secret, keep public for envelope)
+  zeroizeBytes(ephemeralKp.secretKey)
+
+  // 8. Cleanup shared secret
+  zeroizeBytes(sharedSecret)
 
   return {
-    ephemeralPubHex: bytesToHex(ephemeralKp.publicKey),
+    ephemeralPubHex,
     encryptedMetadata: btoa(String.fromCharCode(...combined)),
     messageCiphertext,
     nonceHex: bytesToHex(nonce),
@@ -150,6 +156,8 @@ export function openSealedSenderEnvelope(
 
     // 5. Cleanup sensitive data
     zeroizeBytes(myPrivateKey)
+    zeroizeBytes(ephemeralPub)
+    zeroizeBytes(sharedSecret)
 
     return {
       senderId: metadata.senderId,
@@ -222,4 +230,79 @@ function zeroizeBytes(buffer: Uint8Array | null): void {
   } catch {
     // ignore transfer errors
   }
+}
+
+// ─── Message Padding (Phase 2.2) ───
+
+/**
+ * Padding block sizes for message obfuscation.
+ * Messages are padded to the next power of 2.
+ */
+const PADDING_SIZES = [256, 512, 1024, 2048, 4096, 8192, 16384]
+
+/**
+ * Pad a message to hide its actual size from the relay.
+ * Uses PKCS7-style padding.
+ *
+ * @param data - Original message bytes
+ * @returns Padded message bytes
+ */
+export function padMessage(data: Uint8Array): Uint8Array {
+  // Find the next power of 2 that fits the data
+  let targetSize = PADDING_SIZES[0]
+  for (const size of PADDING_SIZES) {
+    if (data.length <= size) {
+      targetSize = size
+      break
+    }
+    targetSize = size
+  }
+  // If data is larger than max padding, return as-is
+  if (data.length > targetSize) {
+    return data
+  }
+
+  const paddingNeeded = targetSize - data.length
+  const padded = new Uint8Array(targetSize)
+  padded.set(data)
+  // PKCS7 padding: fill remaining bytes with padding size
+  padded.fill(paddingNeeded, data.length)
+  return padded
+}
+
+/**
+ * Remove padding from a message.
+ *
+ * @param data - Padded message bytes
+ * @returns Original message bytes
+ */
+export function unpadMessage(data: Uint8Array): Uint8Array {
+  if (!data || data.length === 0) return data
+
+  const paddingSize = data[data.length - 1]
+  if (paddingSize === 0 || paddingSize > data.length) {
+    return data
+  }
+
+  // Verify PKCS7 padding is consistent
+  for (let i = data.length - paddingSize; i < data.length; i++) {
+    if (data[i] !== paddingSize) {
+      return data // Invalid padding, return as-is
+    }
+  }
+
+  return data.slice(0, data.length - paddingSize)
+}
+
+/**
+ * Get the padded size for a given data length.
+ *
+ * @param dataLength - Original data length
+ * @returns Padded size
+ */
+export function getPaddedSize(dataLength: number): number {
+  for (const size of PADDING_SIZES) {
+    if (dataLength <= size) return size
+  }
+  return dataLength
 }

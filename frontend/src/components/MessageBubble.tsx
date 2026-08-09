@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import type { MessageResponse, UserResponse } from "../types"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
@@ -44,6 +45,7 @@ export default function MessageBubble({
   reactions = {}, onDelete, onForward, onReply, onEdit, onReaction, onViewProfile,
   onBookmark, isBookmarked = false, onPin, highlightQuery, onShowInfo,
 }: Props) {
+  const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(message.content)
@@ -107,7 +109,7 @@ export default function MessageBubble({
       </span>
     )
     if (isRead || (readCount && readCount.read > 0)) return (
-      <span className="msg-status read" title={readCount ? `${readCount.read}/${readCount.total} прочитали` : "Прочитано"}>
+      <span className="msg-status read" title={readCount ? `${readCount.read}/${readCount.total} ${t("chat.readStatus")}` : t("chat.readStatus")}>
         <svg width="16" height="10" viewBox="0 0 24 16" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="2 8 7 13 13 3"/><polyline points="11 8 16 13 22 3"/></svg>
         {readCount && readCount.total > 1 && <span className="msg-read-count">{readCount.read}/{readCount.total}</span>}
       </span>
@@ -142,8 +144,8 @@ export default function MessageBubble({
             rows={2}
           />
           <div className="msg-edit-actions">
-            <button className="msg-edit-cancel" onClick={() => { setEditText(message.content); setEditing(false) }}>Отмена</button>
-            <button className="msg-edit-save" onClick={handleEditSave}>Сохранить</button>
+            <button className="msg-edit-cancel" onClick={() => { setEditText(message.content); setEditing(false) }}>{t("common.cancel")}</button>
+            <button className="msg-edit-save" onClick={handleEditSave}>{t("common.save")}</button>
           </div>
         </div>
       )
@@ -156,12 +158,12 @@ export default function MessageBubble({
       <div className="msg-reply-wrapper">
         {replyTo && (
           <div className="msg-reply-border" onClick={() => {/* scroll to replied message */}}>
-            <span className="msg-reply-sender">{replyTo.user?.username || "Пользователь"}</span>
+            <span className="msg-reply-sender">{replyTo.user?.username || t("chat.user")}</span>
             <span className="msg-reply-text">{(replyTo.content || "").slice(0, 60)}{(replyTo.content || "").length > 60 ? "..." : ""}</span>
           </div>
         )}
         <p className="msg-text">
-          {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
+          {message.forwarded_from && <span className="msg-forwarded">⟳ {t("chat.forwarded")}</span>}
           {rendered}
         </p>
       </div>
@@ -177,7 +179,7 @@ export default function MessageBubble({
     if (mt === "image" && imageUrl) {
       return (
         <div className="msg-file">
-          {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
+          {message.forwarded_from && <span className="msg-forwarded">⟳ {t("chat.forwarded")}</span>}
           <img
             src={imageUrl}
             alt={content}
@@ -243,14 +245,14 @@ export default function MessageBubble({
     const icon = fileIcons[mt] || fileIcons.file
     return (
       <div className="msg-file" onClick={() => fileUrl && message.file_id && setMediaViewer({ type: "document", url: fileUrl, filename: content || undefined })} style={{ cursor: fileUrl ? "pointer" : undefined }}>
-        {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
+        {message.forwarded_from && <span className="msg-forwarded">⟳ {t("chat.forwarded")}</span>}
         <span className="msg-file-icon">{icon}</span>
         {message.file_id ? (
           <span className="msg-link msg-download-btn">
-            {content || "Скачать файл"}
+            {content || t("chat.download")}
           </span>
         ) : (
-          <p className="msg-text">{content || "Файл"}</p>
+          <p className="msg-text">{content || t("chat.fileLabel")}</p>
         )}
       </div>
     )
@@ -281,12 +283,12 @@ export default function MessageBubble({
     return (
       <div className="msg-delete-options">
         <button onClick={() => { onDelete?.(message.id, false); setShowDeleteOptions(false); setMenuOpen(false) }}>
-          Удалить у себя
+          {t("chat.deleteForSelf")}
         </button>
         <button onClick={() => { onDelete?.(message.id, true); setShowDeleteOptions(false); setMenuOpen(false) }}>
-          Удалить у всех
+          {t("chat.deleteForAll")}
         </button>
-        <button className="danger" onClick={() => setShowDeleteOptions(false)}>Отмена</button>
+        <button className="danger" onClick={() => setShowDeleteOptions(false)}>{t("common.cancel")}</button>
       </div>
     )
   }
@@ -295,7 +297,7 @@ export default function MessageBubble({
     <div className={`msg-bubble ${isMyMessage ? "mine" : "other"} ${(message.is_deleted || message.deleted_for_all) ? "deleted" : ""}`}>
       <div className="msg-bubble-inner">
         {(message.is_deleted || message.deleted_for_all) ? (
-          <p className="msg-text deleted"><em>Сообщение удалено</em></p>
+          <p className="msg-text deleted"><em>{t("chat.messageDeleted")}</em></p>
         ) : editing ? (
           renderContent()
         ) : (
@@ -306,7 +308,7 @@ export default function MessageBubble({
                 {time}
               </span>
               {message.expires_at && (
-                  <span className="msg-ephemeral" title={`Исчезнет ${formatFull(message.expires_at)}`}>
+                  <span className="msg-ephemeral" title={t("chat.expiresAt", { time: formatFull(message.expires_at) })}>
                   <span className="msg-ephemeral-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
                 </span>
               )}
@@ -343,22 +345,22 @@ export default function MessageBubble({
 
   const menuItems = isMyMessage
     ? [
-        { label: "Копировать", action: () => navigator.clipboard.writeText(content) },
-        { label: "Редактировать", action: () => { setEditText(message.content); setEditing(true); setMenuOpen(false) } },
-        { label: "Ответить", action: () => onReply?.(message.id) },
-        { label: "Переслать", action: () => onForward?.(message.id) },
-        { label: isBookmarked ? "Убрать из избранного" : "В избранное", action: () => onBookmark?.(message.id) },
-        { label: "Закрепить", action: () => onPin?.(message.id) },
-        { label: "Информация", action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
-        { label: "Удалить", action: () => setShowDeleteOptions(true) },
+        { label: t("chat.copy"), action: () => navigator.clipboard.writeText(content) },
+        { label: t("common.edit"), action: () => { setEditText(message.content); setEditing(true); setMenuOpen(false) } },
+        { label: t("chat.reply"), action: () => onReply?.(message.id) },
+        { label: t("chat.forward"), action: () => onForward?.(message.id) },
+        { label: isBookmarked ? t("chat.bookmarkRemove") : t("chat.bookmarkAdd"), action: () => onBookmark?.(message.id) },
+        { label: t("chat.pin"), action: () => onPin?.(message.id) },
+        { label: t("chat.info"), action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
+        { label: t("common.delete"), action: () => setShowDeleteOptions(true) },
       ]
     : [
-        { label: "Копировать", action: () => navigator.clipboard.writeText(content) },
-        { label: "Ответить", action: () => onReply?.(message.id) },
-        { label: "Переслать", action: () => onForward?.(message.id) },
-        { label: isBookmarked ? "Убрать из избранного" : "В избранное", action: () => onBookmark?.(message.id) },
-        { label: "Закрепить", action: () => onPin?.(message.id) },
-        { label: "Информация", action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
+        { label: t("chat.copy"), action: () => navigator.clipboard.writeText(content) },
+        { label: t("chat.reply"), action: () => onReply?.(message.id) },
+        { label: t("chat.forward"), action: () => onForward?.(message.id) },
+        { label: isBookmarked ? t("chat.bookmarkRemove") : t("chat.bookmarkAdd"), action: () => onBookmark?.(message.id) },
+        { label: t("chat.pin"), action: () => onPin?.(message.id) },
+        { label: t("chat.info"), action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
       ]
 
   if (!isMyMessage) {
@@ -374,13 +376,15 @@ export default function MessageBubble({
         </div>
         {bubble}
         <div className="msg-menu-area" ref={menuRef}>
-          <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="Меню сообщения">
+          <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label={t("chat.messageMenu")} aria-expanded={menuOpen} aria-haspopup="menu">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
           {menuOpen && !showDeleteOptions && (
-            <div className="msg-dropdown">
-              {menuItems.map((item) => (
-                <button key={item.label} onClick={() => { item.action(); setMenuOpen(false) }}>{item.label}</button>
+            <div className="msg-dropdown" role="menu" aria-label={t("chat.messageMenu")}>
+              {menuItems.map((item, i) => (
+                <button key={item.label} role="menuitem" tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); if (e.key === "ArrowDown" && i < menuItems.length - 1) (e.currentTarget.nextElementSibling as HTMLElement)?.focus(); if (e.key === "ArrowUp" && i > 0) (e.currentTarget.previousElementSibling as HTMLElement)?.focus() }}
+                  onClick={() => { item.action(); setMenuOpen(false) }}>{item.label}</button>
               ))}
             </div>
           )}
@@ -405,13 +409,15 @@ export default function MessageBubble({
     <div className="msg-row my-row">
       <div className="msg-spacer" />
       <div className="msg-menu-area" ref={menuRef}>
-        <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="Меню сообщения">
+        <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label={t("chat.messageMenu")} aria-expanded={menuOpen} aria-haspopup="menu">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
         </button>
         {menuOpen && !showDeleteOptions && (
-          <div className="msg-dropdown right">
-            {menuItems.map((item) => (
-              <button key={item.label} onClick={() => { item.action(); setMenuOpen(false) }}>{item.label}</button>
+          <div className="msg-dropdown right" role="menu" aria-label={t("chat.messageMenu")}>
+            {menuItems.map((item, i) => (
+              <button key={item.label} role="menuitem" tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); if (e.key === "ArrowDown" && i < menuItems.length - 1) (e.currentTarget.nextElementSibling as HTMLElement)?.focus(); if (e.key === "ArrowUp" && i > 0) (e.currentTarget.previousElementSibling as HTMLElement)?.focus() }}
+                onClick={() => { item.action(); setMenuOpen(false) }}>{item.label}</button>
             ))}
           </div>
         )}

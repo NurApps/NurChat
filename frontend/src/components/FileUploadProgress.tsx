@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 type UploadState = "idle" | "uploading" | "success" | "error"
 
 export default function FileUploadProgress({ onUploaded, onError, disabled }: Props) {
+  const { t } = useTranslation()
   const [state, setState] = useState<UploadState>("idle")
   const [progress, setProgress] = useState(0)
   const [filename, setFilename] = useState("")
@@ -39,11 +41,11 @@ export default function FileUploadProgress({ onUploaded, onError, disabled }: Pr
       }, 1500)
     } catch (e: any) {
       setState("error")
-      const msg = e.message || "Ошибка загрузки"
+      const msg = e.message || t("errors.uploadFailed")
       setErrorMsg(msg)
       onError?.(msg)
     }
-  }, [onUploaded, onError])
+  }, [onUploaded, onError, t])
 
   const handleClick = () => {
     inputRef.current?.click()
@@ -72,7 +74,7 @@ export default function FileUploadProgress({ onUploaded, onError, disabled }: Pr
           className="ch-btn"
           onClick={handleClick}
           disabled={disabled}
-          title="Прикрепить файл"
+          title={t("chat.attachFile")}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
@@ -131,7 +133,7 @@ export default function FileUploadProgress({ onUploaded, onError, disabled }: Pr
           fontSize: 13,
           textAlign: "center",
         }}>
-          ✓ Загружено
+          ✓ {t("chat.uploaded")}
         </div>
       )}
 

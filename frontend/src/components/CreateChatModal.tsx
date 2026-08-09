@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import type { UserResponse } from "../types"
 
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function CreateChatModal({ currentUserId, onCreate, onClose }: Props) {
+  const { t } = useTranslation()
   const [search, setSearch] = useState("")
   const [users, setUsers] = useState<UserResponse[]>([])
   const [loading, setLoading] = useState(true)
@@ -49,10 +51,10 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
 
   if (showNameInput) {
     return (
-      <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Новый чат" onClick={onClose}>
         <div className="modal-content" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
-            <h3>Название группы</h3>
+            <h3>{t("chat.enterGroupName")}</h3>
             <button className="modal-close" onClick={onClose}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -63,16 +65,16 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
             <input
               className="modal-text-input"
               type="text"
-              placeholder="Введите название группы"
+              placeholder={t("chat.enterGroupName")}
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
               autoFocus
             />
           </div>
           <div className="modal-footer">
-            <button className="modal-btn cancel" onClick={() => setShowNameInput(false)}>Назад</button>
+            <button className="modal-btn cancel" onClick={() => setShowNameInput(false)}>{t("chat.next")}</button>
             <button className="modal-btn primary" onClick={handleSubmit}>
-              Создать
+              {t("chat.createChatBtn")}
             </button>
           </div>
         </div>
@@ -81,10 +83,10 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Новый чат" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>Новый чат</h3>
+          <h3>{t("chat.newChat")}</h3>
           <button className="modal-close" onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -99,7 +101,7 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
             </svg>
             <input
               type="text"
-              placeholder="Поиск пользователей"
+              placeholder={t("chat.searchUsers")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               autoFocus
@@ -108,9 +110,9 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
 
           <div className="modal-user-list">
             {loading ? (
-              <div className="modal-loading">Загрузка...</div>
+              <div className="modal-loading">{t("common.loading")}</div>
             ) : filtered.length === 0 ? (
-              <div className="modal-empty">Нет доступных пользователей</div>
+              <div className="modal-empty">{t("chat.noContacts")}</div>
             ) : (
               filtered.map((user) => (
                 <div
@@ -161,13 +163,13 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
         </div>
 
         <div className="modal-footer">
-          <button className="modal-btn cancel" onClick={onClose}>Отмена</button>
+          <button className="modal-btn cancel" onClick={onClose}>{t("common.cancel")}</button>
           <button
             className="modal-btn primary"
             disabled={selectedIds.length === 0}
             onClick={handleSubmit}
           >
-            {selectedIds.length > 1 ? "Далее" : "Создать чат"}
+            {selectedIds.length > 1 ? t("chat.next") : t("chat.createChatBtn")}
           </button>
         </div>
       </div>

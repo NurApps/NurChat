@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
 import type { ChatResponse, UserResponse } from "../types"
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function GroupSettings({ chat, currentUser, onClose, onUpdated }: Props) {
+  const { t } = useTranslation()
   const [members, setMembers] = useState<GroupMember[]>([])
   const [editingName, setEditingName] = useState(false)
   const [newName, setNewName] = useState(chat.name || "")
@@ -54,7 +56,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
       setEditingName(false)
       onUpdated()
     } catch (e: any) {
-      setError(e.message || "Ошибка переименования")
+      setError(e.message || t("chat.renameError"))
     } finally {
       setLoading(false)
     }
@@ -66,7 +68,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
       loadMembers()
       onUpdated()
     } catch (e: any) {
-      setError(e.message || "Ошибка удаления участника")
+      setError(e.message || t("chat.removeMemberError"))
     }
   }
 
@@ -75,18 +77,18 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
       await api.setGroupAdmin(chat.id, userId)
       loadMembers()
     } catch (e: any) {
-      setError(e.message || "Ошибка назначения админа")
+      setError(e.message || t("chat.setAdminError"))
     }
   }
 
   const handleLeave = async () => {
-    if (!confirm("Вы уверены, что хотите выйти из группы?")) return
+    if (!confirm(t("chat.leaveGroupConfirm"))) return
     try {
       await api.leaveGroup(chat.id)
       onUpdated()
       onClose()
     } catch (e: any) {
-      setError(e.message || "Ошибка выхода из группы")
+      setError(e.message || t("chat.leaveGroupError"))
     }
   }
 
@@ -97,7 +99,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
       setShowAddMember(false)
       onUpdated()
     } catch (e: any) {
-      setError(e.message || "Ошибка добавления участника")
+      setError(e.message || t("chat.addMemberError"))
     }
   }
 
@@ -124,7 +126,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
     <div className="media-viewer-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="group-settings-modal">
         <div className="group-settings-header">
-          <h2>Настройки группы</h2>
+          <h2>{t("common.groupSettings")}</h2>
           <button className="media-viewer-close" onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -137,7 +139,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
 
           {/* Group name */}
           <div className="group-settings-section">
-            <label className="group-settings-label">Название группы</label>
+            <label className="group-settings-label">{t("group.name")}</label>
             {editingName ? (
               <div className="group-settings-rename">
                 <input
@@ -148,16 +150,16 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
                   autoFocus
                 />
                 <button className="group-settings-btn primary" onClick={handleRename} disabled={loading}>
-                  {loading ? "..." : "Сохранить"}
+                  {loading ? "..." : t("chat.save")}
                 </button>
                 <button className="group-settings-btn" onClick={() => { setEditingName(false); setNewName(chat.name || "") }}>
-                  Отмена
+                  {t("common.cancel")}
                 </button>
               </div>
             ) : (
               <div className="group-settings-name" onClick={() => isAdmin && setEditingName(true)}>
-                <span>{chat.name || "Без названия"}</span>
-                {isAdmin && <span className="group-settings-edit-hint">Нажмите, чтобы изменить</span>}
+                <span>{chat.name || t("chat.noName")}</span>
+                {isAdmin && <span className="group-settings-edit-hint">{t("group.clickToChange")}</span>}
               </div>
             )}
           </div>
@@ -165,9 +167,9 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
           {/* Members */}
           <div className="group-settings-section">
             <div className="group-settings-section-header">
-              <label className="group-settings-label">Участники ({members.length})</label>
+              <label className="group-settings-label">{t("group.members", { count: members.length })}</label>
               {isAdmin && (
-                <button className="group-settings-btn small" onClick={openAddMember}>+ Добавить</button>
+                <button className="group-settings-btn small" onClick={openAddMember}>+ {t("common.add")}</button>
               )}
             </div>
             <div className="group-settings-members">
@@ -180,9 +182,9 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
                     <div>
                       <span className="group-settings-member-name">
                         {member.first_name || member.username}
-                        {member.id === currentUser.id && <span className="group-settings-you"> (Вы)</span>}
+                        {member.id === currentUser.id && <span className="group-settings-you"> {t("group.you")}</span>}
                       </span>
-                      {member.is_admin && <span className="group-settings-admin-badge">Админ</span>}
+                      {member.is_admin && <span className="group-settings-admin-badge">{t("group.admin")}</span>}
                     </div>
                   </div>
                   {isAdmin && member.id !== currentUser.id && (
@@ -190,14 +192,14 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
                       <button
                         className="group-settings-btn tiny"
                         onClick={() => handleToggleAdmin(member.id)}
-                        title={member.is_admin ? "Снять админа" : "Назначить админом"}
+                        title={member.is_admin ? t("chat.removeAdmin") : t("chat.setAdmin")}
                       >
                         {member.is_admin ? "👤" : "⭐"}
                       </button>
                       <button
                         className="group-settings-btn tiny danger"
                         onClick={() => handleRemoveMember(member.id)}
-                        title="Удалить из группы"
+                        title={t("chat.removeFromGroup")}
                       >
                         ✕
                       </button>
@@ -211,7 +213,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
           {/* Leave group */}
           <div className="group-settings-section">
             <button className="group-settings-btn danger full" onClick={handleLeave}>
-              Выйти из группы
+              {t("group.leaveGroup")}
             </button>
           </div>
         </div>
@@ -220,10 +222,10 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
         {showAddMember && (
           <div className="media-viewer-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowAddMember(false) }}>
             <div className="group-settings-add-modal">
-              <h3>Добавить участника</h3>
+              <h3>{t("group.addMember")}</h3>
               <input
                 className="group-settings-input"
-                placeholder="Поиск по username или имени..."
+                placeholder={t("chat.searchByUsername")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 autoFocus
@@ -237,9 +239,9 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
                     <span>{u.first_name || u.username} (@{u.username})</span>
                   </div>
                 ))}
-                {filteredUsers.length === 0 && <p className="group-settings-empty">Нет пользователей для добавления</p>}
+                {filteredUsers.length === 0 && <p className="group-settings-empty">{t("group.noUsers")}</p>}
               </div>
-              <button className="group-settings-btn" onClick={() => setShowAddMember(false)}>Закрыть</button>
+              <button className="group-settings-btn" onClick={() => setShowAddMember(false)}>{t("common.close")}</button>
             </div>
           </div>
         )}

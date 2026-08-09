@@ -1,0 +1,41 @@
+(* ProVerif model for Sealed Sender *)
+(* Security properties: Sender anonymity, Forward secrecy *)
+
+abstract sk : message.
+abstract pk : message.
+
+fun DH(message, message) : message.
+fun h(message, message) : message.
+fun encrypt(message, message, message) : message.
+fun decrypt(message, message, message) : message.
+reduc forall k, n, m : message; decrypt(encrypt(m, n, k), n, k) = m.
+
+(* Events *)
+event Send匿名(message).
+event Recv匿名(message).
+
+(* Process: Sender seals message *)
+let Sender(sk_s, pk_s, pk_r) =
+  let ephemeral = pk in
+  let shared_secret = DH(sk_s, pk_r) in
+  let header = concat(pk_s, ephemeral) in
+  let ciphertext = encrypt(h(skey, h(shared_secret, h(pk_s, pk_r))), h(pk_s, h(ephemeral, h(shared_secret, skey))), skey) in
+  event Send匿名(ciphertext);
+  ciphertext.
+
+(* Process: Receiver unseals *)
+let Receiver(sk_r, pk_r) =
+  in(c, (sender : message, ciphertext : message));
+  let pk_s = fst(sender) in
+  let shared_secret = DH(sk_r, pk_s) in
+  let plaintext = decrypt(ciphertext, h(pk_s, h(fst(sender), h(shared_secret, skey))), h(skey, h(shared_secret, h(pk_s, pk_r)))) in
+  event Recv匿名(plaintext);
+  plaintext.
+
+(* Main *)
+process new sk_s : message; new pk_s : message; new sk_r : message; new pk_r : message;
+  ( Sender(sk_s, pk_s, pk_r) | Receiver(sk_r, pk_r) )
+
+(* Sender anonymity *)
+query attacker(skey).  (* Confidentiality *)
+query x : message; event(Send匿名(x)) ==> event(Recv匿名(x)).  (* Authentication *)

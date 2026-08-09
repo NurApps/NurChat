@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import type { UserResponse } from "../types"
 
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function AddContactModal({ existingContactIds, currentUserId, onAdd, onClose }: Props) {
+  const { t } = useTranslation()
   const [search, setSearch] = useState("")
   const [users, setUsers] = useState<UserResponse[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,10 +34,10 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
     : users
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={t("contacts.addContact")} onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>Добавить контакт</h3>
+          <h3>{t("contacts.addContact")}</h3>
           <button className="modal-close" onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -50,7 +52,7 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
             </svg>
             <input
               type="text"
-              placeholder="Имя пользователя"
+              placeholder={t("contacts.username")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               autoFocus
@@ -59,9 +61,9 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
 
           <div className="modal-user-list">
             {loading ? (
-              <div className="modal-loading">Загрузка...</div>
+              <div className="modal-loading">{t("common.loading")}</div>
             ) : filtered.length === 0 ? (
-              <div className="modal-empty">Нет доступных пользователей</div>
+              <div className="modal-empty">{t("contacts.noAvailable")}</div>
             ) : (
               filtered.map((user) => (
                 <div
@@ -83,7 +85,7 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
         </div>
 
         <div className="modal-footer">
-          <button className="modal-btn cancel" onClick={onClose}>Отмена</button>
+          <button className="modal-btn cancel" onClick={onClose}>{t("common.cancel")}</button>
           <button
             className="modal-btn primary"
             disabled={!selectedId}
@@ -92,7 +94,7 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
               onAdd(selectedId)
             }}
           >
-            Добавить
+            {t("common.add")}
           </button>
         </div>
       </div>

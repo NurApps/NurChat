@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 
 const EMOJI_CATEGORIES = [
   {
@@ -526,6 +527,7 @@ interface EmojiPickerProps {
 }
 
 export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
+  const { t } = useTranslation()
   const [search, setSearch] = useState("")
   const [activeCategory, setActiveCategory] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -597,7 +599,7 @@ export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
           ref={searchRef}
           className="emoji-search"
           type="text"
-          placeholder="Поиск эмодзи..."
+          placeholder={t("emoji.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -620,7 +622,7 @@ export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
               </button>
             ))}
             {filteredEmojis?.length === 0 && (
-              <p className="emoji-empty">Ничего не найдено</p>
+              <p className="emoji-empty">{t("emoji.noResults")}</p>
             )}
           </div>
         </div>

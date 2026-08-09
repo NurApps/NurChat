@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 
 interface BookmarkItem {
@@ -23,8 +24,8 @@ interface Props {
 }
 
 export default function BookmarksList({ onSelectMessage }: Props) {
+  const { t } = useTranslation()
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([])
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadBookmarks()
@@ -51,13 +52,13 @@ export default function BookmarksList({ onSelectMessage }: Props) {
     }
   }
 
-  if (loading) return <p className="list-empty">Загрузка...</p>
-  if (bookmarks.length === 0) return <p className="list-empty">Нет избранных сообщений</p>
+  if (loading) return <p className="list-empty">{t("common.loading")}</p>
+  if (bookmarks.length === 0) return <p className="list-empty">{t("bookmarks.empty")}</p>
 
   return (
     <div className="bookmarks-list">
       {bookmarks.map((bm) => {
-        const senderName = bm.message.user?.first_name || bm.message.user?.username || "Пользователь"
+        const senderName = bm.message.user?.first_name || bm.message.user?.username || t("chat.user")
         const preview = bm.message.content.length > 60
           ? bm.message.content.slice(0, 60) + "..."
           : bm.message.content
@@ -77,7 +78,7 @@ export default function BookmarksList({ onSelectMessage }: Props) {
               </div>
               <p className="bookmark-text">{preview}</p>
             </div>
-            <button className="bookmark-remove" onClick={(e) => handleRemove(bm.message_id, e)} title="Убрать из избранного">
+            <button className="bookmark-remove" onClick={(e) => handleRemove(bm.message_id, e)} title={t("bookmarks.remove")}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>

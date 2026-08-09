@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 
 interface Props {
@@ -12,6 +13,7 @@ interface ReadInfo {
 }
 
 export default function MessageInfoModal({ messageId, onClose }: Props) {
+  const { t } = useTranslation()
   const [readInfo, setReadInfo] = useState<ReadInfo | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -24,12 +26,12 @@ export default function MessageInfoModal({ messageId, onClose }: Props) {
   }, [messageId])
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={t("messageInfo.title")} onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380, padding: 24 }}>
-        <h3 style={{ marginTop: 0 }}>Информация о сообщении</h3>
+        <h3 style={{ marginTop: 0 }}>{t("messageInfo.title")}</h3>
 
         {loading ? (
-          <p style={{ textAlign: "center", color: "#888" }}>Загрузка...</p>
+          <p style={{ textAlign: "center", color: "#888" }}>{t("common.loading")}</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{
@@ -38,7 +40,7 @@ export default function MessageInfoModal({ messageId, onClose }: Props) {
               padding: 12,
             }}>
               <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>
-                ID сообщения
+                {t("messageInfo.messageId")}
               </div>
               <div style={{ fontSize: 13, fontFamily: "monospace", wordBreak: "break-all" }}>
                 {messageId}
@@ -52,10 +54,10 @@ export default function MessageInfoModal({ messageId, onClose }: Props) {
                 padding: 12,
               }}>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>
-                  Прочитали
+                  {t("messageInfo.readBy")}
                 </div>
                 <div style={{ fontSize: 13 }}>
-                  {readInfo.read_count} из {readInfo.total_participants} участников
+                  {t("messageInfo.readByCount", { count: readInfo.read_count, total: readInfo.total_participants })}
                 </div>
                 <div style={{
                   height: 4,
@@ -80,17 +82,17 @@ export default function MessageInfoModal({ messageId, onClose }: Props) {
               padding: 12,
             }}>
               <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>
-                Зашифровано
+                {t("messageInfo.encrypted")}
               </div>
               <div style={{ fontSize: 13, color: "#4CAF50" }}>
-                ✓ End-to-End шифрование
+                {t("messageInfo.endToEnd")}
               </div>
             </div>
           </div>
         )}
 
         <button className="avatar-btn" onClick={onClose} style={{ marginTop: 16, width: "100%" }}>
-          Закрыть
+          {t("common.close")}
         </button>
       </div>
     </div>

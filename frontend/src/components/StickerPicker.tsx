@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 
 const DEFAULT_PACK = {
   id: "default",
@@ -52,6 +53,7 @@ interface Props {
 }
 
 export default function StickerPicker({ onSelect }: Props) {
+  const { t } = useTranslation()
   const [packs, setPacks] = useState<StickerPack[]>(loadPacks)
   const [activeTab, setActiveTab] = useState<"frequent" | "default" | string>("frequent")
   const [showCreatePack, setShowCreatePack] = useState(false)
@@ -124,22 +126,22 @@ export default function StickerPicker({ onSelect }: Props) {
         <div className="sticker-create-pack">
           <input
             type="text"
-            placeholder="Название пака"
-            value={newPackName}
+          placeholder={t("sticker.packName")}
+          value={newPackName}
             onChange={(e) => setNewPackName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreatePack()}
             autoFocus
           />
-          <button className="sticker-create-btn" onClick={handleCreatePack}>Создать</button>
+          <button className="sticker-create-btn" onClick={handleCreatePack}>{t("sticker.create")}</button>
         </div>
       )}
 
       {editingPack && (
         <div className="sticker-pack-actions">
           <button className="sticker-pack-delete" onClick={() => { handleDeletePack(editingPack); setEditingPack(null) }}>
-            Удалить пак
+            {t("sticker.deletePack")}
           </button>
-          <button className="sticker-pack-cancel" onClick={() => setEditingPack(null)}>Отмена</button>
+          <button className="sticker-pack-cancel" onClick={() => setEditingPack(null)}>{t("common.cancel")}</button>
         </div>
       )}
 
@@ -160,13 +162,13 @@ export default function StickerPicker({ onSelect }: Props) {
           </div>
         ))}
         {activeTab === "frequent" && frequent.length === 0 && (
-          <p className="sticker-empty">Нет часто используемых стикеров</p>
+          <p className="sticker-empty">{t("sticker.noFrequent")}</p>
         )}
         {activeTab !== "frequent" && activePack && activePack.emojis.length === 0 && (
-          <p className="sticker-empty">Пак пуст. Добавьте стикеры из стандартного набора.</p>
+          <p className="sticker-empty">{t("sticker.emptyPack")}</p>
         )}
         {activeTab === "frequent" && frequent.length > 0 && (
-          <p className="sticker-hint">Нажмите на стикер, чтобы отправить. Длинное нажатие на вкладку пака — удалить.</p>
+          <p className="sticker-hint">{t("sticker.hint")}</p>
         )}
       </div>
     </div>

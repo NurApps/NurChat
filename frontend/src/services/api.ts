@@ -74,7 +74,7 @@ export const api = {
   getChatMessages: (chatId: string, skip = 0, limit = 50) =>
     request<MessageResponse[]>("GET", `/api/chat/chats/${chatId}/messages?skip=${skip}&limit=${limit}`),
 
-  sendMessage: (chatId: string, content: string, messageType = "text", fileId?: string, encryptedContent?: string, signature?: string, expiresAt?: string, replyToId?: string) =>
+  sendMessage: (chatId: string, content: string, messageType = "text", fileId?: string, encryptedContent?: string, signature?: string, expiresAt?: string, replyToId?: string, sealedSender?: boolean) =>
     request<MessageResponse>("POST", `/api/chat/chats/${chatId}/messages`, {
       chat_id: chatId,
       content,
@@ -84,6 +84,7 @@ export const api = {
       signature,
       expires_at: expiresAt,
       reply_to_id: replyToId,
+      sealed_sender: sealedSender,
     }),
 
   deleteMessage: (messageId: string, deleteForAll = false) =>

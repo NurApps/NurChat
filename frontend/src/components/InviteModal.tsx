@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { generateInviteLink, initP2P, getLocalIP } from "../services/p2pService"
 import { loadKeys } from "../services/e2e"
 
@@ -8,6 +9,7 @@ interface InviteModalProps {
 }
 
 export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
+  const { t } = useTranslation()
   const [inviteLink, setInviteLink] = useState("")
   const [copied, setCopied] = useState(false)
 
@@ -48,8 +50,8 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: "Приглашение в NurChat",
-          text: "Присоединяйся ко мне в NurChat!",
+          title: t("chat.inviteTitle"),
+          text: t("chat.inviteText"),
           url: inviteLink,
         })
       } catch {}
@@ -70,10 +72,10 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
         background: "#161b22", borderRadius: 12, padding: 24,
         maxWidth: 400, width: "90%", border: "1px solid #30363d",
       }}>
-        <h3 style={{ marginBottom: 16, fontSize: 18 }}>Пригласить друга</h3>
+        <h3 style={{ marginBottom: 16, fontSize: 18 }}>{t("chat.invite")}</h3>
         
         <p style={{ fontSize: 14, color: "#8b949e", marginBottom: 16 }}>
-          Скопируйте ссылку и отправьте другу любым способом:
+          {t("invite.description")}
         </p>
 
         {/* Invite Link */}
@@ -96,7 +98,7 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
               cursor: "pointer", fontSize: 14, fontWeight: 500,
             }}
           >
-            {copied ? "✓ Скопировано" : "Копировать"}
+            {copied ? `✓ ${t("chat.copied")}` : t("chat.copyLink")}
           </button>
           
           <button
@@ -107,7 +109,7 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
               fontSize: 14, fontWeight: 500,
             }}
           >
-            Отправить
+            {t("common.send")}
           </button>
         </div>
 
@@ -120,7 +122,7 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
             cursor: "pointer", fontSize: 14,
           }}
         >
-          Закрыть
+          {t("common.close")}
         </button>
       </div>
     </div>

@@ -49,5 +49,6 @@ class TTLCache:
         return decorator
 
 
-user_cache = TTLCache(default_ttl=300)
-chat_cache = TTLCache(default_ttl=300)
+user_cache = TTLCache(default_ttl=60)
+chat_cache = TTLCache(default_ttl=30)
+prekey_cache = TTLCache(default_ttl=30)

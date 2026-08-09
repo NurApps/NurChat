@@ -20,6 +20,7 @@ function hexToBytes(hex: string): Uint8Array {
 export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions) {
   const [messages, setMessages] = useState<MessageResponse[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
@@ -61,6 +62,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   }, [e2eKeys, currentUser.id])
 
   const loadMessages = useCallback(async (chat: ChatResponse) => {
+    setInitialLoading(true)
     try {
       const msgs = await api.getChatMessages(chat.id, 0, 50)
       const decrypted = await decryptMessages(msgs, chat)
@@ -68,6 +70,8 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
       setHasMore(decrypted.length >= 50)
     } catch (e) {
       console.error("Load messages failed:", e)
+    } finally {
+      setInitialLoading(false)
     }
   }, [decryptMessages])
 
@@ -113,7 +117,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   }, [])
 
   return {
-    messages, setMessages, loadingMore, hasMore, containerRef, endRef,
+    messages, setMessages, loadingMore, initialLoading, hasMore, containerRef, endRef,
     loadMessages, loadMore, handleWsMessage, addMessage, updateMessage, removeMessage, setHasMore,
   }
 }

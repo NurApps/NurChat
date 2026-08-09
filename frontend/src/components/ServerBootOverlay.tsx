@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { BASE_URL } from "../config"
 
 interface Props {
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export default function ServerBootOverlay({ onReady }: Props) {
+  const { t } = useTranslation()
   const [phase, setPhase] = useState<"checking" | "ready" | "failed">("checking")
   const [dots, setDots] = useState("")
   const [elapsed, setElapsed] = useState(0)
@@ -19,11 +21,11 @@ export default function ServerBootOverlay({ onReady }: Props) {
         onReady()
       } else {
         setPhase("failed")
-        setErrorMsg(`Relay ответил с кодом ${res.status}`)
+        setErrorMsg(t("errors.relayResponded", { status: res.status }))
       }
     } catch {
       setPhase("failed")
-      setErrorMsg("Relay недоступен по сети")
+      setErrorMsg(t("errors.relayUnavailable"))
     }
   }, [onReady])
 
@@ -65,20 +67,20 @@ export default function ServerBootOverlay({ onReady }: Props) {
         {phase === "failed" ? (
           <>
             <div className="server-boot-icon error">✕</div>
-            <h2>Relay недоступен</h2>
+            <h2>{t("serverBoot.relayUnavailable")}</h2>
             <p className="server-boot-error">{errorMsg}</p>
             <p className="server-boot-hint">
-              Подключение к: <code>{BASE_URL}</code>
+              {t("serverBoot.connectingTo")} <code>{BASE_URL}</code>
             </p>
             <div className="server-boot-actions">
-              <button onClick={handleRetry}>Повторить</button>
+              <button onClick={handleRetry}>{t("common.retry")}</button>
             </div>
           </>
         ) : (
           <>
             <div className="spinner" />
-            <h2>Подключение к relay{dots}</h2>
-            <p>Пожалуйста, подождите ({elapsed}с)</p>
+            <h2>{t("serverBoot.connectingToRelay", { dots })}</h2>
+            <p>{t("serverBoot.pleaseWait", { elapsed })}</p>
             <p className="server-boot-hint">
               Relay: <code>{BASE_URL}</code>
             </p>

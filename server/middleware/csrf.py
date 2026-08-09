@@ -101,8 +101,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         from starlette.responses import Response
 
-        # Generate a new CSRF token for all requests
-        new_token = self._generate_token()
+        # Reuse existing valid CSRF token, or generate new one
+        existing_token = request.cookies.get(self.cookie_name)
+        if existing_token and self._validate_token(existing_token):
+            new_token = existing_token
+        else:
+            new_token = self._generate_token()
 
         # Process the request
         response = await call_next(request)
@@ -113,7 +117,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 key=self.cookie_name,
                 value=new_token,
                 max_age=int(self.token_lifetime.total_seconds()),
-                httponly=True,
+                httponly=False,  # JS must read cookie for X-CSRF-Token header
                 secure=not settings.DEBUG,
                 samesite="lax",
                 path="/",

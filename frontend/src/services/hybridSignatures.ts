@@ -1,16 +1,16 @@
 /**
  * Hybrid Signatures for NurChat — Phase 4: Post-Quantum Cryptography
  *
- * Combines Ed25519 with ML-DSA (Dilithium) for post-quantum security.
+ * Combines Ed25519 with ML-DSA-65 (FIPS 204, Dilithium) for post-quantum security.
  * Both signatures are required for key bundles.
  *
  * Protocol:
  * 1. Sign message with Ed25519
- * 2. Sign message with ML-DSA
+ * 2. Sign message with ML-DSA-65
  * 3. Bundle both signatures
  * 4. Verify: both signatures must be valid
  *
- * Uses @noble/curves for Ed25519 and WebCrypto for ML-DSA (when available).
+ * Uses @noble/curves for Ed25519 and @oqs/liboqs-js (WASM) for ML-DSA-65.
  */
 
 import {
@@ -20,6 +20,7 @@ import {
   randomBytes,
   type EdKeyPair,
 } from "./cryptoAdapter"
+import { createMLDSA65, type MLDSA65 } from "@oqs/liboqs-js"
 
 // ─── Types ───
 
@@ -67,27 +68,34 @@ const MLDSA_65_SIG_SIZE = 3309
  */
 const HYBRID_SIGNATURE_VERSION = 1
 
-// ─── ML-DSA Implementation (WebCrypto fallback) ───
+// ─── ML-DSA Implementation (liboqs WASM) ───
 
 /**
- * Generate ML-DSA-65 keypair.
- * Uses WebCrypto for key generation.
+ * ML-DSA-65 instance (singleton, lazy-loaded).
+ * Uses @oqs/liboqs-js WASM bindings to liboqs.
+ */
+let mldsaInstance: MLDSA65 | null = null
+
+/**
+ * Get or create ML-DSA-65 instance.
+ */
+async function getMLDSA65(): Promise<MLDSA65> {
+  if (!mldsaInstance) {
+    mldsaInstance = await createMLDSA65()
+  }
+  return mldsaInstance
+}
+
+/**
+ * Generate ML-DSA-65 keypair (FIPS 204, Dilithium65).
+ * Real lattice-based post-quantum signatures.
  *
- * NOTE: This is a simplified implementation.
- * For production, use liboqs or @noble/postcrypt when stable.
- *
- * @returns ML-DSA keypair
+ * @returns ML-DSA keypair (1952B public, 4032B secret)
  */
 export async function mldsaKeyGen(): Promise<MLDSAKeyPair> {
-  // Generate random seeds
-  const skSeed = randomBytes(64)
-  const pkSeed = randomBytes(32)
-
-  // Derive keys using HKDF
-  const sk = await deriveMLDSAKey(skSeed, "mldsa-sk")
-  const vk = await deriveMLDSAKey(pkSeed, "mldsa-vk")
-
-  return { vk, sk }
+  const sig = await getMLDSA65()
+  const { publicKey, secretKey } = sig.generateKeyPair()
+  return { vk: publicKey, sk: secretKey }
 }
 
 /**
@@ -95,20 +103,15 @@ export async function mldsaKeyGen(): Promise<MLDSAKeyPair> {
  * Signs a message with the signing key.
  *
  * @param message - Message to sign
- * @param sk - Signing key
- * @returns Signature
+ * @param sk - Signing key (4032B)
+ * @returns Signature (3309B)
  */
 export async function mldsaSign(
   message: Uint8Array,
   sk: Uint8Array,
 ): Promise<Uint8Array> {
-  // Simplified — real ML-DSA uses lattice operations
-  const input = new Uint8Array(sk.length + message.length)
-  input.set(sk)
-  input.set(message, sk.length)
-
-  const sig = await deriveMLDSAKey(input, "mldsa-sig")
-  return sig.subarray(0, MLDSA_65_SIG_SIZE)
+  const sig = await getMLDSA65()
+  return sig.sign(message, sk)
 }
 
 /**
@@ -116,8 +119,8 @@ export async function mldsaSign(
  * Verifies a signature against message and verification key.
  *
  * @param message - Original message
- * @param signature - Signature to verify
- * @param vk - Verification key
+ * @param signature - Signature to verify (3309B)
+ * @param vk - Verification key (1952B)
  * @returns true if signature is valid
  */
 export async function mldsaVerify(
@@ -125,22 +128,18 @@ export async function mldsaVerify(
   signature: Uint8Array,
   vk: Uint8Array,
 ): Promise<boolean> {
-  // Simplified — real ML-DSA uses lattice operations
-  // In production, this would verify the lattice-based signature
-  const input = new Uint8Array(vk.length + message.length)
-  input.set(vk)
-  input.set(message, vk.length)
+  const sig = await getMLDSA65()
+  return sig.verify(signature, message, vk)
+}
 
-  const expectedSig = await deriveMLDSAKey(input, "mldsa-sig")
-  const expected = expectedSig.subarray(0, MLDSA_65_SIG_SIZE)
-
-  // Constant-time comparison
-  if (signature.length !== expected.length) return false
-  let diff = 0
-  for (let i = 0; i < signature.length; i++) {
-    diff |= signature[i] ^ expected[i]
+/**
+ * Destroy ML-DSA-65 instance (free WASM memory).
+ */
+export async function destroyMLDSA(): Promise<void> {
+  if (mldsaInstance) {
+    mldsaInstance.destroy()
+    mldsaInstance = null
   }
-  return diff === 0
 }
 
 // ─── Hybrid Signature Operations ───
@@ -308,15 +307,6 @@ export function deserializeHybridSignature(data: Uint8Array): HybridSignature | 
 }
 
 // ─── Helpers ───
-
-/**
- * Derive ML-DSA key from seed.
- */
-async function deriveMLDSAKey(seed: Uint8Array, label: string): Promise<Uint8Array> {
-  const info = new TextEncoder().encode(label)
-  const prk = await hkdfExtract(new Uint8Array(32), seed)
-  return hkdfExpand(prk, info, 32)
-}
 
 /**
  * HKDF extract

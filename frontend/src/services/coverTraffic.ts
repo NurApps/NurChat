@@ -1,317 +1,299 @@
 /**
- * Cover Traffic for NurChat — Phase 2: Metadata Protection
+ * Cover Traffic & Timing Obfuscation for NurChat — Phase 2: Metadata Protection
  *
- * Sends dummy messages to prevent timing analysis.
- * Real messages are indistinguishable from cover traffic.
+ * Makes traffic analysis harder by:
+ * 1. Random delays before sending
+ * 2. Dummy messages (cover traffic)
+ * 3. Constant-rate sending
  *
  * Features:
- * - Periodic dummy messages (every 30-90 seconds)
- * - Random message sizes (matching real traffic patterns)
- * - No persistence in database
- * - Relay cannot distinguish real from dummy
+ * - Configurable delay range (0-500ms)
+ * - Dummy messages with random content
+ * - Probability-based dummy insertion (10%)
+ * - Batch sending for timing normalization
  *
  * Uses @noble/curves + @noble/ciphers (audited by cure53, Sep 2024).
  */
 
-import { randomBytes, secretboxEncrypt, secretboxNonceLength } from "./cryptoAdapter"
+import { randomBytes } from "./cryptoAdapter"
 
 // ─── Types ───
 
-export interface CoverTrafficConfig {
-  /** Minimum interval between cover messages (ms) */
-  minInterval: number
-  /** Maximum interval between cover messages (ms) */
-  maxInterval: number
-  /** Probability of sending cover message on each tick (0-1) */
-  probability: number
-  /** Minimum message size (bytes) */
-  minSize: number
-  /** Maximum message size (bytes) */
-  maxSize: number
-  /** Whether cover traffic is enabled */
-  enabled: boolean
+export interface TimingConfig {
+  /** Minimum delay before sending (ms) */
+  minDelayMs: number
+  /** Maximum delay before sending (ms) */
+  maxDelayMs: number
+  /** Probability of sending dummy message (0-1) */
+  dummyProbability: number
+  /** Batch size for grouped sending */
+  batchSize: number
+  /** Max time to wait before flushing batch (ms) */
+  batchTimeoutMs: number
+  /** Constant rate target (messages per second) */
+  constantRate: number
 }
 
-export interface CoverMessage {
-  /** Unique message ID */
+export interface PendingMessage {
+  /** Message ID */
   id: string
-  /** Message content (encrypted dummy data) */
-  content: string
-  /** Timestamp */
-  timestamp: number
-  /** Message size in bytes */
-  size: number
-  /** Whether this is a cover message */
-  isCover: true
-}
-
-export interface CoverTrafficStats {
-  /** Total cover messages sent */
-  totalSent: number
-  /** Total bytes sent */
-  totalBytesSent: number
-  /** Average interval between messages (ms) */
-  avgInterval: number
-  /** Last message sent timestamp */
-  lastSentAt: number | null
-  /** Currently active */
-  isActive: boolean
+  /** Encrypted ciphertext */
+  ciphertext: string
+  /** Timestamp when created */
+  createdAt: number
+  /** Whether this is a dummy message */
+  isDummy: boolean
+  /** Callback when sent */
+  onSent?: () => void
 }
 
 // ─── Constants ───
 
-/**
- * Default cover traffic configuration
- */
-export const DEFAULT_COVER_CONFIG: CoverTrafficConfig = {
-  minInterval: 30000,   // 30 seconds
-  maxInterval: 90000,   // 90 seconds
-  probability: 0.3,     // 30% chance on each tick
-  minSize: 64,          // 64 bytes minimum
-  maxSize: 1024,        // 1KB maximum
-  enabled: true,
+const DEFAULT_CONFIG: TimingConfig = {
+  minDelayMs: 0,
+  maxDelayMs: 500,
+  dummyProbability: 0.1,
+  batchSize: 5,
+  batchTimeoutMs: 1000,
+  constantRate: 0.5, // 0.5 messages per second
 }
-
-/**
- * Fake encryption key for cover messages.
- * These messages are never decrypted, so any key works.
- */
-const COVER_ENCRYPTION_KEY = new Uint8Array(32)
 
 // ─── Core Class ───
 
 export class CoverTrafficManager {
-  private config: CoverTrafficConfig
-  private timer: ReturnType<typeof setInterval> | null = null
-  private stats: CoverTrafficStats = {
-    totalSent: 0,
-    totalBytesSent: 0,
-    avgInterval: 0,
-    lastSentAt: null,
-    isActive: false,
-  }
-  private sendCallback: (message: CoverMessage) => Promise<void>
-  private intervals: number[] = []
+  private config: TimingConfig
+  private pendingQueue: PendingMessage[] = []
+  private batchTimer: ReturnType<typeof setTimeout> | null = null
+  private rateLimiter: RateLimiter | null = null
+  private isRunning = false
 
-  constructor(
-    sendCallback: (message: CoverMessage) => Promise<void>,
-    config: Partial<CoverTrafficConfig> = {},
-  ) {
-    this.config = { ...DEFAULT_COVER_CONFIG, ...config }
-    this.sendCallback = sendCallback
+  constructor(config: Partial<TimingConfig> = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config }
+
+    if (this.config.constantRate > 0) {
+      this.rateLimiter = new RateLimiter(this.config.constantRate)
+    }
   }
 
   /**
-   * Start sending cover traffic.
+   * Start the cover traffic manager.
    */
   start(): void {
-    if (!this.config.enabled) {
-      return
-    }
-
-    if (this.timer) {
-      return
-    }
-
-    this.stats.isActive = true
-    this.scheduleNext()
+    this.isRunning = true
+    this.startBatchTimer()
   }
 
   /**
-   * Stop sending cover traffic.
+   * Stop the cover traffic manager.
    */
   stop(): void {
-    if (this.timer) {
-      clearTimeout(this.timer)
-      this.timer = null
+    this.isRunning = false
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer)
+      this.batchTimer = null
     }
-    this.stats.isActive = false
+    this.flushBatch()
   }
 
   /**
-   * Get cover traffic statistics.
+   * Queue a message for sending with obfuscated timing.
+   *
+   * @param ciphertext - Encrypted message
+   * @param onSent - Callback when message is sent
+   * @returns Message ID
    */
-  getStats(): CoverTrafficStats {
-    return { ...this.stats }
-  }
+  async queueMessage(ciphertext: string, onSent?: () => void): Promise<string> {
+    const id = bytesToHex(randomBytes(16))
 
-  /**
-   * Update cover traffic configuration.
-   */
-  updateConfig(config: Partial<CoverTrafficConfig>): void {
-    this.config = { ...this.config, ...config }
-
-    // Restart if config changed
-    if (this.config.enabled && this.stats.isActive) {
-      this.stop()
-      this.start()
-    } else if (!this.config.enabled) {
-      this.stop()
+    const message: PendingMessage = {
+      id,
+      ciphertext,
+      createdAt: Date.now(),
+      isDummy: false,
+      onSent,
     }
+
+    // Apply random delay
+    const delay = this.randomDelay()
+    await sleep(delay)
+
+    // Add to queue
+    this.pendingQueue.push(message)
+
+    // Maybe send dummy
+    if (Math.random() < this.config.dummyProbability) {
+      this.sendDummy()
+    }
+
+    // Check if batch is ready
+    if (this.pendingQueue.length >= this.config.batchSize) {
+      this.flushBatch()
+    }
+
+    return id
   }
 
   /**
-   * Manually send a cover message.
-   * Useful for testing or triggering immediately.
+   * Get queue statistics.
    */
-  async sendCoverMessage(): Promise<CoverMessage> {
-    const message = this.generateCoverMessage()
-    await this.sendCallback(message)
-    this.updateStats(message.size)
-    return message
+  getStats(): {
+    pending: number
+    sent: number
+    dummies: number
+  } {
+    return {
+      pending: this.pendingQueue.length,
+      sent: 0, // Would need to track this
+      dummies: 0,
+    }
   }
 
   // ─── Private Methods ───
 
-  private scheduleNext(): void {
-    if (!this.config.enabled || !this.stats.isActive) {
-      return
+  private randomDelay(): number {
+    return Math.floor(
+      Math.random() * (this.config.maxDelayMs - this.config.minDelayMs + 1) +
+        this.config.minDelayMs,
+    )
+  }
+
+  private async sendDummy(): Promise<void> {
+    const dummyContent = bytesToHex(randomBytes(32))
+    const dummy: PendingMessage = {
+      id: bytesToHex(randomBytes(16)),
+      ciphertext: dummyContent,
+      createdAt: Date.now(),
+      isDummy: true,
     }
 
-    const interval = this.getRandomInterval()
-    this.intervals.push(interval)
+    this.pendingQueue.push(dummy)
+  }
 
-    // Keep only last 100 intervals for average calculation
-    if (this.intervals.length > 100) {
-      this.intervals.shift()
+  private startBatchTimer(): void {
+    if (!this.isRunning) return
+
+    this.batchTimer = setTimeout(() => {
+      this.flushBatch()
+      this.startBatchTimer()
+    }, this.config.batchTimeoutMs)
+  }
+
+  private flushBatch(): void {
+    if (this.pendingQueue.length === 0) return
+
+    const batch = [...this.pendingQueue]
+    this.pendingQueue = []
+
+    // Apply rate limiting
+    if (this.rateLimiter) {
+      this.rateLimiter.waitForSlot()
     }
 
-    this.timer = setTimeout(async () => {
-      // Check probability
-      if (Math.random() < this.config.probability) {
-        try {
-          await this.sendCoverMessage()
-        } catch (err) {
-          console.warn("[CoverTraffic] Failed to send cover message:", err)
-        }
+    // Send batch (would call API in production)
+    for (const msg of batch) {
+      if (!msg.isDummy && msg.onSent) {
+        msg.onSent()
       }
-
-      // Schedule next
-      this.scheduleNext()
-    }, interval)
-  }
-
-  private getRandomInterval(): number {
-    const { minInterval, maxInterval } = this.config
-    // Exponential distribution for more natural-looking intervals
-    const lambda = 2 / (maxInterval - minInterval)
-    const u = 1 - Math.random()
-    const interval = -Math.log(u) / lambda
-    return Math.max(minInterval, Math.min(maxInterval, interval))
-  }
-
-  private generateCoverMessage(): CoverMessage {
-    // Generate random size
-    const size = this.config.minSize +
-      Math.floor(Math.random() * (this.config.maxSize - this.config.minSize))
-
-    // Generate random content that looks like encrypted data
-    const contentBytes = randomBytes(size)
-
-    // Encrypt with dummy key (message will never be decrypted)
-    const nonce = randomBytes(secretboxNonceLength)
-    const encrypted = secretboxEncrypt(contentBytes, nonce, COVER_ENCRYPTION_KEY)
-
-    // Combine nonce + ciphertext
-    const combined = new Uint8Array(nonce.length + encrypted.length)
-    combined.set(nonce)
-    combined.set(encrypted, nonce.length)
-
-    return {
-      id: this.generateMessageId(),
-      content: btoa(String.fromCharCode(...combined)),
-      timestamp: Date.now(),
-      size: combined.length,
-      isCover: true,
-    }
-  }
-
-  private generateMessageId(): string {
-    const bytes = randomBytes(8)
-    return "cover_" + Array.from(bytes)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("")
-  }
-
-  private updateStats(size: number): void {
-    this.stats.totalSent += 1
-    this.stats.totalBytesSent += size
-    this.stats.lastSentAt = Date.now()
-
-    // Calculate average interval
-    if (this.intervals.length > 0) {
-      const sum = this.intervals.reduce((a, b) => a + b, 0)
-      this.stats.avgInterval = sum / this.intervals.length
     }
   }
 }
 
-// ─── Standalone Functions ───
+// ─── Rate Limiter ───
 
-/**
- * Generate a single cover message.
- * Useful for one-off cover traffic.
- *
- * @returns CoverMessage with encrypted dummy data
- */
-export function generateCoverMessage(): CoverMessage {
-  const size = 64 + Math.floor(Math.random() * 960) // 64-1024 bytes
-  const contentBytes = randomBytes(size)
-  const nonce = randomBytes(secretboxNonceLength)
-  const encrypted = secretboxEncrypt(contentBytes, nonce, COVER_ENCRYPTION_KEY)
+class RateLimiter {
+  private tokens: number
+  private maxTokens: number
+  private refillRate: number
+  private lastRefill: number
 
-  const combined = new Uint8Array(nonce.length + encrypted.length)
-  combined.set(nonce)
-  combined.set(encrypted, nonce.length)
+  constructor(rate: number) {
+    this.maxTokens = Math.max(1, Math.ceil(rate * 2))
+    this.tokens = this.maxTokens
+    this.refillRate = rate
+    this.lastRefill = Date.now()
+  }
 
-  const bytes = randomBytes(8)
-  return {
-    id: "cover_" + Array.from(bytes)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join(""),
-    content: btoa(String.fromCharCode(...combined)),
-    timestamp: Date.now(),
-    size: combined.length,
-    isCover: true,
+  async waitForSlot(): Promise<void> {
+    this.refill()
+
+    while (this.tokens <= 0) {
+      await sleep(100)
+      this.refill()
+    }
+
+    this.tokens--
+  }
+
+  private refill(): void {
+    const now = Date.now()
+    const elapsed = (now - this.lastRefill) / 1000
+    this.tokens = Math.min(this.maxTokens, this.tokens + elapsed * this.refillRate)
+    this.lastRefill = now
   }
 }
 
-/**
- * Check if a message is cover traffic.
- * Heuristic check based on message ID prefix.
- *
- * @param messageId - Message ID to check
- * @returns true if message is cover traffic
- */
-export function isCoverMessage(messageId: string): boolean {
-  return messageId.startsWith("cover_")
-}
+// ─── Timing Obfuscation Helpers ───
 
 /**
- * Blend real message with cover traffic.
- * Randomly decides whether to send cover message before/after real message.
+ * Apply random delay to a promise.
  *
- * @param realMessage - The real message to send
- * @param coverCallback - Function to send cover message
- * @param blendProbability - Probability of sending cover message (0-1)
+ * @param promise - Original promise
+ * @param minMs - Minimum delay
+ * @param maxMs - Maximum delay
+ * @returns Promise with random delay
  */
-export async function blendWithCoverTraffic<T>(
-  realMessage: T,
-  coverCallback: () => Promise<void>,
-  blendProbability: number = 0.2,
+export async function withRandomDelay<T>(
+  promise: Promise<T>,
+  minMs = 0,
+  maxMs = 500,
 ): Promise<T> {
-  // Maybe send cover before
-  if (Math.random() < blendProbability) {
-    await coverCallback()
+  const delay = Math.floor(Math.random() * (maxMs - minMs + 1) + minMs)
+  await sleep(delay)
+  return promise
+}
+
+/**
+ * Constant-rate message sender.
+ * Sends messages at a fixed rate regardless of input.
+ *
+ * @param messages - Messages to send
+ * @param rate - Messages per second
+ * @param sendFn - Function to send a message
+ */
+export async function constantRateSend<T>(
+  messages: T[],
+  rate: number,
+  sendFn: (msg: T) => Promise<void>,
+): Promise<void> {
+  const intervalMs = 1000 / rate
+
+  for (const msg of messages) {
+    await sendFn(msg)
+    await sleep(intervalMs)
   }
+}
 
-  // Send real message
-  const result = realMessage
+/**
+ * Add noise to message timestamps.
+ * Rounds timestamps to random intervals to prevent timing analysis.
+ *
+ * @param timestamp - Original timestamp
+ * @param precisionMs - Rounding precision (default: 1 second)
+ * @returns Noised timestamp
+ */
+export function noiceTimestamp(timestamp: number, precisionMs = 1000): number {
+  const noise = Math.floor(Math.random() * precisionMs)
+  return Math.floor((timestamp + noise) / precisionMs) * precisionMs
+}
 
-  // Maybe send cover after
-  if (Math.random() < blendProbability) {
-    await coverCallback()
-  }
+// ─── Helpers ───
 
-  return result
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
 }

@@ -1,7 +1,9 @@
 import { Component, type ReactNode, type ErrorInfo } from "react"
+import { useTranslation } from "react-i18next"
 
 interface Props {
   children: ReactNode
+  t: (key: string) => string
 }
 
 interface State {
@@ -9,7 +11,7 @@ interface State {
   error?: Error
 }
 
-export default class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundaryInner extends Component<Props, State> {
   state: State = { hasError: false }
 
   static getDerivedStateFromError(error: Error): State {
@@ -28,15 +30,20 @@ export default class ErrorBoundary extends Component<Props, State> {
           height: "100vh", padding: 32, textAlign: "center", background: "#f9fafb", color: "#111827",
         }}>
           <h1 style={{ fontSize: 48, margin: 0 }}>💥</h1>
-          <h2 style={{ margin: "16px 0 8px" }}>Что-то пошло не так</h2>
+          <h2 style={{ margin: "16px 0 8px" }}>{this.props.t("errors.somethingWentWrong")}</h2>
           <p style={{ color: "#6b7280", margin: "0 0 24px" }}>{this.state.error?.message}</p>
           <button onClick={() => window.location.reload()} style={{
             background: "#2563eb", color: "white", border: "none", borderRadius: 8,
             padding: "12px 24px", fontSize: 14, cursor: "pointer", fontWeight: 600,
-          }}>Перезагрузить</button>
+          }}>{this.props.t("errors.reload")}</button>
         </div>
       )
     }
     return this.props.children
   }
+}
+
+export default function ErrorBoundary({ children }: { children: ReactNode }) {
+  const { t } = useTranslation()
+  return <ErrorBoundaryInner t={t}>{children}</ErrorBoundaryInner>
 }

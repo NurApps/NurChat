@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { BASE_URL } from "../config"
 import { loadKeys, setupPreKeys } from "../services/e2e"
@@ -10,6 +11,7 @@ type Tab = "register" | "login"
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [checking, setChecking] = useState(true)
   const [tab, setTab] = useState<Tab>("register")
   const [loading, setLoading] = useState(false)
@@ -64,42 +66,42 @@ export default function LoginPage() {
       setCaptchaQuestion(res.question)
       setCaptchaAnswer("")
     } catch {
-      setCaptchaQuestion("Загрузка CAPTCHA...")
+      setCaptchaQuestion(t("auth.captchaLoading"))
     }
   }
 
   const handleRegister = async () => {
     setError("")
     if (!firstName.trim() || firstName.trim().length < 2) {
-      setError("Имя должно содержать минимум 2 символа")
+      setError(t("auth.firstNameMinLength"))
       return
     }
     if (!username.trim()) {
-      setError("Введите username")
+      setError(t("auth.enterUsername"))
       return
     }
     if (password.length < 8) {
-      setError("Пароль должен содержать минимум 8 символов")
+      setError(t("auth.passwordMinLength"))
       return
     }
     if (!/[A-Z]/.test(password)) {
-      setError("Пароль должен содержать заглавную латинскую букву")
+      setError(t("auth.passwordUpperCase"))
       return
     }
     if (!/[a-z]/.test(password)) {
-      setError("Пароль должен содержать строчную латинскую букву")
+      setError(t("auth.passwordLowerCase"))
       return
     }
     if (!/\d/.test(password)) {
-      setError("Пароль должен содержать хотя бы одну цифру")
+      setError(t("auth.passwordDigit"))
       return
     }
     if (password !== passwordConfirm) {
-      setError("Пароли не совпадают")
+      setError(t("auth.passwordsMismatch"))
       return
     }
     if (!captchaAnswer.trim()) {
-      setError("Решите CAPTCHA")
+      setError(t("auth.solveCaptcha"))
       return
     }
 
@@ -134,12 +136,12 @@ export default function LoginPage() {
     } catch (err: any) {
       const msg = err?.message || err?.toString() || ""
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED")) {
-        setError(`Relay недоступен: ${BASE_URL}`)
+        setError(`${t("errors.network")}: ${BASE_URL}`)
       } else if (msg.includes("CAPTCHA")) {
-        setError("Неверная CAPTCHA")
+        setError(t("auth.wrongCaptcha"))
         fetchCaptcha()
       } else {
-        setError(msg || "Ошибка регистрации")
+        setError(msg || t("auth.registerError"))
       }
     } finally {
       setLoading(false)
@@ -149,7 +151,7 @@ export default function LoginPage() {
   const handleLogin = async () => {
     setError("")
     if (!loginUsername.trim() || !loginPassword) {
-      setError("Заполните все поля")
+      setError(t("auth.fillAllFields"))
       return
     }
 
@@ -164,9 +166,9 @@ export default function LoginPage() {
     } catch (err: any) {
       const msg = err?.message || err?.toString() || ""
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED")) {
-        setError(`Relay недоступен: ${BASE_URL}`)
+        setError(`${t("errors.network")}: ${BASE_URL}`)
       } else {
-        setError(msg || "Неверный username или пароль")
+        setError(msg || t("auth.wrongCredentials"))
       }
     } finally {
       setLoading(false)
@@ -191,7 +193,7 @@ export default function LoginPage() {
             </svg>
           </div>
           <h1 className="login-title">NurChat</h1>
-          <p className="login-subtitle">Безопасный мессенджер с E2E-шифрованием</p>
+          <p className="login-subtitle">{t("auth.subtitle")}</p>
         </div>
 
         {/* Tabs */}
@@ -200,13 +202,13 @@ export default function LoginPage() {
             className={`auth-tab ${tab === "register" ? "active" : ""}`}
             onClick={() => { setTab("register"); setError("") }}
           >
-            Регистрация
+            {t("auth.register")}
           </button>
           <button
             className={`auth-tab ${tab === "login" ? "active" : ""}`}
             onClick={() => { setTab("login"); setError("") }}
           >
-            Вход
+            {t("auth.login")}
           </button>
         </div>
 
@@ -219,7 +221,7 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type="text"
-                placeholder="Имя *"
+                placeholder={t("auth.firstNamePlaceholder")}
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
               />
@@ -231,7 +233,7 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type="text"
-                placeholder="Фамилия (необязательно)"
+                placeholder={t("auth.lastNamePlaceholder")}
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
               />
@@ -243,7 +245,7 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type="text"
-                placeholder="Username *"
+                placeholder={t("auth.usernamePlaceholder")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
@@ -255,7 +257,7 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type={showPassword ? "text" : "password"}
-                placeholder="Пароль * (8+ символов, A-Z, a-z, 0-9)"
+                placeholder={t("auth.passwordPlaceholder")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -275,7 +277,7 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type={showPassword ? "text" : "password"}
-                placeholder="Повторите пароль *"
+                placeholder={t("auth.passwordConfirmPlaceholder")}
                 value={passwordConfirm}
                 onChange={(e) => setPasswordConfirm(e.target.value)}
               />
@@ -288,7 +290,7 @@ export default function LoginPage() {
                 <input
                   className="login-input captcha-input"
                   type="text"
-                  placeholder="Ответ"
+                  placeholder={t("auth.captchaAnswer")}
                   value={captchaAnswer}
                   onChange={(e) => setCaptchaAnswer(e.target.value)}
                 />
@@ -321,7 +323,7 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type={showPassword ? "text" : "password"}
-                placeholder="Пароль"
+                placeholder={t("auth.loginPasswordPlaceholder")}
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
               />
@@ -348,11 +350,11 @@ export default function LoginPage() {
             {loading ? (
               <span className="btn-loading">
                 <span className="spinner" />
-                {tab === "register" ? "Регистрация..." : "Вход..."}
+                {tab === "register" ? t("auth.registering") : t("auth.loggingIn")}
               </span>
             ) : (
               <span className="btn-content">
-                {tab === "register" ? "Зарегистрироваться" : "Войти"}
+                {tab === "register" ? t("auth.registerBtn") : t("auth.loginBtn")}
               </span>
             )}
           </button>

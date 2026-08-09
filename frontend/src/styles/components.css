@@ -770,3 +770,76 @@
   font-size: 12px;
   color: #ffe0e0;
 }
+
+/* Offline banner */
+.offline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--error);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* ─── Skeleton Loading ─── */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-variant) 25%, var(--hover) 50%, var(--surface-variant) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.skeleton-chat-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.skeleton-chat-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+}
+
+.skeleton-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.skeleton-msg-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.skeleton-msg-row.mine {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.skeleton-msg-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 10px 14px;
+  min-width: 120px;
+}
+
+.skeleton-msg-row.mine .skeleton-msg-bubble {
+  background: var(--msg-mine-bg, #dcf8c6);
+}

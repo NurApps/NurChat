@@ -49,15 +49,8 @@ class FileStorage:
         return user_dir
 
     async def save_file(self, file: UploadFile, user_id: str, file_type: str) -> dict:
-        """Сохранение файла на сервер"""
-        # Проверка размера файла
-        # Перемещаем указатель в начало файла перед чтением
+        """Сохранение файла на сервер (стриминг по чанкам)"""
         await file.seek(0)
-        content = await file.read()
-        file_size = len(content)
-
-        if file_size > self.max_file_size:
-            raise FileTooLargeError(f"Файл слишком большой. Максимум: {self.max_file_size} байт")
 
         # Генерация уникального имени файла
         file_id = SecurityManager.generate_file_id()
@@ -68,9 +61,20 @@ class FileStorage:
         user_dir = self.get_user_directory(user_id, file_type)
         file_path = user_dir / filename
 
-        # Сохранение файла
+        # Стриминговая запись по чанкам (64 КБ)
+        chunk_size = 64 * 1024
+        file_size = 0
         async with aiofiles.open(file_path, "wb") as f:
-            await f.write(content)
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+                file_size += len(chunk)
+                if file_size > self.max_file_size:
+                    await f.close()
+                    file_path.unlink(missing_ok=True)
+                    raise FileTooLargeError(f"Файл слишком большой. Максимум: {self.max_file_size} байт")
+                await f.write(chunk)
 
         return {
             "file_id": file_id,

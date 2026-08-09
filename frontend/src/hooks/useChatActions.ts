@@ -1,8 +1,10 @@
 import { useState, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { sendP2PTextMessage, sendP2PGroupMessage, isPeerConnected, sendP2PReaction, sendP2PMessageEdit, sendP2PMessageDelete } from "../services/p2pBridge"
 import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled } from "../services/e2e"
 import { fetchGroupKey, encryptGroupMessageRatcheted } from "../services/groupE2E"
+import { createSealedSenderEnvelope, type SealedSenderEnvelope } from "../services/sealedSender"
 
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
@@ -26,6 +28,7 @@ interface UseChatActionsOptions {
 export function useChatActions({
   currentUser, selectedChat, addMessage, setMessages, loadChats, sendTyping, setErrorToast,
 }: UseChatActionsOptions) {
+  const { t } = useTranslation()
   const [replyTo, setReplyTo] = useState<MessageResponse | null>(null)
   const [showForward, setShowForward] = useState<string | null>(null)
   const [pinnedMessage, setPinnedMessage] = useState<MessageResponse | null>(null)
@@ -105,7 +108,27 @@ export function useChatActions({
 
     if (!sentViaP2P) {
       try {
-        const msg = await api.sendMessage(selectedChat.id, content, "text", undefined, encryptedContent, signature, undefined, replyToId)
+        // Wrap in sealed sender for metadata protection (relay can't see sender)
+        let sealedPayload: string | undefined
+        if (encryptedContent && !selectedChat.is_group) {
+          const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
+          if (peer?.public_key) {
+            const sealed = createSealedSenderEnvelope(peer.public_key, currentUser.id, encryptedContent)
+            sealedPayload = JSON.stringify(sealed)
+          }
+        }
+
+        const msg = await api.sendMessage(
+          selectedChat.id,
+          content,
+          "text",
+          undefined,
+          sealedPayload || encryptedContent,
+          signature,
+          undefined,
+          replyToId,
+          sealedPayload ? true : undefined, // sealed_sender flag
+        )
         addMessage(msg)
         loadChats()
       } catch (e) { console.error("Send failed:", e) }
@@ -171,10 +194,10 @@ export function useChatActions({
       await api.forwardMessage(messageId, targetChatIds)
       setShowForward(null)
     } catch (e) {
-      setErrorToast("Не удалось переслать сообщение")
+      setErrorToast(t("errors.forwardFailed"))
       console.error("Forward failed:", e)
     }
-  }, [setErrorToast])
+  }, [setErrorToast, t])
 
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
     // Try P2P first for 1-on-1 chats
@@ -192,10 +215,10 @@ export function useChatActions({
       await api.editMessage(messageId, newContent)
       setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, content: newContent } : m))
     } catch (e) {
-      setErrorToast("Не удалось отредактировать")
+      setErrorToast(t("errors.editFailed"))
       console.error("Edit failed:", e)
     }
-  }, [selectedChat, currentUser.id, setErrorToast, setMessages])
+  }, [selectedChat, currentUser.id, setErrorToast, setMessages, t])
 
   const handleDeleteMessage = useCallback(async (messageId: string, deleteForAll = false) => {
     // Try P2P first for 1-on-1 chats
@@ -221,10 +244,10 @@ export function useChatActions({
         setMessages((prev) => prev.filter((m) => m.id !== messageId))
       }
     } catch (e) {
-      setErrorToast("Не удалось удалить")
+      setErrorToast(t("errors.deleteFailed"))
       console.error("Delete failed:", e)
     }
-  }, [selectedChat, currentUser.id, setErrorToast, setMessages])
+  }, [selectedChat, currentUser.id, setErrorToast, setMessages, t])
 
   const handlePinMessage = useCallback(async (messageId: string) => {
     if (!selectedChat) return
@@ -236,24 +259,24 @@ export function useChatActions({
       const updated = await api.getPinnedMessages(selectedChat.id)
       setPinnedMessage(updated.length > 0 ? updated[0].message : null)
     } catch (e) {
-      setErrorToast("Не удалось закрепить")
+      setErrorToast(t("errors.pinFailed"))
       console.error("Pin failed:", e)
     }
-  }, [selectedChat, setErrorToast])
+  }, [selectedChat, setErrorToast, t])
 
   const handlePin = useCallback(async (chatId: string) => {
     try { await api.pinChat(chatId, true); loadChats() } catch (e) {
-      setErrorToast("Не удалось закрепить чат")
+      setErrorToast(t("errors.pinChatFailed"))
       console.error("Pin chat failed:", e)
     }
-  }, [loadChats, setErrorToast])
+  }, [loadChats, setErrorToast, t])
 
   const handleMute = useCallback(async (chatId: string, isMuted: boolean) => {
     try { await api.muteChat(chatId, !isMuted); loadChats() } catch (e) {
-      setErrorToast("Не удалось изменить уведомления")
+      setErrorToast(t("errors.muteFailed"))
       console.error("Mute failed:", e)
     }
-  }, [loadChats, setErrorToast])
+  }, [loadChats, setErrorToast, t])
 
   const handleDeleteChat = useCallback(async (chatId: string, setSelectedChat: (c: ChatResponse | null) => void) => {
     try {
@@ -261,10 +284,10 @@ export function useChatActions({
       setSelectedChat(null)
       loadChats()
     } catch (e) {
-      setErrorToast("Не удалось удалить чат")
+      setErrorToast(t("errors.deleteChatFailed"))
       console.error("Delete chat failed:", e)
     }
-  }, [loadChats, setErrorToast])
+  }, [loadChats, setErrorToast, t])
 
   return {
     replyTo, setReplyTo, showForward, setShowForward, pinnedMessage, setPinnedMessage,

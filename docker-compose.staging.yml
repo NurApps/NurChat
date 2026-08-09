@@ -1,0 +1,50 @@
+version: "3.8"
+
+# Staging environment for NurChat
+# Usage: docker-compose -f docker-compose.staging.yml up -d
+
+services:
+  nurchat-staging:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./media:/app/media
+      - nurchat_staging_db:/app
+    env_file:
+      - .env.staging
+    environment:
+      - DEBUG=false
+      - USE_REDIS=true
+      - REDIS_URL=redis://redis-staging:6379/0
+      - ENABLE_METRICS=true
+      - LOG_LEVEL=INFO
+    depends_on:
+      redis-staging:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - nurchat-staging-network
+
+  redis-staging:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_staging_data:/data
+    restart: unless-stopped
+    networks:
+      - nurchat-staging-network
+
+volumes:
+  nurchat_staging_db:
+  redis_staging_data:
+
+networks:
+  nurchat-staging-network:
+    driver: bridge

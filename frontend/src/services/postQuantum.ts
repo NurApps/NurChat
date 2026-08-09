@@ -1,19 +1,17 @@
 /**
  * Post-Quantum Crypto Adapter for NurChat — Phase 4: Post-Quantum Cryptography
  *
- * Hybrid key exchange: ML-KEM (Kyber-768) + X25519
+ * Hybrid key exchange: ML-KEM-768 (FIPS 203) + X25519
  * Provides quantum resistance while maintaining backward compatibility.
  *
  * Protocol:
- * 1. Initiator generates ML-KEM keypair + X25519 ephemeral
+ * 1. Initiator generates ML-KEM-768 keypair + X25519 ephemeral
  * 2. ML-KEM encaps → shared_secret_kyber
  * 3. X25519 ECDH → shared_secret_x25519
  * 4. shared_secret = HKDF(x25519 || kyber)
  *
- * Uses @noble/curves for X25519 and WebCrypto for ML-KEM (when available).
+ * Uses @noble/curves for X25519 and @oqs/liboqs-js (WASM) for ML-KEM-768.
  * Falls back to pure X25519 if ML-KEM is not supported.
- *
- * @noble/postcrypt is experimental — we implement ML-KEM via oqs or fallback.
  */
 
 import {
@@ -22,6 +20,7 @@ import {
   randomBytes,
   sha256,
 } from "./cryptoAdapter"
+import { createMLKEM768, type MLKEM768 } from "@oqs/liboqs-js"
 
 // ─── Types ───
 
@@ -61,66 +60,60 @@ export interface HybridSharedSecret {
   mlkemUsed: boolean
 }
 
-// ─── ML-KEM Implementation (WebCrypto fallback) ───
+// ─── ML-KEM Implementation (liboqs WASM) ───
 
 /**
- * Generate ML-KEM-768 keypair.
- * Uses WebCrypto for X25519 and simulated ML-KEM.
- *
- * NOTE: This is a simplified implementation.
- * For production, use liboqs or @noble/postcrypt when stable.
- *
- * @returns ML-KEM keypair
+ * ML-KEM-768 instance (singleton, lazy-loaded).
+ * Uses @oqs/liboqs-js WASM bindings to liboqs.
  */
-export async function mlkemKeyGen(): Promise<MLKEMKeyPair> {
-  // Generate random seeds
-  const dkSeed = randomBytes(64)
-  const ekSeed = randomBytes(32)
+let mlkemInstance: MLKEM768 | null = null
 
-  // Derive keys using HKDF
-  const dk = await deriveMLKEMKey(dkSeed, "mlkem-dk")
-  const ek = await deriveMLKEMKey(ekSeed, "mlkem-ek")
-
-  return { ek, dk }
+/**
+ * Get or create ML-KEM-768 instance.
+ */
+async function getMLKEM768(): Promise<MLKEM768> {
+  if (!mlkemInstance) {
+    mlkemInstance = await createMLKEM768()
+  }
+  return mlkemInstance
 }
 
 /**
- * ML-KEM encapsulation.
- * Generates ciphertext and shared secret.
+ * Generate ML-KEM-768 keypair (FIPS 203, Kyber768).
+ * Real lattice-based post-quantum KEM.
  *
- * @param ek - Encapsulation key
+ * @returns ML-KEM keypair (1184B public, 2400B secret)
+ */
+export async function mlkemKeyGen(): Promise<MLKEMKeyPair> {
+  const kem = await getMLKEM768()
+  const { publicKey, secretKey } = kem.generateKeyPair()
+  return { ek: publicKey, dk: secretKey }
+}
+
+/**
+ * ML-KEM-768 encapsulation.
+ * Generates ciphertext (1088B) and shared secret (32B).
+ *
+ * @param ek - Encapsulation key (1184B)
  * @returns Ciphertext and shared secret
  */
 export async function mlkemEncaps(ek: Uint8Array): Promise<MLKEMEncapsulation> {
-  // Generate random coin
-  const coin = randomBytes(32)
-
-  // Derive shared secret
-  const ss = await deriveMLKEMKey(coin, "mlkem-ss")
-
-  // Generate ciphertext (simplified — real ML-KEM uses lattice operations)
-  const ctInput = new Uint8Array(ek.length + coin.length)
-  ctInput.set(ek)
-  ctInput.set(coin, ek.length)
-  const ct = await deriveMLKEMKey(ctInput, "mlkem-ct")
-
-  return { ct, ss }
+  const kem = await getMLKEM768()
+  const { ciphertext, sharedSecret } = kem.encaps(ek)
+  return { ct: ciphertext, ss: sharedSecret }
 }
 
 /**
- * ML-KEM decapsulation.
+ * ML-KEM-768 decapsulation.
  * Recovers shared secret from ciphertext.
  *
- * @param dk - Decapsulation key
- * @param ct - Ciphertext
- * @returns Shared secret
+ * @param dk - Decapsulation key (2400B)
+ * @param ct - Ciphertext (1088B)
+ * @returns Shared secret (32B)
  */
 export async function mlkemDecaps(dk: Uint8Array, ct: Uint8Array): Promise<Uint8Array> {
-  // Derive shared secret (simplified — real ML-KEM uses lattice operations)
-  const input = new Uint8Array(dk.length + ct.length)
-  input.set(dk)
-  input.set(ct, dk.length)
-  return deriveMLKEMKey(input, "mlkem-ss")
+  const kem = await getMLKEM768()
+  return kem.decaps(ct, dk)
 }
 
 // ─── Hybrid Key Exchange ───
@@ -350,15 +343,6 @@ async function hkdfExpand(
     if (offset >= length) break
   }
   return result
-}
-
-/**
- * Derive ML-KEM key from seed.
- */
-async function deriveMLKEMKey(seed: Uint8Array, label: string): Promise<Uint8Array> {
-  const info = new TextEncoder().encode(label)
-  const prk = await hkdfExtract(new Uint8Array(32), seed)
-  return hkdfExpand(prk, info, 32)
 }
 
 /**

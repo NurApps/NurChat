@@ -42,6 +42,7 @@ import GroupSettings from "../components/GroupSettings"
 import GlobalSearch from "../components/GlobalSearch"
 import FileManager from "../components/FileManager"
 import StickerPicker from "../components/StickerPicker"
+import { ChatListSkeleton, MessageListSkeleton } from "../components/Skeleton"
 import LinkPreview from "../components/LinkPreview"
 import MessageInfoModal from "../components/MessageInfoModal"
 import InviteModal from "../components/InviteModal"
@@ -120,6 +121,7 @@ export default function ChatPage() {
   const [activeCall, setActiveCall] = useState<CallInfo | null>(null)
   const [callMuted, setCallMuted] = useState(false)
   const [callVideoOff, setCallVideoOff] = useState(false)
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const p2pFileInputRef = useRef<HTMLInputElement>(null)
@@ -128,7 +130,7 @@ export default function ChatPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const {
-    messages, setMessages, loadingMore, hasMore, containerRef: messagesContainerRef, endRef: messagesEndRef,
+    messages, setMessages, loadingMore, initialLoading, hasMore, containerRef: messagesContainerRef, endRef: messagesEndRef,
     loadMessages, loadMore, addMessage, updateMessage, setHasMore,
   } = useChatMessages({ currentUser, e2eKeys })
 
@@ -214,6 +216,17 @@ export default function ChatPage() {
     loadInvites()
     initNotifications()
   }, [loadChats, loadContacts, loadInvites])
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [])
 
   useEffect(() => {
     const p2pKeys = localStorage.getItem("p2p_keys")
@@ -435,9 +448,12 @@ export default function ChatPage() {
   }, [])
 
   const handleSelectChat = useCallback((chatId: string) => {
-    const { chats, selectedChat, input } = useChatStore.getState()
+    const { chats, selectedChat, input, filteredChats } = useChatStore.getState()
     const chat = chats.find((c) => c.id === chatId)
     if (!chat) return
+
+    const idx = filteredChats.findIndex((c) => c.id === chatId)
+    if (idx >= 0) setChatIndex(idx)
 
     setKeyWarning(null)
     if (chat.participants.length === 2) {
@@ -526,15 +542,29 @@ export default function ChatPage() {
     inputRef.current?.focus()
   }, [mentionQuery, mentionIndex, setInput])
 
+  const chatListRef = useRef<HTMLDivElement>(null)
+  const [chatIndex, setChatIndex] = useState(0)
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (mentionQuery) {
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); return }
-      if (e.key === "Enter" || e.key === "Tab") {
-        const selectedChat = useChatStore.getState().selectedChat
-        const candidates = selectedChat?.participants.filter(
-          (p) => p.id !== currentUser.id && p.username.toLowerCase().includes(mentionQuery.toLowerCase())
-        ) || []
-        if (candidates.length > 0) { e.preventDefault(); insertMention(candidates[0].username); return }
+      const selectedChat = useChatStore.getState().selectedChat
+      const candidates = selectedChat?.participants.filter(
+        (p) => p.id !== currentUser.id && p.username.toLowerCase().includes(mentionQuery.toLowerCase())
+      ) || []
+      if (e.key === "ArrowDown") {
+        e.preventDefault()
+        setMentionIndex((prev) => Math.min(prev + 1, candidates.length - 1))
+        return
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault()
+        setMentionIndex((prev) => Math.max(prev - 1, 0))
+        return
+      }
+      if ((e.key === "Enter" || e.key === "Tab") && candidates.length > 0) {
+        e.preventDefault()
+        insertMention(candidates[Math.max(0, mentionIndex)].username)
+        return
       }
       if (e.key === "Escape") { setMentionQuery(""); setMentionIndex(-1); return }
     }
@@ -576,6 +606,22 @@ export default function ChatPage() {
     onSearch: () => setShowGlobalSearch(true),
     onNewChat: () => setShowAddContact(true),
     onExport: handleExportChat,
+    onFindInChat: () => { setSearchQuery(""); setScrollToMessageId(null) },
+    onJumpToLatest: () => { if (selectedChat) { setTab("chats") } },
+    onPrevChat: () => {
+      const list = useChatStore.getState().filteredChats
+      if (list.length === 0) return
+      const idx = Math.max(0, chatIndex - 1)
+      setChatIndex(idx)
+      setSelectedChat(list[idx])
+    },
+    onNextChat: () => {
+      const list = useChatStore.getState().filteredChats
+      if (list.length === 0) return
+      const idx = Math.min(list.length - 1, chatIndex + 1)
+      setChatIndex(idx)
+      setSelectedChat(list[idx])
+    },
     onEscape: () => {
       setShowEmoji(false); setShowStickers(false); setShowAddContact(false); setShowCreateChat(false)
       setShowForward(null); setShowGlobalSearch(false); setShowGroupSettings(false); setProfileUser(null)
@@ -788,6 +834,15 @@ export default function ChatPage() {
         </div>
       )}
 
+      {!isOnline && (
+        <div className="offline-banner" role="alert">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" /><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" /><path d="M10.71 5.05A16 16 0 0 1 22.56 9" /><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" />
+          </svg>
+          <span>{t("common.serverUnavailable")}</span>
+        </div>
+      )}
+
       {incomingCall && (
         <div className="incoming-call-banner">
           <div className="incoming-call-info">
@@ -816,28 +871,28 @@ export default function ChatPage() {
 
       <div className="chat-body">
         {/* Sidebar */}
-        <div className="chat-sidebar">
-          <div className="sidebar-tabs">
-            <button className={`sidebar-tab ${tab === "chats" ? "active" : ""}`} onClick={() => setTab("chats")} title={t("chat.chats")}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+        <nav className="chat-sidebar" aria-label={t("chat.sidebar")}>
+          <div className="sidebar-tabs" role="tablist" aria-label={t("chat.sidebar")}>
+            <button className={`sidebar-tab ${tab === "chats" ? "active" : ""}`} onClick={() => setTab("chats")} title={t("chat.chats")} role="tab" aria-selected={tab === "chats"} aria-controls="sidebar-panel">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
             </button>
-            <button className={`sidebar-tab ${tab === "contacts" ? "active" : ""}`} onClick={() => setTab("contacts")} title={t("chat.contacts")}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+            <button className={`sidebar-tab ${tab === "contacts" ? "active" : ""}`} onClick={() => setTab("contacts")} title={t("chat.contacts")} role="tab" aria-selected={tab === "contacts"} aria-controls="sidebar-panel">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
             </button>
-            <button className={`sidebar-tab ${tab === "bookmarks" ? "active" : ""}`} onClick={() => setTab("bookmarks")} title={t("chat.bookmarks")}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
+            <button className={`sidebar-tab ${tab === "bookmarks" ? "active" : ""}`} onClick={() => setTab("bookmarks")} title={t("chat.bookmarks")} role="tab" aria-selected={tab === "bookmarks"} aria-controls="sidebar-panel">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
             </button>
-            <button className={`sidebar-tab ${tab === "files" ? "active" : ""}`} onClick={() => setTab("files")} title={t("chat.files")}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+            <button className={`sidebar-tab ${tab === "files" ? "active" : ""}`} onClick={() => setTab("files")} title={t("chat.files")} role="tab" aria-selected={tab === "files"} aria-controls="sidebar-panel">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
             </button>
-            <button className={`sidebar-tab ${tab === "invites" ? "active" : ""}`} onClick={() => setTab("invites")} title={t("chat.invitations")}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
-              {invites.length > 0 && <span className="tab-badge">{invites.length}</span>}
+            <button className={`sidebar-tab ${tab === "invites" ? "active" : ""}`} onClick={() => setTab("invites")} title={t("chat.invitations")} role="tab" aria-selected={tab === "invites"} aria-controls="sidebar-panel">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
+              {invites.length > 0 && <span className="tab-badge" aria-label={`${invites.length} ${t("chat.invitations")}`}>{invites.length}</span>}
             </button>
           </div>
           <div className="sidebar-search">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-            <input type="text" placeholder={t("common.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            <input type="text" placeholder={t("common.search")} value={search} onChange={(e) => setSearch(e.target.value)} aria-label={t("common.search")} />
           </div>
           <div className="sidebar-list-header">
             <span className="sidebar-list-title">
@@ -845,6 +900,7 @@ export default function ChatPage() {
             </span>
             {(tab === "chats" || tab === "contacts") && (
               <button className="sidebar-add-btn" title={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
+                aria-label={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
                 onClick={() => tab === "chats" ? setShowCreateChat(true) : setShowAddContact(true)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -854,8 +910,9 @@ export default function ChatPage() {
           </div>
           <div className="sidebar-list">
             {tab === "chats" && (
-              <div className="list-scroll">
-                {filteredChats.length === 0 && <p className="list-empty">{t("chat.noChats")}</p>}
+              <div className="list-scroll" id="sidebar-panel" role="tabpanel" aria-label={t("chat.chats")} ref={chatListRef}>
+                {filteredChats.length === 0 && !search && <ChatListSkeleton />}
+                {filteredChats.length === 0 && search && <p className="list-empty">{t("chat.noChats")}</p>}
                 {filteredChats.map((chat) => (
                   <ChatListItem key={chat.id} chat={chat} currentUser={currentUser} onClick={handleSelectChat}
                     onPin={handlePin}                     onMute={(id) => handleMute(id, !!chat.is_muted)} onDelete={(id) => handleDeleteChat(id, setSelectedChat)} />
@@ -863,7 +920,7 @@ export default function ChatPage() {
               </div>
             )}
             {tab === "contacts" && (
-              <div className="list-scroll">
+              <div className="list-scroll" id="sidebar-panel" role="tabpanel" aria-label={t("chat.contacts")}>
                 {contacts.length === 0 && <p className="list-empty">{t("chat.noContacts")}</p>}
                 {contacts.map((contact) => (
                   <ContactListItem key={contact.id} contact={contact} onRemove={handleRemoveContact} onStartChat={handleStartChat} />
@@ -871,7 +928,7 @@ export default function ChatPage() {
               </div>
             )}
             {tab === "invites" && (
-              <div className="list-scroll">
+              <div className="list-scroll" id="sidebar-panel" role="tabpanel" aria-label={t("chat.invitations")}>
                 {invites.length === 0 && <p className="list-empty">{t("chat.noInvites")}</p>}
                 {invites.map((invite) => (
                   <GroupInviteItem key={invite.id} invite={invite} onAccept={handleAcceptInvite} onDecline={handleDeclineInvite} />
@@ -879,7 +936,7 @@ export default function ChatPage() {
               </div>
             )}
             {tab === "bookmarks" && (
-              <div className="list-scroll">
+              <div className="list-scroll" id="sidebar-panel" role="tabpanel" aria-label={t("chat.bookmarks")}>
                 <BookmarksList onSelectMessage={(chatId, messageId) => {
                   const chat = useChatStore.getState().chats.find(c => c.id === chatId)
                   if (chat) { setSelectedChat(chat); setTab("chats") }
@@ -888,18 +945,18 @@ export default function ChatPage() {
               </div>
             )}
             {tab === "files" && (
-              <div className="list-scroll">
+              <div className="list-scroll" id="sidebar-panel" role="tabpanel" aria-label={t("chat.files")}>
                 <FileManager onClose={() => setTab("chats")} />
               </div>
             )}
           </div>
-        </div>
+        </nav>
 
         {/* Main */}
-        <div className="chat-main">
+        <div className="chat-main" role="main" id="main-content">
           {!selectedChat ? (
-            <div className="chat-placeholder">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+            <div className="chat-placeholder" role="status">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="1.5" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
               <h3>NurChat</h3>
               <p>{t("chat.placeholder")}</p>
             </div>
@@ -916,7 +973,7 @@ export default function ChatPage() {
                     onClick={() => { if (!isSelectedGroup) { const peer = selectedChat.participants.find(p => p.id !== currentUser.id); if (peer) handleViewProfile(peer) } }}>
                     {selectedChatName}
                   </span>
-                  <span className="ch-status">
+                  <span className="ch-status" role="status" aria-live="polite">
                     {typingNames.length > 0
                       ? `${typingNames.length > 1 ? t("chat.typingPlural") : t("chat.typingSingular")} ${typingNames.join(", ")}...`
                       : isSelectedGroup
@@ -933,23 +990,23 @@ export default function ChatPage() {
                   </span>
                 </div>
                 <div className="ch-actions">
-                  <button className="ch-btn" title={t("chat.searchInChat")} onClick={() => setSearchQuery("")}>
+                  <button className="ch-btn" title={t("chat.searchInChat")} aria-label={t("chat.searchInChat")} onClick={() => setSearchQuery("")}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   </button>
-                  <button className="ch-btn" title={t("common.globalSearch")} onClick={() => setShowGlobalSearch(true)}>
+                  <button className="ch-btn" title={t("common.globalSearch")} aria-label={t("common.globalSearch")} onClick={() => setShowGlobalSearch(true)}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   </button>
-                  <button className="ch-btn" title={t("chat.invite")} onClick={() => setShowInviteModal(true)}>
+                  <button className="ch-btn" title={t("chat.invite")} aria-label={t("chat.invite")} onClick={() => setShowInviteModal(true)}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
                   </button>
                   {isSelectedGroup && (
-                    <button className="ch-btn" title={t("common.groupSettings")} onClick={() => setShowGroupSettings(true)}>
+                    <button className="ch-btn" title={t("common.groupSettings")} aria-label={t("common.groupSettings")} onClick={() => setShowGroupSettings(true)}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
                     </button>
                   )}
                   {!isSelectedGroup && (
                     <>
-                      <button className="ch-btn" title={t("call.audioCall")} onClick={() => {
+                      <button className="ch-btn" title={t("call.audioCall")} aria-label={t("call.audioCall")} onClick={() => {
                         const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
                         if (peer && isPeerConnected(peer.id)) {
                           import("../services/callService").then(({ startCall }) =>
@@ -958,7 +1015,7 @@ export default function ChatPage() {
                       }}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
                       </button>
-                      <button className="ch-btn" title={t("call.videoCall")} onClick={() => {
+                      <button className="ch-btn" title={t("call.videoCall")} aria-label={t("call.videoCall")} onClick={() => {
                         const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
                         if (peer && isPeerConnected(peer.id)) {
                           import("../services/callService").then(({ startCall }) =>
@@ -969,7 +1026,7 @@ export default function ChatPage() {
                       </button>
                     </>
                   )}
-                  <button className="ch-btn" title={t("chat.export")} onClick={handleExportChat}>
+                  <button className="ch-btn" title={t("chat.export")} aria-label={t("chat.export")} onClick={handleExportChat}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                   </button>
                 </div>
@@ -1014,10 +1071,10 @@ export default function ChatPage() {
                 )}
 
                 {searchQuery && (
-                  <div className="search-bar">
+                  <div className="search-bar" role="search" aria-label={t("chat.searchMessages")}>
                     <input type="text" placeholder={t("chat.searchMessages")} value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearchMessages()} autoFocus />
-                    <button className="search-btn" onClick={handleSearchMessages} disabled={searching}>{searching ? "..." : t("chat.find")}</button>
+                      onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearchMessages()} autoFocus aria-label={t("chat.searchMessages")} />
+                    <button className="search-btn" onClick={handleSearchMessages} disabled={searching} aria-label={t("chat.find")}>{searching ? "..." : t("chat.find")}</button>
                     <button className="search-close" onClick={() => { setSearchQuery(""); setSearchResults([]) }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     </button>
@@ -1040,6 +1097,10 @@ export default function ChatPage() {
 
                 {!searchQuery && loadingMore && (
                   <div className="messages-loading"><div className="messages-spinner" /><span>{t("chat.loading")}</span></div>
+                )}
+
+                {!searchQuery && initialLoading && messages.length === 0 && (
+                  <MessageListSkeleton />
                 )}
 
                 {!searchQuery && messages.length > 0 && (
@@ -1080,7 +1141,7 @@ export default function ChatPage() {
                 return null
               })()}
 
-              <div className="chat-input-area" style={{ position: "relative" }}>
+              <div className="chat-input-area" style={{ position: "relative" }} role="form" aria-label={t("chat.messagePlaceholder")}>
                 {mentionCandidates.length > 0 && (
                   <div className="mention-dropdown">
                     {mentionCandidates.map((u) => (
@@ -1092,10 +1153,10 @@ export default function ChatPage() {
                 )}
                 <input ref={fileInputRef} type="file" hidden multiple onChange={handleFileChange} />
                 <input ref={p2pFileInputRef} type="file" hidden multiple onChange={handleP2PFileChange} />
-                <button className="input-btn" title={t("common.emoji")} onClick={() => setShowEmoji(!showEmoji)} disabled={recording || uploading}>
+                <button className="input-btn" title={t("common.emoji")} onClick={() => setShowEmoji(!showEmoji)} disabled={recording || uploading} aria-expanded={showEmoji}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
                 </button>
-                <button className="input-btn" title={t("common.sticker")} onClick={() => setShowStickers(!showStickers)} disabled={recording || uploading}>
+                <button className="input-btn" title={t("common.sticker")} onClick={() => setShowStickers(!showStickers)} disabled={recording || uploading} aria-expanded={showStickers}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="10" r="1.5" fill="currentColor" /><circle cx="15" cy="10" r="1.5" fill="currentColor" /><path d="M9 15c1 1 5 1 6 0" /></svg>
                 </button>
                 <button className="input-btn" title={t("common.file")} disabled={recording || uploading} onClick={handleFilePick}>
@@ -1132,11 +1193,11 @@ export default function ChatPage() {
 
                 {!recording && !uploading && (
                   input.trim() ? (
-                    <button className="send-btn" onClick={handleSend}>
+                    <button className="send-btn" onClick={handleSend} aria-label={t("common.send")}>
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                     </button>
                   ) : (
-                    <button className={`input-btn ${recording ? "record-active" : ""}`} title={t("common.voice")} onClick={startRecording}>
+                    <button className={`input-btn ${recording ? "record-active" : ""}`} title={t("common.voice")} aria-label={t("common.voice")} onClick={startRecording}>
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
                     </button>
                   )

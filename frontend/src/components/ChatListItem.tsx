@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import type { ChatResponse, UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
 import { getDraftForChat } from "../utils/drafts"
@@ -13,10 +14,10 @@ interface Props {
   onDelete?: (chatId: string) => void
 }
 
-function getDisplayName(chat: ChatResponse, currentUser: UserResponse): string {
-  if (chat.is_group) return chat.name || "Группа"
+function getDisplayName(chat: ChatResponse, currentUser: UserResponse, t: (key: string) => string): string {
+  if (chat.is_group) return chat.name || t("chat.group")
   const other = chat.participants.find((p) => p.id !== currentUser.id)
-  return other?.username || chat.name || "Чат"
+  return other?.username || chat.name || t("chat.chat")
 }
 
 function getLastMessageTime(chat: ChatResponse): string {
@@ -24,19 +25,20 @@ function getLastMessageTime(chat: ChatResponse): string {
   return formatRelativeTime(chat.last_message.created_at)
 }
 
-function getLastMessagePreview(chat: ChatResponse): string {
-  if (!chat.last_message?.content) return "Нет сообщений"
+function getLastMessagePreview(chat: ChatResponse, t: (key: string) => string): string {
+  if (!chat.last_message?.content) return t("chat.noMessages")
   const c = chat.last_message.content
   return c.length > 35 ? c.slice(0, 35) + "..." : c
 }
 
 export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute, onDelete }: Props) {
-  const displayName = getDisplayName(chat, currentUser)
+  const { t } = useTranslation()
+  const displayName = getDisplayName(chat, currentUser, t)
   const avatarChar = displayName[0]?.toUpperCase() || "?"
   const avatarColor = getAvatarColor(displayName)
   const lastTime = getLastMessageTime(chat)
   const [draft] = useState(() => getDraftForChat(chat.id))
-  const lastPreview = draft || getLastMessagePreview(chat)
+  const lastPreview = draft || getLastMessagePreview(chat, t)
 
   const other = chat.participants.find((p) => p.id !== currentUser.id)
   const isOnline = !chat.is_group && (other?.is_online ?? false)
@@ -99,17 +101,17 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
               <div className="cli-dropdown">
                 {onPin && (
                   <button onClick={(e) => { e.stopPropagation(); onPin(chat.id); setMenuOpen(false) }}>
-                    {isPinned ? "Открепить" : "Закрепить"}
+                    {isPinned ? t("chat.unpin") : t("chat.pin")}
                   </button>
                 )}
                 {onMute && (
                   <button onClick={(e) => { e.stopPropagation(); onMute(chat.id); setMenuOpen(false) }}>
-                    {isMuted ? "Включить уведомления" : "Отключить уведомления"}
+                    {isMuted ? t("chat.unmuteNotifications") : t("chat.muteNotifications")}
                   </button>
                 )}
                 {onDelete && (
                   <button className="cli-danger" onClick={(e) => { e.stopPropagation(); onDelete(chat.id); setMenuOpen(false) }}>
-                    Удалить чат
+                    {t("common.delete")} {t("chat.chats")}
                   </button>
                 )}
               </div>

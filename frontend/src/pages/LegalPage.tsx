@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { BASE_URL } from "../config"
 
 export default function LegalPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [privacy, setPrivacy] = useState("")
   const [agreement, setAgreement] = useState("")
   const [tab, setTab] = useState<"privacy" | "agreement">("privacy")
@@ -12,12 +14,12 @@ export default function LegalPage() {
     fetch(`${BASE_URL}/api/legal/privacy/text`)
       .then((r) => r.json())
       .then((d) => setPrivacy(d.content || ""))
-      .catch(() => setPrivacy("Не удалось загрузить политику конфиденциальности"))
+      .catch(() => setPrivacy(t("errors.general")))
 
     fetch(`${BASE_URL}/api/legal/agreement/text`)
       .then((r) => r.json())
       .then((d) => setAgreement(d.content || ""))
-      .catch(() => setAgreement("Не удалось загрузить пользовательское соглашение"))
+      .catch(() => setAgreement(t("errors.general")))
   }, [])
 
   const content = tab === "privacy" ? privacy : agreement
@@ -30,14 +32,14 @@ export default function LegalPage() {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h2>Правила</h2>
+        <h2>{t("common.legal")}</h2>
       </div>
       <div className="legal-tabs">
         <button className={`legal-tab ${tab === "privacy" ? "active" : ""}`} onClick={() => setTab("privacy")}>
-          Политика конфиденциальности
+          {t("settings.privacy")}
         </button>
         <button className={`legal-tab ${tab === "agreement" ? "active" : ""}`} onClick={() => setTab("agreement")}>
-          Пользовательское соглашение
+          {t("auth.register")}
         </button>
       </div>
       <div className="legal-content">
@@ -49,7 +51,7 @@ export default function LegalPage() {
             return <br key={i} />
           })
         ) : (
-          <div className="legal-loading">Загрузка...</div>
+          <div className="legal-loading">{t("common.loading")}</div>
         )}
       </div>
     </div>

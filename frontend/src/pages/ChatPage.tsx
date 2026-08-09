@@ -18,6 +18,8 @@ import { useChatSocket } from "../hooks/useChatSocket"
 import { useChatMessages } from "../hooks/useChatMessages"
 import { useChatActions } from "../hooks/useChatActions"
 import { useChatTyping } from "../hooks/useChatTyping"
+import { useOfflineQueue } from "../hooks/useOfflineQueue"
+import OfflineBanner from "../components/OfflineBanner"
 import { loadKeys as loadE2EKeys, decryptMessage, type E2EKeys } from "../services/e2e"
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications, showNotification } from "../services/notifications"
@@ -176,6 +178,8 @@ export default function ChatPage() {
     onReactions: useCallback(() => undefined, []),
     onNavigate: navigate,
   })
+
+  const { isOnline: offlineQueueIsOnline, pendingCount } = useOfflineQueue()
 
   const sendWs = useCallback((data: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(data))
@@ -813,6 +817,7 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
+      <OfflineBanner isOnline={offlineQueueIsOnline} pendingCount={pendingCount} />
       <TopBar
         username={currentUser.username}
         avatarChar={currentUser.username[0]?.toUpperCase() || "?"}

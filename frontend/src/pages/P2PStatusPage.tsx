@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import {
   initP2PBridge,
@@ -27,6 +28,7 @@ interface P2PPeer {
 
 export default function P2PStatusPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [keys, setKeys] = useState<P2PKeys | null>(null)
   const [hasKeys, setHasKeys] = useState(false)
   const [generating, setGenerating] = useState(false)
@@ -73,12 +75,12 @@ export default function P2PStatusPage() {
       localStorage.setItem("p2p_keys", JSON.stringify(keysData))
       setKeys(keysData)
       setHasKeys(true)
-      setMsg("P2P ключи сгенерированы и сохранены")
+      setMsg(t("p2p.keysGenerated"))
 
       // Start TCP node with new keys
       initP2PBridge()
     } catch (e: any) {
-      setMsg(e.message || "Ошибка генерации ключей")
+      setMsg(e.message || t("p2p.keysError"))
     } finally {
       setGenerating(false)
     }
@@ -111,21 +113,21 @@ export default function P2PStatusPage() {
       <div className="settings-body">
         {/* Connection Status */}
         <div className="settings-fields">
-          <h3 style={{ marginTop: 0 }}>Статус</h3>
+          <h3 style={{ marginTop: 0 }}>{t("p2p.status")}</h3>
           <div className="profile-field">
-            <span className="profile-field-label">TCP P2P нода</span>
+            <span className="profile-field-label">{t("p2p.statusLabel")}</span>
             <span className="profile-field-value" style={{ color: hasKeys ? "#4CAF50" : "#ff9800" }}>
-              {hasKeys ? "Активна" : "Не настроена"}
+              {hasKeys ? t("p2p.statusActive") : t("p2p.statusNotConfigured")}
             </span>
           </div>
           <div className="profile-field">
-            <span className="profile-field-label">P2P ключи</span>
+            <span className="profile-field-label">{t("p2p.keysLabel")}</span>
             <span className="profile-field-value" style={{ color: hasKeys ? "#4CAF50" : "#ff9800" }}>
-              {hasKeys ? "Настроены" : "Не сгенерированы"}
+              {hasKeys ? t("p2p.keysConfigured") : t("p2p.keysNotGenerated")}
             </span>
           </div>
           <div className="profile-field">
-            <span className="profile-field-label">Подключённых пиров</span>
+            <span className="profile-field-label">{t("p2p.connectedCount")}</span>
             <span className="profile-field-value">{connectedCount}</span>
           </div>
         </div>
@@ -137,14 +139,14 @@ export default function P2PStatusPage() {
 
         {/* P2P Actions */}
         <div className="settings-fields" style={{ marginTop: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Управление</h3>
+          <h3 style={{ marginTop: 0 }}>{t("p2p.management")}</h3>
           {!hasKeys ? (
             <button className="settings-save-btn" onClick={handleGenerateKeys} disabled={generating}>
-              {generating ? "Генерация..." : "Сгенерировать P2P ключи"}
+              {generating ? t("p2p.generating") : t("p2p.generateKeys")}
             </button>
           ) : (
             <button className="settings-save-btn" onClick={handleGenerateKeys} disabled={generating}>
-              {generating ? "Генерация..." : "Перегенерировать ключи"}
+              {generating ? t("p2p.generating") : t("p2p.regenerateKeys")}
             </button>
           )}
         </div>
@@ -152,21 +154,21 @@ export default function P2PStatusPage() {
         {/* Keys Display */}
         {hasKeys && keys && (
           <div className="settings-fields" style={{ marginTop: 16 }}>
-            <h3 style={{ marginTop: 0 }}>Ключи</h3>
+            <h3 style={{ marginTop: 0 }}>{t("p2p.keysTitle")}</h3>
             <div className="profile-field">
-              <span className="profile-field-label">Публичный ключ</span>
+              <span className="profile-field-label">{t("p2p.publicKey")}</span>
               <span className="profile-field-value" style={{ fontSize: 10, wordBreak: "break-all" }}>
                 {keys.public_key.slice(0, 32)}...
               </span>
             </div>
             <div className="profile-field">
-              <span className="profile-field-label">Signing ключ</span>
+              <span className="profile-field-label">{t("p2p.signingKey")}</span>
               <span className="profile-field-value" style={{ fontSize: 10, wordBreak: "break-all" }}>
                 {keys.signing_public_key.slice(0, 32)}...
               </span>
             </div>
             <p style={{ fontSize: 11, color: "#888", margin: "4px 0 0" }}>
-              Приватные ключи хранятся локально в localStorage. Не удаляйте их!
+              {t("p2p.privateKeysWarning")}
             </p>
           </div>
         )}
@@ -174,17 +176,17 @@ export default function P2PStatusPage() {
         {/* Peer Search */}
         {hasKeys && (
           <div className="settings-fields" style={{ marginTop: 16 }}>
-            <h3 style={{ marginTop: 0 }}>Поиск пиров</h3>
+            <h3 style={{ marginTop: 0 }}>{t("p2p.searchPeers")}</h3>
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 className="settings-input"
-                placeholder="Имя пользователя..."
+                placeholder={t("p2p.usernamePlaceholder")}
                 value={peerQuery}
                 onChange={(e) => setPeerQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearchPeers()}
               />
               <button className="avatar-btn" onClick={handleSearchPeers} disabled={searching}>
-                {searching ? "..." : "Найти"}
+                {searching ? "..." : t("p2p.find")}
               </button>
             </div>
             {peers.length > 0 && (
@@ -193,7 +195,7 @@ export default function P2PStatusPage() {
                   <div key={peer.user_id} className="profile-field">
                     <span className="profile-field-label">@{peer.username}</span>
                     <span className="profile-field-value" style={{ color: isPeerConnected(peer.user_id) ? "#4CAF50" : "#999" }}>
-                      {isPeerConnected(peer.user_id) ? "P2P" : peer.is_online ? "онлайн" : "офлайн"}
+                      {isPeerConnected(peer.user_id) ? t("p2p.p2pStatus") : peer.is_online ? t("p2p.onlineStatus") : t("p2p.offlineStatus")}
                     </span>
                   </div>
                 ))}

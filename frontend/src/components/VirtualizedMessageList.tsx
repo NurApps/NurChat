@@ -1,4 +1,5 @@
-import { useRef, useEffect, useState, useCallback } from "react"
+import { useRef, useEffect, useCallback } from "react"
+import { List } from "react-window"
 import MessageBubble from "./MessageBubble"
 import type { MessageResponse, UserResponse } from "../types"
 
@@ -17,40 +18,33 @@ interface Props {
   onBookmark: (id: string) => void
   onPin: (id: string) => void
   onShowInfo: (id: string) => void
+  scrollToMessageId?: string | null
 }
 
-const ROW_HEIGHT = 100
-const OVERSCAN = 5
+const ROW_HEIGHT = 80
 
 export default function VirtualizedMessageList({
   messages, currentUser, reactions = {}, bookmarkedIds = new Set(), searchQuery,
   onReply, onDelete, onForward, onReaction, onEdit, onViewProfile, onBookmark, onPin, onShowInfo,
+  scrollToMessageId,
 }: Props) {
+  const listRef = useRef<List>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  const [containerHeight, setContainerHeight] = useState(600)
 
   useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    setContainerHeight(el.clientHeight)
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerHeight(entry.contentRect.height)
-      }
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  const totalHeight = messages.length * ROW_HEIGHT
-  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
-  const endIndex = Math.min(messages.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN)
-  const visibleMessages = messages.slice(startIndex, endIndex)
+    if (!scrollToMessageId || !listRef.current) return
+    const idx = messages.findIndex((m) => m.id === scrollToMessageId)
+    if (idx >= 0) listRef.current.scrollToItem(idx, "center")
+  }, [scrollToMessageId, messages])
 
   const handleScroll = useCallback(() => {
-    setScrollTop(containerRef.current?.scrollTop || 0)
-  }, [])
+    const el = containerRef.current
+    if (!el) return
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150
+    if (isNearBottom && listRef.current) {
+      listRef.current.scrollToItem(messages.length - 1, "end")
+    }
+  }, [messages.length])
 
   useEffect(() => {
     const el = containerRef.current
@@ -59,56 +53,52 @@ export default function VirtualizedMessageList({
     return () => el.removeEventListener("scroll", handleScroll)
   }, [handleScroll])
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150
-    if (isNearBottom) {
-      el.scrollTop = el.scrollHeight
+    if (listRef.current) {
+      listRef.current.scrollToItem(messages.length - 1, "end")
     }
   }, [messages.length])
 
-  return (
-    <div ref={containerRef} style={{ height: 600, overflow: "auto", position: "relative" }}>
-      <div style={{ height: totalHeight, position: "relative" }}>
-        {visibleMessages.map((msg, i) => {
-          const actualIndex = startIndex + i
-          return (
-            <div
-              key={msg.id}
-              id={`msg-${msg.id}`}
-              style={{
-                position: "absolute",
-                top: actualIndex * ROW_HEIGHT,
-                left: 0,
-                right: 0,
-                height: ROW_HEIGHT,
-                padding: "0 12px",
-              }}
-            >
-              <MessageBubble
-                message={msg}
-                currentUser={currentUser}
-                isMyMessage={msg.user_id === currentUser.id}
-                isRead={msg.is_read}
-                reactions={reactions[msg.id]}
-                onReply={onReply}
-                onDelete={onDelete}
-                onForward={onForward}
-                onReaction={onReaction}
-                onEdit={onEdit}
-                onViewProfile={onViewProfile}
-                onBookmark={onBookmark}
-                isBookmarked={bookmarkedIds.has(msg.id)}
-                onPin={onPin}
-                highlightQuery={searchQuery}
-                onShowInfo={onShowInfo}
-              />
-            </div>
-          )
-        })}
+  const Row = useCallback(({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const msg = messages[index]
+    if (!msg) return null
+    return (
+      <div style={style} id={`msg-${msg.id}`}>
+        <MessageBubble
+          message={msg}
+          currentUser={currentUser}
+          isMyMessage={msg.user_id === currentUser.id}
+          isRead={msg.is_read}
+          reactions={reactions[msg.id]}
+          onReply={onReply}
+          onDelete={onDelete}
+          onForward={onForward}
+          onReaction={onReaction}
+          onEdit={onEdit}
+          onViewProfile={onViewProfile}
+          onBookmark={onBookmark}
+          isBookmarked={bookmarkedIds.has(msg.id)}
+          onPin={onPin}
+          highlightQuery={searchQuery}
+          onShowInfo={onShowInfo}
+        />
       </div>
+    )
+  }, [messages, currentUser, reactions, bookmarkedIds, searchQuery,
+      onReply, onDelete, onForward, onReaction, onEdit, onViewProfile, onBookmark, onPin, onShowInfo])
+
+  return (
+    <div ref={containerRef} style={{ flex: 1, overflow: "auto" }}>
+      <List
+        ref={listRef}
+        height={600}
+        itemCount={messages.length}
+        itemSize={ROW_HEIGHT}
+        width="100%"
+        overscanCount={5}
+      >
+        {Row}
+      </List>
     </div>
   )
 }

@@ -109,7 +109,7 @@ class FileCleanupService:
             expired_messages = db.query(models.Message).filter(
                 models.Message.expires_at.isnot(None),
                 models.Message.expires_at < now,
-                models.Message.is_deleted == False
+                not models.Message.is_deleted
             ).all()
 
             deleted_count = 0

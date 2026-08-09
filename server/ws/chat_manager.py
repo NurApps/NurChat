@@ -459,9 +459,14 @@ class ChatManager:
                         history = json.loads(message.edit_history)
                     except (json.JSONDecodeError, TypeError):
                         history = []
+                edited_at_str = (
+                    message.edited_at.isoformat() if message.edited_at
+                    else message.created_at.isoformat() if message.created_at
+                    else None
+                )
                 history.append({
                     "content": message.content,
-                    "edited_at": message.edited_at.isoformat() if message.edited_at else message.created_at.isoformat() if message.created_at else None,
+                    "edited_at": edited_at_str,
                 })
                 if len(history) > 50:
                     history = history[-50:]

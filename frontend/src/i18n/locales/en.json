@@ -31,7 +31,10 @@
     "minimizeToTray": "Minimize to tray",
     "retry": "Retry",
     "serverUnavailable": "Server is not available",
-    "add": "Add"
+    "add": "Add",
+    "offlineMode": "Offline mode — messages will be sent when connected",
+    "backOnline": "Connection restored",
+    "syncing": "Syncing ({{count}} messages)..."
   },
   "auth": {
     "login": "Sign In",
@@ -567,7 +570,19 @@
     "find": "Find",
     "p2pStatus": "P2P",
     "onlineStatus": "online",
-    "offlineStatus": "offline"
+    "offlineStatus": "offline",
+    "onboarding": {
+      "title": "P2P Connection",
+      "subtitle": "Direct device-to-device connection",
+      "step1Title": "Direct Connection",
+      "step1Desc": "Devices connect directly to each other without a server",
+      "step2Title": "Share the Link",
+      "step2Desc": "Send your friend an invite link or QR code",
+      "step3Title": "E2E Encryption",
+      "step3Desc": "All data is encrypted between devices",
+      "step4Title": "Local Network",
+      "step4Desc": "Automatic peer discovery on Wi-Fi networks"
+    }
   },
   "blocked": {
     "title": "Blocked Users",

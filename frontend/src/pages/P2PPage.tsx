@@ -4,6 +4,7 @@ import { generateInviteLink, parseInviteLink, connectToPeer, getPeerCount, initP
 import { saveKnownPeer } from "../services/p2pBridge"
 import { loadKeys } from "../services/e2e"
 import QRCode from "../components/QRCode"
+import P2POnboarding from "../components/P2POnboarding"
 
 export default function P2PPage() {
   const { t } = useTranslation()
@@ -90,6 +91,7 @@ export default function P2PPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 600, margin: "0 auto" }}>
+      <P2POnboarding />
       <h2 style={{ marginBottom: 8 }}>{t("p2p.title")}</h2>
       <p style={{ fontSize: 13, color: "#8b949e", marginBottom: 24 }}>
         {t("p2p.subtitle")}
@@ -103,11 +105,11 @@ export default function P2PPage() {
       }}>
         <div style={{ fontSize: 14, color: "#aaa", display: "flex", justifyContent: "space-between" }}>
           <span>
-            Статус: <span style={{ color: status === "connected" ? "#4ade80" : status === "error" ? "#f87171" : "#fbbf24" }}>
-              {status === "connected" ? `Подключён к ${connectedPeer}` : status === "connecting" ? "Подключение..." : status === "error" ? "Ошибка" : "Ожидание"}
+            {t("p2p.status")}: <span style={{ color: status === "connected" ? "#4ade80" : status === "error" ? "#f87171" : "#fbbf24" }}>
+              {status === "connected" ? t("p2p.connectedTo", { peer: connectedPeer }) : status === "connecting" ? t("p2p.connecting") : status === "error" ? t("p2p.error") : t("p2p.waiting")}
             </span>
           </span>
-          <span>Пиров: {peerCount}</span>
+          <span>{t("p2p.peers", { count: peerCount })}</span>
         </div>
       </div>
 
@@ -116,7 +118,7 @@ export default function P2PPage() {
         padding: 16, background: "#161b22", borderRadius: 8,
         border: "1px solid #30363d", marginBottom: 24,
       }}>
-        <h3 style={{ marginBottom: 12, fontSize: 16 }}>Пригласить друга</h3>
+        <h3 style={{ marginBottom: 12, fontSize: 16 }}>{t("p2p.inviteFriend")}</h3>
         
         {inviteLink && (
           <>
@@ -132,7 +134,7 @@ export default function P2PPage() {
                   {inviteLink}
                 </div>
                 <div style={{ fontSize: 12, color: "#666" }}>
-                  Друг может отсканировать QR или вставить ссылку вручную
+                  {t("p2p.qrHint")}
                 </div>
               </div>
             </div>
@@ -147,7 +149,7 @@ export default function P2PPage() {
                   fontSize: 14, fontWeight: 500, minWidth: 120,
                 }}
               >
-                {copied ? "✓ Скопировано" : "Копировать ссылку"}
+                {copied ? t("p2p.copied") : t("p2p.copyLink")}
               </button>
               
               <button
@@ -158,12 +160,12 @@ export default function P2PPage() {
                   fontSize: 14, fontWeight: 500, minWidth: 120,
                 }}
               >
-                Отправить
+                {t("p2p.send")}
               </button>
             </div>
 
             <p style={{ fontSize: 12, color: "#666", marginTop: 12 }}>
-              Скопируйте ссылку и отправьте другу любым удобным способом (Telegram, WhatsApp, SMS)
+              {t("p2p.copyHint")}
             </p>
           </>
         )}
@@ -174,14 +176,14 @@ export default function P2PPage() {
         padding: 16, background: "#161b22", borderRadius: 8,
         border: "1px solid #30363d", marginBottom: 24,
       }}>
-        <h3 style={{ marginBottom: 12, fontSize: 16 }}>Подключиться к другу</h3>
+        <h3 style={{ marginBottom: 12, fontSize: 16 }}>{t("p2p.connectToFriend")}</h3>
         
         <div style={{ display: "flex", gap: 8 }}>
           <input
             type="text"
             value={scanInput}
             onChange={(e) => setScanInput(e.target.value)}
-            placeholder="Вставьте ссылку друга"
+            placeholder={t("p2p.pasteFriendLink")}
             style={{
               flex: 1, padding: "10px 12px", background: "#0d1117",
               border: "1px solid #333", borderRadius: 6, color: "#fff",
@@ -199,7 +201,7 @@ export default function P2PPage() {
               fontSize: 14, fontWeight: 500,
             }}
           >
-            Подключить
+            {t("p2p.connect")}
           </button>
         </div>
         
@@ -208,7 +210,7 @@ export default function P2PPage() {
         )}
         
         <p style={{ fontSize: 12, color: "#666", marginTop: 8 }}>
-          Получите ссылку от друга и вставьте её сюда
+          {t("p2p.getLinkHint")}
         </p>
       </div>
 
@@ -217,7 +219,7 @@ export default function P2PPage() {
         padding: 16, background: "#161b22", borderRadius: 8,
         border: "1px solid #30363d", marginBottom: 24,
       }}>
-        <h3 style={{ marginBottom: 12, fontSize: 16 }}>Локальная сеть</h3>
+        <h3 style={{ marginBottom: 12, fontSize: 16 }}>{t("p2p.lanTitle")}</h3>
         <button
           onClick={async () => {
             try {
@@ -225,7 +227,7 @@ export default function P2PPage() {
               setStatus("idle")
             } catch (err) {
               setStatus("error")
-              setErrorMsg("Ошибка запуска LAN discovery")
+              setErrorMsg(t("p2p.lanError"))
             }
           }}
           style={{
@@ -234,10 +236,10 @@ export default function P2PPage() {
             fontSize: 14, fontWeight: 500,
           }}
         >
-          Найти в локальной сети
+          {t("p2p.findLan")}
         </button>
         <p style={{ fontSize: 12, color: "#666", marginTop: 8 }}>
-          Автоматически найдёт пиров в той же Wi-Fi сети
+          {t("p2p.lanDesc")}
         </p>
       </div>
 
@@ -246,22 +248,22 @@ export default function P2PPage() {
         padding: 16, background: "#161b22", borderRadius: 8,
         border: "1px solid #30363d",
       }}>
-        <h3 style={{ marginBottom: 12, fontSize: 16 }}>Как это работает</h3>
+        <h3 style={{ marginBottom: 12, fontSize: 16 }}>{t("p2p.howItWorks")}</h3>
         <div style={{ fontSize: 13, color: "#8b949e", lineHeight: 1.8 }}>
           <div style={{ marginBottom: 8 }}>
-            <strong style={{ color: "#c9d1d9" }}>1.</strong> Каждое приложение автоматически слушает TCP порт
+            <strong style={{ color: "#c9d1d9" }}>1.</strong> {t("p2p.step1")}
           </div>
           <div style={{ marginBottom: 8 }}>
-            <strong style={{ color: "#c9d1d9" }}>2.</strong> Нажмите "Копировать ссылку" и отправьте другу
+            <strong style={{ color: "#c9d1d9" }}>2.</strong> {t("p2p.step2")}
           </div>
           <div style={{ marginBottom: 8 }}>
-            <strong style={{ color: "#c9d1d9" }}>3.</strong> Друг вставляет ссылку и нажимает "Подключить"
+            <strong style={{ color: "#c9d1d9" }}>3.</strong> {t("p2p.step3")}
           </div>
           <div style={{ marginBottom: 8 }}>
-            <strong style={{ color: "#c9d1d9" }}>4.</strong> Соединение установлено — E2E шифрование активно
+            <strong style={{ color: "#c9d1d9" }}>4.</strong> {t("p2p.step4")}
           </div>
           <div>
-            <strong style={{ color: "#c9d1d9" }}>5.</strong> Если прямое соединение невозможно — третий пир ретранслирует
+            <strong style={{ color: "#c9d1d9" }}>5.</strong> {t("p2p.step5")}
           </div>
         </div>
       </div>

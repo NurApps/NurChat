@@ -1,4 +1,5 @@
 import { useState, useEffect, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import type { FileUploadResponse } from "../types"
 
@@ -16,6 +17,7 @@ const FILE_ICONS: Record<string, ReactNode> = {
 }
 
 export default function FileManager({ onClose }: Props) {
+  const { t } = useTranslation()
   const [files, setFiles] = useState<FileUploadResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>("all")
@@ -38,27 +40,27 @@ export default function FileManager({ onClose }: Props) {
   const filtered = filter === "all" ? files : files.filter(f => f.file_type === filter)
 
   const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} Б`
-    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} КБ`
-    return `${(bytes / 1048576).toFixed(1)} МБ`
+    if (bytes < 1024) return `${bytes} ${t("files.sizeB")}`
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} ${t("files.sizeKB")}`
+    return `${(bytes / 1048576).toFixed(1)} ${t("files.sizeMB")}`
   }
 
   const fileTypes = [
-    { key: "all", label: "Все" },
-    { key: "image", label: "Фото" },
-    { key: "video", label: "Видео" },
-    { key: "audio", label: "Аудио" },
-    { key: "voice", label: "Голос" },
-    { key: "document", label: "Док." },
+    { key: "all", label: t("chat.all") },
+    { key: "image", label: t("chat.photo") },
+    { key: "video", label: t("chat.video") },
+    { key: "audio", label: t("chat.audio") },
+    { key: "voice", label: t("chat.voice") },
+    { key: "document", label: t("chat.document") },
   ]
 
   return (
     <div className="file-manager-inline">
       <div className="fm-inline-header">
-        <button className="fm-back-btn" onClick={onClose} title="Назад">
+        <button className="fm-back-btn" onClick={onClose} title={t("common.back")}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
         </button>
-        <span className="fm-inline-title">Файлы</span>
+        <span className="fm-inline-title">{t("chat.files")}</span>
       </div>
       <div className="fm-inline-filters">
         {fileTypes.map((ft) => (
@@ -73,8 +75,8 @@ export default function FileManager({ onClose }: Props) {
         ))}
       </div>
       <div className="fm-inline-list">
-        {loading && <p className="fm-inline-empty">Загрузка...</p>}
-        {!loading && filtered.length === 0 && <p className="fm-inline-empty">Нет файлов</p>}
+        {loading && <p className="fm-inline-empty">{t("files.loading")}</p>}
+        {!loading && filtered.length === 0 && <p className="fm-inline-empty">{t("files.empty")}</p>}
         {!loading && filtered.map((file) => (
           <div key={file.id} className="fm-inline-item" onClick={() => api.downloadFile(file.id, file.filename)}>
             <span className="fm-inline-icon">{FILE_ICONS[file.file_type] || FILE_ICONS.document}</span>

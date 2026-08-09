@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { platform } from "../services/platform"
 import styles from "./P2PShare.module.css"
@@ -28,6 +29,7 @@ interface LanPeerInfo {
 }
 
 export default function P2PShare() {
+  const { t } = useTranslation()
   const [inviteUri, setInviteUri] = useState("")
   const [portOpen, setPortOpen] = useState(false)
   const [remoteInput, setRemoteInput] = useState("")
@@ -64,30 +66,30 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
   useEffect(() => { loadAddress(); loadPeers(); loadRelays() }, [loadAddress, loadPeers, loadRelays])
 
   const handleOpenPort = async () => {
-    setStatus("Открытие порта...")
+    setStatus(t("p2p.openingPort"))
     setError("")
     try {
       const data = await api.openP2PPort()
       setInviteUri(data.uri)
       setPortOpen(true)
-      setStatus("Порт открыт!")
+      setStatus(t("p2p.portOpened"))
     } catch (e: any) {
-      setError(e.message || "Не удалось открыть порт")
+      setError(e.message || t("p2p.portOpenFailed"))
       setStatus("")
     }
   }
 
   const handleConnectRemote = async () => {
     if (!remoteInput.trim()) return
-    setStatus("Подключение...")
+    setStatus(t("p2p.connecting"))
     setError("")
     try {
       await api.connectToRemote(remoteInput.trim(), relayInput.trim() || undefined)
       setRemoteInput("")
-      setStatus("Подключено!")
+      setStatus(t("p2p.connectSuccess"))
       loadPeers()
     } catch (e: any) {
-      setError(e.message || "Не удалось подключиться")
+      setError(e.message || t("p2p.connectFailedRemote"))
       setStatus("")
     }
   }
@@ -96,10 +98,10 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
     setError("")
     try {
       await api.registerRelay()
-      setStatus("Вы зарегистрированы как ретранслятор!")
+      setStatus(t("p2p.relayRegistered"))
       loadRelays()
     } catch (e: any) {
-      setError(e.message || "Не удалось зарегистрировать релей")
+      setError(e.message || t("p2p.relayFailed"))
     }
   }
 
@@ -110,12 +112,12 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
       const data = await api.discoverLAN()
       setLanPeers(data.peers || [])
       if (!data.peers || data.peers.length === 0) {
-        setStatus("Ничего не найдено в локальной сети")
+        setStatus(t("p2p.nothingFound"))
       } else {
-        setStatus(`Найдено пиров: ${data.peers.length}`)
+        setStatus(t("p2p.foundPeers", { count: data.peers.length }))
       }
     } catch (e: any) {
-      setError(e.message || "Ошибка сканирования сети")
+      setError(e.message || t("p2p.scanError"))
     } finally {
       setLanScanning(false)
     }
@@ -127,42 +129,42 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
   }
 
   const openPort = () => {
-    setStatus("Открытие порта...")
+    setStatus(t("p2p.openingPort"))
     setError("")
     handleOpenPort()
   }
 
   return (
     <div className={styles.container}>
-      <h3>P2P соединение</h3>
+      <h3>{t("p2p.connection")}</h3>
 
       <div className={styles.section}>
         {!portOpen ? (
-          <button className={styles.openBtn} onClick={openPort} disabled={status === "Открытие порта..."}>
-            {status === "Открытие порта..." ? "⏳" : "🔓"} Открыть порт
+          <button className={styles.openBtn} onClick={openPort} disabled={status === t("p2p.openingPort")}>
+            {status === t("p2p.openingPort") ? "⏳" : "🔓"} {t("p2p.openPort")}
           </button>
         ) : (
             <div className={styles.uriBox}>
-              <label>Ваша инвайт-ссылка:</label>
+              <label>{t("p2p.yourInviteLink")}</label>
               <div className={styles.uri}>{inviteUri}</div>
               <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                <button className={styles.copyBtn} onClick={() => { navigator.clipboard.writeText(inviteUri); setStatus("Скопировано!") }}>
-                  📋 Копировать
+                <button className={styles.copyBtn} onClick={() => { navigator.clipboard.writeText(inviteUri); setStatus(t("p2p.copiedStatus")) }}>
+                  {t("p2p.copy")}
                 </button>
                 <button className={styles.shareBtn} onClick={async () => {
-                  try { await platform.shareInvite(inviteUri); setStatus("Отправлено!") }
-                  catch { setStatus("Ошибка отправки") }
+                  try { await platform.shareInvite(inviteUri); setStatus(t("p2p.sentStatus")) }
+                  catch { setStatus(t("p2p.sendError")) }
                 }}>
-                  📤 Отправить другу
+                  {t("p2p.sendToFriend")}
                 </button>
               </div>
-            <p className={styles.hint}>Отправьте эту ссылку другу в любом мессенджере</p>
+            <p className={styles.hint}>{t("p2p.sendLinkHint")}</p>
           </div>
         )}
       </div>
 
       <div className={styles.section}>
-        <label>Подключиться к другу:</label>
+        <label>{t("p2p.connectToFriendLabel")}</label>
         <div className={styles.connectRow}>
           <input
             type="text"
@@ -172,12 +174,12 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
             className={styles.input}
           />
           <button className={styles.connectBtn} onClick={handleConnectRemote} disabled={!remoteInput.trim()}>
-            🔗 Подключиться
+            🔗 {t("p2p.connectBtn").replace("🔗 ", "")}
           </button>
         </div>
         <input
           type="text"
-          placeholder="Relay сервер (nurchat://ip:port — если нет прямого доступа)"
+            placeholder={t("p2p.relayPlaceholder")}
           value={relayInput}
           onChange={(e) => setRelayInput(e.target.value)}
           className={styles.input}
@@ -186,9 +188,9 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
       </div>
 
       <div className={styles.section}>
-        <label>Ретранслятор (NAT relay):</label>
+        <label>{t("p2p.relayNAT")}</label>
         <button className={styles.scanBtn} onClick={handleRegisterRelay} style={{ background: "#7c3aed" }}>
-          📡 Стать ретранслятором
+          {t("p2p.becomeRelay")}
         </button>
         {relayPeers.length > 0 && (
           <ul className={styles.peerList} style={{ marginTop: 8 }}>
@@ -197,7 +199,7 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
                 <span>🔄 {p.user_id}</span>
                 <span className={styles.peerAddr}>{p.address}</span>
                 <button className={styles.smallBtn} onClick={() => setRelayInput(`nurchat://${p.address}/${p.user_id}`)}>
-                  Использовать
+                  {t("p2p.useRelay")}
                 </button>
               </li>
             ))}
@@ -206,9 +208,9 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
       </div>
 
       <div className={styles.section}>
-        <label>Локальная сеть (LAN):</label>
+        <label>{t("p2p.lanNetwork")}</label>
         <button className={styles.scanBtn} onClick={handleLanScan} disabled={lanScanning}>
-          {lanScanning ? "⏳ Сканирование..." : "📡 Найти в локальной сети"}
+          {lanScanning ? t("p2p.scanning") : t("p2p.findLanBtn")}
         </button>
         {lanPeers.length > 0 && (
           <ul className={styles.peerList}>
@@ -217,7 +219,7 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
                 <span>💻 {p.peer_name}</span>
                 <span className={styles.peerAddr}>{p.host}:{p.port}</span>
                 <button className={styles.smallBtn} onClick={() => handleConnectLan(p)}>
-                  Подключиться
+                  {t("p2p.connectLan")}
                 </button>
               </li>
             ))}
@@ -230,7 +232,7 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
 
       {remotePeers.length > 0 && (
         <div className={styles.section}>
-          <h4>Подключенные пиры ({remotePeers.length})</h4>
+          <h4>{t("p2p.connectedPeers", { count: remotePeers.length })}</h4>
           <ul className={styles.peerList}>
             {remotePeers.map((p) => (
               <li key={p.node_id} className={styles.peerItem}>

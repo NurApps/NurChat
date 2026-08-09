@@ -13,10 +13,10 @@
  * - noble supports WebCrypto CryptoKey objects
  */
 
-import { x25519 } from "@noble/curves/ed25519"
-import { ed25519 } from "@noble/curves/ed25519"
-import { xsalsa20poly1305 } from "@noble/ciphers/salsa"
-import { sha512 } from "@noble/hashes/sha512"
+import { x25519 } from "@noble/curves/ed25519.js"
+import { ed25519 } from "@noble/curves/ed25519.js"
+import { xsalsa20poly1305 } from "@noble/ciphers/salsa.js"
+import { sha512 } from "@noble/hashes/sha2.js"
 
 // ─── Types ───
 
@@ -186,3 +186,11 @@ export function isWebCryptoSupported(): boolean {
     return false
   }
 }
+
+// Re-export sha512 for other modules
+export { sha512 }
+import { sha256 as _sha256 } from "@noble/hashes/sha2.js"
+export { _sha256 as sha256 }
+
+// Alias for signVerifyDetached
+export const signVerify = signVerifyDetached

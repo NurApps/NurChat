@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { generateInviteLink, parseInviteLink, connectToPeer, getPeerCount, initP2P, getLocalIP, startLANDiscovery } from "../services/p2pService"
 import { saveKnownPeer } from "../services/p2pBridge"
 import { loadKeys } from "../services/e2e"
 import QRCode from "../components/QRCode"
 
 export default function P2PPage() {
+  const { t } = useTranslation()
   const [inviteLink, setInviteLink] = useState("")
   const [scanInput, setScanInput] = useState("")
   const [peerCount, setPeerCount] = useState(0)
@@ -38,7 +40,7 @@ export default function P2PPage() {
     const parsed = parseInviteLink(scanInput.trim())
     if (!parsed) {
       setStatus("error")
-      setErrorMsg("Неверный формат ссылки. Используйте: nurchat://IP:PORT#PUBKEY")
+      setErrorMsg(t("p2p.invalidLink"))
       return
     }
 
@@ -50,7 +52,7 @@ export default function P2PPage() {
       setScanInput("")
     } catch (err) {
       setStatus("error")
-      setErrorMsg("Не удалось подключиться. Проверьте IP и порт.")
+      setErrorMsg(t("p2p.connectFailed"))
     }
   }
 
@@ -76,8 +78,8 @@ export default function P2PPage() {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: "Приглашение в NurChat",
-          text: "Присоединяйся ко мне в NurChat! Перейди по ссылке:",
+          title: t("p2p.shareTitle"),
+          text: t("p2p.shareText"),
           url: inviteLink,
         })
       } catch {}
@@ -88,9 +90,9 @@ export default function P2PPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 600, margin: "0 auto" }}>
-      <h2 style={{ marginBottom: 8 }}>P2P Подключение</h2>
+      <h2 style={{ marginBottom: 8 }}>{t("p2p.title")}</h2>
       <p style={{ fontSize: 13, color: "#8b949e", marginBottom: 24 }}>
-        Прямое соединение между устройствами без сервера
+        {t("p2p.subtitle")}
       </p>
 
       {/* Status */}

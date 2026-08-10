@@ -135,7 +135,7 @@ describe('ChatListItem', () => {
     const onDelete = vi.fn()
     render(<ChatListItem chat={makeChat()} currentUser={currentUser} onClick={vi.fn()} onDelete={onDelete} />)
     fireEvent.click(screen.getByRole('button'))
-    fireEvent.click(screen.getByText('Удалить чат'))
+    fireEvent.click(screen.getByRole('button', { name: /Удалить/i }))
     expect(onDelete).toHaveBeenCalledWith('chat_1')
   })
 })

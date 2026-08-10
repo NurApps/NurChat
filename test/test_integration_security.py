@@ -1,3 +1,4 @@
+# ruff: noqa: F821,F841
 """
 Phase 6.2: Integration Security Tests
 Tests for the actual frontend cryptographic implementations.

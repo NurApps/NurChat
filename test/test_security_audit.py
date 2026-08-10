@@ -1,3 +1,4 @@
+# ruff: noqa: F841
 """
 Phase 6.2: Security Audit Tests for NurChat Cryptographic Implementation
 Comprehensive tests for edge cases, fuzzing, and security properties.

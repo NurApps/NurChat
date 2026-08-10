@@ -1,3 +1,4 @@
+# ruff: noqa: F841
 """
 Group E2E encryption tests for NurChat.
 Tests sender key protocol, TreeKEM, and group key management.

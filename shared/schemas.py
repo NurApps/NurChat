@@ -123,6 +123,7 @@ class MessageCreate(BaseSchema):
     expires_at: datetime | None = None
     sealed_sender: bool = Field(default=False, description="Message uses sealed sender (relay cannot see sender)")
     scheduled_at: datetime | None = Field(None, description="Send message later")
+    is_view_once: bool = Field(default=False, description="Delete after one view")
 
     @field_validator('content')
     @classmethod
@@ -154,6 +155,8 @@ class MessageResponse(MessageBase):
     is_read: bool = False
     edited_at: datetime | None = None
     scheduled_at: datetime | None = None
+    is_view_once: bool = False
+    viewed_at: datetime | None = None
     created_at: datetime
 
 # File

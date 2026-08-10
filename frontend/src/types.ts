@@ -42,6 +42,8 @@ export interface MessageResponse {
   reactions?: Record<string, string[]>
   expires_at?: string
   scheduled_at?: string
+  is_view_once?: boolean
+  viewed_at?: string
   is_pinned?: boolean
 }
 

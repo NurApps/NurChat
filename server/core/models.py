@@ -90,6 +90,8 @@ class Message(Base):
     edited_at = Column(DateTime(timezone=True), nullable=True)
     edit_history = Column(Text, nullable=True)  # JSON array of {content, edited_at}
     scheduled_at = Column(DateTime(timezone=True), nullable=True)  # Send later
+    is_view_once = Column(Boolean, default=False)  # Delete after one view
+    viewed_at = Column(DateTime(timezone=True), nullable=True)  # When viewed
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="messages")

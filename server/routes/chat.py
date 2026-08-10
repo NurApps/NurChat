@@ -277,6 +277,7 @@ async def send_message(
             encrypted_content=encrypted_content, signature=signature,
             expires_at=getattr(message_data, 'expires_at', None),
             scheduled_at=getattr(message_data, 'scheduled_at', None),
+            is_view_once=getattr(message_data, 'is_view_once', False),
         )
         db.add(message)
         db.commit()
@@ -586,6 +587,68 @@ async def get_edit_history(
         "current_content": message.content,
         "edited_at": message.edited_at.isoformat() if message.edited_at else None,
         "history": history,
+    }
+
+
+@router.post("/messages/{message_id}/view-once")
+async def mark_view_once_viewed(
+    message_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Mark a view-once message as viewed. Returns the content once, then deletes it."""
+    user_id = token["sub"]
+    message = db.query(models.Message).filter(models.Message.id == message_id).first()
+    if not message:
+        raise MessageNotFoundError("Сообщение не найдено")
+
+    participant = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == message.chat_id,
+        models.ChatParticipant.user_id == user_id,
+    ).first()
+    if not participant:
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    if message.user_id == user_id:
+        return {
+            "message_id": message_id,
+            "content": message.content,
+            "message_type": message.message_type,
+            "file_id": message.file_id,
+            "already_viewed": message.viewed_at is not None,
+        }
+
+    if message.viewed_at is not None:
+        return {
+            "message_id": message_id,
+            "content": None,
+            "message_type": message.message_type,
+            "file_id": None,
+            "already_viewed": True,
+        }
+
+    content = message.content
+    file_id = message.file_id
+    msg_type = message.message_type
+
+    message.viewed_at = datetime.now(timezone.utc)
+    message.is_deleted = True
+    message.deleted_for_all = True
+    db.commit()
+
+    await connection_manager.broadcast_to_chat({
+        "event": "delete_message",
+        "message_id": message_id,
+        "chat_id": message.chat_id,
+        "deleted_for_all": True,
+    }, message.chat_id)
+
+    return {
+        "message_id": message_id,
+        "content": content,
+        "message_type": msg_type,
+        "file_id": file_id,
+        "already_viewed": False,
     }
 
 

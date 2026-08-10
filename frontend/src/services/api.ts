@@ -511,4 +511,10 @@ export const api = {
 
   rejectContactRequest: (requestId: string) =>
     request<{ detail: string }>("POST", `/api/contacts/requests/${requestId}/reject`),
+
+  // View-once media
+  markViewOnceViewed: (messageId: string) =>
+    request<{ message_id: string; content: string | null; message_type: string; file_id: string | null; already_viewed: boolean }>(
+      "POST", `/api/chat/messages/${messageId}/view-once`
+    ),
 }

@@ -7,6 +7,7 @@ import { formatTime, formatFull } from "../utils/format"
 import { renderMarkdown } from "../utils/markdown"
 import MediaViewer from "./MediaViewer"
 import VoiceMessage from "./VoiceMessage"
+import ViewOnceMedia from "./ViewOnceMedia"
 
 interface Props {
   message: MessageResponse
@@ -127,6 +128,17 @@ export default function MessageBubble({
   }
 
   const renderContent = () => {
+    if (message.is_view_once && message.message_type !== "text") {
+      if (message.viewed_at || (message.is_deleted && message.deleted_for_all)) {
+        return (
+          <div className="viewonce-overlay viewonce-viewed">
+            <div className="viewonce-icon">&#128274;</div>
+            <div className="viewonce-text">{t("chat.viewOnceDeleted")}</div>
+          </div>
+        )
+      }
+      return <ViewOnceMedia message={message} />
+    }
     if (message.message_type === "text") return renderTextContent()
     return renderFileContent()
   }

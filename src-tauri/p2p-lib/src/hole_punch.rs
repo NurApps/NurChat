@@ -151,6 +151,51 @@ impl HolePuncher {
         Err("All TURN servers failed".to_string())
     }
 
+    /// Try direct → hole punch → TURN relay with fallback
+    pub async fn connect_with_fallback(
+        &self,
+        local_port: u16,
+        remote: &PeerEndpoint,
+    ) -> Result<PunchedConnection, String> {
+        // 1. Try direct connect
+        match self.try_direct_connect(remote, 3000).await {
+            Ok(stream) => {
+                return Ok(PunchedConnection {
+                    stream,
+                    peer_id: remote.peer_id.clone(),
+                    method: ConnectionMethod::Direct,
+                });
+            }
+            Err(e) => eprintln!("[P2P] Direct failed: {}", e),
+        }
+
+        // 2. Try hole punch
+        match self.punch_tcp(local_port, remote).await {
+            Ok(stream) => {
+                return Ok(PunchedConnection {
+                    stream,
+                    peer_id: remote.peer_id.clone(),
+                    method: ConnectionMethod::HolePunch,
+                });
+            }
+            Err(e) => eprintln!("[P2P] Hole punch failed: {}", e),
+        }
+
+        // 3. Fallback to TURN relay
+        match self.try_turn_relay(remote).await {
+            Ok(stream) => {
+                return Ok(PunchedConnection {
+                    stream,
+                    peer_id: remote.peer_id.clone(),
+                    method: ConnectionMethod::TurnRelay,
+                });
+            }
+            Err(e) => eprintln!("[P2P] TURN relay failed: {}", e),
+        }
+
+        Err("All connection methods failed".to_string())
+    }
+
     /// Full TURN relay connection via RFC 5766:
     /// 1. Allocate relay address
     /// 2. Create permission for peer

@@ -47,8 +47,8 @@ jobs:
 
       - name: Copy server to sidecar location
         run: |
-          if not exist src-tauri\binaries mkdir src-tauri\binaries
-          copy /Y dist\server.exe src-tauri\binaries\server-x86_64-pc-windows-msvc.exe
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries
+          Copy-Item -Force dist/server.exe src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
 
       - name: Build Tauri app
         run: npx tauri build

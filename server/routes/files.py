@@ -191,15 +191,15 @@ async def download_file(
                 raise HTTPException(status_code=403, detail="Доступ к файлу запрещен")
 
         from pathlib import Path
-        # Try local file first
-        try:
-            file_path = Path(file_record.file_path)
-            if not file_path.exists():
-                raise FileNotFoundError(f"Файл {file_id} не найден на диске")
-        except FileNotFoundError:
+        file_path = Path(file_record.file_path).resolve()
+        media_root = Path(settings.MEDIA_ROOT).resolve()
+        if not file_path.is_relative_to(media_root):
+            logger.warning(f"Path traversal attempt by user {user_id}: {file_record.file_path}")
+            raise HTTPException(status_code=403, detail="Доступ запрещен")
+
+        if not file_path.exists():
             raise HTTPException(status_code=404, detail="Файл не найден")
 
-        # Determine proper MIME type from file extension
         import mimetypes
         mime_type = mimetypes.guess_type(file_record.filename or "")[0] or "application/octet-stream"
 

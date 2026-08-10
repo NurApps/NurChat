@@ -1,19 +1,22 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 
 from server.core import models, schemas
 from server.core.database import get_db
 from server.core.security import verify_token_dependency
 from server.ws.chat_manager import connection_manager
+from shared.rate_limiter import limiter
 
 router = APIRouter(prefix="/api/chat", tags=["polls"])
 
 
 @router.post("/chats/{chat_id}/polls", response_model=schemas.PollResponse)
+@limiter.limit("10/minute")
 async def create_poll(
+    request: Request,
     chat_id: str,
     poll_data: schemas.PollCreate,
     db: Session = Depends(get_db),
@@ -82,7 +85,9 @@ async def get_polls(
 
 
 @router.post("/polls/{poll_id}/vote", response_model=schemas.PollResponse)
+@limiter.limit("30/minute")
 async def vote_poll(
+    request: Request,
     poll_id: str,
     vote_data: schemas.PollVoteRequest,
     db: Session = Depends(get_db),

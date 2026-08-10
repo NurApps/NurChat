@@ -41,7 +41,7 @@ from server.routes import (
     webhooks,
 )
 from server.utils.file_cleanup import file_cleanup_service
-from server.utils.logger import logger
+from server.utils.logger import generate_request_id, logger, request_id_var
 from server.ws.chat_manager import handle_websocket_connection
 from server.ws.notifications import handle_notifications_websocket
 from server.ws.p2p_manager import p2p_manager
@@ -167,6 +167,14 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Внутренняя ошибка сервера"},
     )
+
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    rid = request.headers.get("X-Request-ID") or generate_request_id()
+    request_id_var.set(rid)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = rid
+    return response
 
 # Security headers
 @app.middleware("http")

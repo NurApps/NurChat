@@ -1,19 +1,22 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 
 from server.core import models, schemas
 from server.core.database import get_db
 from server.core.security import verify_token_dependency
 from server.ws.chat_manager import connection_manager
+from shared.rate_limiter import limiter
 
 router = APIRouter(prefix="/api/contacts", tags=["contact-requests"])
 
 
 @router.post("/requests", response_model=schemas.ContactRequestResponse)
+@limiter.limit("5/minute")
 async def send_contact_request(
+    request: Request,
     req: schemas.ContactRequestCreate,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),

@@ -183,7 +183,27 @@
   "contacts": {
     "addContact": "Добавить контакт",
     "username": "Имя пользователя",
-    "noAvailable": "Нет доступных пользователей"
+    "noAvailable": "Нет доступных пользователей",
+    "requests": "Запросы контактов",
+    "incoming": "Входящие",
+    "sent": "Исходящие",
+    "noRequests": "Нет запросов",
+    "status": {
+      "pending": "Ожидает",
+      "accepted": "Принят",
+      "rejected": "Отклонён"
+    }
+  },
+  "poll": {
+    "create": "Создать опрос",
+    "question": "Вопрос",
+    "option": "Вариант",
+    "addOption": "Добавить вариант",
+    "vote": "Голосовать",
+    "votes": "голосов",
+    "expired": "Опрос завершён",
+    "anonymous": "Анонимный",
+    "allowMultiple": "Несколько вариантов"
   },
   "bookmarks": {
     "empty": "Нет избранных сообщений",

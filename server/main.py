@@ -26,6 +26,7 @@ from server.routes import (
     bookmarks,
     calls,
     chat,
+    contact_requests,
     contacts_groups,
     discovery,
     files,
@@ -34,6 +35,7 @@ from server.routes import (
     legal,
     p2p,
     pins,
+    polls,
     stats,
     transparency,
     webhooks,
@@ -66,6 +68,11 @@ async def lifespan(app: FastAPI):
     from server.core.discovery import start_discovery
     await start_discovery()
     logger.info("LAN discovery service started")
+
+    # Start background tasks
+    from server.core.background_tasks import start_background_tasks
+    start_background_tasks()
+    logger.info("Background tasks started")
 
     yield
 
@@ -217,6 +224,8 @@ app.include_router(keys.router, prefix="/api/keys", tags=["Keys"])
 app.include_router(discovery.router, prefix="/api/discover", tags=["LAN Discovery"])
 app.include_router(webhooks.router, prefix="/api", tags=["Webhooks"])
 app.include_router(transparency.router, prefix="/api/transparency", tags=["Transparency"])
+app.include_router(polls.router, tags=["Polls"])
+app.include_router(contact_requests.router, tags=["Contact Requests"])
 
 # WS rate limiting: max connections per IP
 _ws_connections: dict[str, int] = {}

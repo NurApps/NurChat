@@ -122,6 +122,7 @@ class MessageCreate(BaseSchema):
     signature: str | None = None
     expires_at: datetime | None = None
     sealed_sender: bool = Field(default=False, description="Message uses sealed sender (relay cannot see sender)")
+    scheduled_at: datetime | None = Field(None, description="Send message later")
 
     @field_validator('content')
     @classmethod
@@ -152,6 +153,7 @@ class MessageResponse(MessageBase):
     deleted_for_all: bool = False
     is_read: bool = False
     edited_at: datetime | None = None
+    scheduled_at: datetime | None = None
     created_at: datetime
 
 # File
@@ -378,6 +380,65 @@ class StatsResponse(BaseSchema):
     messages_by_day: list[dict]
     top_contacts: list[dict]
     message_types_breakdown: dict
+
+# Polls
+class PollOptionCreate(BaseSchema):
+    text: str = Field(..., min_length=1, max_length=200)
+
+class PollCreate(BaseSchema):
+    chat_id: str = Field(..., min_length=1, max_length=100)
+    question: str = Field(..., min_length=1, max_length=500)
+    options: list[PollOptionCreate] = Field(..., min_length=2, max_length=10)
+    is_anonymous: bool = True
+    allow_multiple: bool = False
+    expires_at: datetime | None = None
+
+class PollOptionResponse(BaseSchema):
+    id: int
+    text: str
+    position: int
+    vote_count: int = 0
+
+class PollVoteResponse(BaseSchema):
+    option_id: int
+    user_id: str
+
+class PollResponse(BaseSchema):
+    id: str
+    chat_id: str
+    creator_id: str
+    question: str
+    is_anonymous: bool
+    allow_multiple: bool
+    expires_at: datetime | None = None
+    created_at: datetime
+    options: list[PollOptionResponse]
+    total_votes: int = 0
+    my_votes: list[int] = []
+
+class PollVoteRequest(BaseSchema):
+    option_ids: list[int] = Field(..., min_length=1, max_length=10)
+
+# Contact Requests
+class ContactRequestCreate(BaseSchema):
+    to_user_id: str = Field(..., min_length=1, max_length=100)
+    message: str | None = Field(None, max_length=200)
+
+class ContactRequestResponse(BaseSchema):
+    id: str
+    from_user_id: str
+    to_user_id: str
+    message: str | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    from_user: UserResponse
+    to_user: UserResponse
+
+# Scheduled messages
+class ScheduleMessageRequest(BaseSchema):
+    scheduled_at: datetime = Field(..., description="ISO datetime when to send")
+
 
 # Обновляем ссылки для рекурсивных типов
 MessageResponse.model_rebuild()

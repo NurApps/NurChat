@@ -89,6 +89,7 @@ class Message(Base):
     expires_at = Column(DateTime(timezone=True), nullable=True)
     edited_at = Column(DateTime(timezone=True), nullable=True)
     edit_history = Column(Text, nullable=True)  # JSON array of {content, edited_at}
+    scheduled_at = Column(DateTime(timezone=True), nullable=True)  # Send later
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="messages")
@@ -345,4 +346,66 @@ class Webhook(Base):
     user = relationship("User")
 
 
+class Poll(Base):
+    __tablename__ = "polls"
 
+    id = Column(String, primary_key=True, index=True)
+    chat_id = Column(String, ForeignKey("chats.id", ondelete="CASCADE"), index=True)
+    creator_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
+    question = Column(Text, nullable=False)
+    is_anonymous = Column(Boolean, default=True)
+    allow_multiple = Column(Boolean, default=False)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    chat = relationship("Chat")
+    creator = relationship("User")
+    options = relationship("PollOption", back_populates="poll", cascade="all, delete-orphan")
+    votes = relationship("PollVote", back_populates="poll", cascade="all, delete-orphan")
+
+
+class PollOption(Base):
+    __tablename__ = "poll_options"
+
+    id = Column(Integer, primary_key=True, index=True)
+    poll_id = Column(String, ForeignKey("polls.id", ondelete="CASCADE"), index=True)
+    text = Column(Text, nullable=False)
+    position = Column(Integer, default=0)
+
+    poll = relationship("Poll", back_populates="options")
+    votes = relationship("PollVote", back_populates="option")
+
+
+class PollVote(Base):
+    __tablename__ = "poll_votes"
+    __table_args__ = (
+        Index("ix_poll_votes_poll_user", "poll_id", "user_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    poll_id = Column(String, ForeignKey("polls.id", ondelete="CASCADE"), index=True)
+    option_id = Column(Integer, ForeignKey("poll_options.id", ondelete="CASCADE"))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    poll = relationship("Poll", back_populates="votes")
+    option = relationship("PollOption", back_populates="votes")
+    user = relationship("User")
+
+
+class ContactRequest(Base):
+    __tablename__ = "contact_requests"
+    __table_args__ = (
+        Index("ix_contact_requests_to_status", "to_user_id", "status"),
+    )
+
+    id = Column(String, primary_key=True, index=True)
+    from_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    to_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    message = Column(String, nullable=True)
+    status = Column(String, default="pending")  # pending, accepted, rejected
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    from_user = relationship("User", foreign_keys=[from_user_id])
+    to_user = relationship("User", foreign_keys=[to_user_id])

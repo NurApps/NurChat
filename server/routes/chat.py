@@ -276,6 +276,7 @@ async def send_message(
             reply_to_id=message_data.reply_to_id,
             encrypted_content=encrypted_content, signature=signature,
             expires_at=getattr(message_data, 'expires_at', None),
+            scheduled_at=getattr(message_data, 'scheduled_at', None),
         )
         db.add(message)
         db.commit()

@@ -1,5 +1,5 @@
 import { BASE_URL } from "../config"
-import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse, WebhookResponse } from "../types"
+import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse, WebhookResponse, PollResponse, ContactRequestResponse } from "../types"
 
 class ApiError extends Error {
   status: number
@@ -484,5 +484,31 @@ export const api = {
     request<{ count: number }>("GET", `/api/keys/one-time-count/${userId}`),
 
   cleanupPrekeys: () =>
-    request<{ deleted: number }>("POST", `/api/keys/cleanup`),
+    request<{ deleted: number }>("POST", "/api/keys/cleanup"),
+
+  // Polls
+  createPoll: (chatId: string, data: { question: string; options: { text: string }[]; is_anonymous?: boolean; allow_multiple?: boolean; expires_at?: string }) =>
+    request<PollResponse>("POST", `/api/chat/chats/${chatId}/polls`, { ...data, chat_id: chatId }),
+
+  getPolls: (chatId: string) =>
+    request<PollResponse[]>("GET", `/api/chat/chats/${chatId}/polls`),
+
+  votePoll: (pollId: string, optionIds: number[]) =>
+    request<PollResponse>("POST", `/api/chat/polls/${pollId}/vote`, { option_ids: optionIds }),
+
+  // Contact Requests
+  sendContactRequest: (toUserId: string, message?: string) =>
+    request<ContactRequestResponse>("POST", "/api/contacts/requests", { to_user_id: toUserId, message }),
+
+  getIncomingContactRequests: () =>
+    request<ContactRequestResponse[]>("GET", "/api/contacts/requests/incoming"),
+
+  getSentContactRequests: () =>
+    request<ContactRequestResponse[]>("GET", "/api/contacts/requests/sent"),
+
+  acceptContactRequest: (requestId: string) =>
+    request<ContactRequestResponse>("POST", `/api/contacts/requests/${requestId}/accept`),
+
+  rejectContactRequest: (requestId: string) =>
+    request<{ detail: string }>("POST", `/api/contacts/requests/${requestId}/reject`),
 }

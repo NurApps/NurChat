@@ -183,7 +183,27 @@
   "contacts": {
     "addContact": "Add Contact",
     "username": "Username",
-    "noAvailable": "No available users"
+    "noAvailable": "No available users",
+    "requests": "Contact Requests",
+    "incoming": "Incoming",
+    "sent": "Sent",
+    "noRequests": "No requests",
+    "status": {
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "rejected": "Rejected"
+    }
+  },
+  "poll": {
+    "create": "Create Poll",
+    "question": "Question",
+    "option": "Option",
+    "addOption": "Add Option",
+    "vote": "Vote",
+    "votes": "votes",
+    "expired": "Poll ended",
+    "anonymous": "Anonymous",
+    "allowMultiple": "Multiple choices"
   },
   "bookmarks": {
     "empty": "No bookmarks",

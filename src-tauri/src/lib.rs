@@ -4,13 +4,10 @@ use p2p_lib::hole_punch::{HolePuncher, TurnServer, PeerEndpoint};
 use tauri::{Manager, State, Emitter};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tauri::menu::{MenuBuilder};
-use tauri_plugin_shell::ShellExt;
 use tokio::sync::RwLock;
-use std::sync::Mutex;
 
 struct AppState {
     p2p: RwLock<Option<P2PNode>>,
-    server_child: Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
 }
 
 #[tauri::command]
@@ -354,9 +351,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             p2p: RwLock::new(None),
-            server_child: Mutex::new(None),
         })
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -396,26 +391,8 @@ pub fn run() {
                 )?;
             }
 
-            // Spawn bundled relay server (only in production builds)
-            if !cfg!(debug_assertions) {
-                let sidecar_command = app.shell().sidecar("server").unwrap();
-                let (rx, child) = sidecar_command.spawn().expect("Failed to spawn server sidecar");
-                // Store child process handle for cleanup
-                let state = app.state::<AppState>();
-                *state.server_child.lock().unwrap() = Some(child);
-                // Log server output
-                tokio::spawn(async move {
-                    use tauri_plugin_shell::process::CommandEvent;
-                    let mut rx = rx;
-                    while let Some(event) = rx.recv().await {
-                        match event {
-                            CommandEvent::Stdout(line) => println!("[Server] {}", String::from_utf8_lossy(&line)),
-                            CommandEvent::Stderr(line) => eprintln!("[Server] {}", String::from_utf8_lossy(&line)),
-                            _ => {}
-                        }
-                    }
-                });
-            }
+            // Relay server runs externally (shared instance via VITE_API_HOST)
+            // No sidecar needed — connection configured in frontend config
 
             // Wait for server to be ready (poll /api/health)
             if !cfg!(debug_assertions) {
@@ -490,13 +467,7 @@ pub fn run() {
                     }
                 }
                 tauri::RunEvent::ExitRequested { .. } => {
-                    // Kill the bundled server process
-                    let state = app_handle.state::<AppState>();
-                    let mut guard = state.server_child.lock().unwrap();
-                    if let Some(child) = guard.take() {
-                        let _ = child.kill();
-                        println!("[NurChat] Server process killed");
-                    }
+                    // Cleanup handled by OS — no local server process
                 }
                 _ => {}
             }

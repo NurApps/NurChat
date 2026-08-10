@@ -16,13 +16,7 @@ if %errorlevel% equ 0 (
     echo [OK] uvicorn starting in background
 )
 
-:: 2. Kill any stale server.exe from previous Tauri dev runs
-taskkill /f /im server.exe >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [OK] Stopped old server.exe instance
-)
-
-:: 3. Start Tauri dev (handles Rust + Vite, won't spawn another server since :8000 is up)
+:: 2. Start Tauri dev (handles Rust + Vite, won't spawn another server since :8000 is up)
 echo [..] Starting Tauri dev...
 echo.
 npx tauri dev

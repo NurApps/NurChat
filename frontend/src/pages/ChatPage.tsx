@@ -24,7 +24,7 @@ import { loadKeys as loadE2EKeys, decryptMessage, type E2EKeys } from "../servic
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications, showNotification } from "../services/notifications"
 import { clearPin } from "../services/pinLock"
-import { getActiveCall, endCall, toggleMute, toggleVideo, onCallEvent, type CallInfo } from "../services/callService"
+import { getActiveCall, onCallEvent, type CallInfo } from "../services/callService"
 import { avatarUrl } from "../config"
 import { useChatStore } from "../store/chatStore"
 import TopBar from "../components/TopBar"
@@ -44,12 +44,14 @@ import GroupSettings from "../components/GroupSettings"
 import GlobalSearch from "../components/GlobalSearch"
 import FileManager from "../components/FileManager"
 import StickerPicker from "../components/StickerPicker"
-import { ChatListSkeleton, MessageListSkeleton } from "../components/Skeleton"
+import { MessageListSkeleton } from "../components/Skeleton"
 import LinkPreview from "../components/LinkPreview"
 import MessageInfoModal from "../components/MessageInfoModal"
 import InviteModal from "../components/InviteModal"
-import { PinnedMessagesModal } from "../components/PinnedMessagesModal"
 import type { UserResponse, MessageResponse } from "../types"
+import ChatSidebar from "../components/ChatSidebar"
+import ChatModals from "../components/ChatModals"
+import CallOverlay from "../components/CallOverlay"
 
 import { getDraft, saveDraft, removeDraft } from "../utils/drafts"
 
@@ -171,7 +173,7 @@ export default function ChatPage() {
       setToast({
         id: `mention_${data.message_id}`,
         title: `@${data.mentioned_by_username}`,
-        body: `упомянул(а) вас: ${data.content_preview}`,
+        body: `СѓРїРѕРјСЏРЅСѓР»(Р°) РІР°СЃ: ${data.content_preview}`,
         chatId: data.chat_id,
       })
     }, [setToast]),
@@ -417,7 +419,7 @@ export default function ChatPage() {
     if (selectedChat) chatIdRef.current = selectedChat.id
   }, [selectedChat, chatIdRef])
 
-  // P2P notification listener — shows desktop notifications for messages in other chats
+  // P2P notification listener вЂ” shows desktop notifications for messages in other chats
   useEffect(() => {
     const unsub = onP2PBridgeEvent((event) => {
       if (event.type === "message_received" && event.data) {
@@ -430,7 +432,7 @@ export default function ChatPage() {
         )
         if (senderChat) {
           const sender = senderChat.participants.find(p => p.id === d.sender_id)
-          const name = sender?.username || sender?.first_name || "Пользователь"
+          const name = sender?.username || sender?.first_name || "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ"
           const preview = (d.content || "").slice(0, 50)
           showNotification(name, preview)
         }
@@ -878,86 +880,18 @@ export default function ChatPage() {
 
       <div className="chat-body">
         {/* Sidebar */}
-        <nav className="chat-sidebar" aria-label={t("chat.sidebar")}>
-          <div className="sidebar-tabs" role="tablist" aria-label={t("chat.sidebar")}>
-            <button className={`sidebar-tab ${tab === "chats" ? "active" : ""}`} onClick={() => setTab("chats")} title={t("chat.chats")} role="tab" aria-selected={tab === "chats"} aria-controls="sidebar-panel">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-            </button>
-            <button className={`sidebar-tab ${tab === "contacts" ? "active" : ""}`} onClick={() => setTab("contacts")} title={t("chat.contacts")} role="tab" aria-selected={tab === "contacts"} aria-controls="sidebar-panel">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-            </button>
-            <button className={`sidebar-tab ${tab === "bookmarks" ? "active" : ""}`} onClick={() => setTab("bookmarks")} title={t("chat.bookmarks")} role="tab" aria-selected={tab === "bookmarks"} aria-controls="sidebar-panel">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
-            </button>
-            <button className={`sidebar-tab ${tab === "files" ? "active" : ""}`} onClick={() => setTab("files")} title={t("chat.files")} role="tab" aria-selected={tab === "files"} aria-controls="sidebar-panel">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
-            </button>
-            <button className={`sidebar-tab ${tab === "invites" ? "active" : ""}`} onClick={() => setTab("invites")} title={t("chat.invitations")} role="tab" aria-selected={tab === "invites"} aria-controls="sidebar-panel">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
-              {invites.length > 0 && <span className="tab-badge" aria-label={`${invites.length} ${t("chat.invitations")}`}>{invites.length}</span>}
-            </button>
-          </div>
-          <div className="sidebar-search">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-            <input type="text" placeholder={t("common.search")} value={search} onChange={(e) => setSearch(e.target.value)} aria-label={t("common.search")} />
-          </div>
-          <div className="sidebar-list-header">
-            <span className="sidebar-list-title">
-              {tab === "chats" ? t("chat.chats") : tab === "contacts" ? t("chat.contacts") : tab === "files" ? t("chat.files") : t("chat.invitations")}
-            </span>
-            {(tab === "chats" || tab === "contacts") && (
-              <button className="sidebar-add-btn" title={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
-                aria-label={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
-                onClick={() => tab === "chats" ? setShowCreateChat(true) : setShowAddContact(true)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </button>
-            )}
-          </div>
-          <div className="sidebar-list">
-            {tab === "chats" && (
-              <div className="list-scroll" id="sidebar-panel" role="tabpanel" aria-label={t("chat.chats")} ref={chatListRef}>
-                {filteredChats.length === 0 && !search && <ChatListSkeleton />}
-                {filteredChats.length === 0 && search && <p className="list-empty">{t("chat.noChats")}</p>}
-                {filteredChats.map((chat) => (
-                  <ChatListItem key={chat.id} chat={chat} currentUser={currentUser} onClick={handleSelectChat}
-                    onPin={handlePin}                     onMute={(id) => handleMute(id, !!chat.is_muted)} onDelete={(id) => handleDeleteChat(id, setSelectedChat)} />
-                ))}
-              </div>
-            )}
-            {tab === "contacts" && (
-              <div className="list-scroll" id="sidebar-panel" role="tabpanel" aria-label={t("chat.contacts")}>
-                {contacts.length === 0 && <p className="list-empty">{t("chat.noContacts")}</p>}
-                {contacts.map((contact) => (
-                  <ContactListItem key={contact.id} contact={contact} onRemove={handleRemoveContact} onStartChat={handleStartChat} />
-                ))}
-              </div>
-            )}
-            {tab === "invites" && (
-              <div className="list-scroll" id="sidebar-panel" role="tabpanel" aria-label={t("chat.invitations")}>
-                {invites.length === 0 && <p className="list-empty">{t("chat.noInvites")}</p>}
-                {invites.map((invite) => (
-                  <GroupInviteItem key={invite.id} invite={invite} onAccept={handleAcceptInvite} onDecline={handleDeclineInvite} />
-                ))}
-              </div>
-            )}
-            {tab === "bookmarks" && (
-              <div className="list-scroll" id="sidebar-panel" role="tabpanel" aria-label={t("chat.bookmarks")}>
-                <BookmarksList onSelectMessage={(chatId, messageId) => {
-                  const chat = useChatStore.getState().chats.find(c => c.id === chatId)
-                  if (chat) { setSelectedChat(chat); setTab("chats") }
-                  if (messageId) setScrollToMessageId(messageId)
-                }} />
-              </div>
-            )}
-            {tab === "files" && (
-              <div className="list-scroll" id="sidebar-panel" role="tabpanel" aria-label={t("chat.files")}>
-                <FileManager onClose={() => setTab("chats")} />
-              </div>
-            )}
-          </div>
-        </nav>
+        <ChatSidebar
+          tab={tab} setTab={setTab} search={search} setSearch={setSearch}
+          chats={chats} filteredChats={filteredChats} contacts={contacts} invites={invites}
+          currentUser={currentUser} chatListRef={chatListRef}
+          scrollToMessageId={scrollToMessageId} setScrollToMessageId={setScrollToMessageId}
+          setSelectedChat={setSelectedChat} setShowCreateChat={setShowCreateChat}
+          setShowAddContact={setShowAddContact}
+          handleSelectChat={handleSelectChat} handlePin={handlePin}
+          handleMute={handleMute} handleDeleteChat={handleDeleteChat}
+          handleRemoveContact={handleRemoveContact} handleStartChat={handleStartChat}
+          handleAcceptInvite={handleAcceptInvite} handleDeclineInvite={handleDeclineInvite}
+        />
 
         {/* Main */}
         <div className="chat-main" role="main" id="main-content">
@@ -1046,7 +980,7 @@ export default function ChatPage() {
                     <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
                   </svg>
                   <span>{keyWarning}</span>
-                  <button onClick={() => setKeyWarning(null)} style={{ marginLeft: "auto", background: "none", border: "none", color: "#ff9800", cursor: "pointer", padding: 4 }}>×</button>
+                  <button onClick={() => setKeyWarning(null)} style={{ marginLeft: "auto", background: "none", border: "none", color: "#ff9800", cursor: "pointer", padding: 4 }}>Г—</button>
                 </div>
               )}
 
@@ -1210,106 +1144,41 @@ export default function ChatPage() {
                 {showStickers && <StickerPicker onSelect={(sticker) => { setInput((prev) => prev + sticker); setShowStickers(false); inputRef.current?.focus() }} />}
               </div>
 
-              {/* Active call overlay */}
               {activeCall && (
-                <div className="call-overlay">
-                  <div className="call-overlay-header">
-                    <span className="call-overlay-status">
-                      {activeCall.state === "calling" ? t("call.calling") :
-                       activeCall.state === "ringing" ? t("call.ringing") :
-                       activeCall.state === "connected" ? t("call.connected") : t("call.failed")}
-                    </span>
-                    <span className="call-overlay-timer">
-                      {activeCall.state === "connected" &&
-                        `${String(Math.floor((Date.now() - activeCall.startedAt) / 60000)).padStart(2, "0")}:${String(Math.floor(((Date.now() - activeCall.startedAt) % 60000) / 1000)).padStart(2, "0")}`}
-                    </span>
-                  </div>
-                  <video
-                    className="call-remote-video"
-                    ref={(el) => {
-                      if (el && activeCall.remoteStream) el.srcObject = activeCall.remoteStream
-                    }}
-                    autoPlay
-                    playsInline
-                  />
-                  {activeCall.isVideo && (
-                    <video
-                      className="call-local-video"
-                      ref={(el) => {
-                        if (el && activeCall.localStream) el.srcObject = activeCall.localStream
-                      }}
-                      autoPlay
-                      playsInline
-                      muted
-                    />
-                  )}
-                  <div className="call-overlay-controls">
-                    <button
-                      className={`call-control-btn ${callMuted ? "active" : ""}`}
-                      onClick={() => { toggleMute(); setCallMuted(!callMuted) }}
-                      title={callMuted ? t("call.unmute") : t("call.mute")}
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        {callMuted
-                          ? <><line x1="1" y1="1" x2="23" y2="23" /><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" /><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></>
-                          : <><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></>}
-                      </svg>
-                    </button>
-                    <button
-                      className="call-control-btn hangup"
-                      onClick={endCall}
-                      title={t("call.hangup")}
-                    >
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" /></svg>
-                    </button>
-                    <button
-                      className={`call-control-btn ${callVideoOff ? "active" : ""}`}
-                      onClick={async () => { const on = await toggleVideo(); setCallVideoOff(!on) }}
-                      title={callVideoOff ? t("call.startVideo") : t("call.stopVideo")}
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        {callVideoOff
-                          ? <><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10" /><line x1="1" y1="1" x2="23" y2="23" /></>
-                          : <><polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></>}
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+                <CallOverlay activeCall={activeCall} callMuted={callMuted}
+                  setCallMuted={setCallMuted} callVideoOff={callVideoOff} setCallVideoOff={setCallVideoOff} />
               )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Modals */}
-      {showAddContact && <AddContactModal existingContactIds={contacts.map((c) => c.contact_user?.id).filter(Boolean)} currentUserId={currentUser.id} onAdd={handleAddContact} onClose={() => setShowAddContact(false)} />}
-      {showCreateChat && <CreateChatModal currentUserId={currentUser.id} onCreate={handleCreateChat} onClose={() => setShowCreateChat(false)} />}
-      {showForward && <ForwardModal messageId={showForward} sourceChatId={selectedChat?.id} onForward={handleForward} onClose={() => setShowForward(null)} />}
-      {profileUser && <UserProfileModal user={profileUser} onClose={() => setProfileUser(null)} />}
-      {showGroupSettings && selectedChat && selectedChat.is_group && (
-        <GroupSettings chat={selectedChat} currentUser={currentUser} onClose={() => setShowGroupSettings(false)} onUpdated={loadChats} />
-      )}
-      {showGlobalSearch && (
-        <GlobalSearch chats={chats} onSelect={(chatId: string, messageId?: string) => {
+      <ChatModals
+        showAddContact={showAddContact} contacts={contacts} currentUser={currentUser}
+        onAddContact={handleAddContact} onCloseAddContact={() => setShowAddContact(false)}
+        showCreateChat={showCreateChat} onCreateChat={handleCreateChat}
+        onCloseCreateChat={() => setShowCreateChat(false)}
+        showForward={showForward} selectedChatId={selectedChat?.id}
+        onForward={handleForward} onCloseForward={() => setShowForward(null)}
+        profileUser={profileUser} onCloseProfile={() => setProfileUser(null)}
+        showGroupSettings={showGroupSettings} selectedChat={selectedChat}
+        onCloseGroupSettings={() => setShowGroupSettings(false)} onGroupUpdated={loadChats}
+        showGlobalSearch={showGlobalSearch} chats={chats}
+        onSelectGlobalSearch={(chatId, messageId) => {
           const chat = chats.find(c => c.id === chatId)
           if (chat) { setSelectedChat(chat); setTab("chats") }
           if (messageId) setScrollToMessageId(messageId)
           setShowGlobalSearch(false)
-        }} onClose={() => setShowGlobalSearch(false)} />
-      )}
-      {showMessageInfo && <MessageInfoModal messageId={showMessageInfo} onClose={() => setShowMessageInfo(null)} />}
-      {showInviteModal && <InviteModal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} />}
-      {showPinnedModal && selectedChat && (
-        <PinnedMessagesModal
-          chatId={selectedChat.id}
-          isOpen={showPinnedModal}
-          onClose={() => setShowPinnedModal(false)}
-          onMessageClick={(msgId) => {
-            const el = document.getElementById(`msg-${msgId}`)
-            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
-          }}
-        />
-      )}
+        }}
+        onCloseGlobalSearch={() => setShowGlobalSearch(false)}
+        showMessageInfo={showMessageInfo} onCloseMessageInfo={() => setShowMessageInfo(null)}
+        showInviteModal={showInviteModal} onCloseInviteModal={() => setShowInviteModal(false)}
+        showPinnedModal={showPinnedModal} onClosePinnedModal={() => setShowPinnedModal(false)}
+        onPinnedMessageClick={(msgId) => {
+          const el = document.getElementById(`msg-${msgId}`)
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
+        }}
+      />
     </div>
   )
 }

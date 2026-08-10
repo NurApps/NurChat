@@ -50,7 +50,7 @@ async def send_contact_request(
     from_user = db.query(models.User).filter(models.User.id == user_id).first()
     to_user = db.query(models.User).filter(models.User.id == req.to_user_id).first()
 
-    await connection_manager.send_to_user({
+    await connection_manager.send_personal_message({
         "event": "contact_request",
         "from_user_id": user_id,
         "from_username": from_user.username if from_user else user_id,

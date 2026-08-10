@@ -90,7 +90,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
-python_files = ["*tests.py"]
+python_files = ["test_*.py", "*tests.py"]
 markers = [
     "integration: marks tests that require a running server (deselect with '-m \"not integration\"')",
 ]

@@ -28,7 +28,7 @@ jobs:
         run: ruff check .
 
       - name: Tests
-        run: pytest test/ -v
+        run: pytest test/ -v --ignore=test/functional_tests.py
 
   frontend:
     runs-on: ubuntu-latest

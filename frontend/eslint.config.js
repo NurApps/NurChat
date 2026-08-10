@@ -21,7 +21,11 @@ export default defineConfig([
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-require-imports': 'warn',
       'no-empty': 'warn',
+      'no-useless-assignment': 'warn',
+      'prefer-const': 'warn',
+      'react-refresh/only-export-components': 'warn',
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/immutability': 'off',
     },

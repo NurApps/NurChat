@@ -8,17 +8,13 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import hashlib
-import secrets
-from unittest.mock import MagicMock
 
 import pytest
-from nacl.public import PrivateKey, PublicKey, Box
+from nacl.public import Box, PrivateKey
 from nacl.signing import SigningKey
 from nacl.utils import random as nacl_random
 
 from shared.double_ratchet import hkdf
-
 
 # ─── Sender Key Protocol Tests ───
 

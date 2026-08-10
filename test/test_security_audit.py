@@ -3,28 +3,27 @@ Phase 6.2: Security Audit Tests for NurChat Cryptographic Implementation
 Comprehensive tests for edge cases, fuzzing, and security properties.
 """
 
-import pytest
-import hashlib
-import hmac
+import os
 import secrets
-from typing import Tuple
-import struct
 
 # Import from existing modules
 import sys
-import os
+
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from nacl.public import PrivateKey
+from nacl.signing import SigningKey
 
 from shared.double_ratchet import (
     DoubleRatchetSession,
     KDFChain,
     PreKeyBundle,
     hkdf,
-    hkdf_extract,
     hkdf_expand,
+    hkdf_extract,
 )
-from nacl.public import PrivateKey, PublicKey, Box
-from nacl.signing import SigningKey
 
 
 class TestKeyGeneration:
@@ -36,7 +35,7 @@ class TestKeyGeneration:
         for _ in range(100):
             sk = PrivateKey.generate()
             private_keys.append(sk)
-        
+
         # All private keys should be unique
         unique_keys = {sk.encode().hex() for sk in private_keys}
         assert len(unique_keys) == 100, "Duplicate private keys generated"
@@ -57,10 +56,10 @@ class TestKDFChain:
         key = secrets.token_bytes(32)
         chain = KDFChain(key=key)
         ad = b"test_ad"
-        
+
         msg_key1, chain1 = chain.next_message_key(ad)
         msg_key2, chain2 = chain1.next_message_key(ad)
-        
+
         assert msg_key1 != msg_key2
 
     def test_deterministic_replay(self):
@@ -69,11 +68,11 @@ class TestKDFChain:
         chain1 = KDFChain(key=key)
         chain2 = KDFChain(key=key)
         ad = b"test_ad"
-        
+
         # Both should produce same output
         k1, _ = chain1.next_message_key(ad)
         k2, _ = chain2.next_message_key(ad)
-        
+
         assert k1 == k2
 
 
@@ -85,9 +84,9 @@ class TestHKDF:
         salt = secrets.token_bytes(32)
         ikm = secrets.token_bytes(32)
         info = b"test"
-        
+
         result = hkdf(salt, ikm, info, 32)
-        
+
         assert len(result) == 32
         assert isinstance(result, bytes)
 
@@ -95,20 +94,20 @@ class TestHKDF:
         """Different salts should produce different output."""
         ikm = secrets.token_bytes(32)
         info = b"test"
-        
+
         result1 = hkdf(secrets.token_bytes(32), ikm, info, 32)
         result2 = hkdf(secrets.token_bytes(32), ikm, info, 32)
-        
+
         assert result1 != result2
 
     def test_hkdf_extract_expand(self):
         """HKDF extract and expand should work."""
         salt = secrets.token_bytes(32)
         ikm = secrets.token_bytes(32)
-        
+
         prk = hkdf_extract(salt, ikm)
         assert len(prk) == 32
-        
+
         okm = hkdf_expand(prk, b"info", 64)
         assert len(okm) == 64
 
@@ -119,7 +118,7 @@ class TestDoubleRatchetSession:
     def test_session_initialization(self):
         """Session should be initializable."""
         session = DoubleRatchetSession()
-        
+
         assert session.DHs is None
         assert session.DHr is None
         assert session.RK is None
@@ -129,12 +128,12 @@ class TestDoubleRatchetSession:
         # Alice's keys
         alice_identity = PrivateKey.generate()
         alice_ephemeral = PrivateKey.generate()
-        
+
         # Bob's keys
         bob_identity = PrivateKey.generate()
         bob_signed_prekey = PrivateKey.generate()
         bob_one_time_prekey = PrivateKey.generate()
-        
+
         # Alice performs X3DH
         sk_alice, ephemeral = DoubleRatchetSession.x3dh_initialize(
             alice_identity,
@@ -142,7 +141,7 @@ class TestDoubleRatchetSession:
             bob_signed_prekey.public_key,
             bob_one_time_prekey.public_key,
         )
-        
+
         # Bob performs X3DH
         sk_bob = DoubleRatchetSession.x3dh_receive(
             bob_identity,
@@ -151,7 +150,7 @@ class TestDoubleRatchetSession:
             alice_identity.public_key,
             ephemeral.public_key,
         )
-        
+
         # Shared secrets should be equal
         assert sk_alice == sk_bob
 
@@ -160,14 +159,14 @@ class TestDoubleRatchetSession:
         alice_identity = PrivateKey.generate()
         bob_identity = PrivateKey.generate()
         bob_signed_prekey = PrivateKey.generate()
-        
+
         sk_alice, ephemeral = DoubleRatchetSession.x3dh_initialize(
             alice_identity,
             bob_identity.public_key,
             bob_signed_prekey.public_key,
             None,  # No one-time prekey
         )
-        
+
         sk_bob = DoubleRatchetSession.x3dh_receive(
             bob_identity,
             bob_signed_prekey,
@@ -175,7 +174,7 @@ class TestDoubleRatchetSession:
             alice_identity.public_key,
             ephemeral.public_key,
         )
-        
+
         assert sk_alice == sk_bob
 
     def test_forward_secrecy(self):
@@ -185,27 +184,27 @@ class TestDoubleRatchetSession:
         bob1_identity = PrivateKey.generate()
         bob1_signed_prekey = PrivateKey.generate()
         bob1_one_time_prekey = PrivateKey.generate()
-        
+
         sk1, _ = DoubleRatchetSession.x3dh_initialize(
             alice1_identity,
             bob1_identity.public_key,
             bob1_signed_prekey.public_key,
             bob1_one_time_prekey.public_key,
         )
-        
+
         # Second session
         alice2_identity = PrivateKey.generate()
         bob2_identity = PrivateKey.generate()
         bob2_signed_prekey = PrivateKey.generate()
         bob2_one_time_prekey = PrivateKey.generate()
-        
+
         sk2, _ = DoubleRatchetSession.x3dh_initialize(
             alice2_identity,
             bob2_identity.public_key,
             bob2_signed_prekey.public_key,
             bob2_one_time_prekey.public_key,
         )
-        
+
         # Different sessions should have different shared secrets
         assert sk1 != sk2
 
@@ -217,13 +216,13 @@ class TestPreKeyBundle:
         """PreKeyBundle should be generateable."""
         identity_private = PrivateKey.generate()
         signed_prekey_private = PrivateKey.generate()
-        
+
         bundle = PreKeyBundle.generate(
             identity_private=identity_private,
             signed_prekey_private=signed_prekey_private,
             num_one_time=10,
         )
-        
+
         assert bundle is not None
         assert bundle.identity_key is not None
         assert bundle.signed_prekey is not None
@@ -235,14 +234,14 @@ class TestPreKeyBundle:
         identity_private = PrivateKey.generate()
         signing_key = SigningKey.generate()
         signed_prekey_private = PrivateKey.generate()
-        
+
         bundle = PreKeyBundle.generate(
             identity_private=identity_private,
             signed_prekey_private=signed_prekey_private,
             num_one_time=10,
             signing_private=signing_key,
         )
-        
+
         # Verify signature
         try:
             signing_key.verify_key.verify(
@@ -256,12 +255,12 @@ class TestPreKeyBundle:
         """PreKeyBundle should be serializable."""
         identity_private = PrivateKey.generate()
         signed_prekey_private = PrivateKey.generate()
-        
+
         bundle = PreKeyBundle.generate(
             identity_private=identity_private,
             signed_prekey_private=signed_prekey_private,
         )
-        
+
         data = bundle.to_dict()
         assert data is not None
         assert "identity_key" in data
@@ -275,9 +274,9 @@ class TestEdgeCases:
         """HKDF should handle empty info."""
         salt = secrets.token_bytes(32)
         ikm = secrets.token_bytes(32)
-        
+
         result = hkdf(salt, ikm, b"", 32)
-        
+
         assert len(result) == 32
 
     def test_large_info_hkdf(self):
@@ -285,9 +284,9 @@ class TestEdgeCases:
         salt = secrets.token_bytes(32)
         ikm = secrets.token_bytes(32)
         info = secrets.token_bytes(1024)
-        
+
         result = hkdf(salt, ikm, info, 32)
-        
+
         assert len(result) == 32
 
     def test_multiple_independent_sessions(self):
@@ -310,7 +309,7 @@ class TestEdgeCases:
                 bob_signed_prekey.public_key,
             )
             sessions.append(session)
-        
+
         # All should be independent (different internal state)
         for i, s1 in enumerate(sessions):
             for j, s2 in enumerate(sessions):

@@ -5,9 +5,9 @@ Revises: merge_totp_20260722
 Create Date: 2026-08-09
 
 """
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = 'f1e2d3c4b5a6'

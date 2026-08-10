@@ -5,26 +5,27 @@ Uses Hypothesis for property-based testing.
 Tests cryptographic invariants that must hold for all inputs.
 """
 
-import pytest
-import hypothesis
-from hypothesis import given, strategies as st, settings
-import secrets
 import hashlib
-
-import sys
 import os
+import secrets
+import sys
+
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from nacl.public import PrivateKey
 
 from shared.double_ratchet import (
     DoubleRatchetSession,
     KDFChain,
     PreKeyBundle,
     hkdf,
-    hkdf_extract,
     hkdf_expand,
+    hkdf_extract,
 )
-from nacl.public import PrivateKey, PublicKey, Box
-
 
 # ─── Strategies ───
 

@@ -190,8 +190,9 @@ class TestDeleteMessageOwnership:
     def test_delete_nonexistent_message(self):
         """Delete of nonexistent message should be silently ignored (no crash)."""
         # This tests that the handler doesn't crash on missing messages
-        from server.ws.chat_manager import chat_manager
         import asyncio
+
+        from server.ws.chat_manager import chat_manager
 
         async def _test():
             await chat_manager._handle_delete_message("user_123", {
@@ -208,8 +209,9 @@ class TestDeleteMessageOwnership:
 class TestCallRequestValidation:
     def test_call_request_missing_target(self):
         """W2: Call request without target_user_id should not crash."""
-        from server.ws.signaling import call_manager
         import asyncio
+
+        from server.ws.signaling import call_manager
 
         async def _test():
             # Should not raise KeyError
@@ -222,8 +224,9 @@ class TestCallRequestValidation:
 
     def test_call_request_missing_call_id(self):
         """W2: Call request without call_id should not crash."""
-        from server.ws.signaling import call_manager
         import asyncio
+
+        from server.ws.signaling import call_manager
 
         async def _test():
             await call_manager._handle_call_request("user_123", {

@@ -9,17 +9,13 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import hashlib
 import secrets
-from unittest.mock import MagicMock
 
 import pytest
-from nacl.public import PrivateKey, PublicKey, Box
-from nacl.signing import SigningKey
+from nacl.public import PrivateKey
 from nacl.utils import random as nacl_random
 
 from shared.double_ratchet import hkdf
-
 
 # ─── Constant-Time Comparison Tests ───
 

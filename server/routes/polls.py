@@ -165,7 +165,11 @@ def _poll_to_response(poll: models.Poll, user_id: str, db: Session) -> schemas.P
         expires_at=poll.expires_at,
         created_at=poll.created_at,
         options=[
-            schemas.PollOptionResponse(id=opt.id, text=opt.text, position=opt.position, vote_count=vote_counts.get(opt.id, 0))
+            schemas.PollOptionResponse(
+                id=opt.id, text=opt.text,
+                position=opt.position,
+                vote_count=vote_counts.get(opt.id, 0)
+            )
             for opt in options
         ],
         total_votes=total_votes,

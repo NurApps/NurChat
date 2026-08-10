@@ -22,7 +22,7 @@ async def _cleanup_expired_messages():
         expired = db.query(Message).filter(
             Message.expires_at.isnot(None),
             Message.expires_at <= now,
-            Message.is_deleted == False,
+            ~Message.is_deleted,
         ).all()
 
         for msg in expired:
@@ -54,7 +54,7 @@ async def _send_scheduled_messages():
         scheduled = db.query(Message).filter(
             Message.scheduled_at.isnot(None),
             Message.scheduled_at <= now,
-            Message.is_deleted == False,
+            ~Message.is_deleted,
         ).all()
 
         for msg in scheduled:

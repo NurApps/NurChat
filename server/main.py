@@ -31,6 +31,7 @@ from server.routes import (
     discovery,
     files,
     forward,
+    group_calls,
     keys,
     legal,
     p2p,
@@ -43,6 +44,7 @@ from server.routes import (
 from server.utils.file_cleanup import file_cleanup_service
 from server.utils.logger import generate_request_id, logger, request_id_var
 from server.ws.chat_manager import handle_websocket_connection
+from server.ws.group_call_signaling import group_call_manager
 from server.ws.notifications import handle_notifications_websocket
 from server.ws.p2p_manager import p2p_manager
 from server.ws.signaling import call_manager
@@ -219,6 +221,7 @@ async def limit_body_size(request: Request, call_next):
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])
+app.include_router(group_calls.router, prefix="/api/group-calls", tags=["Group Calls"])
 app.include_router(files.router, prefix="/api/files", tags=["Files"])
 app.include_router(forward.router, prefix="/api/forward", tags=["Forward"])
 app.include_router(legal.router, prefix="/api/legal", tags=["Legal"])
@@ -299,6 +302,20 @@ async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: st
         return
     try:
         await call_manager.handle_signaling(websocket, user_id)
+    finally:
+        release_ws_connection(client_ip)
+
+
+@app.websocket("/ws/group-calls/{user_id}")
+async def websocket_group_calls_endpoint(websocket: WebSocket, user_id: str, token: str):
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if not check_ws_rate_limit(client_ip):
+        await websocket.close(code=4008)
+        return
+    if not await _verify_ws_token(websocket, token, client_ip):
+        return
+    try:
+        await group_call_manager.handle(websocket, user_id)
     finally:
         release_ws_connection(client_ip)
 

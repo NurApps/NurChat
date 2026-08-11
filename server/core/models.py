@@ -189,6 +189,43 @@ class CallLog(Base):
     caller = relationship("User", foreign_keys=[caller_id])
     callee = relationship("User", foreign_keys=[callee_id])
 
+
+class GroupCall(Base):
+    __tablename__ = "group_calls"
+    __table_args__ = (
+        Index("ix_group_calls_chat", "chat_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    call_id = Column(String, unique=True, index=True)
+    chat_id = Column(String, ForeignKey("chats.id", ondelete="CASCADE"))
+    created_by = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
+    call_type = Column(String)  # audio или video
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    ended_at = Column(DateTime(timezone=True))
+
+    chat = relationship("Chat")
+    creator = relationship("User", foreign_keys=[created_by])
+    participants = relationship("GroupCallParticipant", back_populates="group_call", cascade="all, delete-orphan")
+
+
+class GroupCallParticipant(Base):
+    __tablename__ = "group_call_participants"
+    __table_args__ = (
+        Index("ix_group_call_participants_call", "group_call_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_call_id = Column(Integer, ForeignKey("group_calls.id", ondelete="CASCADE"))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
+    joined_at = Column(DateTime(timezone=True), server_default=func.now())
+    left_at = Column(DateTime(timezone=True))
+    is_muted = Column(Boolean, default=False)
+    is_video_off = Column(Boolean, default=False)
+
+    group_call = relationship("GroupCall", back_populates="participants")
+    user = relationship("User")
+
 class MessageReaction(Base):
     __tablename__ = "message_reactions"
     __table_args__ = (

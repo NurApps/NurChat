@@ -275,6 +275,22 @@ export const api = {
   getIceServers: () =>
     request<{ ice_servers: Array<{ urls: string; username?: string; credential?: string }> }>("GET", "/api/calls/ice-servers"),
 
+  // Group Calls
+  startGroupCall: (chatId: string, callType: string) =>
+    request<{ call_id: string; chat_id: string; created_by: string; call_type: string; started_at: string; participants: unknown[]; participant_count: number }>("POST", "/api/group-calls/start", { chat_id: chatId, call_type: callType }),
+
+  joinGroupCall: (callId: string) =>
+    request<{ call_id: string; chat_id: string; created_by: string; call_type: string; started_at: string; participants: Array<{ user_id: string; username?: string; is_muted: boolean; is_video_off: boolean }>; participant_count: number }>("POST", `/api/group-calls/join/${callId}`),
+
+  leaveGroupCall: (callId: string) =>
+    request<{ status: string; remaining: number }>("POST", `/api/group-calls/leave/${callId}`),
+
+  endGroupCall: (callId: string) =>
+    request<{ status: string }>("POST", `/api/group-calls/end/${callId}`),
+
+  getActiveGroupCall: (chatId: string) =>
+    request<{ call_id: string; chat_id: string; created_by: string; call_type: string; participants: unknown[]; participant_count: number } | null>("GET", `/api/group-calls/active/${chatId}`),
+
   // P2P
   generateP2PKeys: () =>
     request<{ private_key: string; public_key: string; signing_private_key: string; signing_public_key: string }>("POST", "/api/p2p/keys/generate"),

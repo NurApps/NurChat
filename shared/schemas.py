@@ -273,6 +273,28 @@ class CallHistoryResponse(BaseSchema):
     calls: list[CallResponse]
     total: int
 
+# Group Calls
+class GroupCallStartRequest(BaseSchema):
+    chat_id: str = Field(..., min_length=1, max_length=100)
+    call_type: str = Field(..., pattern=r"^(audio|video)$")
+
+class GroupCallParticipantResponse(BaseSchema):
+    user_id: str
+    username: str | None = None
+    is_muted: bool = False
+    is_video_off: bool = False
+    joined_at: datetime
+
+class GroupCallResponse(BaseSchema):
+    call_id: str
+    chat_id: str
+    created_by: str
+    call_type: str
+    started_at: datetime
+    ended_at: datetime | None = None
+    participants: list[GroupCallParticipantResponse] = []
+    participant_count: int = 0
+
 # Files
 class StorageInfo(BaseSchema):
     total_size: int

@@ -722,3 +722,60 @@
     --success-color: #34c759;
   }
 }
+
+/* ─── ChatPage Responsive ─── */
+
+@media (max-width: 768px) {
+  .chat-body {
+    flex-direction: column;
+    height: calc(100dvh - 52px);
+  }
+
+  .chat-sidebar {
+    width: 100%;
+    height: 100%;
+  }
+
+  .chat-main {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 10;
+  }
+
+  .chat-header {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+
+  .mobile-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--touch-target, 44px);
+    height: var(--touch-target, 44px);
+    background: none;
+    border: none;
+    color: var(--text-primary, #fff);
+    cursor: pointer;
+    margin-right: 4px;
+    flex-shrink: 0;
+  }
+
+  .chat-window {
+    height: 100dvh;
+  }
+
+  .messages-list {
+    padding-bottom: 80px;
+  }
+
+  .msg-bubble {
+    max-width: 85% !important;
+  }
+
+  .input-bar {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+}

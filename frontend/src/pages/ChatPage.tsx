@@ -19,7 +19,12 @@ import { useChatMessages } from "../hooks/useChatMessages"
 import { useChatActions } from "../hooks/useChatActions"
 import { useChatTyping } from "../hooks/useChatTyping"
 import { useOfflineQueue } from "../hooks/useOfflineQueue"
+import { useMobile } from "../hooks/useMobile"
 import OfflineBanner from "../components/OfflineBanner"
+import { BottomTabs } from "../components/mobile/BottomTabs"
+import { SwipeableRow } from "../components/mobile/SwipeableRow"
+import { PullToRefresh } from "../components/mobile/PullToRefresh"
+import { MobileMessageInput } from "../components/mobile/MobileMessageInput"
 import { loadKeys as loadE2EKeys, decryptMessage, type E2EKeys } from "../services/e2e"
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications, showNotification } from "../services/notifications"
@@ -59,6 +64,7 @@ import { getDraft, saveDraft, removeDraft } from "../utils/drafts"
 export default function ChatPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { isMobile } = useMobile()
 
   const currentUser = useChatStore((s) => s.currentUser)
   const tab = useChatStore((s) => s.tab)
@@ -805,6 +811,8 @@ export default function ChatPage() {
     return name?.toLowerCase().includes(search.toLowerCase())
   })
 
+  const unreadCount = chats.reduce((sum, c) => sum + ((c as Record<string, unknown>).unread_count as number || 0), 0)
+
   const selectedChatName = selectedChat
     ? selectedChat.is_group ? (selectedChat.name || t("chat.chats")) : selectedChat.participants.find((p) => p.id !== currentUser.id)?.username || t("chat.chats")
     : ""
@@ -881,7 +889,8 @@ export default function ChatPage() {
       )}
 
       <div className="chat-body">
-        {/* Sidebar */}
+        {/* Sidebar — hidden on mobile when chat selected */}
+        {!(isMobile && selectedChat) && (
         <ChatSidebar
           tab={tab} setTab={setTab} search={search} setSearch={setSearch}
           chats={chats} filteredChats={filteredChats} contacts={contacts} invites={invites}
@@ -894,6 +903,7 @@ export default function ChatPage() {
           handleRemoveContact={handleRemoveContact} handleStartChat={handleStartChat}
           handleAcceptInvite={handleAcceptInvite} handleDeclineInvite={handleDeclineInvite}
         />
+        )}
 
         {/* Main */}
         <div className="chat-main" role="main" id="main-content">
@@ -907,6 +917,11 @@ export default function ChatPage() {
             <div className="chat-window">
               {/* Header */}
               <div className="chat-header">
+                {isMobile && (
+                  <button className="ch-btn mobile-back" onClick={() => setSelectedChat(null)} aria-label={t("common.back", "Назад")}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
+                  </button>
+                )}
                 <div className="ch-avatar clickable"
                   onClick={() => { if (!isSelectedGroup) { const peer = selectedChat.participants.find(p => p.id !== currentUser.id); if (peer) handleViewProfile(peer) } }}>
                   {selectedChatAvatar}
@@ -1162,6 +1177,20 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+
+      {isMobile && (
+        <BottomTabs
+          activeTab={tab}
+          onTabChange={(newTab) => {
+            setTab(newTab as "chats" | "calls" | "contacts" | "settings")
+            if (newTab === "settings") navigate("/settings")
+            if (newTab === "calls") navigate("/calls")
+          }}
+          badges={{
+            chats: unreadCount,
+          }}
+        />
+      )}
 
       <ChatModals
         showAddContact={showAddContact} contacts={contacts} currentUser={currentUser}

@@ -1047,7 +1047,9 @@ async def get_group_key(
 # ─── Global Search ───
 
 @router.get("/search-global")
+@limiter.limit("10/minute")
 async def search_global(
+    request: Request,
     q: str,
     skip: int = 0,
     limit: int = 50,

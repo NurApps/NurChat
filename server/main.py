@@ -129,6 +129,25 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
+# Custom exception handlers —TogetherException → proper HTTP codes
+from shared.exceptions import TogetherException, ChatNotFoundError, MessageNotFoundError, AuthenticationError
+
+@app.exception_handler(ChatNotFoundError)
+async def chat_not_found_handler(request: Request, exc: ChatNotFoundError):
+    return JSONResponse(status_code=404, content={"detail": str(exc) or "Чат не найден"})
+
+@app.exception_handler(MessageNotFoundError)
+async def message_not_found_handler(request: Request, exc: MessageNotFoundError):
+    return JSONResponse(status_code=404, content={"detail": str(exc) or "Сообщение не найдено"})
+
+@app.exception_handler(AuthenticationError)
+async def auth_error_handler(request: Request, exc: AuthenticationError):
+    return JSONResponse(status_code=401, content={"detail": str(exc) or "Ошибка аутентификации"})
+
+@app.exception_handler(TogetherException)
+async def together_exception_handler(request: Request, exc: TogetherException):
+    return JSONResponse(status_code=400, content={"detail": str(exc) or "Bad request"})
+
 # CORS — строгий белый список из .env (CORS_ORIGINS) или дефолтные
 import os
 
@@ -177,6 +196,20 @@ async def add_request_id(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Request-ID"] = rid
     return response
+
+# Host header validation — reject poisoned Host headers
+@app.middleware("http")
+async def validate_host_header(request: Request, call_next):
+    host = request.headers.get("host", "")
+    if not host:
+        return await call_next(request)
+    # Allow: localhost, 127.0.0.1, tauri, testserver, any IP/domain with dots
+    allowed_prefixes = ("localhost", "127.0.0.1", "tauri", "testserver")
+    if any(host.lower().startswith(p) for p in allowed_prefixes):
+        return await call_next(request)
+    if "." in host:
+        return await call_next(request)
+    return JSONResponse(status_code=400, content={"detail": "Invalid Host header"})
 
 # Security headers
 @app.middleware("http")

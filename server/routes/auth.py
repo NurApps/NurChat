@@ -196,7 +196,7 @@ async def register(
 
 
 @router.post("/anonymous", response_model=schemas.Token)
-@limiter.limit("30/minute")
+@limiter.limit("5/minute")
 async def anonymous_login(
     request: Request,
     public_key: str = Body(...),

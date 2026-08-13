@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { BASE_URL } from "../config"
-import { loadKeys, setupPreKeys } from "../services/e2e"
+import { loadKeys, setupPreKeys, saveKeys } from "../services/e2e"
 
 const TG_BLUE = "#2AABEE"
 

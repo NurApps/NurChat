@@ -138,7 +138,6 @@ export default function ChatPage() {
   const [isOnline, setIsOnline] = useState(navigator.onLine)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const p2pFileInputRef = useRef<HTMLInputElement>(null)
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -696,47 +695,34 @@ export default function ChatPage() {
 
   const handleFilePick = useCallback(() => fileInputRef.current?.click(), [])
 
-  const handleP2PFilePick = useCallback(() => p2pFileInputRef.current?.click(), [])
-
-  const handleP2PFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    if (files.length === 0 || !selectedChat) return
-    const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
-    if (!peer || !isPeerConnected(peer.id)) {
-      setErrorToast(t("chat.p2pNotConnected"))
-      if (p2pFileInputRef.current) p2pFileInputRef.current.value = ""
-      return
-    }
-    setUploading(true)
-    let completed = 0
-    for (const file of files) {
-      try {
-        const arrayBuffer = await file.arrayBuffer()
-        const fileData = new Uint8Array(arrayBuffer)
-        const fileId = `file_${Date.now()}_${Math.random().toString(36).slice(2)}`
-        const sent = await sendP2PFileMessage(peer.id, fileId, file.name, fileData, file.type || "application/octet-stream")
-        if (sent) {
-          const fileType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "file"
-          const uploaded = await api.uploadFile(file, fileType, (p) => setUploadProgress(((completed + p) / files.length) * 100))
-          const msg = await api.sendMessage(selectedChat.id, file.name, fileType, uploaded.id, undefined, undefined, fileId)
-          addMessage(msg); completed++
-        } else {
-          setErrorToast(t("chat.p2pNotConnected"))
-        }
-      } catch { setErrorToast(t("errors.fileUpload", { name: file.name })) }
-    }
-    setUploading(false); setUploadProgress(0)
-    if (p2pFileInputRef.current) p2pFileInputRef.current.value = ""
-  }, [selectedChat, currentUser, addMessage, setErrorToast, setUploading, setUploadProgress, t])
-
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0 || !selectedChat) return
+    const peer = !selectedChat.is_group ? selectedChat.participants.find(p => p.id !== currentUser.id) : undefined
+    const p2pAvailable = !!peer && isPeerConnected(peer.id)
     setUploading(true); setUploadProgress(0)
     let completed = 0
     for (const file of files) {
       try {
         const fileType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "file"
+        // P2P-first: send file directly to peer, no relay involved
+        if (p2pAvailable && peer) {
+          const fileData = new Uint8Array(await file.arrayBuffer())
+          const fileId = `file_${Date.now()}_${Math.random().toString(36).slice(2)}`
+          const sent = await sendP2PFileMessage(peer.id, fileId, file.name, fileData, file.type || "application/octet-stream")
+          if (sent) {
+            const blobUrl = URL.createObjectURL(file)
+            addMessage({
+              id: `p2p_file_${fileId}`, chat_id: selectedChat.id, user_id: currentUser.id,
+              content: blobUrl, message_type: fileType, file_id: fileId,
+              created_at: new Date().toISOString(), user: currentUser, is_read: true,
+              is_deleted: false, reactions: {},
+            })
+            completed++
+            continue
+          }
+        }
+        // Fallback: relay (peer offline or P2P failed)
         const uploaded = await api.uploadFile(file, fileType, (p) => setUploadProgress(((completed + p) / files.length) * 100))
         const msg = await api.sendMessage(selectedChat.id, file.name, fileType, uploaded.id)
         addMessage(msg); completed++
@@ -761,9 +747,28 @@ export default function ChatPage() {
         const file = new File([blob], `voice_${Date.now()}.webm`, { type: mr.mimeType })
         setUploading(true)
         try {
-          const uploaded = await api.uploadFile(file, "voice")
-          const msg = await api.sendMessage(selectedChat.id, t("chat.voiceMessage"), "voice", uploaded.id)
-          addMessage(msg); loadChats()
+          // P2P-first for voice
+          const peer = !selectedChat.is_group ? selectedChat.participants.find(p => p.id !== currentUser.id) : undefined
+          const p2pAvailable = !!peer && isPeerConnected(peer.id)
+          if (p2pAvailable && peer) {
+            const fileData = new Uint8Array(await file.arrayBuffer())
+            const fileId = `file_${Date.now()}_${Math.random().toString(36).slice(2)}`
+            const sent = await sendP2PFileMessage(peer.id, fileId, file.name, fileData, file.type || "audio/webm")
+            if (sent) {
+              const blobUrl = URL.createObjectURL(blob)
+              addMessage({
+                id: `p2p_file_${fileId}`, chat_id: selectedChat.id, user_id: currentUser.id,
+                content: blobUrl, message_type: "voice", file_id: fileId,
+                created_at: new Date().toISOString(), user: currentUser, is_read: true,
+                is_deleted: false, reactions: {},
+              })
+              loadChats()
+            }
+          } else {
+            const uploaded = await api.uploadFile(file, "voice")
+            const msg = await api.sendMessage(selectedChat.id, t("chat.voiceMessage"), "voice", uploaded.id)
+            addMessage(msg); loadChats()
+          }
         } catch { console.error("Voice failed") }
         setUploading(false)
       }
@@ -1112,7 +1117,6 @@ export default function ChatPage() {
                   </div>
                 )}
                 <input ref={fileInputRef} type="file" hidden multiple onChange={handleFileChange} />
-                <input ref={p2pFileInputRef} type="file" hidden multiple onChange={handleP2PFileChange} />
                 <button className="input-btn" title={t("common.emoji")} onClick={() => setShowEmoji(!showEmoji)} disabled={recording || uploading} aria-expanded={showEmoji}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
                 </button>
@@ -1122,11 +1126,6 @@ export default function ChatPage() {
                 <button className="input-btn" title={t("common.file")} disabled={recording || uploading} onClick={handleFilePick}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
                 </button>
-                {selectedChat && !selectedChat.is_group && selectedChat.participants.some(p => p.id !== currentUser.id && p2pConnected[p.id]) && (
-                  <button className="input-btn p2p-send-btn" title={t("chat.sendViaP2P")} disabled={recording || uploading} onClick={handleP2PFilePick}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--p2p-color, #00c853)" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
-                  </button>
-                )}
 
                 {uploading ? (
                   <div className="chat-input-uploading">

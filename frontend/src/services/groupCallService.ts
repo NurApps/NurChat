@@ -14,7 +14,7 @@
  * 7. When participant leaves: "participant-left" → close that peer connection
  */
 
-import api from "./api"
+import { api } from "./api"
 
 // ─── Types ───
 

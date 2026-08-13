@@ -75,7 +75,7 @@ export function useChatActions({
         const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`
         const payload = encryptedContent || content
         const sent = sendP2PTextMessage(peer.id, msgId, payload, replyToId)
-        sentViaP2P = true
+        sentViaP2P = sent
         addMessage({
           id: msgId, chat_id: selectedChat.id, user_id: currentUser.id,
           content: encryptedContent ? text : content, message_type: "text",

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     P2P_SIGNALING_PATH: str = "/ws/p2p"
     P2P_RELAY_STORE_MESSAGES: bool = True
     P2P_PENDING_LIMIT: int = 500
+    P2P_PENDING_TTL_DAYS: int = 7
     P2P_DISCOVERY_TTL_SECONDS: int = 300
     WEBRTC_ICE_SERVERS: str | None = None  # JSON: [{"urls":"stun:...","username":"...","credential":"..."}]
     TURN_SERVERS: str | None = None  # JSON: [{"urls":"turn:...","username":"...","credential":"..."}]

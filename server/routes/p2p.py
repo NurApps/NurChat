@@ -111,7 +111,8 @@ async def get_pending_messages(
     ).order_by(models.P2PMessage.created_at.asc()).limit(limit).all()
 
     for message in messages:
-        message.delivered_at = datetime.now(timezone.utc)
+        # Глухой relay: доставленное сообщение сразу удаляется, история не хранится
+        db.delete(message)
     db.commit()
 
     return [schemas.P2PPendingResponse(

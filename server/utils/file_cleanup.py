@@ -128,6 +128,24 @@ class FileCleanupService:
         finally:
             db.close()
 
+    async def cleanup_expired_p2p_messages(self):
+        """Очистка невостребованных офлайн P2P-сообщений (глухой relay: не хранить дольше TTL)"""
+        logger.info("Starting expired P2P pending messages cleanup...")
+
+        db: Session = SessionLocal()
+        try:
+            expiry_date = datetime.now(timezone.utc) - timedelta(days=settings.P2P_PENDING_TTL_DAYS)
+            deleted = db.query(models.P2PMessage).filter(
+                models.P2PMessage.created_at < expiry_date
+            ).delete(synchronize_session=False)
+            db.commit()
+            logger.info(f"Expired P2P pending messages deleted: {deleted}")
+        except Exception as e:
+            logger.error(f"Error in P2P pending messages cleanup: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
     def start_cleanup_scheduler(self):
         """Запуск планировщика очистки"""
         if self.is_running:
@@ -153,6 +171,13 @@ class FileCleanupService:
             self.cleanup_expired_ephemeral_messages,
             trigger=IntervalTrigger(seconds=60),
             id="ephemeral_messages_cleanup"
+        )
+
+        # Очистка просроченных P2P pending сообщений каждые 6 часов
+        self.scheduler.add_job(
+            self.cleanup_expired_p2p_messages,
+            trigger=IntervalTrigger(hours=6),
+            id="p2p_pending_cleanup"
         )
 
         self.scheduler.start()

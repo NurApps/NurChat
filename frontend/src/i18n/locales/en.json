@@ -372,6 +372,13 @@
     "downloadVersion": "Download {{version}}",
     "latestVersion": "You have the latest version",
     "updateError": "Update check error",
+    "relay": "Relay server",
+    "relayDesc": "Relay address for those who deploy NurChat on their own server. The official public relay is used by default.",
+    "relayProtocol": "Protocol",
+    "relayHost": "Server address (host:port)",
+    "relaySaved": "Saved",
+    "relayReset": "Reset",
+    "relayRestart": "Changes apply after the app restarts.",
     "status": "Status",
     "statusPlaceholder": "e.g.: online, busy...",
     "bioPlaceholder": "Tell about yourself..."

@@ -372,6 +372,13 @@
     "downloadVersion": "Скачать {{version}}",
     "latestVersion": "У вас последняя версия",
     "updateError": "Ошибка проверки обновлений",
+    "relay": "Relay-сервер",
+    "relayDesc": "Адрес relay для тех, кто разворачивает NurChat на своём сервере. По умолчанию используется официальный публичный relay.",
+    "relayProtocol": "Протокол",
+    "relayHost": "Адрес сервера (host:port)",
+    "relaySaved": "Сохранено",
+    "relayReset": "Сбросить",
+    "relayRestart": "Изменения применяются после перезапуска приложения.",
     "status": "Статус",
     "statusPlaceholder": "Например: в сети, занят...",
     "bioPlaceholder": "Расскажите о себе..."

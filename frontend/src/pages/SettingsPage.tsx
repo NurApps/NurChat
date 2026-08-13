@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import { BASE_URL, avatarUrl } from "../config"
+import { BASE_URL, avatarUrl, getRelayConfig, setRelayConfig, resetRelayConfig } from "../config"
 import { useAvatar } from "../hooks/useAvatar"
 import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
@@ -80,6 +80,16 @@ export default function SettingsPage() {
   const [totpBackupCodes, setTotpBackupCodes] = useState<string[]>([])
   const [totpLoading, setTotpLoading] = useState(false)
   const { theme, setTheme } = useTheme()
+
+  const [relayHost, setRelayHost] = useState("")
+  const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("http")
+  const [relaySaved, setRelaySaved] = useState(false)
+
+  useEffect(() => {
+    const cfg = getRelayConfig()
+    setRelayHost(cfg.host)
+    setRelayProtocol(cfg.protocol)
+  }, [])
 
   useEffect(() => {
     api.getCurrentUser()
@@ -292,6 +302,18 @@ export default function SettingsPage() {
   const handleClearCache = () => {
     localStorage.removeItem("p2p_keys")
     setMsg(t("settings.cacheCleared"))
+  }
+
+  const handleSaveRelay = () => {
+    const host = relayHost.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
+    if (!host) {
+      resetRelayConfig()
+    } else {
+      setRelayConfig({ host, protocol: relayProtocol })
+    }
+    setRelaySaved(true)
+    setTimeout(() => setRelaySaved(false), 3000)
+    setMsg(t("settings.relaySaved"))
   }
 
   const handleLogout = () => {
@@ -815,6 +837,47 @@ export default function SettingsPage() {
                     <span style={{ color: "var(--error)", fontSize: "13px" }}>{t("settings.updateError")}</span>
                   )}
                 </div>
+              </div>
+              <div className="settings-group">
+                <h3 className="settings-group-title">{t("settings.relay")}</h3>
+                <p className="settings-info-text">{t("settings.relayDesc")}</p>
+                <label className="settings-label">{t("settings.relayProtocol")}</label>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  {(["http", "https"] as const).map((p) => (
+                    <button
+                      key={p}
+                      className={`settings-tab ${relayProtocol === p ? "active" : ""}`}
+                      onClick={() => setRelayProtocol(p)}
+                      style={{
+                        padding: "6px 14px",
+                        borderRadius: 8,
+                        border: relayProtocol === p ? "2px solid var(--accent)" : "2px solid transparent",
+                        background: relayProtocol === p ? "var(--surface-variant)" : "var(--card-bg)",
+                        cursor: "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <label className="settings-label">{t("settings.relayHost")}</label>
+                <input
+                  className="settings-input"
+                  placeholder="127.0.0.1:8000"
+                  value={relayHost}
+                  onChange={(e) => { setRelayHost(e.target.value); setRelaySaved(false) }}
+                  style={{ width: "100%", marginBottom: 8 }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="settings-save-btn" onClick={handleSaveRelay} style={{ width: "auto", padding: "0 16px", height: 40 }}>
+                    {relaySaved ? t("settings.relaySaved") : t("common.save")}
+                  </button>
+                  <button className="settings-action-btn" onClick={() => { resetRelayConfig(); setRelayHost(getRelayConfig().host); setRelayProtocol(getRelayConfig().protocol); setMsg(t("settings.relayReset")) }}>
+                    {t("settings.relayReset")}
+                  </button>
+                </div>
+                <p className="settings-info-text">{t("settings.relayRestart")}</p>
               </div>
             </div>
           )}

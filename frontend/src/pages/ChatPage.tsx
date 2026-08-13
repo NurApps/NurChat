@@ -947,7 +947,7 @@ export default function ChatPage() {
                             const isOnline = onlineUsers[peerId]
                             const isP2P = !!p2pConnected[peerId]
                             if (isOnline && isP2P) return t("common.p2pOnline")
-                            if (isOnline) return t("common.online")
+                            if (isOnline) return `${t("common.online")} · ${t("common.viaRelay")}`
                             return t("common.offline")
                           })()}
                   </span>

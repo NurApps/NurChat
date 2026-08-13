@@ -22,6 +22,7 @@
     "groupSettings": "Настройки группы",
     "p2pOnline": "P2P · в сети",
     "p2pConnecting": "P2P · подключение...",
+    "viaRelay": "через сервер",
     "switchAccount": "Сменить аккаунт",
     "p2p": "P2P",
     "logout": "Выйти",

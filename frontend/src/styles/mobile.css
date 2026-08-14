@@ -61,6 +61,20 @@
   --z-overlay: 400;
   --z-toast: 500;
   --z-bottom-nav: 600;
+
+  /* Mobile theme tokens (fallbacks so UI is never transparent even if
+     prefers-color-scheme is 'no-preference'; overridden by the media
+     queries below). */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f2f2f7;
+  --bg-active: #e5e5ea;
+  --text-primary: #000000;
+  --text-secondary: #8e8e93;
+  --border-color: #c6c6c8;
+  --accent-color: #007aff;
+  --danger-color: #ff3b30;
+  --warning-color: #ff9500;
+  --success-color: #34c759;
 }
 
 /* ========================================
@@ -483,7 +497,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
-    z-index: var(--z-modal);
+    z-index: 1000;
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -778,4 +792,140 @@
   .input-bar {
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
+}
+
+/* ─── MobileChatPage ─── */
+
+.mobile-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--bg-primary, var(--bg, #ffffff));
+  overflow: hidden;
+}
+
+.mobile-chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary, #8e8e93);
+}
+
+.mobile-chat-empty__icon {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--bg-secondary, var(--surface-variant, #f2f2f7));
+  color: var(--accent-color, var(--accent, #2aabee));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-chat-empty h2 {
+  font-size: 18px;
+  margin: 0;
+  color: var(--text-primary, #000000);
+}
+
+.mobile-chat-empty p {
+  font-size: 14px;
+  margin: 0;
+}
+
+.mobile-chat__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  background: var(--bg-secondary, var(--surface, #ffffff));
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  flex-shrink: 0;
+  min-height: 56px;
+}
+
+.mobile-chat__back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target, 44px);
+  height: var(--touch-target, 44px);
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  color: var(--text-primary, #000000);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mobile-chat__info {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-chat__title {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary, #000000);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-chat__messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  background: var(--bg-primary, var(--bg, #ffffff));
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-chat__messages .message-bubble {
+  max-width: 85%;
+  border-radius: 16px;
+  padding: 8px 12px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.mobile-chat__messages .message-bubble--sent {
+  align-self: flex-end;
+  background: var(--accent-color, var(--accent, #2aabee));
+  color: #fff;
+}
+
+.mobile-chat__messages .message-bubble--received {
+  align-self: flex-start;
+  background: var(--bg-secondary, var(--surface, #ffffff));
+  color: var(--text-primary, #000000);
+}
+
+.message-bubble__text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-bubble__time {
+  display: block;
+  text-align: right;
+  font-size: 11px;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+.message-bubble__edited {
+  font-size: 11px;
+  margin-left: 4px;
 }

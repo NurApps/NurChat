@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
 import { WS_BASE, BASE_URL } from "../config"
-import { api } from "../services/api"
+import { api, csrfHeader } from "../services/api"
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -26,7 +26,11 @@ async function registerCallDB(targetUserId: string, callType: string): Promise<s
   try {
     const res = await fetch(`${BASE_URL}/api/calls/start-call`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
+      },
       body: JSON.stringify({ target_user_id: targetUserId, call_type: callType }),
     })
     if (!res.ok) return null

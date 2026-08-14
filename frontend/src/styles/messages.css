@@ -110,7 +110,13 @@
   transition: opacity 0.12s;
 }
 
-.msg-row:hover .msg-menu-area { opacity: 1; }
+.msg-row:hover .msg-menu-area,
+.msg-row:focus-within .msg-menu-area { opacity: 1; }
+
+/* On touch devices there is no hover: always show the message menu */
+@media (hover: none) and (pointer: coarse) {
+  .msg-menu-area { opacity: 1; }
+}
 
 .msg-menu-btn {
   width: 24px;
@@ -158,6 +164,32 @@
 }
 
 .msg-dropdown button:hover { background: var(--surface-variant); }
+
+.reaction-picker {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 4px;
+}
+
+.reaction-picker .reaction-pick-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 18px;
+  text-align: center;
+}
+
+.reaction-picker .reaction-pick-btn:hover {
+  background: var(--surface-variant);
+  transform: scale(1.15);
+}
+
 
 .msg-reply-wrapper { margin-bottom: 4px; }
 

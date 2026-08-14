@@ -25,6 +25,18 @@
   --msg-mine-bg: #dcf8c6;
   --card-bg: #ffffff;
 
+  /* Legacy aliases (defined in the old monolithic src/index.css) */
+  --tg-blue: #2aabee;
+  --tg-green: #4fae4e;
+  --text: #000000;
+  --border: #e0e0e0;
+  --danger: #e53935;
+  --danger-bg: rgba(229, 57, 53, 0.12);
+  --primary: #2aabee;
+  --surface-alt: #f5f5f5;
+  --background: #ffffff;
+  --accent-rgb: 42, 171, 238;
+
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.45;
@@ -52,6 +64,17 @@
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   --msg-mine-bg: #1b5e20;
   --card-bg: #161b22;
+
+  --tg-blue: #2aabee;
+  --tg-green: #4caf50;
+  --text: #e6edf3;
+  --border: #30363d;
+  --danger: #ef5350;
+  --danger-bg: rgba(239, 83, 80, 0.15);
+  --primary: #2aabee;
+  --surface-alt: #21262d;
+  --background: #0d1117;
+  --accent-rgb: 42, 171, 238;
 }
 
 [data-theme="nord"] {
@@ -72,6 +95,17 @@
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   --msg-mine-bg: #c8d5e3;
   --card-bg: #e5e9f0;
+
+  --tg-blue: #5e81ac;
+  --tg-green: #a3be8c;
+  --text: #2e3440;
+  --border: #d8dee9;
+  --danger: #bf616a;
+  --danger-bg: rgba(191, 97, 106, 0.15);
+  --primary: #5e81ac;
+  --surface-alt: #d8dee9;
+  --background: #eceff4;
+  --accent-rgb: 94, 129, 172;
 }
 
 [data-theme="dracula"] {
@@ -92,6 +126,17 @@
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   --msg-mine-bg: #44475a;
   --card-bg: #44475a;
+
+  --tg-blue: #bd93f9;
+  --tg-green: #50fa7b;
+  --text: #f8f8f2;
+  --border: #44475a;
+  --danger: #ff5555;
+  --danger-bg: rgba(255, 85, 85, 0.15);
+  --primary: #bd93f9;
+  --surface-alt: #3a3c4e;
+  --background: #282a36;
+  --accent-rgb: 189, 147, 249;
 }
 
 * {
@@ -132,4 +177,37 @@ body { margin: 0; }
   justify-content: center;
   height: 100svh;
   background: var(--bg);
+}
+
+/* ─── Accessibility ─── */
+
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 16px;
+  z-index: 9999;
+  padding: 8px 16px;
+  background: var(--accent, var(--tg-blue));
+  color: #fff;
+  border-radius: 0 0 8px 8px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.2s;
+}
+.skip-link:focus {
+  top: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent, var(--tg-blue));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

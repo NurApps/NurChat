@@ -726,7 +726,13 @@
   transition: opacity 0.15s, background 0.15s;
 }
 
-.bookmark-item:hover .bookmark-remove { opacity: 1; }
+.bookmark-item:hover .bookmark-remove,
+.bookmark-item:focus-within .bookmark-remove { opacity: 1; }
+
+/* On touch devices there is no hover: always show the remove button */
+@media (hover: none) and (pointer: coarse) {
+  .bookmark-remove { opacity: 1; }
+}
 
 .bookmark-remove:hover {
   background: rgba(229, 57, 53, 0.1);

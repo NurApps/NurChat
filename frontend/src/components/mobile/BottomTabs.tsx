@@ -11,6 +11,9 @@ interface Tab {
 
 interface BottomTabsProps {
   tabs?: Tab[];
+  activeTab?: string;
+  onTabChange?: (tabId: string) => void;
+  badges?: Record<string, number>;
 }
 
 const defaultTabs: Tab[] = [
@@ -60,16 +63,17 @@ const defaultTabs: Tab[] = [
   },
 ];
 
-export function BottomTabs({ tabs = defaultTabs }: BottomTabsProps) {
+export function BottomTabs({ tabs = defaultTabs, activeTab, onTabChange, badges = {} }: BottomTabsProps) {
   const navigate = useNavigate();
   const location = useLocation();
 
   const isActive = useCallback(
-    (path: string) => {
-      if (path === '/') return location.pathname === '/';
-      return location.pathname.startsWith(path);
+    (tab: Tab) => {
+      if (activeTab) return tab.id === activeTab;
+      if (tab.path === '/') return location.pathname === '/' || location.pathname.startsWith('/chat');
+      return location.pathname.startsWith(tab.path);
     },
-    [location.pathname]
+    [activeTab, location.pathname]
   );
 
   return (
@@ -77,15 +81,18 @@ export function BottomTabs({ tabs = defaultTabs }: BottomTabsProps) {
       {tabs.map((tab) => (
         <button
           key={tab.id}
-          className={`bottom-nav__item ${isActive(tab.path) ? 'bottom-nav__item--active' : ''}`}
-          onClick={() => navigate(tab.path)}
+          className={`bottom-nav__item ${isActive(tab) ? 'bottom-nav__item--active' : ''}`}
+          onClick={() => {
+            if (onTabChange) onTabChange(tab.id)
+            else navigate(tab.path)
+          }}
           aria-label={tab.label}
-          aria-current={isActive(tab.path) ? 'page' : undefined}
+          aria-current={isActive(tab) ? 'page' : undefined}
         >
           <span className="bottom-nav__icon">{tab.icon}</span>
           <span>{tab.label}</span>
-          {tab.badge && tab.badge > 0 && (
-            <span className="bottom-nav__badge">{tab.badge > 99 ? '99+' : tab.badge}</span>
+          {(badges[tab.id] ?? tab.badge) > 0 && (
+            <span className="bottom-nav__badge">{(badges[tab.id] ?? tab.badge) > 99 ? '99+' : badges[tab.id] ?? tab.badge}</span>
           )}
         </button>
       ))}

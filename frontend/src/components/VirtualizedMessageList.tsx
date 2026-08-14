@@ -1,9 +1,9 @@
-import { useRef, useEffect, useCallback } from "react"
-import { List } from "react-window"
+import { useCallback, useRef } from "react"
+import { List, useDynamicRowHeight, useListRef } from "react-window"
 import MessageBubble from "./MessageBubble"
 import type { MessageResponse, UserResponse } from "../types"
 
-interface Props {
+interface RowProps {
   messages: MessageResponse[]
   currentUser: UserResponse
   reactions?: Record<string, Record<string, string[]>>
@@ -18,87 +18,81 @@ interface Props {
   onBookmark: (id: string) => void
   onPin: (id: string) => void
   onShowInfo: (id: string) => void
+}
+
+interface Props extends RowProps {
   scrollToMessageId?: string | null
 }
 
-const ROW_HEIGHT = 80
+const DEFAULT_ROW_HEIGHT = 80
 
-export default function VirtualizedMessageList({
-  messages, currentUser, reactions = {}, bookmarkedIds = new Set(), searchQuery,
+const Row = ({
+  index, style, messages, currentUser, reactions = {}, bookmarkedIds = new Set(), searchQuery,
   onReply, onDelete, onForward, onReaction, onEdit, onViewProfile, onBookmark, onPin, onShowInfo,
-  scrollToMessageId,
-}: Props) {
-  const listRef = useRef<List>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+}: RowProps & { index: number; style: React.CSSProperties }) => {
+  const msg = messages[index]
+  if (!msg) return null
+  return (
+    <div style={style} id={`msg-${msg.id}`}>
+      <MessageBubble
+        message={msg}
+        currentUser={currentUser}
+        isMyMessage={msg.user_id === currentUser.id}
+        isRead={msg.is_read}
+        reactions={reactions[msg.id]}
+        onReply={onReply}
+        onDelete={onDelete}
+        onForward={onForward}
+        onReaction={onReaction}
+        onEdit={onEdit}
+        onViewProfile={onViewProfile}
+        onBookmark={onBookmark}
+        isBookmarked={bookmarkedIds.has(msg.id)}
+        onPin={onPin}
+        highlightQuery={searchQuery}
+        onShowInfo={onShowInfo}
+      />
+    </div>
+  )
+}
 
-  useEffect(() => {
-    if (!scrollToMessageId || !listRef.current) return
+export default function VirtualizedMessageList(props: Props) {
+  const { messages, scrollToMessageId, ...rowProps } = props
+  const listRef = useListRef<{ scrollToRow(config: { align?: string; behavior?: string; index: number }): void }>()
+  const scrollLockRef = useRef(false)
+
+  const rowHeight = useDynamicRowHeight({ defaultRowHeight: DEFAULT_ROW_HEIGHT, key: messages.length })
+
+  const scrollToBottom = useCallback((behavior: "auto" | "smooth" = "auto") => {
+    if (messages.length === 0) return
+    scrollLockRef.current = true
+    listRef.current?.scrollToRow({ index: messages.length - 1, align: "end", behavior })
+    window.setTimeout(() => { scrollLockRef.current = false }, 150)
+  }, [messages.length, listRef])
+
+  const handleScrollToMessage = useCallback(() => {
+    if (!scrollToMessageId || messages.length === 0) return
     const idx = messages.findIndex((m) => m.id === scrollToMessageId)
-    if (idx >= 0) listRef.current.scrollToItem(idx, "center")
-  }, [scrollToMessageId, messages])
+    if (idx >= 0) listRef.current?.scrollToRow({ index: idx, align: "center" })
+  }, [scrollToMessageId, messages, listRef])
 
-  const handleScroll = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150
-    if (isNearBottom && listRef.current) {
-      listRef.current.scrollToItem(messages.length - 1, "end")
-    }
-  }, [messages.length])
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    el.addEventListener("scroll", handleScroll, { passive: true })
-    return () => el.removeEventListener("scroll", handleScroll)
-  }, [handleScroll])
-
-  useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollToItem(messages.length - 1, "end")
-    }
-  }, [messages.length])
-
-  const Row = useCallback(({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const msg = messages[index]
-    if (!msg) return null
-    return (
-      <div style={style} id={`msg-${msg.id}`}>
-        <MessageBubble
-          message={msg}
-          currentUser={currentUser}
-          isMyMessage={msg.user_id === currentUser.id}
-          isRead={msg.is_read}
-          reactions={reactions[msg.id]}
-          onReply={onReply}
-          onDelete={onDelete}
-          onForward={onForward}
-          onReaction={onReaction}
-          onEdit={onEdit}
-          onViewProfile={onViewProfile}
-          onBookmark={onBookmark}
-          isBookmarked={bookmarkedIds.has(msg.id)}
-          onPin={onPin}
-          highlightQuery={searchQuery}
-          onShowInfo={onShowInfo}
-        />
-      </div>
-    )
-  }, [messages, currentUser, reactions, bookmarkedIds, searchQuery,
-      onReply, onDelete, onForward, onReaction, onEdit, onViewProfile, onBookmark, onPin, onShowInfo])
+  const handleResize = useCallback(() => {
+    if (!scrollLockRef.current) scrollToBottom()
+  }, [scrollToBottom])
 
   return (
-    <div ref={containerRef} style={{ flex: 1, overflow: "auto" }}>
+    <div style={{ flex: 1, minHeight: 0 }}>
       <List
-        ref={listRef}
-        height={600}
-        itemCount={messages.length}
-        itemSize={ROW_HEIGHT}
-        width="100%"
-        overscanCount={5}
-      >
-        {Row}
-      </List>
+        className="virtualized-message-list"
+        listRef={listRef}
+        rowCount={messages.length}
+        rowHeight={rowHeight}
+        rowComponent={Row}
+        rowProps={{ messages, ...rowProps }}
+        overscanCount={6}
+        onResize={handleResize}
+        style={{ height: "100%" }}
+      />
     </div>
   )
 }

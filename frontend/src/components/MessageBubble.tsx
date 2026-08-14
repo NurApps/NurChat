@@ -396,6 +396,14 @@ export default function MessageBubble({
           </button>
           {menuOpen && !showDeleteOptions && (
             <div className="msg-dropdown" role="menu" aria-label={t("chat.messageMenu")}>
+              <div className="reaction-picker" role="menuitem">
+                {REACTION_LIST.map((emoji) => (
+                  <button key={emoji} className="reaction-pick-btn"
+                    onClick={() => { onReaction?.(message.id, emoji, true); setMenuOpen(false) }}>
+                    {emoji}
+                  </button>
+                ))}
+              </div>
               {menuItems.map((item, i) => (
                 <button key={item.label} role="menuitem" tabIndex={0}
                   onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); if (e.key === "ArrowDown" && i < menuItems.length - 1) (e.currentTarget.nextElementSibling as HTMLElement)?.focus(); if (e.key === "ArrowUp" && i > 0) (e.currentTarget.previousElementSibling as HTMLElement)?.focus() }}
@@ -429,6 +437,14 @@ export default function MessageBubble({
         </button>
         {menuOpen && !showDeleteOptions && (
           <div className="msg-dropdown right" role="menu" aria-label={t("chat.messageMenu")}>
+            <div className="reaction-picker" role="menuitem">
+              {REACTION_LIST.map((emoji) => (
+                <button key={emoji} className="reaction-pick-btn"
+                  onClick={() => { onReaction?.(message.id, emoji, true); setMenuOpen(false) }}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
             {menuItems.map((item, i) => (
               <button key={item.label} role="menuitem" tabIndex={0}
                 onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); if (e.key === "ArrowDown" && i < menuItems.length - 1) (e.currentTarget.nextElementSibling as HTMLElement)?.focus(); if (e.key === "ArrowUp" && i > 0) (e.currentTarget.previousElementSibling as HTMLElement)?.focus() }}

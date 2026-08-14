@@ -547,13 +547,13 @@
 
 .media-viewer-close {
   position: absolute;
-  top: -40px;
-  right: -8px;
+  top: 8px;
+  right: 8px;
   width: 36px;
   height: 36px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.5);
   color: white;
   cursor: pointer;
   display: flex;

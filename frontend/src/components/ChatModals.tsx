@@ -73,6 +73,7 @@ export default function ChatModals({
         <ForwardModal
           messageId={showForward}
           sourceChatId={selectedChatId}
+          currentUserId={currentUser.id}
           onForward={onForward}
           onClose={onCloseForward}
         />

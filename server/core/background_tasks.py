@@ -32,9 +32,13 @@ async def _cleanup_expired_messages():
 
             await connection_manager.broadcast_to_chat({
                 "event": "delete_message",
-                "message_id": msg.id,
-                "chat_id": msg.chat_id,
-                "deleted_for_all": True,
+                "data": {
+                    "message_id": msg.id,
+                    "chat_id": msg.chat_id,
+                    "delete_for_all": True,
+                    "deleted_by": msg.user_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
             }, msg.chat_id)
 
         if expired:
@@ -63,7 +67,7 @@ async def _send_scheduled_messages():
 
             await connection_manager.broadcast_to_chat({
                 "event": "new_message",
-                "message": {
+                "data": {
                     "id": msg.id,
                     "chat_id": msg.chat_id,
                     "user_id": msg.user_id,

@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 from pathlib import Path
 
 if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
@@ -21,7 +21,7 @@ async def list_webhooks(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(verify_token_dependency),
 ):
-    webhooks = db.query(models.Webhook).filter(models.Webhook.user_id == current_user.id).all()
+    webhooks = db.query(models.Webhook).filter(models.Webhook.user_id == current_user["sub"]).all()
     return [_webhook_to_response(w) for w in webhooks]
 
 
@@ -33,7 +33,7 @@ async def create_webhook(
 ):
     webhook = models.Webhook(
         id="hook_" + generate_id(),
-        user_id=current_user.id,
+        user_id=current_user["sub"],
         name=data.name,
         url=data.url,
         secret=data.secret,
@@ -43,7 +43,7 @@ async def create_webhook(
     db.add(webhook)
     db.commit()
     db.refresh(webhook)
-    logger.info(f"[Webhooks] created '{webhook.name}' for user {current_user.id}")
+    logger.info(f"[Webhooks] created '{webhook.name}' for user {current_user['sub']}")
     return _webhook_to_response(webhook)
 
 
@@ -56,7 +56,7 @@ async def update_webhook(
 ):
     webhook = db.query(models.Webhook).filter(
         models.Webhook.id == webhook_id,
-        models.Webhook.user_id == current_user.id,
+        models.Webhook.user_id == current_user["sub"],
     ).first()
     if not webhook:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook не найден")
@@ -85,14 +85,14 @@ async def delete_webhook(
 ):
     webhook = db.query(models.Webhook).filter(
         models.Webhook.id == webhook_id,
-        models.Webhook.user_id == current_user.id,
+        models.Webhook.user_id == current_user["sub"],
     ).first()
     if not webhook:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook не найден")
 
     db.delete(webhook)
     db.commit()
-    logger.info(f"[Webhooks] deleted '{webhook.name}' for user {current_user.id}")
+    logger.info(f"[Webhooks] deleted '{webhook.name}' for user {current_user['sub']}")
 
 
 @router.post("/webhooks/{webhook_id}/test", status_code=status.HTTP_200_OK)
@@ -105,7 +105,7 @@ async def test_webhook(
 
     webhook = db.query(models.Webhook).filter(
         models.Webhook.id == webhook_id,
-        models.Webhook.user_id == current_user.id,
+        models.Webhook.user_id == current_user["sub"],
     ).first()
     if not webhook:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook не найден")

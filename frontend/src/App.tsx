@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { lazy, Suspense, useState, useEffect } from "react"
 import { ThemeProvider } from "./context/ThemeContext"
 import AuthGuard from "./components/AuthGuard"
-import OfflineBanner from "./components/OfflineBanner"
 import ServerBootOverlay from "./components/ServerBootOverlay"
 import Onboarding from "./components/Onboarding"
 import ErrorBoundary from "./components/ErrorBoundary"
@@ -86,7 +85,6 @@ function App() {
         <Onboarding />
         <UpdateBanner />
         {!serverReady && <ServerBootOverlay onReady={() => setServerReady(true)} />}
-        <OfflineBanner />
         <BrowserRouter>
         <Suspense fallback={<PageLoader />}>
           <Routes>

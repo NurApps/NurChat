@@ -125,7 +125,9 @@ export function useChatActions({
           undefined,
           sealedPayload || encryptedContent,
           signature,
-          undefined,
+          selectedChat.is_secret && selectedChat.disappears_after_seconds
+            ? new Date(Date.now() + selectedChat.disappears_after_seconds * 1000).toISOString()
+            : undefined,
           replyToId,
           sealedPayload ? true : undefined, // sealed_sender flag
         )

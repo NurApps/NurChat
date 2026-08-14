@@ -169,7 +169,8 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "Accept"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-Password-Confirmation", "Accept"],
+    expose_headers=["X-CSRF-Token"],
 )
 
 # Глобальный обработчик исключений
@@ -260,14 +261,14 @@ app.include_router(forward.router, prefix="/api/forward", tags=["Forward"])
 app.include_router(legal.router, prefix="/api/legal", tags=["Legal"])
 app.include_router(contacts_groups.router, prefix="/api/contacts-groups", tags=["Contacts and Groups"])
 app.include_router(p2p.router, prefix="/api/p2p", tags=["P2P"])
-app.include_router(bookmarks.router, prefix="/api/bookmarks", tags=["Bookmarks"])
+app.include_router(bookmarks.router, tags=["Bookmarks"])
 app.include_router(pins.router, tags=["Pinned Messages"])
 app.include_router(stats.router, tags=["Statistics"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Audit Logs"])
 app.include_router(keys.router, prefix="/api/keys", tags=["Keys"])
 app.include_router(discovery.router, prefix="/api/discover", tags=["LAN Discovery"])
 app.include_router(webhooks.router, prefix="/api", tags=["Webhooks"])
-app.include_router(transparency.router, prefix="/api/transparency", tags=["Transparency"])
+app.include_router(transparency.router, tags=["Transparency"])
 app.include_router(polls.router, tags=["Polls"])
 app.include_router(contact_requests.router, tags=["Contact Requests"])
 

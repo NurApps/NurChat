@@ -169,18 +169,23 @@ async def invite_to_group(
         db.commit()
         db.refresh(invite)
 
-        try:
-            await notification_manager.send_group_invite_notification(
-                invite_data=schemas.GroupInviteResponse.model_validate(invite).model_dump(),
-                target_user_id=invitee_id
-            )
-        except Exception as notify_error:
-            logger.error(f"Failed to send group invite notification: {notify_error}")
-
         group_obj = db.query(models.Chat).filter(models.Chat.id == invite.group_id).first()
         inviter_obj = db.query(models.User).filter(models.User.id == invite.inviter_id).first()
         invitee_obj = db.query(models.User).filter(models.User.id == invite.invitee_id).first()
-        return schemas.GroupInviteResponse(
+        group_participants = [
+            user for user, _ in db.query(models.User, models.ChatParticipant).join(
+                models.ChatParticipant, models.User.id == models.ChatParticipant.user_id
+            ).filter(models.ChatParticipant.chat_id == invite.group_id).all()
+        ] if group_obj else []
+        group_response = schemas.ChatResponse(
+            id=group_obj.id, name=group_obj.name, is_group=group_obj.is_group,
+            is_secret=group_obj.is_secret,
+            disappears_after_seconds=group_obj.disappears_after_seconds,
+            created_at=group_obj.created_at,
+            participants=[schemas.UserResponse.model_validate(u) for u in group_participants],
+            last_message=None,
+        ) if group_obj else None
+        response = schemas.GroupInviteResponse(
             id=invite.id,
             group_id=invite.group_id,
             inviter_id=invite.inviter_id,
@@ -188,10 +193,18 @@ async def invite_to_group(
             status=invite.status,
             created_at=invite.created_at,
             updated_at=invite.updated_at,
-            group=schemas.ChatResponse.model_validate(group_obj) if group_obj else None,
+            group=group_response,
             inviter=schemas.UserResponse.model_validate(inviter_obj) if inviter_obj else None,
             invitee=schemas.UserResponse.model_validate(invitee_obj) if invitee_obj else None,
         )
+        try:
+            await notification_manager.send_group_invite_notification(
+                invite_data=response.model_dump(),
+                target_user_id=invitee_id
+            )
+        except Exception as notify_error:
+            logger.error(f"Failed to send group invite notification: {notify_error}")
+        return response
     except HTTPException:
         raise
     except Exception as e:
@@ -219,6 +232,24 @@ async def get_group_invites(
     ).all()
     result = []
     for invite in invites:
+        group = invite.group
+        group_participants = []
+        if group:
+            group_participants = [
+                user for user, _ in db.query(models.User, models.ChatParticipant).join(
+                    models.ChatParticipant, models.User.id == models.ChatParticipant.user_id
+                ).filter(models.ChatParticipant.chat_id == group.id).all()
+            ]
+        group_response = None
+        if group:
+            group_response = schemas.ChatResponse(
+                id=group.id, name=group.name, is_group=group.is_group,
+                is_secret=group.is_secret,
+                disappears_after_seconds=group.disappears_after_seconds,
+                created_at=group.created_at,
+                participants=[schemas.UserResponse.model_validate(u) for u in group_participants],
+                last_message=None,
+            )
         result.append(
             schemas.GroupInviteResponse(
                 id=invite.id,
@@ -228,7 +259,7 @@ async def get_group_invites(
                 status=invite.status,
                 created_at=invite.created_at,
                 updated_at=invite.updated_at,
-                group=schemas.ChatResponse.model_validate(invite.group) if invite.group else None,
+                group=group_response,
                 inviter=schemas.UserResponse.model_validate(invite.inviter) if invite.inviter else None,
                 invitee=schemas.UserResponse.model_validate(invite.invitee) if invite.invitee else None,
             )

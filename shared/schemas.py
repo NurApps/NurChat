@@ -158,6 +158,7 @@ class MessageResponse(MessageBase):
     is_view_once: bool = False
     viewed_at: datetime | None = None
     created_at: datetime
+    reactions: dict[str, list[str]] | None = None
 
 # File
 class FileBase(BaseSchema):

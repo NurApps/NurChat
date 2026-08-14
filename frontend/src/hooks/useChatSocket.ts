@@ -29,6 +29,12 @@ export function useChatSocket({
   const wsRef = useRef<WebSocket | null>(null)
   const chatIdRef = useRef<string | null>(null)
 
+  // Stable refs so callbacks don't force WS reconnection on every render
+  const handlersRef = useRef({ onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, currentUserId: currentUser.id })
+  useEffect(() => {
+    handlersRef.current = { onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, currentUserId: currentUser.id }
+  })
+
   useEffect(() => {
     chatIdRef.current = selectedChat?.id || null
   }, [selectedChat])
@@ -36,10 +42,13 @@ export function useChatSocket({
   const handleWsEvent = useCallback(async (msg: any) => {
     const event = msg.event
     let data = msg.data || {}
+    const {
+      onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, currentUserId,
+    } = handlersRef.current
 
     switch (event) {
       case "typing": {
-        if (data.chat_id && data.user_id !== currentUser.id) {
+        if (data.chat_id && data.user_id !== currentUserId) {
           onTypingUsers((prev) => ({
             ...prev,
             [data.chat_id]: { ...prev[data.chat_id], [data.user_id]: data.is_typing }
@@ -65,7 +74,7 @@ export function useChatSocket({
         break
       }
       case "message": {
-        if (data.chat_id === chatIdRef.current && data.user_id !== currentUser.id) {
+        if (data.chat_id === chatIdRef.current && data.user_id !== currentUserId) {
           onMessage(data)
         }
         onChatUpdate()
@@ -75,6 +84,13 @@ export function useChatSocket({
           onToast({ id: data.id, title: sender, body: preview, chatId: data.chat_id })
           showNotification(sender, preview)
         }
+        break
+      }
+      case "new_message": {
+        if (data.chat_id === chatIdRef.current && data.user_id !== currentUserId) {
+          onMessage(data)
+        }
+        onChatUpdate()
         break
       }
       case "message_delivered": {
@@ -130,7 +146,7 @@ export function useChatSocket({
         break
       }
     }
-  }, [currentUser.id, onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate])
+  }, [])
 
   useEffect(() => {
     const userId = currentUser.id

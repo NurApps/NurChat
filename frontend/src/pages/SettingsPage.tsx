@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
+import { csrfHeader } from "../services/api"
 import { BASE_URL, avatarUrl, getRelayConfig, setRelayConfig, resetRelayConfig } from "../config"
 import { useAvatar } from "../hooks/useAvatar"
 import { hasKeys, clearKeys } from "../services/e2e"
@@ -112,7 +113,7 @@ export default function SettingsPage() {
 
   const loadTotpStatus = async () => {
     try {
-      const res = await fetch(`${BASE_URL}/api/auth/totp/status`, {
+      const res = await fetch(`${BASE_URL}/api/auth/2fa/status`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       })
       if (res.ok) {
@@ -128,11 +129,14 @@ export default function SettingsPage() {
     setTotpLoading(true)
     setMsg("")
     try {
-      const res = await fetch(`${BASE_URL}/api/auth/totp/setup`, {
+      const res = await fetch(`${BASE_URL}/api/auth/2fa/setup`, {
+        method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "X-Password-Confirmation": totpPassword,
+          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
+        body: JSON.stringify({ password: totpPassword }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -158,11 +162,12 @@ export default function SettingsPage() {
     setTotpLoading(true)
     setMsg("")
     try {
-      const res = await fetch(`${BASE_URL}/api/auth/totp/enable`, {
+      const res = await fetch(`${BASE_URL}/api/auth/2fa/enable`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`,
+          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: JSON.stringify({ code: totpCode }),
       })
@@ -190,11 +195,12 @@ export default function SettingsPage() {
     setTotpLoading(true)
     setMsg("")
     try {
-      const res = await fetch(`${BASE_URL}/api/auth/totp/disable`, {
+      const res = await fetch(`${BASE_URL}/api/auth/2fa/disable`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`,
+          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: JSON.stringify({ code: totpCode }),
       })
@@ -225,7 +231,10 @@ export default function SettingsPage() {
       if (bio) form.append("bio", bio)
       const res = await fetch(`${BASE_URL}/api/auth/profile/update`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
+        },
         body: form,
       })
       if (!res.ok) throw new Error(await res.text())

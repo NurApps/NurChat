@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
@@ -76,6 +76,14 @@ export default function ChatPage() {
   const setSearch = useChatStore((s) => s.setSearch)
   const selectedChat = useChatStore((s) => s.selectedChat)
   const onlineUsers = useChatStore((s) => s.onlineUsers)
+
+  const filteredChats = useMemo(() => {
+    return chats.filter((c) => {
+      if (!search) return true
+      const name = c.is_group ? c.name : c.participants.find((p) => p.id !== currentUser.id)?.username
+      return name?.toLowerCase().includes(search.toLowerCase())
+    })
+  }, [chats, search, currentUser.id])
 
   const input = useChatStore((s) => s.input)
   const showEmoji = useChatStore((s) => s.showEmoji)
@@ -463,7 +471,7 @@ export default function ChatPage() {
   }, [])
 
   const handleSelectChat = useCallback((chatId: string) => {
-    const { chats, selectedChat, input, filteredChats } = useChatStore.getState()
+    const { chats, selectedChat, input } = useChatStore.getState()
     const chat = chats.find((c) => c.id === chatId)
     if (!chat) return
 
@@ -500,7 +508,7 @@ export default function ChatPage() {
       const peer = chat.participants.find(p => p.id !== currentUser.id)
       if (peer) registerPeer(peer.id, peer.public_key || "")
     }
-  }, [currentUser, loadChats, loadMessages, setPinnedMessage, setMessages, setReplyTo, setHasMore, setSelectedChat, setShowEmoji, setShowStickers, setInput, t])
+  }, [currentUser, loadChats, loadMessages, setPinnedMessage, setMessages, setReplyTo, setHasMore, setSelectedChat, setShowEmoji, setShowStickers, setInput, t, filteredChats])
 
   useEffect(() => {
     const container = messagesContainerRef.current
@@ -624,14 +632,14 @@ export default function ChatPage() {
     onFindInChat: () => { setSearchQuery(""); setScrollToMessageId(null) },
     onJumpToLatest: () => { if (selectedChat) { setTab("chats") } },
     onPrevChat: () => {
-      const list = useChatStore.getState().filteredChats
+      const list = filteredChats
       if (list.length === 0) return
       const idx = Math.max(0, chatIndex - 1)
       setChatIndex(idx)
       setSelectedChat(list[idx])
     },
     onNextChat: () => {
-      const list = useChatStore.getState().filteredChats
+      const list = filteredChats
       if (list.length === 0) return
       const idx = Math.min(list.length - 1, chatIndex + 1)
       setChatIndex(idx)
@@ -809,12 +817,6 @@ export default function ChatPage() {
   const mentionCandidates = mentionQuery && selectedChat
     ? selectedChat.participants.filter((p) => p.id !== currentUser.id && p.username.toLowerCase().includes(mentionQuery.toLowerCase()))
     : []
-
-  const filteredChats = chats.filter((c) => {
-    if (!search) return true
-    const name = c.is_group ? c.name : c.participants.find((p) => p.id !== currentUser.id)?.username
-    return name?.toLowerCase().includes(search.toLowerCase())
-  })
 
   const unreadCount = chats.reduce((sum, c) => sum + ((c as Record<string, unknown>).unread_count as number || 0), 0)
 
@@ -1182,8 +1184,10 @@ export default function ChatPage() {
           activeTab={tab}
           onTabChange={(newTab) => {
             setTab(newTab as "chats" | "calls" | "contacts" | "settings")
+            if (newTab === "chats") navigate("/chat")
             if (newTab === "settings") navigate("/settings")
             if (newTab === "calls") navigate("/calls")
+            if (newTab === "contacts") navigate("/contacts")
           }}
           badges={{
             chats: unreadCount,

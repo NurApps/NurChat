@@ -130,6 +130,8 @@ async def get_chats_available_for_forward(
             id=chat.id,
             name=chat.name,
             is_group=chat.is_group,
+            is_secret=chat.is_secret,
+            disappears_after_seconds=chat.disappears_after_seconds,
             created_at=chat.created_at,
             participants=[schemas.UserResponse.model_validate(p) for p in participants],
             last_message=None,

@@ -128,6 +128,7 @@ async def get_user_chats(
 
             chats_response.append(schemas.ChatResponse(
                 id=chat.id, name=chat.name, is_group=chat.is_group, created_at=chat.created_at,
+                is_secret=chat.is_secret, disappears_after_seconds=chat.disappears_after_seconds,
                 participants=[schemas.UserResponse.model_validate(p) for p in participants],
                 last_message=schemas.MessageResponse.model_validate(last_message) if last_message else None,
                 unread_count=unread, is_pinned=is_pinned, is_muted=is_muted,
@@ -219,15 +220,36 @@ async def get_chat_messages(
     messages = (
         db.query(models.Message)
         .options(joinedload(models.Message.user), joinedload(models.Message.file))
-        .filter(models.Message.chat_id == chat_id, ~models.Message.is_deleted)
+        .filter(
+            models.Message.chat_id == chat_id,
+            ~models.Message.is_deleted,
+            or_(
+                models.Message.expires_at.is_(None),
+                models.Message.expires_at > datetime.now(timezone.utc),
+            ),
+        )
         .order_by(models.Message.created_at.desc())
         .offset(skip).limit(limit).all()
     )
     messages.reverse()
     processed_messages = []
+    if messages:
+        msg_ids = [m.id for m in messages]
+        reaction_rows = (
+            db.query(models.MessageReaction)
+            .filter(models.MessageReaction.message_id.in_(msg_ids))
+            .all()
+        )
+        reactions_map: dict[str, dict[str, list[str]]] = {}
+        for r in reaction_rows:
+            per_msg = reactions_map.setdefault(r.message_id, {})
+            per_msg.setdefault(r.emoji, []).append(r.user_id)
     for msg in messages:
         try:
             processed_msg = schemas.MessageResponse.model_validate(msg)
+            reactions = reactions_map.get(msg.id) if messages else None
+            if reactions:
+                processed_msg.reactions = reactions
             processed_messages.append(processed_msg)
         except Exception as e:
             logger.error(f"Error processing message {msg.id}: {e}")

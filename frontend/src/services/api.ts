@@ -14,11 +14,23 @@ function getToken(): string | null {
   return localStorage.getItem("token")
 }
 
-// Get CSRF token from cookie
-function getCsrfToken(): string | null {
-  const match = document.cookie.match(/(?:^|;\\s*)csrf_token=([^;]*)/);
+// Get CSRF token from cookie (works when frontend and API share a host).
+export function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
+
+// Best-effort CSRF token for non-`request()` fetches (FormData uploads etc.).
+// Prefers the header-captured cache (works cross-origin), falls back to cookie.
+export function csrfHeader(): string | null {
+  return csrfTokenCache || getCsrfToken()
+}
+
+// CSRF token captured from the X-CSRF-Token response header.
+// The frontend and the API are usually on different origins (localhost:5173
+// vs 127.0.0.1:8000, or tauri://localhost vs the relay), so document.cookie
+// does not expose the token. We read it from the header instead.
+let csrfTokenCache: string | null = null;
 
 async function request<T>(
   method: string,
@@ -26,7 +38,7 @@ async function request<T>(
   body?: unknown,
 ): Promise<T> {
   const token = getToken()
-  const csrfToken = getCsrfToken()
+  const csrfToken = csrfTokenCache || getCsrfToken()
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
@@ -36,6 +48,8 @@ async function request<T>(
     },
     body: body ? JSON.stringify(body) : undefined,
   })
+  const headerToken = res.headers.get("X-CSRF-Token")
+  if (headerToken) csrfTokenCache = headerToken
   if (!res.ok) {
     const text = await res.text()
     throw new ApiError(res.status, text || res.statusText)
@@ -151,8 +165,8 @@ export const api = {
     request<void>("POST", `/api/chat/chats/${chatId}/mute?mute=${mute}`),
 
   // Read receipts
-  markAsRead: (messageId: string) =>
-    request<{ message: string }>("POST", `/api/chat/messages/${messageId}/mark-as-read`),
+  markAsRead: (chatId: string) =>
+    request<{ message: string }>("POST", `/api/chat/chats/${chatId}/read`),
 
   getReadCount: (messageId: string) =>
     request<{ read_count: number; total_participants: number }>("GET", `/api/chat/messages/${messageId}/read-count`),

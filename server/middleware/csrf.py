@@ -117,11 +117,17 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 key=self.cookie_name,
                 value=new_token,
                 max_age=int(self.token_lifetime.total_seconds()),
-                httponly=False,  # JS must read cookie for X-CSRF-Token header
+                httponly=False,  # JS may read cookie for X-CSRF-Token header
                 secure=not settings.DEBUG,
                 samesite="lax",
                 path="/",
             )
+
+            # Expose the token in a header too, so cross-origin clients
+            # (frontend on localhost:5173, Tauri webview on tauri://localhost)
+            # can read it even though document.cookie only exposes cookies
+            # for the page's own host.
+            response.headers.setdefault("X-CSRF-Token", new_token)
 
         # Only validate state-changing methods
         if request.method in ["POST", "PUT", "PATCH", "DELETE"]:

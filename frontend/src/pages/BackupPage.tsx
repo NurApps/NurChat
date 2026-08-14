@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { loadKeys, saveKeys, type E2EKeys } from "../services/e2e"
 import { encode as base64Encode, decode as base64Decode } from "base64-arraybuffer"
+import { BASE_URL } from "../config"
 
 interface Backup {
   id: string
@@ -134,7 +135,7 @@ export default function BackupPage() {
 
   const loadBackups = useCallback(async () => {
     try {
-      const data = await fetch("/api/p2p/backups", {
+      const data = await fetch(`${BASE_URL}/api/p2p/backups`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       }).then(r => r.json()) as { backups: Backup[] }
       setBackups(data.backups || [])
@@ -172,7 +173,7 @@ export default function BackupPage() {
         encryptedPayload,
       }
 
-      await fetch("/api/p2p/backups", {
+      await fetch(`${BASE_URL}/api/p2p/backups`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

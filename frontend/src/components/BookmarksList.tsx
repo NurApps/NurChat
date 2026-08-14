@@ -26,6 +26,7 @@ interface Props {
 export default function BookmarksList({ onSelectMessage }: Props) {
   const { t } = useTranslation()
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadBookmarks()

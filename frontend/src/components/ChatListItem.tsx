@@ -87,6 +87,11 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
             )}
+            {chat.is_secret && (
+              <svg className="cli-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            )}
             <span className="cli-name">{displayName}</span>
           </div>
           <span className="cli-time" title={chat.last_message?.created_at ? formatFull(chat.last_message.created_at) : ""}>{lastTime}</span>

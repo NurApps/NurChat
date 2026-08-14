@@ -6,11 +6,12 @@ import type { ChatResponse } from "../types"
 interface Props {
   messageId: string
   sourceChatId?: string
+  currentUserId?: string
   onForward: (messageId: string, targetChatIds: string[]) => void
   onClose: () => void
 }
 
-export default function ForwardModal({ messageId, sourceChatId, onForward, onClose }: Props) {
+export default function ForwardModal({ messageId, sourceChatId, currentUserId, onForward, onClose }: Props) {
   const { t } = useTranslation()
   const [chats, setChats] = useState<ChatResponse[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -51,7 +52,8 @@ export default function ForwardModal({ messageId, sourceChatId, onForward, onClo
           {chats.map((chat) => {
             const name = chat.is_group
               ? (chat.name || t("chat.group"))
-              : chat.participants[0]?.username || t("chat.chat")
+              : chat.participants.find(p => p.id !== currentUserId)?.username
+                || chat.participants[0]?.username || t("chat.chat")
             return (
               <label key={chat.id} className="forward-item">
                 <input

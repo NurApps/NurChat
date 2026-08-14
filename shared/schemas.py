@@ -57,9 +57,9 @@ class UserUpdate(BaseSchema):
     status: str | None = Field(None, max_length=100)
 
 class UserResponse(UserBase):
-    created_at: datetime
-    last_seen: datetime
-    is_online: bool
+    created_at: datetime | None = None
+    last_seen: datetime | None = None
+    is_online: bool | None = None
     public_key: str | None = None  # Публичный ключ для E2E шифрования
     signing_public_key: str | None = None  # Ed25519 public key для верификации подписей
     avatar_path: str | None = None  # Путь к аватару

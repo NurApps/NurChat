@@ -69,9 +69,6 @@ export const api = {
   getCaptcha: () =>
     request<{ captcha_id: string; question: string }>("GET", "/api/auth/captcha"),
 
-  registerAnonymous: (publicKey: string, signingPublicKey?: string, displayName?: string) =>
-    request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/anonymous", { public_key: publicKey, signing_public_key: signingPublicKey, display_name: displayName }),
-
   getCurrentUser: () =>
     request<UserResponse>("GET", "/api/auth/me"),
 
@@ -112,6 +109,9 @@ export const api = {
 
   rotateKey: (newPublicKey: string) =>
     request<{ status: string; old_key: string }>("POST", "/api/auth/profile/rotate-key", { new_public_key: newPublicKey }),
+
+  deleteAccount: () =>
+    request<{ message: string }>("DELETE", "/api/auth/account"),
 
   // Contacts (server: /api/contacts-groups prefix)
   getContacts: () =>
@@ -458,7 +458,7 @@ export const api = {
 
   // Misc
   testConnection: () =>
-    request<{ status: string }>("GET", "/api/health"),
+    request<{ status: string }>("GET", "/health"),
 
   setToken: (token: string) => {
     localStorage.setItem("token", token)

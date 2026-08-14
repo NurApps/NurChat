@@ -113,12 +113,15 @@ export function generateInviteLink(publicKeyHex: string, port: number, ip = "127
   return `nurchat://${ip}:${port}#${publicKeyHex}`
 }
 
-export function parseInviteLink(link: string): { ip: string; port: number; publicKey: string } | null {
+export function parseInviteLink(link: string): { ip: string; port: number; publicKey: string; userId?: string } | null {
   try {
     const withoutProtocol = link.replace("nurchat://", "")
-    const [addressPart, publicKey] = withoutProtocol.split("#")
-    const [ip, portStr] = addressPart.split(":")
-    return { ip, port: parseInt(portStr, 10), publicKey }
+    const [addressPart, publicKey = ""] = withoutProtocol.split("#")
+    const [ip, portStr, ...userIdParts] = addressPart.split(":")
+    // Format with user_id: nurchat://ip:port/user_id#hash
+    const userId = portStr?.includes("/") ? portStr.split("/")[1] : undefined
+    const port = parseInt(userId ? portStr!.split("/")[0] : portStr!, 10)
+    return { ip, port, publicKey, userId }
   } catch {
     return null
   }

@@ -9,6 +9,7 @@ import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
 import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
+import { getSettings, setSetting, clearSettings } from "../services/userSettings"
 import { useTheme, THEMES } from "../context/ThemeContext"
 import type { UserResponse } from "../types"
 
@@ -85,6 +86,7 @@ export default function SettingsPage() {
   const [relayHost, setRelayHost] = useState("")
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("http")
   const [relaySaved, setRelaySaved] = useState(false)
+  const [settings, setSettings] = useState(getSettings)
 
   useEffect(() => {
     const cfg = getRelayConfig()
@@ -349,12 +351,19 @@ export default function SettingsPage() {
     if (!confirm(t("settings.confirmDeleteAccount"))) return
     if (!confirm(t("settings.confirmDeleteAccountSecond"))) return
     try {
+      await api.deleteAccount()
+      clearKeys()
+      clearSettings()
       api.clearToken()
       clearPin()
       navigate("/login", { replace: true })
     } catch {
       setMsg(t("settings.deleteError"))
     }
+  }
+
+  const handleToggleSetting = (key: keyof typeof settings, value: boolean) => {
+    setSettings(setSetting(key, value))
   }
 
   if (!user) return <div className="auth-loading"><div className="spinner" /></div>
@@ -487,22 +496,22 @@ export default function SettingsPage() {
                 <h3 className="settings-group-title">{t("settings.sounds")}</h3>
                 <div className="settings-toggle-row">
                   <span>{t("settings.messageSound")}</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.messageSound} onChange={(e) => handleToggleSetting("messageSound", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
                 <div className="settings-toggle-row">
                   <span>{t("settings.callSound")}</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.callSound} onChange={(e) => handleToggleSetting("callSound", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
               </div>
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.display")}</h3>
                 <div className="settings-toggle-row">
                   <span>{t("settings.messagePreview")}</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.messagePreview} onChange={(e) => handleToggleSetting("messagePreview", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
                 <div className="settings-toggle-row">
                   <span>{t("settings.desktopNotifications")}</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.desktopNotifications} onChange={(e) => handleToggleSetting("desktopNotifications", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
               </div>
             </div>
@@ -515,17 +524,17 @@ export default function SettingsPage() {
                 <h3 className="settings-group-title">{t("settings.visibility")}</h3>
                 <div className="settings-toggle-row">
                   <span>{t("settings.showOnline")}</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.showOnline} onChange={(e) => handleToggleSetting("showOnline", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
                 <div className="settings-toggle-row">
                   <span>{t("settings.showLastSeen")}</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.showLastSeen} onChange={(e) => handleToggleSetting("showLastSeen", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
               </div>
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.blocking")}</h3>
                 <p className="settings-info-text">{t("settings.blockingDesc")}</p>
-                <button className="settings-link-btn">{t("settings.manageBlocking")}</button>
+                <button className="settings-link-btn" onClick={() => navigate("/blocked")}>{t("settings.manageBlocking")}</button>
               </div>
             </div>
           )}

@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use rand::Rng;
@@ -177,6 +177,19 @@ fn is_private_ip(ip: &str) -> bool {
 /// Cached NAT info to avoid re-probing on every call
 static mut CACHED_NAT: Option<NatInfo> = None;
 
+/// Resolve a STUN server string ("host:port" or "ip:port") into a SocketAddr,
+/// resolving hostnames via DNS (SocketAddr::from_str does not accept hostnames).
+fn resolve_stun(server: &str) -> Result<SocketAddr, String> {
+    if let Ok(addr) = server.parse::<SocketAddr>() {
+        return Ok(addr);
+    }
+    server
+        .to_socket_addrs()
+        .map_err(|e| format!("Invalid STUN server: {}", e))?
+        .next()
+        .ok_or_else(|| format!("Invalid STUN server: no address for {}", server))
+}
+
 pub async fn detect_nat(stun_servers: &[&str]) -> Result<NatInfo, String> {
     // Return cached result if available
     unsafe {
@@ -202,9 +215,7 @@ pub async fn detect_nat(stun_servers: &[&str]) -> Result<NatInfo, String> {
     let local_port = local_addr.port();
 
     // Step 1: Get external address from first server (with retry)
-    let addr1: SocketAddr = stun_servers[0]
-        .parse()
-        .map_err(|e| format!("Invalid STUN server: {}", e))?;
+    let addr1: SocketAddr = resolve_stun(stun_servers[0])?;
     let (ext_ip, ext_port) = stun_request(addr1, timeout).await?;
 
     if is_private_ip(&ext_ip) {
@@ -229,16 +240,12 @@ pub async fn detect_nat(stun_servers: &[&str]) -> Result<NatInfo, String> {
 
     // Step 2: Get external address from second server (different IP)
     // If second server fails, try third server
-    let addr2: SocketAddr = stun_servers[1]
-        .parse()
-        .map_err(|e| format!("Invalid STUN server: {}", e))?;
+    let addr2: SocketAddr = resolve_stun(stun_servers[1])?;
     let (ext_ip2, ext_port2) = match stun_request(addr2, timeout).await {
         Ok(result) => result,
         Err(_) if stun_servers.len() >= 3 => {
             // Fallback to third server
-            let addr3: SocketAddr = stun_servers[2]
-                .parse()
-                .map_err(|e| format!("Invalid STUN server: {}", e))?;
+            let addr3: SocketAddr = resolve_stun(stun_servers[2])?;
             stun_request(addr3, timeout).await?
         }
         Err(e) => return Err(e),
@@ -258,9 +265,7 @@ pub async fn detect_nat(stun_servers: &[&str]) -> Result<NatInfo, String> {
     // Same IP, different port → need more probing
     // Step 3: Try third server or use port comparison heuristic
     if stun_servers.len() >= 3 {
-        let addr3: SocketAddr = stun_servers[2]
-            .parse()
-            .map_err(|e| format!("Invalid STUN server: {}", e))?;
+        let addr3: SocketAddr = resolve_stun(stun_servers[2])?;
         let (_ext_ip3, ext_port3) = stun_request(addr3, timeout).await?;
 
         // All different ports → Symmetric

@@ -20,6 +20,7 @@ import {
 } from "./p2pService"
 import { initCallSignaling } from "./callService"
 import { connectionManager, type NatType } from "./p2pConnectionManager"
+import { WS_BASE } from "../config"
 
 // ─── Types ───
 
@@ -158,7 +159,8 @@ export async function initP2PBridge(): Promise<void> {
   // Initialize unified connection manager
   const keys = await import("./e2e").then(m => m.loadKeys()).catch(() => null)
   const myPeerId = keys?.publicKeyHex || ""
-  const signalingUrl = `ws://${window.location.hostname}:8000/ws/signaling/${myPeerId}`
+  const token = localStorage.getItem("token") || ""
+  const signalingUrl = `${WS_BASE}/signaling/${myPeerId}?token=${encodeURIComponent(token)}`
 
   try {
     await connectionManager.init(myPeerId, signalingUrl)

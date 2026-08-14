@@ -14,6 +14,7 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
   const [search, setSearch] = useState("")
   const [users, setUsers] = useState<UserResponse[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [showNameInput, setShowNameInput] = useState(false)
   const [groupName, setGroupName] = useState("")
@@ -25,7 +26,7 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
       .then((all: UserResponse[]) => {
         setUsers(all.filter((u) => u.id !== currentUserId))
       })
-      .catch(() => {})
+      .catch(() => setError("Не удалось загрузить список пользователей"))
       .finally(() => setLoading(false))
   }, [currentUserId])
 
@@ -111,6 +112,8 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
           <div className="modal-user-list">
             {loading ? (
               <div className="modal-loading">{t("common.loading")}</div>
+            ) : error ? (
+              <div className="modal-empty">{error}</div>
             ) : filtered.length === 0 ? (
               <div className="modal-empty">{t("chat.noContacts")}</div>
             ) : (

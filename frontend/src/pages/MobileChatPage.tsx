@@ -24,7 +24,7 @@ export default function MobileChatPage() {
     if (!chatId) return;
     setLoading(true);
     try {
-      const data = await api.getMessages(chatId);
+      const data = await api.getChatMessages(chatId);
       setMessages(data);
     } catch (err) {
       console.error('Failed to load messages:', err);

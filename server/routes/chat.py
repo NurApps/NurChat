@@ -703,7 +703,10 @@ async def pin_chat(
         db.rollback()
         raise
 
+@router.post("/chats/{chat_id}/mute")
+@limiter.limit("30/minute")
 async def mute_chat(
+    request: Request,
     chat_id: str,
     mute: bool = True,
     db: Session = Depends(get_db),

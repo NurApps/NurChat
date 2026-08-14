@@ -1,6 +1,6 @@
 import { useCallback, useRef, useEffect } from "react"
 import { WS_BASE } from "../config"
-import { showNotification } from "../services/notifications"
+import { showNotification, playMessageSound } from "../services/notifications"
 import type { MessageResponse, UserResponse, ChatResponse } from "../types"
 
 type TypingUsers = Record<string, Record<string, boolean>>
@@ -83,6 +83,7 @@ export function useChatSocket({
           const preview = (data.content || "").slice(0, 50)
           onToast({ id: data.id, title: sender, body: preview, chatId: data.chat_id })
           showNotification(sender, preview)
+          playMessageSound()
         }
         break
       }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+﻿import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { generateInviteLink, parseInviteLink, connectToPeer, getPeerCount, initP2P, getLocalIP, startLANDiscovery } from "../services/p2pService"
 import { saveKnownPeer } from "../services/p2pBridge"
@@ -93,7 +93,7 @@ export default function P2PPage() {
     <div style={{ padding: 24, maxWidth: 600, margin: "0 auto" }}>
       <P2POnboarding />
       <h2 style={{ marginBottom: 8 }}>{t("p2p.title")}</h2>
-      <p style={{ fontSize: 13, color: "#8b949e", marginBottom: 24 }}>
+      <p style={{ fontSize: 13, color: "var(--text-secondary, #8b949e)", marginBottom: 24 }}>
         {t("p2p.subtitle")}
       </p>
 
@@ -103,7 +103,7 @@ export default function P2PPage() {
         background: status === "connected" ? "#1a472a" : status === "error" ? "#4a1c1c" : "#1a1a2e",
         border: `1px solid ${status === "connected" ? "#2d6a4f" : status === "error" ? "#6b2b2b" : "#333"}`,
       }}>
-        <div style={{ fontSize: 14, color: "#aaa", display: "flex", justifyContent: "space-between" }}>
+        <div style={{ fontSize: 14, color: "var(--text-secondary, #aaa)", display: "flex", justifyContent: "space-between" }}>
           <span>
             {t("p2p.status")}: <span style={{ color: status === "connected" ? "#4ade80" : status === "error" ? "#f87171" : "#fbbf24" }}>
               {status === "connected" ? t("p2p.connectedTo", { peer: connectedPeer }) : status === "connecting" ? t("p2p.connecting") : status === "error" ? t("p2p.error") : t("p2p.waiting")}
@@ -115,8 +115,8 @@ export default function P2PPage() {
 
       {/* Invite Section */}
       <div style={{
-        padding: 16, background: "#161b22", borderRadius: 8,
-        border: "1px solid #30363d", marginBottom: 24,
+        padding: 16, background: "var(--surface, #161b22)", borderRadius: 8,
+        border: "1px solid var(--border-color, #30363d)", marginBottom: 24,
       }}>
         <h3 style={{ marginBottom: 12, fontSize: 16 }}>{t("p2p.inviteFriend")}</h3>
         
@@ -127,13 +127,13 @@ export default function P2PPage() {
               <QRCode data={inviteLink} size={140} />
               <div style={{ flex: 1 }}>
                 <div style={{
-                  padding: 12, background: "#0d1117", borderRadius: 8,
+                  padding: 12, background: "var(--input-bg, var(--surface-variant, #0d1117))", borderRadius: 8,
                   fontFamily: "monospace", fontSize: 12, wordBreak: "break-all",
-                  border: "1px solid #333", color: "#c9d1d9", marginBottom: 8,
+                  border: "1px solid var(--border-color, #333)", color: "var(--text-primary, #c9d1d9)", marginBottom: 8,
                 }}>
                   {inviteLink}
                 </div>
-                <div style={{ fontSize: 12, color: "#666" }}>
+                <div style={{ fontSize: 12, color: "var(--text-secondary, #666)" }}>
                   {t("p2p.qrHint")}
                 </div>
               </div>
@@ -145,7 +145,7 @@ export default function P2PPage() {
                 onClick={handleCopy}
                 style={{
                   flex: 1, padding: "10px 16px", background: copied ? "#238636" : "#21262d", color: "#fff",
-                  border: "1px solid #30363d", borderRadius: 6, cursor: "pointer",
+                  border: "1px solid var(--border-color, #30363d)", borderRadius: 6, cursor: "pointer",
                   fontSize: 14, fontWeight: 500, minWidth: 120,
                 }}
               >
@@ -164,7 +164,7 @@ export default function P2PPage() {
               </button>
             </div>
 
-            <p style={{ fontSize: 12, color: "#666", marginTop: 12 }}>
+            <p style={{ fontSize: 12, color: "var(--text-secondary, #666)", marginTop: 12 }}>
               {t("p2p.copyHint")}
             </p>
           </>
@@ -173,8 +173,8 @@ export default function P2PPage() {
 
       {/* Connect to Peer Section */}
       <div style={{
-        padding: 16, background: "#161b22", borderRadius: 8,
-        border: "1px solid #30363d", marginBottom: 24,
+        padding: 16, background: "var(--surface, #161b22)", borderRadius: 8,
+        border: "1px solid var(--border-color, #30363d)", marginBottom: 24,
       }}>
         <h3 style={{ marginBottom: 12, fontSize: 16 }}>{t("p2p.connectToFriend")}</h3>
         
@@ -185,8 +185,8 @@ export default function P2PPage() {
             onChange={(e) => setScanInput(e.target.value)}
             placeholder={t("p2p.pasteFriendLink")}
             style={{
-              flex: 1, padding: "10px 12px", background: "#0d1117",
-              border: "1px solid #333", borderRadius: 6, color: "#fff",
+              flex: 1, padding: "10px 12px", background: "var(--input-bg, var(--surface-variant, #0d1117))",
+              border: "1px solid var(--border-color, #333)", borderRadius: 6, color: "#fff",
               fontSize: 14,
             }}
             onKeyDown={(e) => e.key === "Enter" && handleConnect()}
@@ -209,15 +209,15 @@ export default function P2PPage() {
           <div style={{ color: "#f87171", fontSize: 13, marginTop: 8 }}>{errorMsg}</div>
         )}
         
-        <p style={{ fontSize: 12, color: "#666", marginTop: 8 }}>
+        <p style={{ fontSize: 12, color: "var(--text-secondary, #666)", marginTop: 8 }}>
           {t("p2p.getLinkHint")}
         </p>
       </div>
 
       {/* LAN Discovery */}
       <div style={{
-        padding: 16, background: "#161b22", borderRadius: 8,
-        border: "1px solid #30363d", marginBottom: 24,
+        padding: 16, background: "var(--surface, #161b22)", borderRadius: 8,
+        border: "1px solid var(--border-color, #30363d)", marginBottom: 24,
       }}>
         <h3 style={{ marginBottom: 12, fontSize: 16 }}>{t("p2p.lanTitle")}</h3>
         <button
@@ -238,32 +238,32 @@ export default function P2PPage() {
         >
           {t("p2p.findLan")}
         </button>
-        <p style={{ fontSize: 12, color: "#666", marginTop: 8 }}>
+        <p style={{ fontSize: 12, color: "var(--text-secondary, #666)", marginTop: 8 }}>
           {t("p2p.lanDesc")}
         </p>
       </div>
 
       {/* How it works */}
       <div style={{
-        padding: 16, background: "#161b22", borderRadius: 8,
-        border: "1px solid #30363d",
+        padding: 16, background: "var(--surface, #161b22)", borderRadius: 8,
+        border: "1px solid var(--border-color, #30363d)",
       }}>
         <h3 style={{ marginBottom: 12, fontSize: 16 }}>{t("p2p.howItWorks")}</h3>
-        <div style={{ fontSize: 13, color: "#8b949e", lineHeight: 1.8 }}>
+        <div style={{ fontSize: 13, color: "var(--text-secondary, #8b949e)", lineHeight: 1.8 }}>
           <div style={{ marginBottom: 8 }}>
-            <strong style={{ color: "#c9d1d9" }}>1.</strong> {t("p2p.step1")}
+            <strong style={{ color: "var(--text-primary, #c9d1d9)" }}>1.</strong> {t("p2p.step1")}
           </div>
           <div style={{ marginBottom: 8 }}>
-            <strong style={{ color: "#c9d1d9" }}>2.</strong> {t("p2p.step2")}
+            <strong style={{ color: "var(--text-primary, #c9d1d9)" }}>2.</strong> {t("p2p.step2")}
           </div>
           <div style={{ marginBottom: 8 }}>
-            <strong style={{ color: "#c9d1d9" }}>3.</strong> {t("p2p.step3")}
+            <strong style={{ color: "var(--text-primary, #c9d1d9)" }}>3.</strong> {t("p2p.step3")}
           </div>
           <div style={{ marginBottom: 8 }}>
-            <strong style={{ color: "#c9d1d9" }}>4.</strong> {t("p2p.step4")}
+            <strong style={{ color: "var(--text-primary, #c9d1d9)" }}>4.</strong> {t("p2p.step4")}
           </div>
           <div>
-            <strong style={{ color: "#c9d1d9" }}>5.</strong> {t("p2p.step5")}
+            <strong style={{ color: "var(--text-primary, #c9d1d9)" }}>5.</strong> {t("p2p.step5")}
           </div>
         </div>
       </div>

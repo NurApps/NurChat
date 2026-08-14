@@ -416,6 +416,7 @@
     "somethingWentWrong": "Что-то пошло не так",
     "reload": "Перезагрузить",
     "pinChatFailed": "Не удалось закрепить чат",
+    "pollCreateFailed": "Не удалось создать опрос",
     "relayUnavailable": "Relay недоступен по сети",
     "relayResponded": "Relay ответил с кодом {{status}}",
     "openFileFailed": "Не удалось открыть. Попробуйте скачать файл."

@@ -9,8 +9,8 @@ interface Props {
   chat: ChatResponse
   currentUser: UserResponse
   onClick: (chatId: string) => void
-  onPin?: (chatId: string) => void
-  onMute?: (chatId: string) => void
+  onPin?: (chatId: string, isPinned: boolean) => void
+  onMute?: (chatId: string, isMuted: boolean) => void
   onDelete?: (chatId: string) => void
 }
 
@@ -105,12 +105,12 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
             {menuOpen && (
               <div className="cli-dropdown">
                 {onPin && (
-                  <button onClick={(e) => { e.stopPropagation(); onPin(chat.id); setMenuOpen(false) }}>
+                  <button onClick={(e) => { e.stopPropagation(); onPin(chat.id, isPinned); setMenuOpen(false) }}>
                     {isPinned ? t("chat.unpin") : t("chat.pin")}
                   </button>
                 )}
                 {onMute && (
-                  <button onClick={(e) => { e.stopPropagation(); onMute(chat.id); setMenuOpen(false) }}>
+                  <button onClick={(e) => { e.stopPropagation(); onMute(chat.id, isMuted); setMenuOpen(false) }}>
                     {isMuted ? t("chat.unmuteNotifications") : t("chat.muteNotifications")}
                   </button>
                 )}

@@ -15,6 +15,7 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
   const [search, setSearch] = useState("")
   const [users, setUsers] = useState<UserResponse[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -25,7 +26,7 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
         )
         setUsers(filtered)
       })
-      .catch(() => {})
+      .catch(() => setError("Не удалось загрузить список пользователей"))
       .finally(() => setLoading(false))
   }, [currentUserId, existingContactIds])
 
@@ -62,6 +63,8 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
           <div className="modal-user-list">
             {loading ? (
               <div className="modal-loading">{t("common.loading")}</div>
+            ) : error ? (
+              <div className="modal-empty">{error}</div>
             ) : filtered.length === 0 ? (
               <div className="modal-empty">{t("contacts.noAvailable")}</div>
             ) : (

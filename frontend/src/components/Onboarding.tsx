@@ -32,22 +32,23 @@ export default function Onboarding() {
       display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999,
     }}>
       <div style={{
-        background: "white", borderRadius: 16, padding: 32, maxWidth: 440,
+        background: "var(--surface, #ffffff)", color: "var(--text-primary, #000000)",
+        borderRadius: 16, padding: 32, maxWidth: 440,
         width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
       }}>
         <h3 style={{ margin: "0 0 4px", fontSize: 22 }}>🚀 {t("onboarding.welcome")}</h3>
-        <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 24px" }}>
+        <p style={{ color: "var(--text-secondary, #6b7280)", fontSize: 14, margin: "0 0 24px" }}>
           {t("onboarding.subtitle")}
         </p>
 
         <div style={{
           display: "flex", gap: 16, alignItems: "flex-start",
-          background: "#f3f4f6", borderRadius: 12, padding: 20, minHeight: 110,
+          background: "var(--surface-variant, var(--hover, #f3f4f6))", borderRadius: 12, padding: 20, minHeight: 110,
         }}>
           <div style={{ fontSize: 36, lineHeight: 1 }}>{steps[step].icon}</div>
           <div>
             <h4 style={{ margin: "0 0 6px", fontSize: 16 }}>{steps[step].title}</h4>
-            <p style={{ margin: 0, fontSize: 13, color: "#6b7280", lineHeight: 1.5 }}>{steps[step].desc}</p>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary, #6b7280)", lineHeight: 1.5 }}>{steps[step].desc}</p>
           </div>
         </div>
 
@@ -55,23 +56,23 @@ export default function Onboarding() {
           {steps.map((_, i) => (
             <span key={i} style={{
               width: i === step ? 24 : 8, height: 8, borderRadius: i === step ? 4 : "50%",
-              background: i === step ? "#2563eb" : "#d1d5db", transition: "all 0.2s",
+              background: i === step ? "var(--accent, #2563eb)" : "var(--border-color, #d1d5db)", transition: "all 0.2s",
             }} />
           ))}
         </div>
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={dismiss} style={{
-            background: "none", border: "none", color: "#9ca3af", cursor: "pointer", padding: "8px 16px", fontSize: 14,
+            background: "none", border: "none", color: "var(--text-secondary, #9ca3af)", cursor: "pointer", padding: "8px 16px", fontSize: 14,
           }}>{t("onboarding.skip")}</button>
           {step < steps.length - 1 ? (
             <button onClick={() => setStep(s => s + 1)} style={{
-              background: "#2563eb", color: "white", border: "none", borderRadius: 8,
+              background: "var(--accent, #2563eb)", color: "white", border: "none", borderRadius: 8,
               padding: "10px 24px", fontSize: 14, cursor: "pointer", fontWeight: 600,
             }}>{t("chat.next")} →</button>
           ) : (
             <button onClick={dismiss} style={{
-              background: "#2563eb", color: "white", border: "none", borderRadius: 8,
+              background: "var(--accent, #2563eb)", color: "white", border: "none", borderRadius: 8,
               padding: "10px 24px", fontSize: 14, cursor: "pointer", fontWeight: 600,
             }}>{t("onboarding.start")}</button>
           )}

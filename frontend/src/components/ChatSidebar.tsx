@@ -25,7 +25,7 @@ interface Props {
   setShowCreateChat: (v: boolean) => void
   setShowAddContact: (v: boolean) => void
   handleSelectChat: (chat: ChatResponse) => void
-  handlePin: (id: string) => void
+  handlePin: (id: string, isPinned: boolean) => void
   handleMute: (id: string, muted: boolean) => void
   handleDeleteChat: (id: string) => void
   handleRemoveContact: (id: string) => void

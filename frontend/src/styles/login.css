@@ -276,16 +276,3 @@
   padding: 6px;
   flex-shrink: 0;
 }
-
-/* Anonymous button */
-.anonymous-btn {
-  background: var(--surface) !important;
-  color: var(--text-primary) !important;
-  border: 1.5px solid var(--border-color) !important;
-  box-shadow: none !important;
-}
-
-.anonymous-btn:hover {
-  border-color: var(--tg-blue) !important;
-  color: var(--tg-blue) !important;
-}

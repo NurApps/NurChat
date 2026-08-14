@@ -266,8 +266,8 @@ export function useChatActions({
     }
   }, [selectedChat, setErrorToast, t])
 
-  const handlePin = useCallback(async (chatId: string) => {
-    try { await api.pinChat(chatId, true); loadChats() } catch (e) {
+  const handlePin = useCallback(async (chatId: string, isPinned: boolean) => {
+    try { await api.pinChat(chatId, !isPinned); loadChats() } catch (e) {
       setErrorToast(t("errors.pinChatFailed"))
       console.error("Pin chat failed:", e)
     }

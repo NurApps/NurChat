@@ -53,7 +53,9 @@ import { MessageListSkeleton } from "../components/Skeleton"
 import LinkPreview from "../components/LinkPreview"
 import MessageInfoModal from "../components/MessageInfoModal"
 import InviteModal from "../components/InviteModal"
-import type { UserResponse, MessageResponse } from "../types"
+import type { UserResponse, MessageResponse, PollResponse } from "../types"
+import PollCard from "../components/PollCard"
+import CreatePollModal from "../components/CreatePollModal"
 import ChatSidebar from "../components/ChatSidebar"
 import ChatModals from "../components/ChatModals"
 import CallOverlay from "../components/CallOverlay"
@@ -144,6 +146,8 @@ export default function ChatPage() {
   const [callMuted, setCallMuted] = useState(false)
   const [callVideoOff, setCallVideoOff] = useState(false)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [polls, setPolls] = useState<PollResponse[]>([])
+  const [showCreatePoll, setShowCreatePoll] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -504,6 +508,10 @@ export default function ChatPage() {
       .then((pins) => setPinnedMessage(pins.length > 0 ? pins[0].message : null))
       .catch(() => setPinnedMessage(null))
 
+    api.getPolls(chatId)
+      .then(setPolls)
+      .catch(() => setPolls([]))
+
     if (!chat.is_group && chat.participants.length === 2) {
       const peer = chat.participants.find(p => p.id !== currentUser.id)
       if (peer) registerPeer(peer.id, peer.public_key || "")
@@ -683,6 +691,16 @@ export default function ChatPage() {
   }, [loadChats, setMessages, setErrorToast, setShowCreateChat, setSelectedChat, setTab, t])
 
   const handleEmojiSelect = useCallback((emoji: string) => setInput((prev) => prev + emoji), [setInput])
+
+  const handleCreatePoll = useCallback(async (data: { question: string; options: { text: string }[]; is_anonymous?: boolean; allow_multiple?: boolean }) => {
+    if (!selectedChat) return
+    try {
+      await api.createPoll(selectedChat.id, data)
+      setShowCreatePoll(false)
+      const updated = await api.getPolls(selectedChat.id)
+      setPolls(updated)
+    } catch { setErrorToast(t("errors.pollCreateFailed")) }
+  }, [selectedChat, setErrorToast, t])
 
   const handleBookmark = useCallback(async (messageId: string) => {
     if (!selectedChat) return
@@ -980,7 +998,9 @@ export default function ChatPage() {
                         const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
                         if (peer && isPeerConnected(peer.id)) {
                           import("../services/callService").then(({ startCall }) =>
-                            startCall(peer.id, peer.public_key || "", false))
+                            startCall(peer.id, peer.public_key || "", false)).catch(() => navigate(`/call/${peer.id}/audio`))
+                        } else if (peer) {
+                          navigate(`/call/${peer.id}/audio`)
                         }
                       }}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
@@ -989,7 +1009,9 @@ export default function ChatPage() {
                         const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
                         if (peer && isPeerConnected(peer.id)) {
                           import("../services/callService").then(({ startCall }) =>
-                            startCall(peer.id, peer.public_key || "", true))
+                            startCall(peer.id, peer.public_key || "", true)).catch(() => navigate(`/call/${peer.id}/video`))
+                        } else if (peer) {
+                          navigate(`/call/${peer.id}/video`)
                         }
                       }}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg>
@@ -1090,6 +1112,23 @@ export default function ChatPage() {
                 <div ref={messagesEndRef} />
               </div>
 
+              {!searchQuery && polls.length > 0 && (
+                <div className="chat-polls">
+                  {polls.map((poll) => (
+                    <PollCard
+                      key={poll.id}
+                      poll={poll}
+                      currentUserId={currentUser.id}
+                      onVote={async () => {
+                        if (!selectedChat) return
+                        const updated = await api.getPolls(selectedChat.id)
+                        setPolls(updated)
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
               {replyTo && (
                 <div className="reply-preview">
                   <div className="reply-border">
@@ -1127,6 +1166,9 @@ export default function ChatPage() {
                 </button>
                 <button className="input-btn" title={t("common.file")} disabled={recording || uploading} onClick={handleFilePick}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+                </button>
+                <button className="input-btn" title={t("poll.create")} disabled={recording || uploading || !selectedChat?.is_group} onClick={() => setShowCreatePoll(true)}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></svg>
                 </button>
 
                 {uploading ? (
@@ -1193,6 +1235,10 @@ export default function ChatPage() {
             chats: unreadCount,
           }}
         />
+      )}
+
+      {showCreatePoll && (
+        <CreatePollModal onCreate={handleCreatePoll} onClose={() => setShowCreatePoll(false)} />
       )}
 
       <ChatModals

@@ -1,5 +1,6 @@
 """Integration tests for polls, contact requests, and view-once media."""
 import os
+import re
 import sys
 from unittest.mock import AsyncMock, patch
 
@@ -86,14 +87,37 @@ def client():
 def _register(client, public_key: str) -> dict:
     _register_counter[0] += 1
     ip = f"10.0.0.{_register_counter[0]}"
+    cid, ans = _solve_captcha(client)
     resp = client.post(
-        "/api/auth/anonymous",
-        json={"public_key": public_key},
+        "/api/auth/register",
+        json={
+            "username": f"user_{_register_counter[0]}",
+            "password": "TestPass123",
+            "first_name": f"User{_register_counter[0]}",
+            "public_key": public_key,
+            "captcha_id": cid,
+            "captcha_code": ans,
+        },
         headers={"X-Forwarded-For": ip},
     )
     assert resp.status_code == 200, f"Register failed: {resp.status_code} {resp.json()}"
     data = resp.json()
     return {"id": data["user"]["id"], "token": data["access_token"]}
+
+
+def _solve_captcha(client) -> tuple[str, str]:
+    r = client.get("/api/auth/captcha")
+    assert r.status_code == 200, f"Captcha failed: {r.status_code}"
+    data = r.json()
+    q = data["question"]
+    nums = [int(n) for n in re.findall(r"\d+", q)]
+    if "×" in q or "x" in q:
+        answer = nums[0] * nums[1]
+    elif "-" in q:
+        answer = nums[0] - nums[1]
+    else:
+        answer = nums[0] + nums[1]
+    return data["captcha_id"], str(answer)
 
 
 def auth(token: str) -> dict:

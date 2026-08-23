@@ -24,6 +24,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   const [hasMore, setHasMore] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const chatIdRef = useRef<string | null>(null)
 
   const decryptMessages = useCallback(async (msgs: MessageResponse[], chat: ChatResponse): Promise<MessageResponse[]> => {
     if (!e2eKeys || !isE2EEnabled(chat.participants, e2eKeys)) return msgs
@@ -32,7 +33,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
 
     let groupKey: Uint8Array | null = null
     if (chat.is_group) {
-      try { groupKey = await fetchGroupKey(chat.id, hexToBytes(e2eKeys.privateKeyHex), hexToBytes(peer.public_key)) } catch {}
+      try { groupKey = await fetchGroupKey(chat.id, hexToBytes(e2eKeys.privateKeyHex)) } catch {}
     }
 
     const results: MessageResponse[] = []
@@ -62,16 +63,19 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   }, [e2eKeys, currentUser.id])
 
   const loadMessages = useCallback(async (chat: ChatResponse) => {
+    chatIdRef.current = chat.id
     setInitialLoading(true)
     try {
       const msgs = await api.getChatMessages(chat.id, 0, 50)
+      if (chatIdRef.current !== chat.id) return
       const decrypted = await decryptMessages(msgs, chat)
+      if (chatIdRef.current !== chat.id) return
       setMessages(decrypted)
       setHasMore(decrypted.length >= 50)
     } catch (e) {
       console.error("Load messages failed:", e)
     } finally {
-      setInitialLoading(false)
+      if (chatIdRef.current === chat.id) setInitialLoading(false)
     }
   }, [decryptMessages])
 

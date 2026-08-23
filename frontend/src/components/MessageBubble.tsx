@@ -52,10 +52,19 @@ export default function MessageBubble({
   const [editText, setEditText] = useState(message.content)
   const [showDeleteOptions, setShowDeleteOptions] = useState(false)
   const [readCount, setReadCount] = useState<{ read: number; total: number } | null>(null)
+  const [, setExpiryTick] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const content = message.content
   const time = formatTime(message.created_at)
   const peerId = currentUser.id
+
+  // Tick every second while an ephemeral countdown is active
+  useEffect(() => {
+    if (!message.expires_at) return
+    if (new Date(message.expires_at).getTime() <= Date.now()) return
+    const id = setInterval(() => setExpiryTick((t) => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [message.expires_at])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -70,11 +79,11 @@ export default function MessageBubble({
   }, [menuOpen])
 
   useEffect(() => {
-    if (!isMyMessage) return
+    if (!menuOpen || !isMyMessage) return
     api.getReadCount(message.id).then((data) => {
       setReadCount({ read: data.read_count, total: data.total_participants - 1 })
     }).catch(() => {})
-  }, [isMyMessage, message.id])
+  }, [menuOpen, isMyMessage, message.id])
 
   const senderName = message.user?.username || "User"
   const avatarChar = senderName[0]?.toUpperCase() || "?"
@@ -186,8 +195,9 @@ export default function MessageBubble({
 
   const renderFileContent = () => {
     const mt = message.message_type
-    const imageUrl = message.file_id ? api.getFileUrl(message.file_id) : null
-    const fileUrl = message.file_id ? api.getFileUrl(message.file_id) : null
+    const isP2PBlob = message.content?.startsWith("blob:")
+    const imageUrl = isP2PBlob ? message.content : (message.file_id ? api.getFileUrl(message.file_id) : null)
+    const fileUrl = imageUrl
     if (mt === "image" && imageUrl) {
       return (
         <div className="msg-file">
@@ -322,11 +332,21 @@ export default function MessageBubble({
               {message.edited_at && (
                 <span className="msg-edited" title={t("chat.edited")}>{t("chat.editedShort")}</span>
               )}
-              {message.expires_at && (
-                  <span className="msg-ephemeral" title={t("chat.expiresAt", { time: formatFull(message.expires_at) })}>
-                  <span className="msg-ephemeral-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
-                </span>
-              )}
+              {message.expires_at && (() => {
+                const remaining = Math.max(0, Math.floor((new Date(message.expires_at).getTime() - Date.now()) / 1000))
+                if (remaining <= 0) return null
+                const timeStr = remaining >= 3600
+                  ? `${Math.floor(remaining / 3600)}ч ${Math.floor((remaining % 3600) / 60)}м`
+                  : remaining >= 60
+                    ? `${Math.floor(remaining / 60)}м ${remaining % 60}с`
+                    : `${remaining}с`
+                return (
+                  <span className="msg-expiry" title={t("chat.expiresAt", { time: formatFull(message.expires_at) })}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    {timeStr}
+                  </span>
+                )
+              })()}
               {isMyMessage && renderStatusIcon()}
             </div>
             {renderReactionBar()}

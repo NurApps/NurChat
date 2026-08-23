@@ -5,6 +5,7 @@ import { sendP2PTextMessage, sendP2PGroupMessage, isPeerConnected, sendP2PReacti
 import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled } from "../services/e2e"
 import { fetchGroupKey, encryptGroupMessageRatcheted } from "../services/groupE2E"
 import { createSealedSenderEnvelope, type SealedSenderEnvelope } from "../services/sealedSender"
+import { useChatStore } from "../store/chatStore"
 
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
@@ -33,9 +34,9 @@ export function useChatActions({
   const [showForward, setShowForward] = useState<string | null>(null)
   const [pinnedMessage, setPinnedMessage] = useState<MessageResponse | null>(null)
 
-  const handleSend = useCallback(async (input: string) => {
+  const handleSend = useCallback(async (input: string, expiresAt?: string) => {
     const text = input.trim()
-    if (!text || !selectedChat) return
+    if (!text || !selectedChat) return false
     let content = text
     const replyToId = replyTo?.id
 
@@ -51,21 +52,36 @@ export function useChatActions({
           signature = envelope.signature
           content = "[encrypted]"
         }
-      } catch (e) { console.error("E2E encrypt failed:", e) }
+      } catch (e) {
+        // NEVER fall through to plaintext when E2E was intended — abort the send.
+        console.error("E2E encrypt failed:", e)
+        setErrorToast(t("errors.sendFailed"))
+        return false
+      }
     }
 
     if (!encryptedContent && selectedChat.is_group) {
       try {
-        const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
-        if (myKeys && peer?.public_key) {
-          const groupKey = await fetchGroupKey(selectedChat.id, hexToBytes(myKeys.privateKeyHex), hexToBytes(peer.public_key))
+        if (myKeys) {
+          let groupKey = await fetchGroupKey(selectedChat.id, hexToBytes(myKeys.privateKeyHex))
+          // If group key is missing (new group or after participant change), re-initialize
+          if (!groupKey && selectedChat.is_group && selectedChat.participants.length > 1) {
+            const { initGroupKey } = await import("../services/groupE2E")
+            const participants = selectedChat.participants.map(p => ({ user_id: p.id, public_key: p.public_key }))
+            await initGroupKey(selectedChat.id, hexToBytes(myKeys.privateKeyHex), currentUser.id, participants)
+            groupKey = await fetchGroupKey(selectedChat.id, hexToBytes(myKeys.privateKeyHex))
+          }
           if (groupKey) {
             const encrypted = await encryptGroupMessageRatcheted(content, groupKey, selectedChat.id)
             encryptedContent = JSON.stringify({ group_encrypted: encrypted })
             content = "[encrypted]"
           }
         }
-      } catch (e) { console.error("Group E2E failed:", e) }
+      } catch (e) {
+        console.error("Group E2E failed:", e)
+        setErrorToast(t("errors.sendFailed"))
+        return false
+      }
     }
 
     let sentViaP2P = false
@@ -83,16 +99,20 @@ export function useChatActions({
           is_deleted: false, encrypted_content: encryptedContent, signature, reactions: {},
           reply_to_id: replyToId || undefined,
           reply_to: replyTo ? { id: replyTo.id, content: replyTo.content, user_id: replyTo.user_id, user: replyTo.user } : undefined,
+          expires_at: expiresAt || undefined,
         })
         if (sent) loadChats()
       }
     }
 
-    // Group E2E via P2P TCP mesh: send encrypted message to all connected peers at once
+    // Group E2E via P2P TCP mesh ONLY if every other participant is connected.
+    // Partial P2P delivery would permanently lose the message for peers that
+    // are online via relay but not on our TCP mesh — fall back to relay instead.
     if (!sentViaP2P && selectedChat.is_group && encryptedContent) {
-      const hasConnectedPeer = selectedChat.participants.some(p => p.id !== currentUser.id && isPeerConnected(p.id))
+      const others = selectedChat.participants.filter(p => p.id !== currentUser.id)
+      const allConnected = others.length > 0 && others.every(p => isPeerConnected(p.id))
 
-      if (hasConnectedPeer) {
+      if (allConnected) {
         const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`
         const sent = await sendP2PGroupMessage(selectedChat.id, msgId, encryptedContent)
         sentViaP2P = sent
@@ -104,6 +124,7 @@ export function useChatActions({
         })
         if (sentViaP2P) loadChats()
       }
+      // else: leave sentViaP2P=false so the relay path below delivers to everyone
     }
 
     if (!sentViaP2P) {
@@ -125,19 +146,25 @@ export function useChatActions({
           undefined,
           sealedPayload || encryptedContent,
           signature,
-          selectedChat.is_secret && selectedChat.disappears_after_seconds
+          expiresAt || (selectedChat.is_secret && selectedChat.disappears_after_seconds
             ? new Date(Date.now() + selectedChat.disappears_after_seconds * 1000).toISOString()
-            : undefined,
+            : undefined),
           replyToId,
           sealedPayload ? true : undefined, // sealed_sender flag
         )
         addMessage(msg)
         loadChats()
-      } catch (e) { console.error("Send failed:", e) }
+      } catch (e) {
+        // Surface failure so the caller keeps the input and the user can retry
+        console.error("Send failed:", e)
+        setErrorToast(t("errors.sendFailed"))
+        sendTyping(false)
+        return false
+      }
     }
     sendTyping(false)
     return true
-  }, [selectedChat, replyTo, currentUser, loadChats, addMessage, sendTyping])
+  }, [selectedChat, replyTo, currentUser, loadChats, addMessage, sendTyping, setErrorToast, t])
 
   const handleReply = useCallback((messageId: string, messages: MessageResponse[]) => {
     const msg = messages.find((m) => m.id === messageId)
@@ -267,23 +294,23 @@ export function useChatActions({
   }, [selectedChat, setErrorToast, t])
 
   const handlePin = useCallback(async (chatId: string, isPinned: boolean) => {
-    try { await api.pinChat(chatId, !isPinned); loadChats() } catch (e) {
+    try { await api.pinChat(chatId, isPinned); loadChats() } catch (e) {
       setErrorToast(t("errors.pinChatFailed"))
       console.error("Pin chat failed:", e)
     }
   }, [loadChats, setErrorToast, t])
 
   const handleMute = useCallback(async (chatId: string, isMuted: boolean) => {
-    try { await api.muteChat(chatId, !isMuted); loadChats() } catch (e) {
+    try { await api.muteChat(chatId, isMuted); loadChats() } catch (e) {
       setErrorToast(t("errors.muteFailed"))
       console.error("Mute failed:", e)
     }
   }, [loadChats, setErrorToast, t])
 
-  const handleDeleteChat = useCallback(async (chatId: string, setSelectedChat: (c: ChatResponse | null) => void) => {
+  const handleDeleteChat = useCallback(async (chatId: string) => {
     try {
       await api.deleteChat(chatId)
-      setSelectedChat(null)
+      useChatStore.getState().setSelectedChat(null)
       loadChats()
     } catch (e) {
       setErrorToast(t("errors.deleteChatFailed"))

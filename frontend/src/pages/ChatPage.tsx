@@ -26,6 +26,7 @@ import { SwipeableRow } from "../components/mobile/SwipeableRow"
 import { PullToRefresh } from "../components/mobile/PullToRefresh"
 import { MobileMessageInput } from "../components/mobile/MobileMessageInput"
 import { loadKeys as loadE2EKeys, decryptMessage, type E2EKeys } from "../services/e2e"
+import { initGroupKey } from "../services/groupE2E"
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications, showNotification } from "../services/notifications"
 import { clearPin } from "../services/pinLock"
@@ -147,6 +148,8 @@ export default function ChatPage() {
   const [callVideoOff, setCallVideoOff] = useState(false)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [polls, setPolls] = useState<PollResponse[]>([])
+  const [ephemeralSeconds, setEphemeralSeconds] = useState<number | null>(null)
+  const [showEphemeralMenu, setShowEphemeralMenu] = useState(false)
   const [showCreatePoll, setShowCreatePoll] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -165,6 +168,7 @@ export default function ChatPage() {
 
   const { wsRef, chatIdRef } = useChatSocket({
     currentUser, selectedChat,
+    mutedChatIds: useMemo(() => new Set(chats.filter(c => c.is_muted).map(c => c.id)), [chats]),
     onMessage: useCallback(async (data: any) => {
       if (data._update) { updateMessage(data.message_id as string, { is_read: true }); return }
       if (data._delete) { updateMessage(data.message_id as string, { is_deleted: true, deleted_for_all: data.delete_for_all as boolean }); return }
@@ -192,7 +196,7 @@ export default function ChatPage() {
       setToast({
         id: `mention_${data.message_id}`,
         title: `@${data.mentioned_by_username}`,
-        body: `СѓРїРѕРјСЏРЅСѓР»(Р°) РІР°СЃ: ${data.content_preview}`,
+        body: `Упомянул(а) вас: ${data.content_preview}`,
         chatId: data.chat_id,
       })
     }, [setToast]),
@@ -242,6 +246,7 @@ export default function ChatPage() {
     loadContacts()
     loadInvites()
     initNotifications()
+    useChatStore.getState().loadBookmarks()
   }, [loadChats, loadContacts, loadInvites])
 
   useEffect(() => {
@@ -254,6 +259,18 @@ export default function ChatPage() {
       window.removeEventListener("offline", handleOffline)
     }
   }, [])
+
+  useEffect(() => {
+    if (!showEphemeralMenu) return
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest(".ephemeral-menu") && !target.closest(".ephemeral-active")) {
+        setShowEphemeralMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [showEphemeralMenu])
 
   useEffect(() => {
     const p2pKeys = localStorage.getItem("p2p_keys")
@@ -451,7 +468,7 @@ export default function ChatPage() {
         )
         if (senderChat) {
           const sender = senderChat.participants.find(p => p.id === d.sender_id)
-          const name = sender?.username || sender?.first_name || "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ"
+          const name = sender?.username || sender?.first_name || "Пользователь"
           const preview = (d.content || "").slice(0, 50)
           showNotification(name, preview)
         }
@@ -605,18 +622,28 @@ export default function ChatPage() {
     }
   }
 
+  const sendingRef = useRef(false)
   const handleSend = useCallback(async () => {
     const input = useChatStore.getState().input
     const text = input.trim()
     const chat = useChatStore.getState().selectedChat
     if (!text || !chat) return
-    await handleSendAction(input)
-    setInput("")
-    setReplyTo(null)
-    setMentionQuery("")
-    setMentionIndex(-1)
-    if (chat) removeDraft(chat.id)
-  }, [handleSendAction, setInput, setReplyTo])
+    // Guard against Enter-spam / double-submit duplicates
+    if (sendingRef.current) return
+    sendingRef.current = true
+    try {
+      const expiresAt = ephemeralSeconds ? new Date(Date.now() + ephemeralSeconds * 1000).toISOString() : undefined
+      const ok = await handleSendAction(input, expiresAt)
+      if (!ok) return // keep input so the user can retry
+      setInput("")
+      setReplyTo(null)
+      setMentionQuery("")
+      setMentionIndex(-1)
+      removeDraft(chat.id)
+    } finally {
+      sendingRef.current = false
+    }
+  }, [handleSendAction, setInput, setReplyTo, ephemeralSeconds])
 
   const handleExportChat = useCallback(async () => {
     if (!selectedChat) return
@@ -687,8 +714,27 @@ export default function ChatPage() {
       const isGroup = participantIds.length > 1
       const chat = await api.createChat(name || "", participantIds, isGroup, isSecret || false, secretTtl || 0)
       setShowCreateChat(false); loadChats(); setSelectedChat(chat); setTab("chats"); setMessages([])
+
+      // Initialize group E2E key for new group chats
+      if (isGroup && e2eKeys) {
+        try {
+          const allIds = [...participantIds]
+          const users = await Promise.all(allIds.map(id => api.getUser(id).catch(() => null)))
+          const participants = users
+            .filter((u): u is NonNullable<typeof u> => u !== null)
+            .map(u => ({ user_id: u.id, public_key: u.public_key }))
+          if (participants.length > 0) {
+            const hexToBytesLocal = (hex: string) => {
+              const bytes = new Uint8Array(hex.length / 2)
+              for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16)
+              return bytes
+            }
+            await initGroupKey(chat.id, hexToBytesLocal(e2eKeys.privateKeyHex), currentUser.id, participants)
+          }
+        } catch (e) { console.error("Group key init failed:", e) }
+      }
     } catch { setErrorToast(t("errors.createChat")) }
-  }, [loadChats, setMessages, setErrorToast, setShowCreateChat, setSelectedChat, setTab, t])
+  }, [loadChats, setMessages, setErrorToast, setShowCreateChat, setSelectedChat, setTab, t, e2eKeys, currentUser.id])
 
   const handleEmojiSelect = useCallback((emoji: string) => setInput((prev) => prev + emoji), [setInput])
 
@@ -767,14 +813,18 @@ export default function ChatPage() {
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop())
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+        setRecording(false)
         setRecordingTime(0)
-        if (chunks.length === 0 || !selectedChat) return
+        // Read the chat at stop-time, not start-time — the user may
+        // have switched chats while recording.
+        const targetChat = useChatStore.getState().selectedChat
+        if (chunks.length === 0 || !targetChat) return
         const blob = new Blob(chunks, { type: mr.mimeType })
         const file = new File([blob], `voice_${Date.now()}.webm`, { type: mr.mimeType })
         setUploading(true)
         try {
           // P2P-first for voice
-          const peer = !selectedChat.is_group ? selectedChat.participants.find(p => p.id !== currentUser.id) : undefined
+          const peer = !targetChat.is_group ? targetChat.participants.find(p => p.id !== currentUser.id) : undefined
           const p2pAvailable = !!peer && isPeerConnected(peer.id)
           if (p2pAvailable && peer) {
             const fileData = new Uint8Array(await file.arrayBuffer())
@@ -783,7 +833,7 @@ export default function ChatPage() {
             if (sent) {
               const blobUrl = URL.createObjectURL(blob)
               addMessage({
-                id: `p2p_file_${fileId}`, chat_id: selectedChat.id, user_id: currentUser.id,
+                id: `p2p_file_${fileId}`, chat_id: targetChat.id, user_id: currentUser.id,
                 content: blobUrl, message_type: "voice", file_id: fileId,
                 created_at: new Date().toISOString(), user: currentUser, is_read: true,
                 is_deleted: false, reactions: {},
@@ -792,7 +842,7 @@ export default function ChatPage() {
             }
           } else {
             const uploaded = await api.uploadFile(file, "voice")
-            const msg = await api.sendMessage(selectedChat.id, t("chat.voiceMessage"), "voice", uploaded.id)
+            const msg = await api.sendMessage(targetChat.id, t("chat.voiceMessage"), "voice", uploaded.id)
             addMessage(msg); loadChats()
           }
         } catch { console.error("Voice failed") }
@@ -1170,6 +1220,54 @@ export default function ChatPage() {
                 <button className="input-btn" title={t("poll.create")} disabled={recording || uploading || !selectedChat?.is_group} onClick={() => setShowCreatePoll(true)}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></svg>
                 </button>
+                <div style={{ position: "relative" }}>
+                  <button className={`input-btn ${ephemeralSeconds ? "ephemeral-active" : ""}`}
+                    title={t("chat.ephemeral")}
+                    disabled={recording || uploading}
+                    onClick={() => setShowEphemeralMenu(!showEphemeralMenu)}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12 6 12 12 16 14" />
+                      {ephemeralSeconds && <circle cx="12" cy="12" r="10" stroke="var(--tg-blue)" strokeWidth="3" strokeDasharray="62.8" strokeDashoffset="0" style={{ animation: "ephemeral-pulse 2s ease-in-out infinite" }} />}
+                    </svg>
+                    {ephemeralSeconds && <span className="ephemeral-badge" style={{
+                      position: "absolute", top: -4, right: -4, width: 16, height: 16,
+                      borderRadius: "50%", background: "var(--tg-blue)", color: "#fff",
+                      fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700,
+                    }}>{ephemeralSeconds >= 60 ? `${ephemeralSeconds / 60}m` : `${ephemeralSeconds}s`}</span>}
+                  </button>
+                  {showEphemeralMenu && (
+                    <div className="ephemeral-menu" style={{
+                      position: "absolute", bottom: "100%", left: 0, marginBottom: 8,
+                      background: "var(--bg)", borderRadius: 12, boxShadow: "0 4px 24px rgba(0,0,0,.2)",
+                      padding: "8px 0", zIndex: 1000, minWidth: 160,
+                    }}>
+                      <div style={{ padding: "6px 16px", fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>{t("chat.ephemeralTitle")}</div>
+                      {[
+                        { label: t("chat.ephemeralOff"), value: null },
+                        { label: t("chat.ephemeral5s"), value: 5 },
+                        { label: t("chat.ephemeral10s"), value: 10 },
+                        { label: t("chat.ephemeral30s"), value: 30 },
+                        { label: t("chat.ephemeral1m"), value: 60 },
+                        { label: t("chat.ephemeral5m"), value: 300 },
+                        { label: t("chat.ephemeral1h"), value: 3600 },
+                      ].map((opt) => (
+                        <div key={String(opt.value)} className="ephemeral-option" onClick={() => { setEphemeralSeconds(opt.value); setShowEphemeralMenu(false) }}
+                          style={{
+                            padding: "8px 16px", cursor: "pointer", fontSize: 14,
+                            color: ephemeralSeconds === opt.value ? "var(--tg-blue)" : "var(--text)",
+                            background: ephemeralSeconds === opt.value ? "var(--hover-bg)" : "transparent",
+                            fontWeight: ephemeralSeconds === opt.value ? 600 : 400,
+                          }}
+                          onMouseEnter={(e) => { if (ephemeralSeconds !== opt.value) e.currentTarget.style.background = "var(--hover-bg)" }}
+                          onMouseLeave={(e) => { if (ephemeralSeconds !== opt.value) e.currentTarget.style.background = "transparent" }}
+                        >
+                          {opt.label}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 {uploading ? (
                   <div className="chat-input-uploading">

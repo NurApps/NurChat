@@ -87,6 +87,13 @@ class DoubleRatchetSession:
 
         self._seen_message_ids: set[tuple[str, int]] = set()
         self._skipped_keys: dict[str, bytes] = {}
+        # Set after receiving a new remote ratchet key: our NEXT outgoing
+        # message must perform a DH ratchet step. The new DH keypair was
+        # already generated inside _dh_ratchet_recv (_dh_fresh=True), so the
+        # send step reuses it instead of generating yet another key — this
+        # keeps the header public key consistent with the sending chain.
+        self._pending_send_ratchet: bool = False
+        self._dh_fresh: bool = False
 
     def _associated_data(self) -> bytes:
         a = self.our_identity_public or b""
@@ -191,7 +198,10 @@ class DoubleRatchetSession:
     def _dh_ratchet_send(self):
         if self.DHr is None or self.RK is None:
             raise ValueError("DH ratchet not initialized")
-        ratchet_private = PrivateKey.generate()
+        if not self._dh_fresh:
+            ratchet_private = PrivateKey.generate()
+        else:
+            ratchet_private = self.DHs
         dh_shared = Box(ratchet_private, self.DHr).shared_key()
         derived = hkdf(self.RK, dh_shared, b"DoubleRatchet_Ratchet", 64)
         self.RK = derived[:32]
@@ -199,6 +209,8 @@ class DoubleRatchetSession:
         self.PN = self.Ns
         self.Ns = 0
         self.DHs = ratchet_private
+        self._dh_fresh = False
+        self._pending_send_ratchet = False
 
     def _dh_ratchet_recv(self, their_public: PublicKey):
         if self.DHs is None or self.RK is None:
@@ -211,8 +223,13 @@ class DoubleRatchetSession:
         self.Nr = 0
         self.DHr = their_public
         self.DHs = PrivateKey.generate()
+        self._dh_fresh = True
+        self._pending_send_ratchet = True
 
     def encrypt_message(self, plaintext: str) -> dict:
+        if self._pending_send_ratchet and self.DHr is not None and self.RK is not None:
+            self._dh_ratchet_send()
+
         if self.CKs is None:
             if self.CKr is not None and self.DHr is not None:
                 self._dh_ratchet_send()
@@ -335,6 +352,8 @@ class DoubleRatchetSession:
             "their_id": base64.b64encode(self.their_identity_public).decode() if self.their_identity_public else None,
             "skipped": {k: base64.b64encode(v).decode() for k, v in self._skipped_keys.items()},
             "seen": [f"{dh}:{ns}" for dh, ns in sorted(self._seen_message_ids, key=lambda t: (t[1], t[0]))[-2000:]],
+            "pending_send_ratchet": self._pending_send_ratchet,
+            "dh_fresh": self._dh_fresh,
         }
 
     @staticmethod
@@ -355,6 +374,8 @@ class DoubleRatchetSession:
         s.Ns = data.get("Ns", 0)
         s.Nr = data.get("Nr", 0)
         s.PN = data.get("PN", 0)
+        s._pending_send_ratchet = bool(data.get("pending_send_ratchet", False))
+        s._dh_fresh = bool(data.get("dh_fresh", False))
         if data.get("our_id"):
             s.our_identity_public = base64.b64decode(data["our_id"])
         if data.get("their_id"):

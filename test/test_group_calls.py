@@ -67,6 +67,7 @@ def setup_db():
     engine.dispose()
     db_module.engine = old_engine
     db_module.SessionLocal = old_session
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture
@@ -81,7 +82,7 @@ def client():
                             yield c
 
 
-def _register(client, public_key: str = "pk_test_key") -> dict:
+def _register(client, public_key: str = "a" * 64, signing_public_key: str = "b" * 64) -> dict:
     _ip_counter[0] += 1
     ip = f"10.0.0.{_ip_counter[0]}"
     cid, ans = _solve_captcha(client)
@@ -92,6 +93,7 @@ def _register(client, public_key: str = "pk_test_key") -> dict:
             "password": "TestPass123",
             "first_name": f"Group{_ip_counter[0]}",
             "public_key": public_key,
+            "signing_public_key": signing_public_key,
             "captcha_id": cid,
             "captcha_code": ans,
         },

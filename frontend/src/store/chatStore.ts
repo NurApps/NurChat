@@ -71,6 +71,7 @@ interface ChatState {
   setShowCreateChat: (show: boolean) => void
   setShowMessageInfo: (id: string | null) => void
   setBookmarkedIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void
+  loadBookmarks: () => Promise<void>
 
   setInput: (input: string | ((prev: string) => string)) => void
   setShowEmoji: (show: boolean) => void
@@ -82,6 +83,7 @@ interface ChatState {
   loadChats: () => Promise<void>
   loadContacts: () => Promise<void>
   loadInvites: () => Promise<void>
+  refreshCurrentUser: () => void
 }
 
 function getCurrentUser(): UserResponse {
@@ -144,6 +146,14 @@ export const useChatStore = create<ChatState>((set) => ({
   setShowMessageInfo: (id) => set({ showMessageInfo: id }),
   setBookmarkedIds: (ids) => set((state) => ({ bookmarkedIds: typeof ids === "function" ? ids(state.bookmarkedIds) : ids })),
 
+  loadBookmarks: async () => {
+    try {
+      const bookmarks = await api.getBookmarks()
+      const ids = new Set<string>(bookmarks.map((b) => b.message_id))
+      useChatStore.getState().setBookmarkedIds(ids)
+    } catch { /* ignore */ }
+  },
+
   setInput: (input) => set((state) => ({ input: typeof input === "function" ? input(state.input) : input })),
   setShowEmoji: (show) => set({ showEmoji: show }),
   setShowStickers: (show) => set({ showStickers: show }),
@@ -176,5 +186,9 @@ export const useChatStore = create<ChatState>((set) => ({
     } catch {
       set({ invites: [] })
     }
+  },
+
+  refreshCurrentUser: () => {
+    set({ currentUser: getCurrentUser() })
   },
 }))

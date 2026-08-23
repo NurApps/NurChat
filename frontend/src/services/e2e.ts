@@ -128,8 +128,10 @@ export async function saveKeys(keys: E2EKeys): Promise<void> {
 }
 
 export async function clearKeys(): Promise<void> {
-  const db = await import("./secureStorage").then((m) => m.clearAll())
-  await db
+  const { clearAll } = await import("./secureStorage")
+  const { resetRatchetCache } = await import("./groupE2E")
+  await clearAll()
+  resetRatchetCache()
 }
 
 export async function hasKeys(): Promise<boolean> {
@@ -238,7 +240,31 @@ export async function setupPreKeys(myKeys: E2EKeys): Promise<void> {
   try {
     const opkCount = await api.getOneTimePrekeyCount(myKeys.publicKeyHex)
     if (opkCount.count < 20) {
-      await api.uploadOneTimePrekeys(100)
+      const OPK_BATCH = 100
+      const publicKeys: string[] = []
+      const opksToStore: { publicKeyHex: string; secretKeyHex: string }[] = []
+
+      for (let i = 0; i < OPK_BATCH; i++) {
+        const kp = boxKeyPair()
+        const pubHex = bytesToHex(kp.publicKey)
+        const secHex = bytesToHex(kp.secretKey)
+        publicKeys.push(pubHex)
+        opksToStore.push({ publicKeyHex: pubHex, secretKeyHex: secHex })
+        zeroize(kp.secretKey)
+      }
+
+      await api.uploadOneTimePrekeys(publicKeys)
+
+      const existing = await loadOPKsFromStorage()
+      const existingPubSet = new Set(existing.map((k) => k.publicKeyHex))
+      const newOps = opksToStore.filter((k) => !existingPubSet.has(k.publicKeyHex))
+      if (newOps.length > 0) {
+        await storeOPKs([...existing, ...newOps.map((k) => ({
+          publicKeyHex: k.publicKeyHex,
+          secretKeyHex: k.secretKeyHex,
+          createdAt: Date.now(),
+        }))])
+      }
     }
   } catch (err) {
     console.warn("[E2E] Failed to upload OPKs:", err)

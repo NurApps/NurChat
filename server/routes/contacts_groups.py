@@ -391,6 +391,9 @@ async def add_participant(
         raise HTTPException(status_code=409, detail="Пользователь уже в группе")
     new_participant = models.ChatParticipant(chat_id=group_id, user_id=target_user_id)
     db.add(new_participant)
+    # Clear group key — will be re-initialized by admin on next message
+    chat.group_key = None
+    chat.group_key_creator_id = None
     db.commit()
     return {"message": f"Пользователь {target_user_id} добавлен в группу"}
 
@@ -420,6 +423,9 @@ async def remove_participant(
         ).first()
         if target_participant:
             db.delete(target_participant)
+            # Clear group key — must be re-initialized by remaining admin
+            chat.group_key = None
+            chat.group_key_creator_id = None
             db.commit()
             return {"message": "Вы вышли из группы"}
     target_participant = db.query(models.ChatParticipant).filter(
@@ -429,6 +435,9 @@ async def remove_participant(
     if not target_participant:
         raise HTTPException(status_code=404, detail="Пользователь не в группе")
     db.delete(target_participant)
+    # Clear group key — must be re-initialized by admin
+    chat.group_key = None
+    chat.group_key_creator_id = None
     db.commit()
     return {"message": f"Пользователь {target_user_id} удалён из группы"}
 

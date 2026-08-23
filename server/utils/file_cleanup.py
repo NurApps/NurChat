@@ -109,7 +109,7 @@ class FileCleanupService:
             expired_messages = db.query(models.Message).filter(
                 models.Message.expires_at.isnot(None),
                 models.Message.expires_at < now,
-                not models.Message.is_deleted
+                models.Message.is_deleted.is_(False)
             ).all()
 
             deleted_count = 0
@@ -137,6 +137,13 @@ class FileCleanupService:
             expiry_date = datetime.now(timezone.utc) - timedelta(days=settings.P2P_PENDING_TTL_DAYS)
             deleted = db.query(models.P2PMessage).filter(
                 models.P2PMessage.created_at < expiry_date
+            ).delete(synchronize_session=False)
+            # Delivered-but-unacked messages get a shorter grace period (24h)
+            # so clients have time to ack before the relay discards them.
+            delivered_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+            deleted += db.query(models.P2PMessage).filter(
+                models.P2PMessage.delivered_at.isnot(None),
+                models.P2PMessage.delivered_at < delivered_cutoff,
             ).delete(synchronize_session=False)
             db.commit()
             logger.info(f"Expired P2P pending messages deleted: {deleted}")

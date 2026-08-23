@@ -3,8 +3,6 @@ from datetime import datetime, timezone
 
 from fastapi import WebSocket
 
-from shared.constants import WS_EVENTS
-
 from ..core.security import security
 from .chat_manager import connection_manager
 
@@ -168,8 +166,7 @@ class NotificationManager:
         if user_id in connection_manager.active_connections:
             try:
                 ws_message = {
-                    "event": WS_EVENTS["MESSAGE"],  # Используем существующее событие
-                    "type": "notification",
+                    "event": "notification",
                     "data": notification
                 }
                 await connection_manager.active_connections[user_id].send_json(ws_message)
@@ -178,7 +175,24 @@ class NotificationManager:
                 logger.error(f"Error sending notification to {user_id}: {e}")
                 connection_manager.disconnect(user_id)
         else:
-            logger.debug(f"User {user_id} is offline, notification stored")
+            # User offline — send Web Push notification (in thread to avoid blocking)
+            try:
+                import asyncio
+
+                from server.routes.push import send_push_notification
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    None,
+                    lambda: send_push_notification(
+                        user_id=user_id,
+                        title=notification.get("title", "NurChat"),
+                        body=notification.get("body", ""),
+                        data=notification.get("data"),
+                    ),
+                )
+            except Exception as e:
+                logger.error(f"Push notification failed for {user_id}: {e}")
+            logger.debug(f"User {user_id} is offline, push sent")
 
     def _store_notification(self, user_id: str, notification: dict):
         """Сохранение уведомления в истории"""

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { loadKeys, saveKeys, type E2EKeys } from "../services/e2e"
 import { encode as base64Encode, decode as base64Decode } from "base64-arraybuffer"
 import { BASE_URL } from "../config"
@@ -121,6 +122,7 @@ async function decryptBackupData(encryptedPayload: string, password: string): Pr
 
 export default function BackupPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [backups, setBackups] = useState<Backup[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -150,7 +152,7 @@ export default function BackupPage() {
 
   const handleCreateBackup = useCallback(async () => {
     if (!backupPassword || backupPassword.length < 8) {
-      setMsg("Пароль должен быть не менее 8 символов")
+      setMsg(t("backup.passwordMinLength"))
       return
     }
 
@@ -159,7 +161,8 @@ export default function BackupPage() {
     try {
       const keys = await loadKeys()
       if (!keys) {
-        setMsg("Сначала сгенерируйте E2E ключи в настройках")
+        setMsg(t("backup.generateKeys"))
+        setCreating(false)
         return
       }
 
@@ -186,12 +189,12 @@ export default function BackupPage() {
         }),
       })
 
-      setMsg("Бэкап создан и зашифрован!")
+      setMsg(t("backup.created"))
       setShowCreateModal(false)
       setBackupPassword("")
       loadBackups()
     } catch (e) {
-      setMsg("Ошибка создания бэкапа")
+      setMsg(t("backup.createError"))
     } finally {
       setCreating(false)
     }
@@ -204,24 +207,24 @@ export default function BackupPage() {
       const outerData = JSON.parse(atob(backup.payload))
       
       if (!outerData.encryptedPayload) {
-        setMsg("Неверный формат бэкапа (требуется версия 2+)")
+        setMsg(t("backup.restoreInvalidFormat"))
         return
       }
 
       const keys = await decryptBackupData(outerData.encryptedPayload, password)
       
       if (!keys) {
-        setMsg("Неверный пароль или поврежденный бэкап")
+        setMsg(t("backup.restoreInvalidPassword"))
         return
       }
 
       await saveKeys(keys)
-      setMsg("Бэкап восстановлен! Ключи обновлены.")
+      setMsg(t("backup.restored"))
       setShowRestoreModal(false)
       setRestorePassword("")
       setSelectedBackup(null)
     } catch (e) {
-      setMsg("Ошибка восстановления: неверный пароль или поврежденный файл")
+      setMsg(t("backup.restoreError"))
     } finally {
       setRestoring(false)
     }
@@ -239,14 +242,14 @@ export default function BackupPage() {
       const data = JSON.parse(text)
       
       if (!Array.isArray(data) || data.length === 0) {
-        setFileError("Неверный формат файла импорта")
+        setFileError(t("backup.importInvalidFile"))
         return
       }
 
       // Import first backup from file
       const backupToImport = data[0]
       if (!backupToImport.payload) {
-        setFileError("Неверный формат бэкапа в файле")
+        setFileError(t("backup.importInvalidBackup"))
         return
       }
 
@@ -260,7 +263,7 @@ export default function BackupPage() {
       })
       setShowRestoreModal(true)
     } catch (e) {
-      setFileError("Ошибка чтения файла: " + (e as Error).message)
+      setFileError(t("backup.importReadError") + (e as Error).message)
     }
   }, [])
 
@@ -279,7 +282,7 @@ export default function BackupPage() {
     a.download = `nurchat_backup_${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-    setMsg("Бэкап экспортирован!")
+    setMsg(t("backup.importSuccess"))
   }, [backups])
 
   if (loading) {
@@ -291,9 +294,9 @@ export default function BackupPage() {
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-          <h1>Бэкапы</h1>
+          <h1>{t("backup.title")}</h1>
         </div>
-        <div style={{ padding: 40, textAlign: "center", color: "#888" }}>Загрузка...</div>
+        <div style={{ padding: 40, textAlign: "center", color: "#888" }}>{t("common.loading")}</div>
       </div>
     )
   }
@@ -306,7 +309,7 @@ export default function BackupPage() {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h1>Бэкапы</h1>
+        <h1>{t("backup.title")}</h1>
       </div>
 
       <div className="settings-content">
@@ -314,8 +317,8 @@ export default function BackupPage() {
           <div style={{
             padding: "8px 12px",
             borderRadius: 8,
-            background: msg.includes("Ошибка") ? "rgba(244,67,54,0.1)" : "rgba(76,175,80,0.1)",
-            color: msg.includes("Ошибка") ? "#f44336" : "#4CAF50",
+            background: msg.includes(t("backup.createError")) ? "rgba(244,67,54,0.1)" : "rgba(76,175,80,0.1)",
+            color: msg.includes(t("backup.createError")) ? "#f44336" : "#4CAF50",
             fontSize: 13,
             marginBottom: 16,
           }}>
@@ -338,9 +341,9 @@ export default function BackupPage() {
 
         {/* Create backup with password modal */}
         <div className="settings-fields" style={{ marginBottom: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Создать бэкап</h3>
+          <h3 style={{ marginTop: 0 }}>{t("backup.create")}</h3>
           <p style={{ fontSize: 12, color: "#888", margin: "0 0 12px" }}>
-            Бэкап содержит ваши E2E ключи, зашифрованные паролем (минимум 8 символов).
+            {t("backup.subtitle")}
           </p>
           {!showCreateModal ? (
             <button
@@ -363,7 +366,7 @@ export default function BackupPage() {
                 type="password"
                 value={backupPassword}
                 onChange={(e) => setBackupPassword(e.target.value)}
-                placeholder="Введите пароль (мин. 8 символов)"
+                placeholder={t("backup.passwordPlaceholder")}
                 style={{
                   width: "100%",
                   padding: "8px 12px",
@@ -390,7 +393,7 @@ export default function BackupPage() {
                   disabled={creating || backupPassword.length < 8}
                   style={{ flex: 1 }}
                 >
-                  {creating ? "Шифрование..." : "Создать и сохранить"}
+                  {creating ? t("backup.creating") : t("backup.create")}
                 </button>
               </div>
             </div>
@@ -399,9 +402,9 @@ export default function BackupPage() {
 
         {/* Import backup from file */}
         <div className="settings-fields" style={{ marginBottom: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Импортировать бэкап</h3>
+          <h3 style={{ marginTop: 0 }}>{t("backup.importTitle")}</h3>
           <p style={{ fontSize: 12, color: "#888", margin: "0 0 12px" }}>
-            Загрузите файл .json с бэкапом и введите пароль для расшифровки.
+            {t("backup.importDescription")}
           </p>
           <input
             type="file"
@@ -433,7 +436,7 @@ export default function BackupPage() {
               type="password"
               value={restorePassword}
               onChange={(e) => setRestorePassword(e.target.value)}
-              placeholder="Пароль от бэкапа"
+              placeholder={t("backup.restorePassword")}
               style={{
                 width: "100%",
                 padding: "8px 12px",
@@ -461,7 +464,7 @@ export default function BackupPage() {
                 disabled={restoring || !restorePassword}
                 style={{ flex: 1 }}
               >
-                {restoring ? "Расшифровка..." : "Восстановить"}
+                {restoring ? t("backup.restoring") : t("backup.restore")}
               </button>
             </div>
           </div>
@@ -470,17 +473,17 @@ export default function BackupPage() {
         {/* Existing backups */}
         <div className="settings-fields">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>Бэкапы на сервере ({backups.length})</h3>
+            <h3 style={{ margin: 0 }}>{t("backup.serverBackups", { count: backups.length })}</h3>
             {backups.length > 0 && (
               <button className="avatar-btn" onClick={handleExportBackup} style={{ fontSize: 12, padding: "4px 8px" }}>
-                Экспорт
+                {t("backup.export")}
               </button>
             )}
           </div>
 
           {backups.length === 0 ? (
             <p style={{ fontSize: 13, color: "#888", textAlign: "center", padding: 20 }}>
-              Нет бэкапов на сервере
+              {t("backup.noBackups")}
             </p>
           ) : (
             backups.map((backup) => (

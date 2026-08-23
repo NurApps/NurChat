@@ -38,6 +38,9 @@ def _detect_mime_type(header: bytes, filename: str) -> str:
         if header[:len(magic)] == magic and mime:
             return mime
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    # Active content formats are never allowed regardless of claimed type
+    if ext in {"svg", "html", "htm", "xhtml", "js", "swf"}:
+        return "blocked/active-content"
     ext_map = {
         "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
         "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
@@ -72,7 +75,7 @@ async def upload_file(
         detected_type = _detect_mime_type(header, file.filename or "")
 
         allowed_mimes = {
-            "image": {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/svg+xml"},
+            "image": {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"},
             "video": {"video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/avi"},
             "audio": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/aac", "audio/x-m4a"},
             "voice": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4", "audio/x-m4a"},
@@ -178,7 +181,7 @@ async def download_file(
         if file_record.user_id != user_id:
             message_with_file = db.query(models.Message).filter(
                 models.Message.file_id == file_id,
-                not models.Message.is_deleted
+                models.Message.is_deleted.is_(False)
             ).first()
             if message_with_file:
                 participant = db.query(models.ChatParticipant).filter(

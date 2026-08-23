@@ -71,7 +71,11 @@ class CSRFMiddleware:
                 message.setdefault("headers", [])
                 headers = list(message["headers"])
                 # Set CSRF token in cookie (non-HttpOnly so JS can read it for X-CSRF-Token header)
-                set_cookie = f"{self.cookie_name}={new_token}; Max-Age={int(self.token_lifetime.total_seconds())}; Path=/; SameSite=lax"
+                set_cookie = (
+                    f"{self.cookie_name}={new_token};"
+                    f" Max-Age={int(self.token_lifetime.total_seconds())};"
+                    " Path=/; SameSite=lax"
+                )
                 if not settings.DEBUG:
                     set_cookie += "; Secure"
                 headers.append((b"set-cookie", set_cookie.encode("latin-1")))

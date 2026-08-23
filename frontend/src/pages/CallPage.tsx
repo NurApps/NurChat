@@ -88,7 +88,10 @@ export default function CallPage() {
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current)
     if (ringingTimerRef.current) clearTimeout(ringingTimerRef.current)
-    if (wsReconnectRef.current.timer) clearTimeout(wsReconnectRef.current.timer)
+    if (wsReconnectRef.current.timer) {
+      clearTimeout(wsReconnectRef.current.timer)
+      wsReconnectRef.current.timer = null
+    }
     wsReconnectRef.current.attempt = 0
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     pcRef.current?.close()
@@ -306,7 +309,9 @@ export default function CallPage() {
     }
 
     if (!isIncoming) {
-      registerCallDB(targetUserId, callType)
+      registerCallDB(targetUserId, callType).then((serverCallId) => {
+        if (serverCallId) callIdRef.current = serverCallId
+      })
     }
 
     let reconnectAttempts = 0
@@ -348,8 +353,10 @@ export default function CallPage() {
             }
           }, 30000)
         } else {
-          const generatedCallId = `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
-          callIdRef.current = generatedCallId
+          if (!callIdRef.current) {
+            callIdRef.current = `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
+          }
+          const generatedCallId = callIdRef.current
 
           ws.send(JSON.stringify({
             type: "call-request",
@@ -484,16 +491,16 @@ export default function CallPage() {
 
       ws.onerror = (ev: Event) => {
         console.error("[CALL] WS error:", ev)
-        setStatus("failed")
-        statusRef.current = "failed"
-        setMediaError(t("call.wsError"))
       }
 
       ws.onclose = (ev: CloseEvent) => {
         console.log("[CALL] WS closed:", ev.code, ev.reason)
         const currentStatus = statusRef.current
 
-        if (currentStatus === "active" || currentStatus === "ringing" || currentStatus === "connecting") {
+        const isAbnormal = ev.code === 1006 || ev.code === 1001 || ev.code === 1005
+        const isActive = currentStatus === "active" || currentStatus === "ringing" || currentStatus === "connecting"
+
+        if (isAbnormal || isActive) {
           if (reconnectAttempts < MAX_RECONNECT) {
             const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000)
             reconnectAttempts++
@@ -501,18 +508,18 @@ export default function CallPage() {
             wsReconnectRef.current.timer = setTimeout(connectWs, delay)
             return
           }
-
-          if (ev.code === 4001) {
-            setMediaError(t("call.authError"))
-          } else if (ev.code === 1006) {
-            setMediaError(t("call.connLost"))
-          } else if (ev.code !== 1000) {
-            setMediaError(t("call.connClosed"))
-          }
-          setStatus("failed")
-          statusRef.current = "failed"
-          setTimeout(() => navigate("/chat"), 1500)
         }
+
+        if (ev.code === 4001) {
+          setMediaError(t("call.authError"))
+        } else if (ev.code === 1006) {
+          setMediaError(t("call.connLost"))
+        } else if (ev.code !== 1000) {
+          setMediaError(t("call.connClosed"))
+        }
+        setStatus("failed")
+        statusRef.current = "failed"
+        setTimeout(() => navigate("/chat"), 1500)
       }
     }
 

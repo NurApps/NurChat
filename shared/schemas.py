@@ -154,6 +154,7 @@ class MessageResponse(MessageBase):
     deleted_for_all: bool = False
     is_read: bool = False
     edited_at: datetime | None = None
+    expires_at: datetime | None = None
     scheduled_at: datetime | None = None
     is_view_once: bool = False
     viewed_at: datetime | None = None

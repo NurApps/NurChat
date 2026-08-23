@@ -98,8 +98,11 @@ async def vote_poll(
     if not poll:
         raise HTTPException(status_code=404, detail="Poll not found")
 
-    if poll.expires_at and poll.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Poll has expired")
+    if poll.expires_at:
+        # SQLite returns naive datetimes — normalize before comparing
+        poll_expiry = poll.expires_at if poll.expires_at.tzinfo else poll.expires_at.replace(tzinfo=timezone.utc)
+        if poll_expiry < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="Poll has expired")
 
     if not poll.allow_multiple and len(vote_data.option_ids) > 1:
         raise HTTPException(status_code=400, detail="Multiple choices not allowed")

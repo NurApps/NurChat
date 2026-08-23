@@ -15,6 +15,7 @@
  */
 
 import { openDB, type IDBPDatabase } from "idb"
+import { toBase64, fromBase64 } from "./doubleRatchet"
 
 // ─── Constants ───
 
@@ -146,7 +147,7 @@ async function encryptAtRest(plaintext: string): Promise<string> {
   combined.set(iv)
   combined.set(new Uint8Array(ciphertext), iv.length)
 
-  return btoa(String.fromCharCode(...combined))
+  return toBase64(combined)
 }
 
 /**
@@ -154,7 +155,7 @@ async function encryptAtRest(plaintext: string): Promise<string> {
  */
 async function decryptAtRest(encodedData: string): Promise<string> {
   const key = await getWrappingKey()
-  const raw = Uint8Array.from(atob(encodedData), (c) => c.charCodeAt(0))
+  const raw = fromBase64(encodedData)
   const iv = raw.slice(0, 12)
   const ciphertext = raw.slice(12)
 
@@ -340,6 +341,31 @@ export async function loadSessions(): Promise<Record<string, unknown> | null> {
 export async function clearSessions(): Promise<void> {
   const db = await getDB()
   await db.delete(STORE_SESSIONS, "e2e_sessions")
+}
+
+/**
+ * Store an arbitrary JSON-serializable value encrypted at rest (STORE_META).
+ */
+export async function storeSecureValue(key: string, data: unknown): Promise<void> {
+  const db = await getDB()
+  const plaintext = JSON.stringify(data)
+  const encrypted = await encryptAtRest(plaintext)
+  await db.put(STORE_META, encrypted, key)
+}
+
+/**
+ * Load a value stored via storeSecureValue (decrypted).
+ */
+export async function loadSecureValue<T = Record<string, unknown>>(key: string): Promise<T | null> {
+  const db = await getDB()
+  const encrypted: string | undefined = await db.get(STORE_META, key)
+  if (!encrypted) return null
+  try {
+    const plaintext = await decryptAtRest(encrypted)
+    return JSON.parse(plaintext) as T
+  } catch {
+    return null
+  }
 }
 
 /**

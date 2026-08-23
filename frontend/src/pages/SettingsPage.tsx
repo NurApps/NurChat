@@ -685,7 +685,7 @@ export default function SettingsPage() {
                 <div className="settings-toggle-row">
                   <span>{t("settings.e2eEnabled")}</span>
                   <span className={`settings-badge ${e2eEnabled ? "on" : "off"}`}>
-                    {e2eEnabled ? t("settings.totpEnabled") : t("settings.totpDisabled")}
+                    {e2eEnabled ? t("settings.e2eOn") : t("settings.e2eOff")}
                   </span>
                 </div>
                 <p className="settings-info-text">

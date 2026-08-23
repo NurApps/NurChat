@@ -1,4 +1,4 @@
-"""Integration tests for polls, contact requests, and view-once media."""
+﻿"""Integration tests for polls, contact requests, and view-once media."""
 import os
 import re
 import sys
@@ -70,6 +70,7 @@ def setup_db():
     engine.dispose()
     db_module.engine = old_engine
     db_module.SessionLocal = old_session
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture
@@ -84,7 +85,7 @@ def client():
                             yield c
 
 
-def _register(client, public_key: str) -> dict:
+def _register(client, public_key: str = "a" * 64, signing_public_key: str = "b" * 64) -> dict:
     _register_counter[0] += 1
     ip = f"10.0.0.{_register_counter[0]}"
     cid, ans = _solve_captcha(client)
@@ -95,6 +96,7 @@ def _register(client, public_key: str) -> dict:
             "password": "TestPass123",
             "first_name": f"User{_register_counter[0]}",
             "public_key": public_key,
+            "signing_public_key": signing_public_key,
             "captcha_id": cid,
             "captcha_code": ans,
         },
@@ -128,7 +130,7 @@ def auth(token: str) -> dict:
     }
 
 
-# ─── Polls ────────────────────────────────────────────────────────────
+# в”Ђв”Ђв”Ђ Polls в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 
 class TestPolls:
@@ -147,17 +149,17 @@ class TestPolls:
             f"/api/chat/chats/{chat_id}/polls",
             json={
                 "chat_id": chat_id,
-                "question": "Голосуем?",
-                "options": [{"text": "Да"}, {"text": "Нет"}],
+                "question": "Р“РѕР»РѕСЃСѓРµРј?",
+                "options": [{"text": "Р”Р°"}, {"text": "РќРµС‚"}],
                 "is_anonymous": True,
             },
             headers=auth(user_a["token"]),
         )
         assert resp.status_code == 200, f"Poll create failed: {resp.status_code} {resp.json()}"
         data = resp.json()
-        assert data["question"] == "Голосуем?"
+        assert data["question"] == "Р“РѕР»РѕСЃСѓРµРј?"
         assert len(data["options"]) == 2
-        assert data["options"][0]["text"] == "Да"
+        assert data["options"][0]["text"] == "Р”Р°"
         assert data["total_votes"] == 0
 
     def test_vote_poll(self, client, user_a, user_b):
@@ -166,8 +168,8 @@ class TestPolls:
             f"/api/chat/chats/{chat_id}/polls",
             json={
                 "chat_id": chat_id,
-                "question": "Цвет?",
-                "options": [{"text": "Красный"}, {"text": "Синий"}],
+                "question": "Р¦РІРµС‚?",
+                "options": [{"text": "РљСЂР°СЃРЅС‹Р№"}, {"text": "РЎРёРЅРёР№"}],
             },
             headers=auth(user_a["token"]),
         )
@@ -245,14 +247,14 @@ class TestPolls:
         assert len(resp.json()) >= 1
 
 
-# ─── Contact Requests ─────────────────────────────────────────────────
+# в”Ђв”Ђв”Ђ Contact Requests в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 
 class TestContactRequests:
     def test_send_request(self, client, user_a, user_b):
         resp = client.post(
             "/api/contacts/requests",
-            json={"to_user_id": user_b["id"], "message": "Привет!"},
+            json={"to_user_id": user_b["id"], "message": "РџСЂРёРІРµС‚!"},
             headers=auth(user_a["token"]),
         )
         assert resp.status_code == 200, f"Send failed: {resp.status_code} {resp.json()}"
@@ -371,7 +373,7 @@ class TestContactRequests:
         assert resp.status_code == 404
 
 
-# ─── View-Once Media ──────────────────────────────────────────────────
+# в”Ђв”Ђв”Ђ View-Once Media в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 
 class TestViewOnce:

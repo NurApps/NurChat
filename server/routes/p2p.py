@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import or_
@@ -106,13 +106,21 @@ async def get_pending_messages(
     token: dict = Depends(verify_token_dependency),
 ):
     limit = min(max(limit, 1), 1000)
+    # Two-phase delivery: mark as delivered but keep until explicit ack.
+    # Messages fetched but not acked within 60s (client crash / network drop)
+    # are re-delivered on the next poll.
+    redeliver_cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
     messages = db.query(models.P2PMessage).filter(
-        models.P2PMessage.recipient_id == token["sub"]
+        models.P2PMessage.recipient_id == token["sub"],
+        or_(
+            models.P2PMessage.delivered_at.is_(None),
+            models.P2PMessage.delivered_at < redeliver_cutoff,
+        ),
     ).order_by(models.P2PMessage.created_at.asc()).limit(limit).all()
 
+    now = datetime.now(timezone.utc)
     for message in messages:
-        # Глухой relay: доставленное сообщение сразу удаляется, история не хранится
-        db.delete(message)
+        message.delivered_at = now
     db.commit()
 
     return [schemas.P2PPendingResponse(
@@ -121,6 +129,25 @@ async def get_pending_messages(
         payload=message.payload,
         created_at=message.created_at,
     ) for message in messages]
+
+
+@router.post("/pending/ack")
+async def acknowledge_pending_messages(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Delete pending messages after the client confirms processing."""
+    ids = payload.get("ids")
+    if not isinstance(ids, list) or not ids or len(ids) > 1000:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ids must be a non-empty list (max 1000)")
+
+    deleted = db.query(models.P2PMessage).filter(
+        models.P2PMessage.recipient_id == token["sub"],
+        models.P2PMessage.id.in_(ids),
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": deleted}
 
 
 @router.get("/peers/search", response_model=list[schemas.P2PPeerResponse])
@@ -145,10 +172,15 @@ async def search_peers(
 
     online_user_ids = set()
     try:
-        from server.ws.p2p_manager import p2p_manager
-        online_user_ids = set(p2p_manager.active_connections.keys())
+        from server.ws.chat_manager import connection_manager
+        online_user_ids = set(connection_manager.active_connections.keys())
     except Exception as e:
-        logger.debug("Could not check P2P online status: %s", e)
+        logger.debug("Could not check online status: %s", e)
+    try:
+        from server.ws.signaling import call_manager
+        online_user_ids.update(call_manager.call_websockets.keys())
+    except Exception:
+        pass
 
     return [schemas.P2PPeerResponse(
         user_id=user.id,
@@ -286,7 +318,26 @@ async def open_port(
     if not user:
         raise HTTPException(status_code=404)
     if settings.SERVER_HOST not in ("0.0.0.0", ""):
-        return {"message": "Порт уже открыт", "host": settings.SERVER_HOST, "port": settings.SERVER_PORT}
+        host = settings.SERVER_HOST
+        if host == "127.0.0.1":
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect(("8.8.8.8", 80))
+                host = s.getsockname()[0]
+            except Exception:
+                pass
+            finally:
+                s.close()
+        peer_id = user.public_key or user.id
+        uri = f"nurchat://{host}:{settings.SERVER_PORT}/{user.id}#{peer_id[:16]}"
+        return {
+            "message": "Порт уже открыт",
+            "uri": uri,
+            "host": host,
+            "port": settings.SERVER_PORT,
+            "user_id": user.id,
+        }
     logger.warning("Для внешних подключений задайте SERVER_HOST=0.0.0.0 в .env и перезапустите сервер")
     import socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -303,6 +354,29 @@ async def open_port(
         "message": "Порт открыт. Отправьте эту ссылку другу:",
         "uri": uri,
         "host": external_ip,
+        "port": settings.SERVER_PORT,
+        "user_id": user.id,
+    }
+
+
+@router.post("/close-port")
+async def close_port(
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Закрывает порт — переключает сервер обратно на 127.0.0.1 (требует перезапуска)"""
+    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=404)
+    if settings.SERVER_HOST == "127.0.0.1":
+        return {"message": "Порт уже закрыт", "host": "127.0.0.1", "port": settings.SERVER_PORT}
+    host = "127.0.0.1"
+    peer_id = user.public_key or user.id
+    uri = f"nurchat://{host}:{settings.SERVER_PORT}/{user.id}#{peer_id[:16]}"
+    return {
+        "message": "Для закрытия порта установите SERVER_HOST=127.0.0.1 в .env и перезапустите сервер",
+        "uri": uri,
+        "host": host,
         "port": settings.SERVER_PORT,
         "user_id": user.id,
     }

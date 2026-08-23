@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom'
+﻿import '@testing-library/jest-dom'
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import ru from '../i18n/locales/ru.json'
@@ -13,3 +13,4 @@ i18n.use(initReactI18next).init({
   fallbackLng: 'ru',
   interpolation: { escapeValue: false },
 })
+import 'fake-indexeddb/auto'

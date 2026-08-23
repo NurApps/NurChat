@@ -13,6 +13,7 @@
  */
 
 import { randomBytes } from "./cryptoAdapter"
+import { toBase64 } from "./doubleRatchet"
 
 // ─── Types ───
 
@@ -44,6 +45,8 @@ export interface PendingMessage {
   onSent?: () => void
   /** Callback on error */
   onError?: (err: Error) => void
+  /** Cover traffic marker (not a real message) */
+  isCover?: boolean
 }
 
 export interface BatchStats {
@@ -267,7 +270,7 @@ export class TimingObfuscator {
   private generateDummyContent(): string {
     // Generate random bytes that look like encrypted data
     const bytes = randomBytes(64)
-    return btoa(String.fromCharCode(...bytes))
+    return toBase64(bytes)
   }
 }
 

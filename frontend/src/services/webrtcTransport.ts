@@ -1,6 +1,3 @@
-import { invoke } from "@tauri-apps/api/core"
-import { listen, type UnlistenFn } from "@tauri-apps/api/event"
-
 export type NatType = "public" | "full_cone" | "restricted_cone" | "port_restricted" | "symmetric" | "unknown"
 
 export interface NatInfo {
@@ -56,7 +53,25 @@ export async function loadIceServers(): Promise<RTCIceServer[]> {
   return DEFAULT_ICE_SERVERS
 }
 
+function isTauri(): boolean {
+  try {
+    return !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+  } catch {
+    return false
+  }
+}
+
 export async function detectNat(stunServers?: string[]): Promise<NatInfo> {
+  if (!isTauri()) {
+    return {
+      nat_type: "unknown",
+      public_ip: "",
+      public_port: 0,
+      local_ip: "",
+      local_port: 0,
+    }
+  }
+  const { invoke } = await import("@tauri-apps/api/core")
   return await invoke<NatInfo>("p2p_detect_nat", { stunServers })
 }
 
@@ -69,7 +84,7 @@ export class WebRTCTransport {
   private myPeerId: string = ""
   private _globalMessageHandler: ((msg: RTCMessage) => void) | null = null
   private _globalFileHandler: ((msg: RTCMessage) => void) | null = null
-  private _unlisteners: UnlistenFn[] = []
+  private _unlisteners: (() => void)[] = []
 
   get connectedPeers(): ReadonlySet<string> {
     return this._connectedPeers

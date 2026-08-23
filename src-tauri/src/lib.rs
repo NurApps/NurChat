@@ -302,9 +302,19 @@ async fn check_update(current_version: String) -> Result<serde_json::Value, Stri
     let tag_name = data["tag_name"].as_str().unwrap_or("").to_string();
     let latest = tag_name.trim_start_matches('v');
     let current = current_version.trim_start_matches('v');
-    
+
+    // Proper semver comparison: "1.10.0" > "1.9.0" (string != would be wrong)
+    fn parse_semver(v: &str) -> Vec<u64> {
+        v.split('.')
+            .map(|p| p.split('-').next().unwrap_or("0").parse().unwrap_or(0))
+            .collect()
+    }
+    let latest_v = parse_semver(latest);
+    let current_v = parse_semver(current);
+    let has_update = latest_v > current_v;
+
     Ok(serde_json::json!({
-        "has_update": latest != current,
+        "has_update": has_update,
         "latest_version": tag_name,
         "url": data["html_url"],
         "body": data["body"],

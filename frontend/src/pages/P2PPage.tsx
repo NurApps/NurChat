@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { generateInviteLink, parseInviteLink, connectToPeer, getPeerCount, initP2P, getLocalIP, startLANDiscovery } from "../services/p2pService"
+import { generateInviteLink, parseInviteLink, connectToPeer, getPeerCount, initP2P, getLocalIP, startLANDiscovery, isBrowserMode } from "../services/p2pService"
 import { saveKnownPeer } from "../services/p2pBridge"
 import { loadKeys } from "../services/e2e"
 import QRCode from "../components/QRCode"
@@ -15,6 +15,7 @@ export default function P2PPage() {
   const [errorMsg, setErrorMsg] = useState("")
   const [copied, setCopied] = useState(false)
   const [connectedPeer, setConnectedPeer] = useState<string | null>(null)
+  const browserMode = isBrowserMode()
 
   useEffect(() => {
     const init = async () => {
@@ -23,6 +24,8 @@ export default function P2PPage() {
       const keys = await loadKeys()
       if (keys && port) {
         setInviteLink(generateInviteLink(keys.publicKeyHex, port, ip))
+      } else if (keys && browserMode) {
+        setInviteLink(generateInviteLink(keys.publicKeyHex, 0, "browser"))
       }
     }
     init()
@@ -46,7 +49,13 @@ export default function P2PPage() {
     }
 
     try {
-      await connectToPeer(parsed.ip, parsed.port, parsed.publicKey)
+      if (parsed.port === 0 || browserMode) {
+        const { connectionManager } = await import("../services/p2pConnectionManager")
+        const keys = await loadKeys()
+        await connectionManager.connect(parsed.publicKey, parsed.ip, parsed.port)
+      } else {
+        await connectToPeer(parsed.ip, parsed.port, parsed.publicKey)
+      }
       saveKnownPeer(`peer_${parsed.publicKey.slice(0, 8)}`, parsed.ip, parsed.port, parsed.publicKey)
       setStatus("connected")
       setConnectedPeer(parsed.publicKey.slice(0, 8) + "...")
@@ -112,6 +121,16 @@ export default function P2PPage() {
           <span>{t("p2p.peers", { count: peerCount })}</span>
         </div>
       </div>
+
+      {browserMode && (
+        <div style={{
+          padding: 10, borderRadius: 8, marginBottom: 16,
+          background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)",
+          fontSize: 12, color: "#fbbf24",
+        }}>
+          {t("p2p.browserMode", "Режим браузера: P2P-хостинг недоступен. Используйте WebRTC для подключения к пирам.")}
+        </div>
+      )}
 
       {/* Invite Section */}
       <div style={{

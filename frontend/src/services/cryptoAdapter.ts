@@ -36,8 +36,7 @@ export interface SignKeyPair {
  * Generate a new X25519 keypair for ECDH.
  */
 export function boxKeyPair(): BoxKeyPair {
-  const secretKey = x25519.utils.randomPrivateKey()
-  const publicKey = x25519.getPublicKey(secretKey)
+  const { secretKey, publicKey } = x25519.keygen()
   return { publicKey, secretKey }
 }
 
@@ -63,8 +62,7 @@ export function boxBefore(theirPublicKey: Uint8Array, mySecretKey: Uint8Array): 
  * Generate Ed25519 signing keypair.
  */
 export function signKeyPair(): SignKeyPair {
-  const secretKey = ed25519.utils.randomPrivateKey()
-  const publicKey = ed25519.getPublicKey(secretKey)
+  const { secretKey, publicKey } = ed25519.keygen()
   return { publicKey, secretKey }
 }
 

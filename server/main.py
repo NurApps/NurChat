@@ -37,6 +37,7 @@ from server.routes import (
     p2p,
     pins,
     polls,
+    push,
     stats,
     transparency,
     webhooks,
@@ -93,6 +94,15 @@ async def lifespan(app: FastAPI):
     connection_manager.active_connections.clear()
     connection_manager.user_chats.clear()
     connection_manager.chat_users.clear()
+
+    from server.ws.signaling import call_manager
+    for user_id, ws in list(call_manager.call_websockets.items()):
+        try:
+            await ws.close(code=1001, reason="Server shutting down")
+        except Exception:
+            pass
+    call_manager.call_websockets.clear()
+
     logger.info("All WebSocket connections closed")
 
     file_cleanup_service.stop_cleanup_scheduler()
@@ -119,7 +129,6 @@ app.add_middleware(
         "/health",
         "/api/auth/captcha",
         "/api/auth/login",
-        "/api/auth/anonymous",
         "/api/auth/register",
         "/api/files/upload",
     ],
@@ -130,7 +139,8 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # Custom exception handlers —TogetherException → proper HTTP codes
-from shared.exceptions import TogetherException, ChatNotFoundError, MessageNotFoundError, AuthenticationError
+from shared.exceptions import AuthenticationError, ChatNotFoundError, MessageNotFoundError, TogetherException
+
 
 @app.exception_handler(ChatNotFoundError)
 async def chat_not_found_handler(request: Request, exc: ChatNotFoundError):
@@ -270,133 +280,149 @@ app.include_router(discovery.router, prefix="/api/discover", tags=["LAN Discover
 app.include_router(webhooks.router, prefix="/api", tags=["Webhooks"])
 app.include_router(transparency.router, tags=["Transparency"])
 app.include_router(polls.router, tags=["Polls"])
+app.include_router(push.router)
 app.include_router(contact_requests.router, tags=["Contact Requests"])
 
 # WS rate limiting: max connections per IP
 _ws_connections: dict[str, int] = {}
 WS_MAX_PER_IP = 10
+_ws_lock = asyncio.Lock()
 
 _error_count = 0
 _request_count = 0
 
 
-def check_ws_rate_limit(ip: str) -> bool:
+async def check_ws_rate_limit(ip: str) -> bool:
     global _request_count
     _request_count += 1
-    count = _ws_connections.get(ip, 0)
-    if count >= WS_MAX_PER_IP:
-        return False
-    _ws_connections[ip] = count + 1
-    # Check WS connection threshold
-    total_ws = sum(_ws_connections.values())
+    async with _ws_lock:
+        count = _ws_connections.get(ip, 0)
+        if count >= WS_MAX_PER_IP:
+            return False
+        _ws_connections[ip] = count + 1
+        total_ws = sum(_ws_connections.values())
+    # Check WS connection threshold (outside lock — logging only)
     if total_ws > settings.WS_CONNECTIONS_WARN:
         logger.warning(f"WS connections ({total_ws}) exceed threshold ({settings.WS_CONNECTIONS_WARN})")
     return True
 
-def release_ws_connection(ip: str):
-    _ws_connections[ip] = max(0, _ws_connections.get(ip, 1) - 1)
+async def release_ws_connection(ip: str):
+    async with _ws_lock:
+        _ws_connections[ip] = max(0, _ws_connections.get(ip, 1) - 1)
 
-async def _verify_ws_token(websocket: WebSocket, token: str | None, client_ip: str) -> bool:
+async def _verify_ws_token(websocket: WebSocket, token: str | None, client_ip: str,
+                           expected_user_id: str | None = None) -> dict | None:
+    # NOTE: does NOT release the ws connection slot on failure —
+    # the caller's finally/release path owns that to avoid double-decrement.
     if not token:
-        release_ws_connection(client_ip)
         await websocket.close(code=4001, reason="Token required")
-        return False
+        return None
     from server.core.security import AuthenticationError
     from server.core.security import security as sec
     try:
-        sec.verify_token(token)
-        return True
+        payload = sec.verify_token(token)
+        if expected_user_id is not None and payload.get("sub") != expected_user_id:
+            logger.warning(f"WS token subject mismatch for {expected_user_id} from {client_ip}")
+            await websocket.close(code=4003, reason="Token does not match user")
+            return None
+        return payload
     except AuthenticationError:
-        release_ws_connection(client_ip)
         await websocket.close(code=4001, reason="Invalid token")
-        return False
+        return None
 
 # WebSocket для чатов
 @app.websocket("/ws/chat/{user_id}")
 async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
-    if not check_ws_rate_limit(client_ip):
+    if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if not await _verify_ws_token(websocket, token, client_ip):
+    if not await _verify_ws_token(websocket, token, client_ip, user_id):
+        await release_ws_connection(client_ip)
         return
     try:
-        await handle_websocket_connection(websocket, user_id)
+        await handle_websocket_connection(websocket, user_id, token)
     finally:
-        release_ws_connection(client_ip)
+        await release_ws_connection(client_ip)
 
 # WebSocket для звонков
 @app.websocket("/ws/calls/{user_id}")
 async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
-    if not check_ws_rate_limit(client_ip):
+    if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if not await _verify_ws_token(websocket, token, client_ip):
+    if not await _verify_ws_token(websocket, token, client_ip, user_id):
+        await release_ws_connection(client_ip)
         return
     try:
         await call_manager.handle_signaling(websocket, user_id)
     finally:
-        release_ws_connection(client_ip)
+        await release_ws_connection(client_ip)
 
 
 @app.websocket("/ws/group-calls/{user_id}")
 async def websocket_group_calls_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
-    if not check_ws_rate_limit(client_ip):
+    if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if not await _verify_ws_token(websocket, token, client_ip):
+    if not await _verify_ws_token(websocket, token, client_ip, user_id):
+        await release_ws_connection(client_ip)
         return
     try:
         await group_call_manager.handle(websocket, user_id)
     finally:
-        release_ws_connection(client_ip)
+        await release_ws_connection(client_ip)
 
 # WebSocket для P2P signaling (только offer/answer/ICE)
 @app.websocket("/ws/signaling/{user_id}")
 async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
-    if not check_ws_rate_limit(client_ip):
+    if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if not await _verify_ws_token(websocket, token, client_ip):
+    if not await _verify_ws_token(websocket, token, client_ip, user_id):
+        await release_ws_connection(client_ip)
         return
     try:
         await signaling_manager.handle(websocket, user_id)
     finally:
-        release_ws_connection(client_ip)
+        await release_ws_connection(client_ip)
 
 # WebSocket для P2P signalling и relay
 @app.websocket(settings.P2P_SIGNALING_PATH + "/{user_id}")
 async def websocket_p2p_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
-    if not check_ws_rate_limit(client_ip):
+    if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if not await _verify_ws_token(websocket, token, client_ip):
+    if not await _verify_ws_token(websocket, token, client_ip, user_id):
+        await release_ws_connection(client_ip)
         return
     try:
         await p2p_manager.handle_connection(websocket, user_id)
     finally:
-        release_ws_connection(client_ip)
+        await release_ws_connection(client_ip)
 
 # WebSocket для удалённых P2P пиров (прямое соединение сервер-сервер)
 @app.websocket("/ws/remote/{node_id}")
 async def websocket_remote_endpoint(websocket: WebSocket, node_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
-    if not check_ws_rate_limit(client_ip):
+    if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if token:
-        from server.core.security import AuthenticationError
-        from server.core.security import security as sec
-        try:
-            sec.verify_token(token)
-        except AuthenticationError:
-            release_ws_connection(client_ip)
-            await websocket.close(code=4001, reason="Invalid token")
-            return
+    if not token:
+        await websocket.close(code=4001, reason="Token required")
+        return
+    from server.core.security import AuthenticationError
+    from server.core.security import security as sec
+    try:
+        sec.verify_token(token)
+    except AuthenticationError:
+        await release_ws_connection(client_ip)
+        await websocket.close(code=4001, reason="Invalid token")
+        return
 
     await websocket.accept()
     try:
@@ -454,20 +480,22 @@ async def websocket_remote_endpoint(websocket: WebSocket, node_id: str, token: s
     finally:
         from server.ws.remote import remote_manager
         remote_manager.disconnect(node_id)
+        await release_ws_connection(client_ip)
 
 # WebSocket для уведомлений
 @app.websocket("/ws/notifications/{user_id}")
 async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
-    if not check_ws_rate_limit(client_ip):
+    if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
     if not await _verify_ws_token(websocket, token, client_ip):
+        await release_ws_connection(client_ip)
         return
     try:
         await handle_notifications_websocket(websocket, user_id)
     finally:
-        release_ws_connection(client_ip)
+        await release_ws_connection(client_ip)
 
 # Статические файлы — НЕ монтируем /media напрямую (безопасность)
 # Файлы доступны только через авторизованный эндпоинт /api/files/download/{file_id}

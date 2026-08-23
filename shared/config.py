@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     WS_CONNECTIONS_WARN: int = 100
     ERROR_RATE_WARN: float = 5.0
 
+    # Web Push (VAPID)
+    VAPID_PRIVATE_KEY: str = ""  # Auto-generated if empty (PEM format)
+    VAPID_CLAIM_EMAIL: str = "admin@nurchat.app"
+
     @classmethod
     def settings_customise_sources(
         cls,

@@ -35,7 +35,7 @@ def _solve_captcha() -> tuple[str, str]:
 
 
 def _register_user(username="testuser", password="TestPass123", first_name="Test",
-                   public_key="", signing_public_key="") -> dict:
+                   public_key="a" * 64, signing_public_key="b" * 64) -> dict:
     cid, ans = _solve_captcha()
     csrf = _csrf_headers()
     r = client.post("/api/auth/register", json={
@@ -324,11 +324,17 @@ class TestKeys:
             "public_key": pub, "signature": sig,
         }, headers=h)
 
-        r = client.post("/api/keys/one-time", params={"count": 10}, headers=h)
+        # Generate keypairs client-side (new API accepts public_keys only)
+        from nacl.public import PrivateKey
+        pubs = []
+        for _ in range(10):
+            kp = PrivateKey.generate()
+            pubs.append(kp.public_key.encode(encoder=HexEncoder).decode())
+
+        r = client.post("/api/keys/one-time", json={"public_keys": pubs}, headers=h)
         assert r.status_code == 200
         data = r.json()
         assert data["count"] == 10
-        assert len(data["keys"]) == 10
 
         r = client.get(f"/api/keys/one-time-count/{user_id}", headers=h)
         assert r.status_code == 200
@@ -340,7 +346,13 @@ class TestKeys:
         client.post("/api/keys/signed-prekey", params={
             "public_key": pub, "signature": sig,
         }, headers=h)
-        client.post("/api/keys/one-time", params={"count": 5}, headers=h)
+
+        from nacl.public import PrivateKey
+        pubs = []
+        for _ in range(5):
+            kp = PrivateKey.generate()
+            pubs.append(kp.public_key.encode(encoder=HexEncoder).decode())
+        client.post("/api/keys/one-time", json={"public_keys": pubs}, headers=h)
 
         r = client.get(f"/api/keys/bundle/{user_id}", headers=h)
         assert r.status_code == 200
@@ -357,7 +369,13 @@ class TestKeys:
         client.post("/api/keys/signed-prekey", params={
             "public_key": pub, "signature": sig,
         }, headers=h)
-        client.post("/api/keys/one-time", params={"count": 3}, headers=h)
+
+        from nacl.public import PrivateKey
+        pubs = []
+        for _ in range(3):
+            kp = PrivateKey.generate()
+            pubs.append(kp.public_key.encode(encoder=HexEncoder).decode())
+        client.post("/api/keys/one-time", json={"public_keys": pubs}, headers=h)
 
         r = client.get(f"/api/keys/bundle/{user_id}", headers=h)
         assert r.status_code == 200

@@ -76,7 +76,7 @@ Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI 
 
 8. **Supabase/Firebase fully removed.** All storage is local. No cloud dependencies.
 
-9. **Anonymous identity, no passwords.** `POST /api/auth/anonymous` hashes the public key → deterministic `user_id` (`user_{sha256}`) and username (`anon_{...}`). Same key = same user (idempotent). No password/captcha/2FA.
+9. **Identity via keypair.** Auth currently uses register/login with captcha (anonymous key-based login is planned, not yet implemented). The user's private key never leaves the device.
 
 10. **Tray icon.** App minimizes to system tray on close. Click tray icon to show, click "Выйти" in tray menu to quit. Frontend `invoke("minimize_to_tray")` hides the window.
 
@@ -157,7 +157,7 @@ server/routes/keys.py                  ← PreKey API endpoints
 **Server entry:** `server/main.py` — FastAPI app, CORS, routes, WS endpoints, lifespan
 **Config:** `shared/config.py` — Pydantic Settings, reads `.env`
 **Models:** `server/core/models.py` — All SQLAlchemy models (includes `SignedPreKey`, `OneTimePreKey`)
-**Auth:** `server/routes/auth.py` — Anonymous login (`/api/auth/anonymous`), legacy register/login, profile, avatar
+**Auth:** `server/routes/auth.py` — register/login (with captcha), 2FA, profile, avatar
 **Chat:** `server/routes/chat.py` — CRUD, search, reactions, block, export
 **Keys:** `server/routes/keys.py` — PreKey bundle, signed/one-time pre-key API
 **Files:** `server/routes/files.py` — Upload/download (with `?token=`), delete

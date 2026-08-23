@@ -46,8 +46,10 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
       const data = await api.getP2PAddress()
       setInviteUri(data.uri)
       setPortOpen(data.port_open)
-    } catch { }
-  }, [])
+    } catch (e: any) {
+      setError(e.message || t("p2p.loadAddressFailed"))
+    }
+  }, [t])
 
   const loadPeers = useCallback(async () => {
     try {
@@ -75,6 +77,20 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
       setStatus(t("p2p.portOpened"))
     } catch (e: any) {
       setError(e.message || t("p2p.portOpenFailed"))
+      setStatus("")
+    }
+  }
+
+  const handleClosePort = async () => {
+    setStatus(t("p2p.closingPort"))
+    setError("")
+    try {
+      const data = await api.closeP2PPort()
+      setInviteUri(data.uri || "")
+      setPortOpen(false)
+      setStatus(data.message || t("p2p.portClosed"))
+    } catch (e: any) {
+      setError(e.message || t("p2p.portCloseFailed"))
       setStatus("")
     }
   }
@@ -148,7 +164,20 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
               <label>{t("p2p.yourInviteLink")}</label>
               <div className={styles.uri}>{inviteUri}</div>
               <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                <button className={styles.copyBtn} onClick={() => { navigator.clipboard.writeText(inviteUri); setStatus(t("p2p.copiedStatus")) }}>
+                <button className={styles.copyBtn} onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(inviteUri)
+                    setStatus(t("p2p.copiedStatus"))
+                  } catch {
+                    const el = document.createElement("textarea")
+                    el.value = inviteUri
+                    document.body.appendChild(el)
+                    el.select()
+                    document.execCommand("copy")
+                    document.body.removeChild(el)
+                    setStatus(t("p2p.copiedStatus"))
+                  }
+                }}>
                   {t("p2p.copy")}
                 </button>
                 <button className={styles.shareBtn} onClick={async () => {
@@ -156,6 +185,9 @@ const [lanPeers, setLanPeers] = useState<LanPeerInfo[]>([])
                   catch { setStatus(t("p2p.sendError")) }
                 }}>
                   {t("p2p.sendToFriend")}
+                </button>
+                <button className={styles.openBtn} onClick={handleClosePort} style={{ background: "#6b2b2b" }}>
+                  🔒 {t("p2p.closePort")}
                 </button>
               </div>
             <p className={styles.hint}>{t("p2p.sendLinkHint")}</p>

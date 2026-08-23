@@ -1,6 +1,12 @@
-import { invoke } from "@tauri-apps/api/core"
-import { listen, type UnlistenFn } from "@tauri-apps/api/event"
 import { WebRTCTransport, detectNat, type NatInfo, type NatType } from "./webrtcTransport"
+
+function isTauri(): boolean {
+  try {
+    return !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+  } catch {
+    return false
+  }
+}
 
 export type TransportType = "lan-tcp" | "wan-tcp" | "webrtc" | "turn-relay"
 
@@ -26,7 +32,7 @@ export class P2PConnectionManager {
   private natInfo: NatInfo | null = null
   private myPeerId: string = ""
   private initialized = false
-  private _unlisteners: UnlistenFn[] = []
+  private _unlisteners: (() => void)[] = []
 
   constructor() {
     this.webrtc = new WebRTCTransport()
@@ -60,7 +66,7 @@ export class P2PConnectionManager {
 
     const transport = this.selectTransport(peerAddress, peerNatType)
 
-    if (transport === "webrtc") {
+    if (transport === "webrtc" || !isTauri()) {
       try {
         await this.webrtc.connectToPeer(peerId)
         this.peers.set(peerId, {
@@ -77,6 +83,7 @@ export class P2PConnectionManager {
     }
 
     try {
+      const { invoke } = await import("@tauri-apps/api/core")
       await invoke("p2p_connect_peer", { address: peerAddress, port: peerPort, publicKey: peerId })
       this.peers.set(peerId, {
         peerId,
@@ -139,6 +146,8 @@ export class P2PConnectionManager {
       return
     }
 
+    if (!isTauri()) throw new Error("TCP transport not available in browser mode")
+    const { invoke } = await import("@tauri-apps/api/core")
     await invoke("p2p_send_message", { target: targetPeerId, payload })
   }
 
@@ -183,6 +192,8 @@ export class P2PConnectionManager {
       return
     }
 
+    if (!isTauri()) throw new Error("TCP transport not available in browser mode")
+    const { invoke } = await import("@tauri-apps/api/core")
     await invoke("p2p_send_file", { target: targetPeerId, fileId, fileName, fileData, mimeType })
   }
 
@@ -198,14 +209,18 @@ export class P2PConnectionManager {
       }
     })
 
-    // Also listen for TCP messages from Rust
-    listen<P2PDirectMessage>("p2p-message", (event) => {
-      if (this._messageHandler) {
-        this._messageHandler(event.payload)
-      }
-    }).then((unlisten) => {
-      this._unlisteners.push(unlisten)
-    })
+    // Also listen for TCP messages from Rust (Tauri only)
+    if (isTauri()) {
+      import("@tauri-apps/api/event").then(({ listen }) => {
+        listen<P2PDirectMessage>("p2p-message", (event) => {
+          if (this._messageHandler) {
+            this._messageHandler(event.payload)
+          }
+        }).then((unlisten) => {
+          this._unlisteners.push(unlisten)
+        })
+      }).catch(() => {})
+    }
   }
 
   onFileEvent(handler: (msg: Record<string, unknown>) => void): void {

@@ -10,8 +10,13 @@
  * 6. WebRTC connection established → media flows directly P2P
  */
 
-import { invoke } from "@tauri-apps/api/core"
-import { listen, type UnlistenFn } from "@tauri-apps/api/event"
+function isTauri(): boolean {
+  try {
+    return !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+  } catch {
+    return false
+  }
+}
 
 // ─── Types ───
 
@@ -42,7 +47,7 @@ let activeCall: CallInfo | null = null
 let peerConnection: RTCPeerConnection | null = null
 let localStream: MediaStream | null = null
 const listeners = new Set<CallListener>()
-let unlistenCall: UnlistenFn | null = null
+let unlistenCall: (() => void) | null = null
 let ringingTimeout: ReturnType<typeof setTimeout> | null = null
 
 const ICE_SERVERS: RTCConfiguration = {
@@ -78,6 +83,8 @@ export function isInCall(): boolean {
 // ─── Signaling via TCP ───
 
 async function sendSignaling(target: string, callId: string, type: string, data: string): Promise<void> {
+  if (!isTauri()) throw new Error("P2P call signaling not available in browser mode")
+  const { invoke } = await import("@tauri-apps/api/core")
   await invoke("p2p_send_call_signaling", { target, callId, signalType: type, data })
 }
 
@@ -123,6 +130,15 @@ export async function startCall(
 
   emitCallEvent({ type: "call_incoming", callId, from: "self", isVideo })
 
+  // Ring timeout: don't ring forever if the callee never answers
+  if (ringingTimeout) clearTimeout(ringingTimeout)
+  ringingTimeout = setTimeout(() => {
+    if (activeCall && activeCall.state === "calling") {
+      console.log("[Call] Ring timeout, no answer")
+      endCall()
+    }
+  }, 45000)
+
   // Create RTCPeerConnection
   peerConnection = new RTCPeerConnection(ICE_SERVERS)
 
@@ -135,6 +151,7 @@ export async function startCall(
   peerConnection.ontrack = (event) => {
     if (activeCall) {
       activeCall.remoteStream = event.streams[0] || null
+      if (ringingTimeout) { clearTimeout(ringingTimeout); ringingTimeout = null }
       emitCallEvent({ type: "call_connected", callId })
     }
   }
@@ -146,14 +163,25 @@ export async function startCall(
     }
   }
 
+  let disconnectGrace: ReturnType<typeof setTimeout> | null = null
   peerConnection.onconnectionstatechange = () => {
     if (!peerConnection || !activeCall) return
     const state = peerConnection.connectionState
     if (state === "connected") {
       activeCall.state = "connected"
       activeCall.startedAt = Date.now()
+      if (disconnectGrace) { clearTimeout(disconnectGrace); disconnectGrace = null }
+      if (ringingTimeout) { clearTimeout(ringingTimeout); ringingTimeout = null }
       emitCallEvent({ type: "call_connected", callId })
-    } else if (state === "failed" || state === "disconnected") {
+    } else if (state === "disconnected") {
+      // Transient per spec — give ICE a grace period to self-recover
+      if (!disconnectGrace) {
+        disconnectGrace = setTimeout(() => {
+          disconnectGrace = null
+          if (peerConnection?.connectionState !== "connected") endCall()
+        }, 8000)
+      }
+    } else if (state === "failed") {
       endCall()
     }
   }
@@ -171,7 +199,11 @@ export async function startCall(
 
 /**
  * Handle incoming call offer.
+ * IMPORTANT: do NOT capture media or answer here — the callee must
+ * explicitly accept first. We only store the offer and notify the UI.
  */
+let pendingOffer: { from: string; callId: string; sdp: string; isVideo: boolean } | null = null
+
 async function handleOffer(from: string, callId: string, sdp: string, isVideo: boolean): Promise<void> {
   if (activeCall) {
     // Already in a call, reject
@@ -179,17 +211,7 @@ async function handleOffer(from: string, callId: string, sdp: string, isVideo: b
     return
   }
 
-  // Get local media
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: isVideo,
-    })
-  } catch (err) {
-    console.error("[Call] Failed to get media for incoming call:", err)
-    await sendSignaling(from, callId, "hangup", "")
-    return
-  }
+  pendingOffer = { from, callId, sdp, isVideo }
 
   activeCall = {
     callId,
@@ -197,67 +219,35 @@ async function handleOffer(from: string, callId: string, sdp: string, isVideo: b
     peerPublicKey: from,
     state: "ringing",
     isVideo,
-    localStream,
+    localStream: null,
     remoteStream: null,
     startedAt: Date.now(),
   }
 
   emitCallEvent({ type: "call_incoming", callId, from, isVideo })
 
-  // Create RTCPeerConnection
-  peerConnection = new RTCPeerConnection(ICE_SERVERS)
-
-  for (const track of localStream.getTracks()) {
-    peerConnection.addTrack(track, localStream)
-  }
-
-  peerConnection.ontrack = (event) => {
-    if (activeCall) {
-      activeCall.remoteStream = event.streams[0] || null
-      emitCallEvent({ type: "call_connected", callId })
+  // Auto-reject unanswered incoming calls after 45s
+  if (ringingTimeout) clearTimeout(ringingTimeout)
+  ringingTimeout = setTimeout(() => {
+    if (activeCall && activeCall.state === "ringing") {
+      void rejectCall()
     }
-  }
-
-  peerConnection.onicecandidate = (event) => {
-    if (event.candidate && activeCall) {
-      sendSignaling(from, callId, "candidate", JSON.stringify(event.candidate.toJSON())).catch(() => {})
-    }
-  }
-
-  peerConnection.onconnectionstatechange = () => {
-    if (!peerConnection || !activeCall) return
-    const state = peerConnection.connectionState
-    if (state === "connected") {
-      activeCall.state = "connected"
-      activeCall.startedAt = Date.now()
-      emitCallEvent({ type: "call_connected", callId })
-    } else if (state === "failed" || state === "disconnected") {
-      endCall()
-    }
-  }
-
-  // Set remote description and create answer
-  try {
-    const offerDesc = new RTCSessionDescription(JSON.parse(sdp))
-    await peerConnection.setRemoteDescription(offerDesc)
-    const answer = await peerConnection.createAnswer()
-    await peerConnection.setLocalDescription(answer)
-    await sendSignaling(from, callId, "answer", JSON.stringify(answer))
-    activeCall.state = "connected"
-  } catch (err) {
-    console.error("[Call] Failed to handle offer:", err)
-    endCall()
-  }
+  }, 45000)
 }
 
 /**
  * Handle incoming call answer.
  */
-function handleAnswer(callId: string, sdp: string): void {
+async function handleAnswer(callId: string, sdp: string): Promise<void> {
   if (!peerConnection || !activeCall || activeCall.callId !== callId) return
+  // Guard against duplicate/mis-ordered answers
+  if (peerConnection.signalingState !== "have-local-offer") {
+    console.warn("[Call] Ignoring answer in state", peerConnection.signalingState)
+    return
+  }
   try {
     const answerDesc = new RTCSessionDescription(JSON.parse(sdp))
-    peerConnection.setRemoteDescription(answerDesc)
+    await peerConnection.setRemoteDescription(answerDesc)
     activeCall.state = "connected"
   } catch (err) {
     console.error("[Call] Failed to handle answer:", err)
@@ -301,11 +291,78 @@ export async function endCall(): Promise<void> {
 }
 
 /**
- * Accept an incoming call (set state from ringing → connected).
+ * Accept an incoming call: capture media, build the peer connection,
+ * and answer the pending offer. Media is captured ONLY here, after
+ * explicit user consent.
  */
-export function acceptCall(): void {
-  if (activeCall && activeCall.state === "ringing") {
-    activeCall.state = "connected"
+export async function acceptCall(): Promise<void> {
+  if (!activeCall || activeCall.state !== "ringing" || !pendingOffer) return
+  const { from, callId, sdp, isVideo } = pendingOffer
+  pendingOffer = null
+  if (ringingTimeout) { clearTimeout(ringingTimeout); ringingTimeout = null }
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: isVideo,
+    })
+  } catch (err) {
+    console.error("[Call] Failed to get media for incoming call:", err)
+    activeCall.localStream = null
+    await rejectCall()
+    return
+  }
+  activeCall.localStream = localStream
+
+  peerConnection = new RTCPeerConnection(ICE_SERVERS)
+  for (const track of localStream.getTracks()) {
+    peerConnection.addTrack(track, localStream)
+  }
+
+  peerConnection.ontrack = (event) => {
+    if (activeCall) {
+      activeCall.remoteStream = event.streams[0] || null
+      emitCallEvent({ type: "call_connected", callId })
+    }
+  }
+
+  peerConnection.onicecandidate = (event) => {
+    if (event.candidate && activeCall) {
+      sendSignaling(from, callId, "candidate", JSON.stringify(event.candidate.toJSON())).catch(() => {})
+    }
+  }
+
+  let disconnectGrace: ReturnType<typeof setTimeout> | null = null
+  peerConnection.onconnectionstatechange = () => {
+    if (!peerConnection || !activeCall) return
+    const state = peerConnection.connectionState
+    if (state === "connected") {
+      activeCall.state = "connected"
+      activeCall.startedAt = Date.now()
+      if (disconnectGrace) { clearTimeout(disconnectGrace); disconnectGrace = null }
+      emitCallEvent({ type: "call_connected", callId })
+    } else if (state === "disconnected") {
+      // Transient — allow ICE to self-recover before tearing down
+      if (!disconnectGrace) {
+        disconnectGrace = setTimeout(() => {
+          disconnectGrace = null
+          if (peerConnection?.connectionState !== "connected") endCall()
+        }, 8000)
+      }
+    } else if (state === "failed") {
+      endCall()
+    }
+  }
+
+  try {
+    const offerDesc = new RTCSessionDescription(JSON.parse(sdp))
+    await peerConnection.setRemoteDescription(offerDesc)
+    const answer = await peerConnection.createAnswer()
+    await peerConnection.setLocalDescription(answer)
+    await sendSignaling(from, callId, "answer", JSON.stringify(answer))
+  } catch (err) {
+    console.error("[Call] Failed to answer offer:", err)
+    endCall()
   }
 }
 
@@ -315,6 +372,7 @@ export function acceptCall(): void {
 export async function rejectCall(): Promise<void> {
   if (!activeCall) return
   const { callId, peerPublicKey } = activeCall
+  pendingOffer = null
   try {
     await sendSignaling(peerPublicKey, callId, "hangup", "")
   } catch { /* ignore */ }
@@ -361,6 +419,7 @@ export async function toggleVideo(): Promise<boolean> {
 // ─── Cleanup ───
 
 function cleanup(): void {
+  pendingOffer = null
   if (peerConnection) {
     peerConnection.close()
     peerConnection = null
@@ -386,25 +445,28 @@ function cleanup(): void {
 
 export function initCallSignaling(): void {
   if (unlistenCall) return
+  if (!isTauri()) return
 
-  listen("p2p-message", (event) => {
-    const payload = event.payload as Record<string, unknown>
-    const type = payload.type as string
-    if (!type?.startsWith("p2p-call-")) return
+  import("@tauri-apps/api/event").then(({ listen }) => {
+    listen("p2p-message", (event) => {
+      const payload = event.payload as Record<string, unknown>
+      const type = payload.type as string
+      if (!type?.startsWith("p2p-call-")) return
 
-    const from = payload.from as string
-    const callId = payload.call_id as string
+      const from = payload.from as string
+      const callId = payload.call_id as string
 
-    if (type === "p2p-call-offer") {
-      handleOffer(from, callId, payload.sdp as string, true)
-    } else if (type === "p2p-call-answer") {
-      handleAnswer(callId, payload.sdp as string)
-    } else if (type === "p2p-call-candidate") {
-      handleCandidate(callId, payload.candidate as string)
-    } else if (type === "p2p-call-hangup") {
-      handleHangup(callId)
-    }
-  }).then((unlisten) => { unlistenCall = unlisten })
+      if (type === "p2p-call-offer") {
+        handleOffer(from, callId, payload.sdp as string, true)
+      } else if (type === "p2p-call-answer") {
+        handleAnswer(callId, payload.sdp as string)
+      } else if (type === "p2p-call-candidate") {
+        handleCandidate(callId, payload.candidate as string)
+      } else if (type === "p2p-call-hangup") {
+        handleHangup(callId)
+      }
+    }).then((unlisten) => { unlistenCall = unlisten })
+  }).catch(() => {})
 }
 
 export function destroyCallService(): void {

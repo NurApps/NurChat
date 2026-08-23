@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { BASE_URL } from "../config"
-import { loadKeys, setupPreKeys, saveKeys } from "../services/e2e"
+import { generateKeys, loadKeys, saveKeys, setupPreKeys } from "../services/e2e"
 
 const TG_BLUE = "#2AABEE"
 
@@ -107,30 +107,25 @@ export default function LoginPage() {
 
     setLoading(true)
     try {
+      // Identity keys are generated on the device; the private key never
+      // leaves the browser (server rejects registrations without keys).
+      const e2eKeys = await generateKeys()
       const res = await api.register(
         username.trim(),
         password,
         firstName.trim(),
         lastName.trim(),
         captchaId,
-        captchaAnswer.trim()
+        captchaAnswer.trim(),
+        e2eKeys.publicKeyHex,
+        e2eKeys.signingPublicHex
       )
       api.setToken(res.access_token)
       localStorage.setItem("user", JSON.stringify(res.user))
 
-      // Save E2E keys if server returned them
-      if (res.private_key) {
-        const pubHex = res.user.public_key || ""
-        const signPub = res.user.signing_public_key || ""
-        await saveKeys({
-          privateKeyHex: res.private_key,
-          publicKeyHex: pubHex,
-          signingPrivateHex: res.signing_private_key || "",
-          signingPublicHex: signPub,
-        })
-        const keys = await loadKeys()
-        if (keys) setupPreKeys(keys).catch(() => {})
-      }
+      // Persist identity keys locally (encrypted at rest)
+      await saveKeys(e2eKeys)
+      setupPreKeys(e2eKeys).catch(() => {})
 
       navigate("/chat", { replace: true })
     } catch (err: any) {

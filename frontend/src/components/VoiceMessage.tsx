@@ -12,13 +12,14 @@ export default function VoiceMessage({ src }: Props) {
   const [duration, setDuration] = useState(0)
   const animRef = useRef<number>(0)
   const barsRef = useRef<number[]>([])
+  const progressRef = useRef(0)
 
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
 
     const onLoaded = () => setDuration(audio.duration)
-    const onEnded = () => { setPlaying(false); setProgress(0) }
+    const onEnded = () => { setPlaying(false); progressRef.current = 0; setProgress(0) }
     audio.addEventListener("loadedmetadata", onLoaded)
     audio.addEventListener("ended", onEnded)
     return () => { audio.removeEventListener("loadedmetadata", onLoaded); audio.removeEventListener("ended", onEnded) }
@@ -52,16 +53,17 @@ export default function VoiceMessage({ src }: Props) {
         const x = i * barWidth
         const barH = height * h * 0.8
         const y = (h - barH) / 2
-        const filled = (i / bars.length) * 100 <= progress
+        const filled = (i / bars.length) * 100 <= progressRef.current
 
-        ctx.fillStyle = filled ? "#2AABEE" : "var(--text-secondary, #8e8e93)"
+        ctx.fillStyle = filled ? "#2AABEE" : "#8e8e93"
         ctx.beginPath()
         ctx.roundRect(x + gap / 2, y, barWidth - gap, barH, 2)
         ctx.fill()
       })
 
       if (playing) {
-        setProgress((audio.currentTime / audio.duration) * 100 || 0)
+        progressRef.current = (audio.currentTime / audio.duration) * 100 || 0
+        setProgress(progressRef.current)
         animRef.current = requestAnimationFrame(draw)
       }
     }
@@ -73,7 +75,7 @@ export default function VoiceMessage({ src }: Props) {
     }
 
     return () => cancelAnimationFrame(animRef.current)
-  }, [playing, progress])
+  }, [playing])
 
   const togglePlay = () => {
     const audio = audioRef.current

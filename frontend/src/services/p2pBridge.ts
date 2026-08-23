@@ -510,16 +510,14 @@ export function sendP2PTextMessage(userId: string, messageId: string, content: s
   const payload = JSON.stringify({ type: "chat_message", message_id: messageId, content, reply_to_id: replyToId || null })
 
   if (!peerId || !connectedPeers.has(peerId)) {
-    const queue = messageQueue.get(userId) || []
-    queue.push(payload)
-    if (queue.length > 50) queue.shift()
-    messageQueue.set(userId, queue)
+    // Do NOT queue when disconnected: the caller falls back to the relay,
+    // and queueing here would deliver the message twice (P2P flush + relay).
     return false
   }
 
   // Use unified connection manager for transport selection
   connectionManager.sendMessage(peerId, payload).catch(() => {
-    // Fallback to direct TCP
+    // Fallback to direct TCP; queue only if that also fails
     sendP2PMessage(peerId, payload).catch(err => {
       console.error("[P2P Bridge] send failed:", err)
       const queue = messageQueue.get(userId) || []

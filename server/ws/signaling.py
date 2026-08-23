@@ -89,6 +89,13 @@ class CallManager:
 
         logger.info(f"User {user_id} joined call {call_id}")
 
+        await self._send_to_user(user_id, {
+            "type": "call-request",
+            "call_id": call_id,
+            "caller_id": call["caller_id"],
+            "call_type": call["call_type"],
+        })
+
     async def _handle_call_request(self, user_id: str, data: dict):
         """Обработка запроса на звонок"""
         target_user_id = data.get("target_user_id")
@@ -150,10 +157,12 @@ class CallManager:
             caller_name = user_id  # fallback
             try:
                 db = SessionLocal()
-                caller = db.query(models.User).filter(models.User.id == user_id).first()
-                if caller:
-                    caller_name = caller.username or caller.first_name or user_id
-                db.close()
+                try:
+                    caller = db.query(models.User).filter(models.User.id == user_id).first()
+                    if caller:
+                        caller_name = caller.username or caller.first_name or user_id
+                finally:
+                    db.close()
             except Exception:
                 pass
 
@@ -188,7 +197,9 @@ class CallManager:
 
     async def _handle_call_accept(self, user_id: str, data: dict):
         """Обработка принятия звонка"""
-        call_id = data["call_id"]
+        call_id = data.get("call_id")
+        if not call_id:
+            return
         call = self.active_calls.get(call_id)
 
         if not call or call["callee_id"] != user_id:
@@ -229,7 +240,9 @@ class CallManager:
 
     async def _handle_call_reject(self, user_id: str, data: dict):
         """Обработка отклонения звонка"""
-        call_id = data["call_id"]
+        call_id = data.get("call_id")
+        if not call_id:
+            return
         call = self.active_calls.get(call_id)
 
         if not call:
@@ -266,7 +279,9 @@ class CallManager:
 
     async def _handle_call_end(self, user_id: str, data: dict):
         """Обработка завершения звонка"""
-        call_id = data["call_id"]
+        call_id = data.get("call_id")
+        if not call_id:
+            return
         call = self.active_calls.get(call_id)
 
         if not call:

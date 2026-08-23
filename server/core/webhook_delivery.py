@@ -1,14 +1,10 @@
 import hashlib
 import hmac
+import ipaddress
 import json
-import sys
-from pathlib import Path
-
-if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.orm import Session
@@ -18,6 +14,25 @@ from server.utils.logger import logger
 
 WEBHOOK_TIMEOUT = 10
 WEBHOOK_MAX_RETRIES = 3
+
+
+def _validate_delivery_target(url: str) -> None:
+    """Re-validate the URL at delivery time to mitigate DNS rebinding.
+
+    Creation-time validation alone is not enough: an attacker can register
+    a domain, pass validation, then flip its A record to an internal address.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("scheme must be http/https")
+    if host in ("localhost",) or host.endswith(".local") or host.endswith(".internal"):
+        raise ValueError("local hosts are not allowed")
+    import socket
+    for info in socket.getaddrinfo(host, None):
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise ValueError(f"resolves to forbidden address {ip}")
 
 
 def sign_payload(secret: str, payload: bytes) -> str:
@@ -37,6 +52,20 @@ async def fire_webhooks(db: Session, user_id: str, event: str, data: dict[str, A
 
 
 async def deliver_webhook(webhook: Any, event: str, data: dict[str, Any]) -> bool:
+    # Re-validate at delivery time (DNS rebinding mitigation).
+    # Run DNS resolution in a thread so the event loop isn't blocked.
+    import asyncio
+    try:
+        await asyncio.get_running_loop().run_in_executor(
+            None, _validate_delivery_target, webhook.url
+        )
+    except ValueError as e:
+        logger.warning(f"[Webhook] blocked delivery to {webhook.url}: {e}")
+        return False
+    except Exception as e:
+        logger.warning(f"[Webhook] target validation failed for {webhook.url}: {e}")
+        return False
+
     payload = json.dumps({
         "event": event,
         "timestamp": datetime.now(timezone.utc).isoformat(),

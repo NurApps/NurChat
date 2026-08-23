@@ -700,11 +700,12 @@
 }
 
 /* ========================================
-   Dark Mode (Mobile)
+   Dark Mode (Mobile) — follows app theme via data-theme,
+   falls back to system preference when no theme is set.
    ======================================== */
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg-primary: #0a0a0a;
     --bg-secondary: #1a1a1a;
     --bg-active: #2a2a2a;
@@ -723,7 +724,7 @@
    ======================================== */
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme]) {
     --bg-primary: #ffffff;
     --bg-secondary: #f2f2f7;
     --bg-active: #e5e5ea;

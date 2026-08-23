@@ -1,5 +1,6 @@
 import { platform } from "./platform"
 import { getSettings } from "./userSettings"
+import { initPushNotifications } from "./push"
 
 let audioCtx: AudioContext | null = null
 
@@ -29,6 +30,10 @@ export function playMessageSound(): void {
     gain.gain.setValueAtTime(0.12, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.2)
     osc.connect(gain).connect(ctx.destination)
+    osc.onended = () => {
+      osc.disconnect()
+      gain.disconnect()
+    }
     osc.start()
     osc.stop(ctx.currentTime + 0.2)
   } catch {
@@ -37,7 +42,10 @@ export function playMessageSound(): void {
 }
 
 export async function initNotifications(): Promise<boolean> {
-  return requestNotificationPermission()
+  const granted = await requestNotificationPermission()
+  // Initialize Web Push in background (non-blocking)
+  initPushNotifications().catch(() => {})
+  return granted
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {

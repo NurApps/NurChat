@@ -201,8 +201,7 @@ class P2PManager:
                     "payload": message.payload,
                     "created_at": message.created_at.isoformat() if message.created_at else None,
                 })
-                # Глухой relay: доставленное сообщение сразу удаляется, история не хранится
-                db.delete(message)
+                message.delivered_at = datetime.now(timezone.utc)
             db.commit()
             await self.send_json(user_id, {
                 "type": "p2p-sync",

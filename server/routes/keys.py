@@ -5,9 +5,7 @@ Handles signed pre-keys, one-time pre-keys, and bundle publishing.
 
 import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from nacl.encoding import HexEncoder
-from nacl.public import PrivateKey
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from nacl.signing import VerifyKey
 from sqlalchemy.orm import Session
 
@@ -111,25 +109,64 @@ async def get_signed_prekey(
 @limiter.limit("10/minute")
 async def upload_one_time_prekeys(
     request: Request,
-    count: int = ONE_TIME_PREKEY_BATCH,
+    public_keys: list[str] = Body(..., embed=True),
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
 ):
-    """Generate and upload a batch of one-time pre-keys."""
+    """Upload one-time pre-keys (client generates keypairs, uploads only public keys)."""
     user_id = token["sub"]
-    keys_data = []
 
-    for _ in range(count):
-        kp = PrivateKey.generate()
-        pub_hex = kp.public_key.encode(encoder=HexEncoder).decode()
+    if not public_keys or len(public_keys) > ONE_TIME_PREKEY_BATCH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"public_keys must be a list of 1-{ONE_TIME_PREKEY_BATCH} hex strings",
+        )
+
+    count = 0
+    for pub_hex in public_keys:
+        if not pub_hex or not isinstance(pub_hex, str) or len(pub_hex) < 10:
+            continue
         otpk = models.OneTimePreKey(user_id=user_id, public_key=pub_hex)
         db.add(otpk)
-        keys_data.append(pub_hex)
+        count += 1
 
     db.commit()
     prekey_cache.invalidate(f"bundle:{user_id}")
     logger.info(f"Uploaded {count} one-time pre-keys for user {user_id}")
-    return {"count": count, "keys": keys_data}
+    return {"count": count}
+
+
+def _claim_one_time_prekey(db: Session, user_id: str):
+    """Atomically claim one unused one-time pre-key for a user.
+
+    Uses an UPDATE ... WHERE NOT is_used so only one concurrent request
+    can successfully claim a given key (rowcount check).
+    """
+    for _attempt in range(3):
+        candidate_id = (
+            db.query(models.OneTimePreKey.id)
+            .filter(
+                models.OneTimePreKey.user_id == user_id,
+                ~models.OneTimePreKey.is_used,
+            )
+            .order_by(models.OneTimePreKey.created_at.asc())
+            .first()
+        )
+        if not candidate_id:
+            return None
+
+        updated = (
+            db.query(models.OneTimePreKey)
+            .filter(
+                models.OneTimePreKey.id == candidate_id[0],
+                ~models.OneTimePreKey.is_used,
+            )
+            .update({"is_used": True}, synchronize_session=False)
+        )
+        db.commit()
+        if updated:
+            return db.get(models.OneTimePreKey, candidate_id[0])
+    return None
 
 
 @router.get("/one-time/{user_id}")
@@ -139,16 +176,10 @@ async def get_one_time_prekey(
     token: dict = Depends(verify_token_dependency),
 ):
     """Get one unused one-time pre-key for a user and mark it as used."""
-    otpk = db.query(models.OneTimePreKey).filter(
-        models.OneTimePreKey.user_id == user_id,
-        ~models.OneTimePreKey.is_used,
-    ).order_by(models.OneTimePreKey.created_at.asc()).first()
+    otpk = _claim_one_time_prekey(db, user_id)
 
     if not otpk:
         return {"public_key": None}
-
-    otpk.is_used = True
-    db.commit()
 
     return {"public_key": otpk.public_key}
 
@@ -194,14 +225,9 @@ async def get_prekey_bundle(
     if not spk:
         raise HTTPException(status_code=404, detail="User has no signed pre-key")
 
-    otpk = db.query(models.OneTimePreKey).filter(
-        models.OneTimePreKey.user_id == user_id,
-        ~models.OneTimePreKey.is_used,
-    ).order_by(models.OneTimePreKey.created_at.asc()).first()
+    otpk = _claim_one_time_prekey(db, user_id)
 
     if otpk:
-        otpk.is_used = True
-        db.commit()
         prekey_cache.invalidate(cache_key)
 
     result = {

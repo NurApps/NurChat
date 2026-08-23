@@ -40,6 +40,22 @@ function u8Concat(...arrays: Uint8Array[]): Uint8Array {
   return result
 }
 
+export function toBase64(bytes: Uint8Array): string {
+  const CHUNK = 8192
+  let binary = ""
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(binary)
+}
+
+export function fromBase64(b64: string): Uint8Array {
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
 // ─── HKDF (SHA-256 based) ───
 
 async function hkdfExtract(salt: Uint8Array, ikm: Uint8Array): Promise<Uint8Array> {
@@ -131,6 +147,14 @@ export class DoubleRatchetSession {
   theirIdentityPublic: Uint8Array | null = null
   private seenMessageIds = new Set<string>()
   private skippedKeys = new Map<string, Uint8Array>()
+  // Set after receiving a new remote ratchet key: our NEXT outgoing message
+  // must perform a DH ratchet step. Do NOT regenerate DHs inside
+  // dhRatchetRecv — otherwise the next message would be encrypted with the
+  // old sending chain but carry an unknown-to-peer public key in its header.
+  private pendingSendRatchet = false
+  // True when DHs was freshly generated in dhRatchetRecv and the pending
+  // send ratchet must reuse it instead of generating another keypair.
+  private dhFresh = false
 
   private associatedData(): Uint8Array {
     const a = this.ourIdentityPublic || new Uint8Array(0)
@@ -246,12 +270,18 @@ export class DoubleRatchetSession {
   private async dhRatchetSend(): Promise<void> {
     if (!this.DHr) throw new Error("No remote DH key for ratchet")
 
-    // Zeroize old DHs key before replacing
-    if (this.DHs) {
-      this.zeroizeKeypair(this.DHs)
+    // Reuse the keypair generated in dhRatchetRecv if it is fresh;
+    // otherwise generate a brand-new one.
+    let newDHs: BoxKeyPair
+    if (this.dhFresh && this.DHs) {
+      newDHs = this.DHs
+      this.dhFresh = false
+    } else {
+      if (this.DHs) {
+        this.zeroizeKeypair(this.DHs)
+      }
+      newDHs = boxKeyPair()
     }
-
-    const newDHs = boxKeyPair()
     const dhShared = boxBefore(this.DHr, newDHs.secretKey)
     const derived = await hkdf(
       this.RK || new Uint8Array(32),
@@ -267,6 +297,7 @@ export class DoubleRatchetSession {
     this.Ns = 0
     this.Nr = 0
     this.DHs = newDHs
+    this.pendingSendRatchet = false
 
     // Zeroize intermediate secrets
     this.zeroizeBytes(dhShared)
@@ -290,11 +321,15 @@ export class DoubleRatchetSession {
     this.Nr = 0
     this.DHr = theirPublic
 
-    // Zeroize old DHs before replacing
+    // Generate the next DH keypair now (Signal spec): the pending send
+    // ratchet will reuse it so the header public key stays consistent
+    // with the sending chain derived from it.
     if (this.DHs) {
       this.zeroizeKeypair(this.DHs)
     }
     this.DHs = boxKeyPair()
+    this.dhFresh = true
+    this.pendingSendRatchet = true
 
     // Zeroize intermediate secrets
     this.zeroizeBytes(dhShared)
@@ -302,6 +337,10 @@ export class DoubleRatchetSession {
   }
 
   async encryptMessage(plaintext: string): Promise<RatchetEnvelope> {
+    if (this.pendingSendRatchet && this.DHr) {
+      await this.dhRatchetSend()
+      this.pendingSendRatchet = false
+    }
     if (!this.CKs) {
       if (this.CKr && this.DHr) {
         await this.dhRatchetSend()
@@ -345,7 +384,7 @@ export class DoubleRatchetSession {
 
     return {
       header,
-      ciphertext: btoa(String.fromCharCode(...ciphertextWithNonce)),
+      ciphertext: toBase64(ciphertextWithNonce),
     }
   }
 
@@ -407,7 +446,7 @@ export class DoubleRatchetSession {
       this.trimSeen()
     }
 
-    const ciphertextBytes = new Uint8Array(atob(envelope.ciphertext).split("").map((c) => c.charCodeAt(0)))
+    const ciphertextBytes = fromBase64(envelope.ciphertext)
     const nonce = ciphertextBytes.subarray(0, secretboxNonceLength)
     const ciphertext = ciphertextBytes.subarray(secretboxNonceLength)
 
@@ -459,26 +498,28 @@ export class DoubleRatchetSession {
   serialize(): SerializedSession {
     const skipped: Record<string, string> = {}
     this.skippedKeys.forEach((v, k) => {
-      skipped[k] = btoa(String.fromCharCode(...v))
+      skipped[k] = toBase64(v)
     })
     return {
       version: PROTOCOL_VERSION,
       DHs: this.DHs ? bytesToHex(this.DHs.publicKey) + ":" + bytesToHex(this.DHs.secretKey) : null,
       DHr: this.DHr ? bytesToHex(this.DHr) : null,
-      RK: this.RK ? btoa(String.fromCharCode(...this.RK)) : null,
-      CKs: this.CKs ? btoa(String.fromCharCode(...this.CKs.key)) : null,
-      CKr: this.CKr ? btoa(String.fromCharCode(...this.CKr.key)) : null,
+      RK: this.RK ? toBase64(this.RK) : null,
+      CKs: this.CKs ? toBase64(this.CKs.key) : null,
+      CKr: this.CKr ? toBase64(this.CKr.key) : null,
       CKs_step: this.CKs?.step ?? 0,
       CKr_step: this.CKr?.step ?? 0,
       Ns: this.Ns,
       Nr: this.Nr,
       PN: this.PN,
-      our_id: this.ourIdentityPublic ? btoa(String.fromCharCode(...this.ourIdentityPublic)) : null,
-      their_id: this.theirIdentityPublic ? btoa(String.fromCharCode(...this.theirIdentityPublic)) : null,
+      our_id: this.ourIdentityPublic ? toBase64(this.ourIdentityPublic) : null,
+      their_id: this.theirIdentityPublic ? toBase64(this.theirIdentityPublic) : null,
       skipped,
       seen: [...this.seenMessageIds]
         .sort((a, b) => parseInt(a.split(":")[1], 10) - parseInt(b.split(":")[1], 10))
         .slice(-2000),
+      pendingSendRatchet: this.pendingSendRatchet,
+      dhFresh: this.dhFresh,
     }
   }
 
@@ -496,27 +537,27 @@ export class DoubleRatchetSession {
       s.DHr = hexToBytes(data.DHr)
     }
     if (data.RK) {
-      s.RK = new Uint8Array(atob(data.RK).split("").map((c) => c.charCodeAt(0)))
+      s.RK = fromBase64(data.RK)
     }
     if (data.CKs) {
-      s.CKs = new KDFChain(new Uint8Array(atob(data.CKs).split("").map((c) => c.charCodeAt(0))), data.CKs_step)
+      s.CKs = new KDFChain(fromBase64(data.CKs), data.CKs_step)
     }
     if (data.CKr) {
-      s.CKr = new KDFChain(new Uint8Array(atob(data.CKr).split("").map((c) => c.charCodeAt(0))), data.CKr_step)
+      s.CKr = new KDFChain(fromBase64(data.CKr), data.CKr_step)
     }
     s.Ns = data.Ns
     s.Nr = data.Nr
     s.PN = data.PN
     if (data.our_id) {
-      s.ourIdentityPublic = new Uint8Array(atob(data.our_id).split("").map((c) => c.charCodeAt(0)))
+      s.ourIdentityPublic = fromBase64(data.our_id)
     }
     if (data.their_id) {
-      s.theirIdentityPublic = new Uint8Array(atob(data.their_id).split("").map((c) => c.charCodeAt(0)))
+      s.theirIdentityPublic = fromBase64(data.their_id)
     }
     if (data.skipped) {
       for (const [k, v] of Object.entries(data.skipped)) {
         try {
-          s.skippedKeys.set(k, new Uint8Array(atob(v).split("").map((c) => c.charCodeAt(0))))
+          s.skippedKeys.set(k, fromBase64(v))
         } catch {
           /* ignore */
         }
@@ -525,6 +566,8 @@ export class DoubleRatchetSession {
     if (data.seen) {
       s.seenMessageIds = new Set(data.seen)
     }
+    s.pendingSendRatchet = Boolean((data as SerializedSession & { pendingSendRatchet?: boolean }).pendingSendRatchet)
+    s.dhFresh = Boolean((data as SerializedSession & { dhFresh?: boolean }).dhFresh)
     return s
   }
 }

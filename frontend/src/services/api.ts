@@ -63,8 +63,8 @@ export const api = {
   login: (username: string, password: string) =>
     request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/login", { username, password }),
 
-  register: (username: string, password: string, first_name: string, last_name: string, captcha_id: string, captcha_code: string) =>
-    request<{ access_token: string; token_type: string; user: UserResponse; private_key?: string; signing_private_key?: string }>("POST", "/api/auth/register", { username, password, first_name, last_name, captcha_id, captcha_code }),
+  register: (username: string, password: string, first_name: string, last_name: string, captcha_id: string, captcha_code: string, public_key: string, signing_public_key: string) =>
+    request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/register", { username, password, first_name, last_name, captcha_id, captcha_code, public_key, signing_public_key }),
 
   getCaptcha: () =>
     request<{ captcha_id: string; question: string }>("GET", "/api/auth/captcha"),
@@ -208,6 +208,7 @@ export const api = {
   // Files
   uploadFile: async (file: File, fileType: string, onProgress?: (percent: number) => void): Promise<FileUploadResponse> => {
     const token = getToken()
+    const csrf = getCsrfToken()
     const form = new FormData()
     form.append("file", file)
     form.append("file_type", fileType)
@@ -218,6 +219,7 @@ export const api = {
         const xhr = new XMLHttpRequest()
         xhr.open("POST", `${BASE_URL}/api/files/upload`)
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`)
+        if (csrf) xhr.setRequestHeader("X-CSRF-Token", csrf)
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             onProgress(Math.round((e.loaded / e.total) * 100))
@@ -321,6 +323,9 @@ export const api = {
   getP2PPending: (limit = 500) =>
     request<{ id: string; sender_id: string; recipient_id: string; payload: string; created_at: string }[]>("GET", `/api/p2p/pending?limit=${limit}`),
 
+  ackP2PPending: (ids: string[]) =>
+    request<{ deleted: number }>("POST", "/api/p2p/pending/ack", { ids }),
+
   // P2P Sharing (direct server-to-server)
   discoverLAN: () =>
     request<{ peers: { node_id: string; host: string; port: number; user_id: string; username: string; peer_name: string; last_seen: string }[] }>("GET", "/api/discover/lan"),
@@ -330,6 +335,9 @@ export const api = {
 
   openP2PPort: () =>
     request<{ message: string; uri: string; host: string; port: number; user_id: string }>("POST", "/api/p2p/open-port"),
+
+  closeP2PPort: () =>
+    request<{ message: string; host: string; port: number }>("POST", "/api/p2p/close-port"),
 
   getRemotePeers: () =>
     request<{ peers: { node_id: string; address: string; user_id: string; connected_at: string; is_relay: boolean }[] }>("GET", "/api/p2p/remote-peers"),
@@ -397,11 +405,11 @@ export const api = {
   },
 
   // E2E Group Keys
-  setGroupKey: (chatId: string, encryptedKeys: Record<string, string>) =>
-    request<void>("POST", `/api/chat/chats/${chatId}/group-key`, { encrypted_keys: encryptedKeys }),
+  setGroupKey: (chatId: string, encryptedKeys: Record<string, string>, creatorId?: string) =>
+    request<void>("POST", `/api/chat/chats/${chatId}/group-key`, { encrypted_keys: encryptedKeys, creator_id: creatorId }),
 
   getGroupKey: (chatId: string) =>
-    request<{ encrypted_key: string; chat_id: string }>("GET", `/api/chat/chats/${chatId}/group-key`),
+    request<{ encrypted_key: string; chat_id: string; creator_id: string | null }>("GET", `/api/chat/chats/${chatId}/group-key`),
 
   // Bookmarks
   getBookmarks: (chatId?: string) =>
@@ -465,6 +473,15 @@ export const api = {
   },
 
   clearToken: () => {
+    // Best-effort server-side revocation before dropping local state
+    const token = getToken()
+    if (token) {
+      fetch(`${BASE_URL}/api/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).catch(() => {})
+    }
     localStorage.removeItem("token")
     localStorage.removeItem("user")
   },
@@ -504,8 +521,8 @@ export const api = {
   uploadSignedPrekey: (publicKey: string, signature: string) =>
     request<{ status: string }>("POST", `/api/keys/signed-prekey?public_key=${encodeURIComponent(publicKey)}&signature=${encodeURIComponent(signature)}`),
 
-  uploadOneTimePrekeys: (count: number = 100) =>
-    request<{ count: number; keys: string[] }>("POST", `/api/keys/one-time?count=${count}`),
+  uploadOneTimePrekeys: (publicKeys: string[]) =>
+    request<{ count: number }>("POST", "/api/keys/one-time", { public_keys: publicKeys }),
 
   getBundle: (userId: string) =>
     request<{ identity_key: string; signed_prekey: string; signed_prekey_signature: string; one_time_prekey: string | null; registration_id: number }>("GET", `/api/keys/bundle/${userId}`),
@@ -547,4 +564,14 @@ export const api = {
     request<{ message_id: string; content: string | null; message_type: string; file_id: string | null; already_viewed: boolean }>(
       "POST", `/api/chat/messages/${messageId}/view-once`
     ),
+
+  // Push notifications
+  getVapidPublicKey: () =>
+    request<{ public_key: string }>("GET", "/api/push/vapid-public-key"),
+
+  subscribePush: (subscription: { endpoint: string; p256dh: string; auth: string }) =>
+    request<{ message: string }>("POST", "/api/push/subscribe", subscription),
+
+  unsubscribePush: (endpoint: string) =>
+    request<{ message: string }>("DELETE", `/api/push/unsubscribe?endpoint=${encodeURIComponent(endpoint)}`),
 }

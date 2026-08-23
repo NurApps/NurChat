@@ -25,6 +25,7 @@ import {
   hexToBytes,
   type BoxKeyPair,
 } from "./cryptoAdapter"
+import { toBase64, fromBase64 } from "./doubleRatchet"
 
 // ─── Types ───
 
@@ -105,7 +106,7 @@ export function createSealedSenderEnvelope(
 
   return {
     ephemeralPubHex,
-    encryptedMetadata: btoa(String.fromCharCode(...combined)),
+    encryptedMetadata: toBase64(combined),
     messageCiphertext,
     nonceHex: bytesToHex(nonce),
   }
@@ -130,9 +131,7 @@ export function openSealedSenderEnvelope(
     const sharedSecret = boxBefore(ephemeralPub, myPrivateKey)
 
     // 2. Decrypt metadata
-    const combined = new Uint8Array(
-      atob(envelope.encryptedMetadata).split("").map((c) => c.charCodeAt(0))
-    )
+    const combined = fromBase64(envelope.encryptedMetadata)
     const nonce = combined.subarray(0, secretboxNonceLength)
     const ciphertext = combined.subarray(secretboxNonceLength)
 

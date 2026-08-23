@@ -423,6 +423,27 @@
 .input-btn.record-stop:hover { opacity: 0.85; }
 .input-btn.record-active { color: var(--error); }
 
+.input-btn.ephemeral-active { color: var(--tg-blue); }
+
+@keyframes ephemeral-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.ephemeral-menu { animation: fadeInDown 0.15s ease; }
+
+.msg-expiry {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  margin-left: 4px;
+}
+
+.msg-expiry svg { width: 12px; height: 12px; }
+
 .msg-image {
   max-width: 280px;
   max-height: 280px;

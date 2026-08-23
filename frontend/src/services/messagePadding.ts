@@ -13,6 +13,7 @@
  */
 
 import { randomBytes } from "./cryptoAdapter"
+import { toBase64, fromBase64 } from "./doubleRatchet"
 
 // ─── Types ───
 
@@ -123,7 +124,7 @@ export function padMessage(content: string): PaddedMessage {
   padded.set(paddingBytes, originalSize + PADDING_HEADER_SIZE)
 
   return {
-    content: btoa(String.fromCharCode(...padded)),
+    content: toBase64(padded),
     paddedSize,
     originalSize,
     padding: paddingNeeded,
@@ -140,9 +141,7 @@ export function padMessage(content: string): PaddedMessage {
 export function unpadMessage(paddedContent: string): string {
   try {
     // Decode base64
-    const padded = new Uint8Array(
-      atob(paddedContent).split("").map((c) => c.charCodeAt(0))
-    )
+    const padded = fromBase64(paddedContent)
 
     // Read original size from header
     const view = new DataView(padded.buffer)
@@ -175,9 +174,7 @@ export function unpadMessage(paddedContent: string): string {
  */
 export function isPaddedMessage(content: string): boolean {
   try {
-    const bytes = new Uint8Array(
-      atob(content).split("").map((c) => c.charCodeAt(0))
-    )
+    const bytes = fromBase64(content)
 
     if (bytes.length < PADDING_HEADER_SIZE) {
       return false
@@ -212,9 +209,7 @@ export function getPaddingStats(paddedContent: string): {
   paddingPercent: number
 } {
   try {
-    const padded = new Uint8Array(
-      atob(paddedContent).split("").map((c) => c.charCodeAt(0))
-    )
+    const padded = fromBase64(paddedContent)
 
     const view = new DataView(padded.buffer)
     const originalSize = view.getUint32(0, false)

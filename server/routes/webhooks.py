@@ -40,6 +40,7 @@ async def create_webhook(
         events=",".join(data.events),
         is_active=True,
     )
+    _validate_webhook_url(data.url)
     db.add(webhook)
     db.commit()
     db.refresh(webhook)
@@ -64,6 +65,7 @@ async def update_webhook(
     if data.name is not None:
         webhook.name = data.name
     if data.url is not None:
+        _validate_webhook_url(data.url)
         webhook.url = data.url
     if data.secret is not None:
         webhook.secret = data.secret
@@ -93,6 +95,43 @@ async def delete_webhook(
     db.delete(webhook)
     db.commit()
     logger.info(f"[Webhooks] deleted '{webhook.name}' for user {current_user['sub']}")
+
+
+def _validate_webhook_url(url: str) -> None:
+    """Block SSRF: reject non-http(s) schemes and private/loopback/link-local hosts."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="URL должен использовать http/https")
+    host = parsed.hostname
+    if not host:
+        raise HTTPException(status_code=400, detail="Некорректный URL")
+
+    # Block obvious local hostnames
+    if host in ("localhost",) or host.endswith(".local") or host.endswith(".internal"):
+        raise HTTPException(status_code=400, detail="Локальные адреса запрещены")
+
+    try:
+        addr_info = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise HTTPException(status_code=400, detail="Не удалось разрешить хост")
+
+    for info in addr_info:
+        ip = ipaddress.ip_address(info[4][0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Приватные и локальные адреса запрещены",
+            )
 
 
 @router.post("/webhooks/{webhook_id}/test", status_code=status.HTTP_200_OK)

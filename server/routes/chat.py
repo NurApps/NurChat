@@ -51,12 +51,6 @@ def _get_user_cached(db: Session, user_id: str):
     return user
 
 
-def _invalidate_chat_cache(chat_id: str, user_id: str | None = None):
-    chat_cache.invalidate_pattern(f"participant:{chat_id}:")
-    if user_id:
-        chat_cache.invalidate(f"participant:{chat_id}:{user_id}")
-
-
 @router.get("/chats", response_model=list[schemas.ChatResponse])
 async def get_user_chats(
     db: Session = Depends(get_db),
@@ -340,6 +334,7 @@ async def send_message(
                         "encrypted_content": message_full.encrypted_content,
                         "signature": message_full.signature,
                         "reply_to_id": message_full.reply_to_id,
+                        "expires_at": message_full.expires_at.isoformat() if message_full.expires_at else None,
                         "timestamp": message_full.created_at.isoformat() if message_full.created_at else None,
                     }
                 }
@@ -593,9 +588,17 @@ async def get_edit_history(
 ):
     """Get edit history for a message."""
     import json
+    user_id = token["sub"]
     message = db.query(models.Message).filter(models.Message.id == message_id).first()
     if not message:
         raise MessageNotFoundError("Сообщение не найдено")
+
+    participant = db.query(models.ChatParticipant).filter(
+        models.ChatParticipant.chat_id == message.chat_id,
+        models.ChatParticipant.user_id == user_id,
+    ).first()
+    if not participant:
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
 
     history = []
     if message.edit_history:
@@ -660,9 +663,11 @@ async def mark_view_once_viewed(
 
     await connection_manager.broadcast_to_chat({
         "event": "delete_message",
-        "message_id": message_id,
-        "chat_id": message.chat_id,
-        "deleted_for_all": True,
+        "data": {
+            "message_id": message_id,
+            "chat_id": message.chat_id,
+            "delete_for_all": True,
+        },
     }, message.chat_id)
 
     return {
@@ -1022,7 +1027,10 @@ async def set_group_key(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
 ):
-    """Store encrypted group key for E2E group chat. payload: {encrypted_keys: {user_id: sealed_box_b64}}"""
+    """Store encrypted group key for E2E group chat.
+
+    payload: {encrypted_keys: {user_id: sealed_box_b64}, creator_id?: str}
+    """
     user_id = token["sub"]
     participant = db.query(models.ChatParticipant).filter(
         models.ChatParticipant.chat_id == chat_id,
@@ -1035,8 +1043,16 @@ async def set_group_key(
     if not chat:
         raise HTTPException(status_code=404, detail="Чат не найден")
 
+    # Only the group key creator (or the first setter) may overwrite the key
+    if chat.group_key and chat.group_key_creator_id and user_id != chat.group_key_creator_id:
+        raise HTTPException(status_code=403, detail="Только создатель ключа может его обновить")
+
     import json
     chat.group_key = json.dumps(payload.get("encrypted_keys", {}))
+    if "creator_id" in payload:
+        chat.group_key_creator_id = payload["creator_id"]
+    elif not chat.group_key_creator_id:
+        chat.group_key_creator_id = user_id
     db.commit()
     return {"message": "Group key updated"}
 
@@ -1066,7 +1082,11 @@ async def get_group_key(
     if not my_encrypted_key:
         raise HTTPException(status_code=404, detail="No group key for this user")
 
-    return {"encrypted_key": my_encrypted_key, "chat_id": chat_id}
+    return {
+        "encrypted_key": my_encrypted_key,
+        "chat_id": chat_id,
+        "creator_id": chat.group_key_creator_id,
+    }
 
 
 # ─── Global Search ───

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import { isPinEnabled } from "../services/pinLock"
+import { useChatStore } from "../store/chatStore"
 import PinLock from "./PinLock"
 
 interface Props {
@@ -22,6 +23,7 @@ export default function AuthGuard({ children }: Props) {
     api.getCurrentUser()
       .then((user) => {
         localStorage.setItem("user", JSON.stringify(user))
+        useChatStore.getState().refreshCurrentUser()
         if (isPinEnabled()) {
           setLocked(true)
         }

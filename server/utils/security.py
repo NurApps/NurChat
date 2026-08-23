@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import string
+from datetime import datetime, timezone
 
 import pyotp
 import qrcode
@@ -156,7 +157,22 @@ def verify_backup_code(plain_code: str, hashed_json: str) -> tuple[bool, str]:
 
 _TOTP_MASTER_KEY = os.getenv("TOTP_MASTER_KEY")
 if not _TOTP_MASTER_KEY:
+    import logging
+
+    from shared.config import settings as _settings
+    if not _settings.DEBUG:
+        # Fail-fast in production: silently generated keys invalidate every
+        # stored 2FA secret on restart (DEVELOPMENT_PLAN.md, item S4).
+        raise RuntimeError(
+            "TOTP_MASTER_KEY не задан в .env. В production-режиме сервер "
+            "не стартует с временным ключом — все 2FA конфигурации сломаются "
+            "при перезапуске. Сгенерируйте ключ: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+        )
     _TOTP_MASTER_KEY = secrets.token_urlsafe(32)
+    logging.getLogger("nurchat").critical(
+        "TOTP_MASTER_KEY не задан в .env — используется временный ключ (DEBUG). "
+        "ВСЕ 2FA конфигурации сломаются при перезапуске сервера!"
+    )
 
 def _get_totp_cipher() -> Fernet:
     master_key = _TOTP_MASTER_KEY or secrets.token_urlsafe(32)
@@ -194,11 +210,64 @@ def decrypt_totp_secret(encrypted_secret: str) -> str | None:
 
 
 # ── Token blacklist (JWT revocation) ──
+# In-memory set backed by persistent DB storage so revocations survive restarts.
 
 _BLACKLIST: set[str] = set()
+_blacklist_loaded = False
 
-def revoke_token(jti: str) -> None:
+
+def _persist_revocation(jti: str, expires_at=None) -> None:
+    try:
+        from server.core.database import SessionLocal
+        from server.core.models import RevokedToken
+        db = SessionLocal()
+        try:
+            if not db.query(RevokedToken).filter(RevokedToken.jti == jti).first():
+                db.add(RevokedToken(jti=jti, expires_at=expires_at))
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        # DB unavailable — in-memory revocation still applies for this process
+        pass
+
+
+def _load_persisted_blacklist() -> None:
+    global _blacklist_loaded
+    if _blacklist_loaded:
+        return
+    _blacklist_loaded = True
+    try:
+        from server.core.database import SessionLocal
+        from server.core.models import RevokedToken
+        db = SessionLocal()
+        try:
+            now = datetime.now(timezone.utc)
+            for row in db.query(RevokedToken.jti).all():
+                _BLACKLIST.add(row[0])
+            # Purge entries whose tokens have already expired —
+            # an expired JWT fails validation anyway, no need to keep it.
+            purged = db.query(RevokedToken).filter(
+                RevokedToken.expires_at.isnot(None),
+                RevokedToken.expires_at < now,
+            ).delete(synchronize_session=False)
+            if purged:
+                db.commit()
+                _BLACKLIST.intersection_update({
+                    j for (j,) in db.query(RevokedToken.jti).all()
+                })
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+def revoke_token(jti: str, expires_at=None) -> None:
     _BLACKLIST.add(jti)
+    _persist_revocation(jti, expires_at)
 
 def is_token_revoked(jti: str) -> bool:
+    if jti in _BLACKLIST:
+        return True
+    _load_persisted_blacklist()
     return jti in _BLACKLIST

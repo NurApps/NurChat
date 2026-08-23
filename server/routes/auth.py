@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from server.core import models, schemas
 from server.core.audit import client_ip, log_audit
 from server.core.database import get_db
-from server.core.security import encryption, security, verify_token_dependency
+from server.core.security import security, verify_pending_2fa_dependency, verify_token_dependency
 from server.utils.captcha import generate_captcha, validate_captcha
 from server.utils.logger import logger
 from server.utils.security import (
@@ -117,14 +117,16 @@ async def register(
 
         hashed_password = hash_password_argon2(password)
 
-        # Use client-provided keys if available, otherwise generate server-side
-        keypair = encryption.generate_keypair()
+        # Identity keys MUST be generated client-side: the private key never
+        # leaves the user's device (see AGENTS.md / DEVELOPMENT_PLAN.md S3).
+        if not public_key or not signing_public_key:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="public_key и signing_public_key обязательны (генерируются на клиенте)"
+            )
 
-        from shared.p2p_encryption import P2PEncryption
-        signing_private_hex, signing_public_hex = P2PEncryption.generate_signing_keys()
-
-        user_public_key = public_key if public_key else keypair['public_key']
-        user_signing_public_key = signing_public_key if signing_public_key else signing_public_hex
+        user_public_key = public_key
+        user_signing_public_key = signing_public_key
 
         user_id = security.generate_user_id()
         now = datetime.now(timezone.utc)
@@ -176,12 +178,7 @@ async def register(
             "token_type": "bearer",
             "user": response,
         }
-        if public_key and signing_public_key:
-            result["private_key"] = ""
-            result["signing_private_key"] = ""
-        else:
-            result["private_key"] = keypair['private_key']
-            result["signing_private_key"] = signing_private_hex
+        # NOTE: private keys are NEVER generated or returned by the server.
         return result
     except HTTPException:
         raise
@@ -240,7 +237,7 @@ async def login(
                 bio=getattr(user, "bio", None),
             )
             refresh_token = security.create_refresh_token(
-                data={"sub": user.id, "username": user.username}
+                data={"sub": user.id, "username": user.username, "2fa_pending": True}
             )
             return {
                 "access_token": access_token,
@@ -401,10 +398,11 @@ async def get_user(
 @router.post("/logout")
 async def logout(
     request: Request,
+    refresh_token_str: str = Body(None, embed=True),
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db)
 ):
-    """Выход пользователя с отзывом токена"""
+    """Выход пользователя с отзывом access и refresh токенов"""
     user_id = token["sub"]
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if user:
@@ -414,6 +412,8 @@ async def logout(
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         security.revoke(auth_header[7:])
+    if refresh_token_str:
+        security.revoke(refresh_token_str)
 
     log_audit(user_id, "user_logout", ip_address=client_ip(request))
     return {"message": "Успешный выход"}
@@ -651,7 +651,7 @@ async def enable_2fa(
 async def verify_2fa_login_with_token(
     body: schemas.TwoFALoginRequest,
     db: Session = Depends(get_db),
-    token: dict = Depends(verify_token_dependency),
+    token: dict = Depends(verify_pending_2fa_dependency),
 ):
     """Верифицировать 2FA-код при входе (TOTP или backup-код)."""
     if not token.get("2fa_pending"):
@@ -765,6 +765,12 @@ async def refresh_token(
     """Обновить access токен по refresh токену."""
     try:
         payload = security.verify_refresh_token(refresh_token_str)
+        # 2FA not yet completed — do not issue a full access token
+        if payload.get("2fa_pending"):
+            raise HTTPException(
+                status_code=401,
+                detail="Требуется завершить двухфакторную аутентификацию",
+            )
         user = db.query(models.User).filter(models.User.id == payload["sub"]).first()
         if not user:
             raise HTTPException(status_code=401, detail="Пользователь не найден")
@@ -774,7 +780,8 @@ async def refresh_token(
         new_refresh = security.create_refresh_token(
             data={"sub": user.id, "username": user.username}
         )
-        # Rotate refresh token: old one is invalidated by not returning it
+        # Rotate refresh token: revoke the old one
+        security.revoke(refresh_token_str)
         return {
             "access_token": new_access,
             "refresh_token": new_refresh,

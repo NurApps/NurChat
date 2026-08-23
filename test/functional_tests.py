@@ -21,6 +21,13 @@ def random_username():
 
 BASE_URL = "http://127.0.0.1:8000"
 
+# Эти тесты требуют запущенного relay на 127.0.0.1:8000.
+# Если сервер недоступен — пропускаем весь модуль вместо ошибок соединения.
+try:
+    requests.get(f"{BASE_URL}/health", timeout=2)
+except requests.exceptions.RequestException:
+    pytest.skip("Relay не запущен на 127.0.0.1:8000 — functional tests пропущены", allow_module_level=True)
+
 _IP_COUNTER = [0]
 
 

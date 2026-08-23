@@ -120,7 +120,7 @@ describe('ChatListItem', () => {
     render(<ChatListItem chat={makeChat()} currentUser={currentUser} onClick={vi.fn()} onPin={onPin} />)
     fireEvent.click(screen.getByRole('button'))
     fireEvent.click(screen.getByText('Закрепить'))
-    expect(onPin).toHaveBeenCalledWith('chat_1')
+    expect(onPin).toHaveBeenCalledWith('chat_1', expect.any(Boolean))
   })
 
   it('calls onMute from menu', () => {
@@ -128,7 +128,7 @@ describe('ChatListItem', () => {
     render(<ChatListItem chat={makeChat()} currentUser={currentUser} onClick={vi.fn()} onMute={onMute} />)
     fireEvent.click(screen.getByRole('button'))
     fireEvent.click(screen.getByText('Отключить уведомления'))
-    expect(onMute).toHaveBeenCalledWith('chat_1')
+    expect(onMute).toHaveBeenCalledWith('chat_1', false)
   })
 
   it('calls onDelete from menu', () => {

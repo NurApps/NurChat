@@ -42,6 +42,7 @@ class Chat(Base):
     is_secret = Column(Boolean, default=False)  # Секретный чат (эфемерные сообщения)
     disappears_after_seconds = Column(Integer, default=0)  # 0 = отключено
     group_key = Column(Text, nullable=True)  # E2E: зашифрованный group key (JSON: {user_id: sealed_box_b64})
+    group_key_creator_id = Column(String, nullable=True)  # Кто создал group key (для unwrap)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     messages = relationship("Message", back_populates="chat")
@@ -71,7 +72,7 @@ class Message(Base):
     __table_args__ = (
         Index("ix_messages_chat_created", "chat_id", "created_at"),
         Index("ix_messages_query", "is_deleted", "chat_id", "created_at"),
-        Index("ix_messages_reply_to", "reply_to_id"),
+        # reply_to_id index comes from index=True on the column — no duplicate here
     )
 
     id = Column(String, primary_key=True, index=True)
@@ -448,3 +449,23 @@ class ContactRequest(Base):
 
     from_user = relationship("User", foreign_keys=[from_user_id])
     to_user = relationship("User", foreign_keys=[to_user_id])
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    endpoint = Column(Text, nullable=False)
+    p256dh = Column(Text, nullable=False)
+    auth = Column(Text, nullable=False)
+    user_agent = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class RevokedToken(Base):
+    __tablename__ = "revoked_tokens"
+
+    jti = Column(String, primary_key=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -49,7 +49,7 @@ def _register_user(username="testuser", password="TestPass123", first_name="Test
     r = client.post("/api/auth/register", json={
         "username": username, "password": password,
         "first_name": first_name,
-        "public_key": "", "signing_public_key": "",
+        "public_key": "a" * 64, "signing_public_key": "b" * 64,
         "captcha_id": cid, "captcha_code": ans,
     }, headers=csrf)
     assert r.status_code == 200, f"Register failed: {r.text}"

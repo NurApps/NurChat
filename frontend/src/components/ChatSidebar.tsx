@@ -73,7 +73,7 @@ export default function ChatSidebar({
 
       <div className="sidebar-list-header">
         <span className="sidebar-list-title">
-          {tab === "chats" ? t("chat.chats") : tab === "contacts" ? t("chat.contacts") : tab === "files" ? t("chat.files") : t("chat.invitations")}
+          {tab === "chats" ? t("chat.chats") : tab === "contacts" ? t("chat.contacts") : tab === "files" ? t("chat.files") : tab === "bookmarks" ? t("chat.bookmarks") : t("chat.invitations")}
         </span>
         {(tab === "chats" || tab === "contacts") && (
           <button className="sidebar-add-btn"
@@ -94,7 +94,7 @@ export default function ChatSidebar({
             {filteredChats.map((chat) => (
               <ChatListItem key={chat.id} chat={chat} currentUser={currentUser}
                 onClick={handleSelectChat} onPin={handlePin}
-                onMute={(id) => handleMute(id, !!chat.is_muted)}
+                onMute={(id) => handleMute(id, !chat.is_muted)}
                 onDelete={(id) => handleDeleteChat(id)} />
             ))}
           </div>

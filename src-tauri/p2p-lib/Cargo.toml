@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "p2p-lib"
 version = "0.1.0"
 edition = "2021"
@@ -12,3 +12,7 @@ base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync"] }
 bytes = "1"
 rand = "0.8"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+sha2 = "0.10"
+hkdf = "0.12"

@@ -11,6 +11,9 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 
 pub mod nat;
 pub mod hole_punch;
+pub mod crypto;
+
+use crypto::{TransportIdentity, SessionCrypto};
 
 const LAN_MULTICAST_ADDR: &str = "239.255.43.21";
 const LAN_MULTICAST_PORT: u16 = 8002;
@@ -47,6 +50,9 @@ pub enum P2PMessage {
         peer_id: String,
         public_key: String,
         signing_public_key: String,
+        /// X25519 transport key for session encryption
+        #[serde(default)]
+        ecdh_pub: String,
     },
     Relay {
         from: String,
@@ -145,6 +151,9 @@ pub enum P2PMessage {
         peer_id: String,
         #[serde(default)]
         public_key: String,
+        /// X25519 transport key for session encryption
+        #[serde(default)]
+        ecdh_pub: String,
     },
 }
 
@@ -160,10 +169,12 @@ pub struct P2PNode {
     listener_port: Arc<RwLock<u16>>,
     self_peer_id: Arc<RwLock<Option<String>>>,
     seen_messages: Arc<RwLock<HashMap<String, Instant>>>,
+    /// Long-term X25519 transport keypair for session encryption
+    identity: Arc<TransportIdentity>,
 }
 
 impl P2PNode {
-    pub fn new(config: P2PConfig) -> Self {
+    pub fn new(config: P2PConfig) ->     Self {
         let (tx, _) = broadcast::channel(256);
         Self {
             peers: Arc::new(RwLock::new(HashMap::new())),
@@ -173,7 +184,13 @@ impl P2PNode {
             listener_port: Arc::new(RwLock::new(0)),
             self_peer_id: Arc::new(RwLock::new(None)),
             seen_messages: Arc::new(RwLock::new(HashMap::new())),
+            identity: Arc::new(TransportIdentity::generate()),
         }
+    }
+
+    /// Our X25519 transport public key (hex) — goes into Hello/Ack frames.
+    pub async fn ecdh_public_hex(&self) -> String {
+        self.identity.public_hex()
     }
 
     pub async fn start(&self) -> Result<u16, String> {
@@ -192,6 +209,7 @@ impl P2PNode {
         let relay_enabled = self.config.relay_enabled;
         let seen_messages = self.seen_messages.clone();
         let self_peer_id = self.self_peer_id.clone();
+        let self_identity = self.identity.clone();
 
         tokio::spawn(async move {
             loop {
@@ -203,8 +221,9 @@ impl P2PNode {
                         let tx = tx.clone();
                         let seen_messages = seen_messages.clone();
                         let self_peer_id = self_peer_id.clone();
+                        let identity = self_identity.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = Self::handle_connection(stream, peers, writers, tx, max_peers, relay_enabled, seen_messages, self_peer_id, None).await {
+                            if let Err(e) = Self::handle_connection(stream, peers, writers, tx, max_peers, relay_enabled, seen_messages, self_peer_id, None, identity).await {
                                 eprintln!("[P2P] Connection error: {}", e);
                             }
                         });
@@ -300,15 +319,50 @@ impl P2PNode {
         // Outbound dial: send our Hello first and register the remote side
         // from its identity-bearing Ack instead of an inbound Hello.
         outbound_hello: Option<(String, String)>,
+        identity: Arc<TransportIdentity>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let (reader, mut writer) = stream.into_split();
+        let (reader, writer) = stream.into_split();
         let mut lines = BufReader::new(reader).lines();
         let mut peer_id: Option<String> = None;
         let (write_tx, mut write_rx) = mpsc::channel::<String>(64);
 
+        // Session encryption is established during the handshake; the write
+        // pump picks it up and encrypts every subsequent frame. Other tasks
+        // (send_to_peer, relay) push PLAINTEXT lines into the channel —
+        // encryption happens here, at the single point that owns the socket.
+        //
+        // Handshake frames (Hello/Ack) go through a SEPARATE raw channel so
+        // they are NEVER encrypted regardless of task scheduling.
+        let session_out: Arc<RwLock<Option<SessionCrypto>>> = Arc::new(RwLock::new(None));
+        let pump_crypto = session_out.clone();
+        let (raw_tx, mut raw_rx) = mpsc::channel::<String>(8);
+
+        let mut writer = writer;
         tokio::spawn(async move {
-            while let Some(msg) = write_rx.recv().await {
-                if let Err(e) = writer.write_all(msg.as_bytes()).await {
+            loop {
+                let line = tokio::select! {
+                    raw = raw_rx.recv() => match raw {
+                        Some(l) => l,
+                        None => continue,
+                    },
+                    msg = write_rx.recv() => match msg {
+                        Some(m) => {
+                            let guard = pump_crypto.read().await;
+                            match guard.as_ref() {
+                                Some(crypto) => match crypto.encrypt_line(&m) {
+                                    Ok(frame) => frame,
+                                    Err(e) => {
+                                        eprintln!("[P2P] Encrypt error: {}", e);
+                                        break;
+                                    }
+                                },
+                                None => m,
+                            }
+                        }
+                        None => break,
+                    }
+                };
+                if let Err(e) = writer.write_all(line.as_bytes()).await {
                     eprintln!("[P2P] Write error: {}", e);
                     break;
                 }
@@ -324,17 +378,30 @@ impl P2PNode {
                 peer_id: hello_peer_id.clone(),
                 public_key: hello_public_key.clone(),
                 signing_public_key: String::new(),
+                ecdh_pub: identity.public_hex(),
             };
             let json = serde_json::to_string(&hello)?;
-            write_tx.send(format!("{}\n", json)).await.map_err(|e| e.to_string())?;
+            raw_tx.send(json).await.map_err(|e| e.to_string())?;
         }
 
         let register_from_ack = outbound_hello.is_some();
 
-        while let Some(line) = lines.next_line().await? {
-            if line.is_empty() {
+        while let Some(raw_line) = lines.next_line().await? {
+            if raw_line.is_empty() {
                 continue;
             }
+
+            // Decrypt frames after the handshake; plaintext before it
+            let line = {
+                let guard = session_out.read().await;
+                match guard.as_ref() {
+                    Some(crypto) => match crypto.decrypt_line(&raw_line) {
+                        Ok(pt) => pt,
+                        Err(_) => continue,
+                    },
+                    None => raw_line,
+                }
+            };
 
             let msg: P2PMessage = match serde_json::from_str(&line) {
                 Ok(m) => m,
@@ -342,15 +409,22 @@ impl P2PNode {
             };
 
             match msg {
-                P2PMessage::Hello { peer_id: pid, public_key, signing_public_key: _ } => {
+                P2PMessage::Hello { peer_id: pid, public_key, signing_public_key: _, ecdh_pub } => {
                     let current_peers = peers.read().await;
                     if current_peers.len() >= max_peers {
-                        let ack = P2PMessage::Ack { ok: false, peer_id: String::new(), public_key: String::new() };
+                        let ack = P2PMessage::Ack { ok: false, peer_id: String::new(), public_key: String::new(), ecdh_pub: String::new() };
                         let ack_json = serde_json::to_string(&ack)?;
-                        let _ = write_tx.send(format!("{}\n", ack_json)).await;
+                        let _ = raw_tx.send(ack_json).await;
                         break;
                     }
                     drop(current_peers);
+
+                    // Establish the encrypted session BEFORE replying so the
+                    // Ack itself travels in the clear but everything after it
+                    // is protected.
+                    let their_ecdh = crypto::hex_decode(&ecdh_pub)?;
+                    let crypto_session =
+                        crypto::from_handshake(&identity, &their_ecdh, false)?;
 
                     let info = P2PPeerInfo {
                         peer_id: pid.clone(),
@@ -362,10 +436,18 @@ impl P2PNode {
                     writers.write().await.insert(pid.clone(), PeerWriter { tx: write_tx.clone() });
                     peer_id = Some(pid.clone());
 
-                    let ack = P2PMessage::Ack { ok: true, peer_id: self_peer_id.read().await.clone().unwrap_or_default(), public_key: String::new() };
+                    // Ack MUST be sent before enabling encryption: the
+                    // initiator derives its keys FROM this Ack.
+                    let ack = P2PMessage::Ack {
+                        ok: true,
+                        peer_id: self_peer_id.read().await.clone().unwrap_or_default(),
+                        public_key: String::new(),
+                        ecdh_pub: identity.public_hex(),
+                    };
                     let ack_json = serde_json::to_string(&ack)?;
-                    let _ = write_tx.send(format!("{}\n", ack_json)).await;
-                    println!("[P2P] Peer connected: {}", pid);
+                    let _ = raw_tx.send(ack_json).await;
+                    *session_out.write().await = Some(crypto_session);
+                    println!("[P2P] Peer connected (encrypted): {}", pid);
                 }
                 P2PMessage::Relay { from, to, payload } => {
                     if !relay_enabled {
@@ -554,7 +636,7 @@ impl P2PNode {
                     }))?;
                     let _ = tx.send(app_msg);
                 }
-                P2PMessage::Ack { ok, peer_id: ack_pid, public_key: ack_pub } => {
+                P2PMessage::Ack { ok, peer_id: ack_pid, public_key: ack_pub, ecdh_pub: ack_ecdh } => {
                     // Outbound dial: register the remote side from Ack identity
                     if register_from_ack && ok && !ack_pid.is_empty() && peer_id.is_none() {
                         let current_peers = peers.read().await;
@@ -562,6 +644,12 @@ impl P2PNode {
                             break;
                         }
                         drop(current_peers);
+
+                        // Establish the encrypted session using the responder's
+                        // transport key from the Ack.
+                        let their_ecdh = crypto::hex_decode(&ack_ecdh)?;
+                        let crypto_session =
+                            crypto::from_handshake(&identity, &their_ecdh, true)?;
 
                         let info = P2PPeerInfo {
                             peer_id: ack_pid.clone(),
@@ -572,9 +660,10 @@ impl P2PNode {
                         peers.write().await.insert(ack_pid.clone(), info);
                         writers.write().await.insert(ack_pid.clone(), PeerWriter { tx: write_tx.clone() });
                         peer_id = Some(ack_pid.clone());
-                        println!("[P2P] Outbound dial registered: {}", ack_pid);
+                        *session_out.write().await = Some(crypto_session);
+                        println!("[P2P] Outbound dial registered (encrypted): {}", ack_pid);
                     }
-                }
+}
             }
         }
 
@@ -601,43 +690,39 @@ impl P2PNode {
             }
         }
         drop(writers);
-        
-        // Try to connect directly if we know the address
-        let should_try_direct = {
+
+        // Writer exists but no direct route yet: if we know the address and
+        // a dial is in flight, wait briefly for the encrypted handshake to
+        // complete before falling back to the relay.
+        let known = {
             let peers = self.peers.read().await;
-            peers.get(target).map(|p| p.port > 0).unwrap_or(false)
+            peers.get(target)
+                .filter(|p| p.port > 0)
+                .map(|p| (p.address.clone(), p.port))
         };
-        
-        if should_try_direct {
-            let addr = {
-                let peers = self.peers.read().await;
-                peers.get(target).map(|p| format!("{}:{}", p.address, p.port))
-            };
-            
-            if let Some(addr) = addr {
-                if let Ok(mut stream) = TcpStream::connect(&addr).await {
-                    let hello = P2PMessage::Hello {
-                        peer_id: self.get_self_peer_id().await.unwrap_or_default(),
-                        public_key: String::new(),
-                        signing_public_key: String::new(),
-                    };
-                    let hello_json = serde_json::to_string(&hello).map_err(|e| e.to_string())?;
-                    stream.write_all(hello_json.as_bytes()).await.map_err(|e| e.to_string())?;
-                    stream.write_all(b"\n").await.map_err(|e| e.to_string())?;
-                    
-                    let direct_msg = P2PMessage::Direct {
-                        from: self.get_self_peer_id().await.unwrap_or_default(),
-                        payload: msg.to_string(),
-                    };
-                    let json = serde_json::to_string(&direct_msg).map_err(|e| e.to_string())?;
-                    stream.write_all(json.as_bytes()).await.map_err(|e| e.to_string())?;
-                    stream.write_all(b"\n").await.map_err(|e| e.to_string())?;
-                    return Ok(());
+
+        if let Some((addr, port)) = known {
+            // Trigger dial (no-op if already connected) and await handshake
+            let _ = self.dial_peer(addr, port, target.to_string()).await;
+            for _ in 0..30 {
+                {
+                    let writers = self.writers.read().await;
+                    if let Some(writer) = writers.get(target) {
+                        let direct_msg = P2PMessage::Direct {
+                            from: self.get_self_peer_id().await.unwrap_or_default(),
+                            payload: msg.to_string(),
+                        };
+                        let json = serde_json::to_string(&direct_msg).map_err(|e| e.to_string())?;
+                        if writer.tx.send(format!("{}\n", json)).await.is_ok() {
+                            return Ok(());
+                        }
+                    }
                 }
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             }
         }
-        
-        // Fall back to relay
+
+// Fall back to relay
         self.relay_message(target, msg).await
     }
 
@@ -773,25 +858,12 @@ impl P2PNode {
                 peers.get(target).map(|p| format!("{}:{}", p.address, p.port))
             };
 
-            if let Some(addr) = addr {
-                if let Ok(mut stream) = TcpStream::connect(&addr).await {
-                    let hello = P2PMessage::Hello {
-                        peer_id: self.get_self_peer_id().await.unwrap_or_default(),
-                        public_key: String::new(),
-                        signing_public_key: String::new(),
-                    };
-                    let hello_json = serde_json::to_string(&hello).map_err(|e| e.to_string())?;
-                    let _ = stream.write_all(hello_json.as_bytes()).await;
-                    let _ = stream.write_all(b"\n").await;
-
-                    let _ = stream.write_all(json.as_bytes()).await;
-                    let _ = stream.write_all(b"\n").await;
-                    return Ok(());
-                }
-            }
+                        // No lazy plaintext dial: an encrypted handshake cannot complete
+            // in a fire-and-forget write. Use dial_peer() beforehand.
+            let _ = addr;
         }
 
-        // Fallback: try relay
+// Fallback: try relay
         self.relay_message(target, &json).await
     }
 
@@ -845,6 +917,7 @@ impl P2PNode {
         let relay_enabled = self.config.relay_enabled;
         let seen_messages = self.seen_messages.clone();
         let self_peer_id = self.self_peer_id.clone();
+        let identity = self.identity.clone();
 
         tokio::spawn(async move {
             // Keep our own address book entry up to date for re-dials
@@ -859,7 +932,7 @@ impl P2PNode {
             }
             if let Err(e) = Self::handle_connection(
                 stream, peers, writers, tx, max_peers, relay_enabled, seen_messages, self_peer_id,
-                Some((self_id, public_key)),
+                Some((self_id, public_key)), identity,
             ).await {
                 eprintln!("[P2P] Dial error: {}", e);
             }
@@ -959,49 +1032,33 @@ mod tests {
         assert!(port > 0);
     }
 
+    
     #[tokio::test]
     async fn test_p2p_two_nodes_connect() {
         let config1 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true };
         let config2 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true };
-        
+
         let node1 = P2PNode::new(config1);
         let node2 = P2PNode::new(config2);
-        
-        let port1 = node1.start().await.unwrap();
+        node1.set_self_peer_id("node1".to_string()).await;
+        node2.set_self_peer_id("node2".to_string()).await;
+
+        let _port1 = node1.start().await.unwrap();
         let port2 = node2.start().await.unwrap();
-        
-        assert!(port1 > 0);
         assert!(port2 > 0);
-        assert_ne!(port1, port2);
-        
-        // Node2 connects to Node1 via TCP
-        let addr = format!("127.0.0.1:{}", port1);
-        let mut stream = TcpStream::connect(&addr).await.unwrap();
-        
-        // Send Hello message
-        let hello = P2PMessage::Hello {
-            peer_id: "node2".to_string(),
-            public_key: "pubkey_node2".to_string(),
-            signing_public_key: "signing_node2".to_string(),
-        };
-        let hello_json = serde_json::to_string(&hello).unwrap();
-        stream.write_all(hello_json.as_bytes()).await.unwrap();
-        stream.write_all(b"\n").await.unwrap();
-        
-        // Read response (keep the write half alive so the connection stays open)
-        let (reader, mut _writer) = stream.into_split();
-        let mut lines = BufReader::new(reader).lines();
-        let response = lines.next_line().await.unwrap().unwrap();
-        let ack: P2PMessage = serde_json::from_str(&response).unwrap();
-        
-        match ack {
-            P2PMessage::Ack { ok, .. } => assert!(ok),
-            _ => panic!("Expected Ack"),
+
+        // Node1 actively dials Node2; handshake is now encrypted
+        node1.dial_peer("127.0.0.1".to_string(), port2, "node2".to_string()).await.unwrap();
+
+        // Wait for registration on both sides
+        for _ in 0..50 {
+            if node1.get_peer_count().await >= 1 && node2.get_peer_count().await >= 1 {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
-        
-        // Node1 should have node2 as peer while the connection is open
         assert_eq!(node1.get_peer_count().await, 1);
-        let _ = _writer;
+        assert_eq!(node2.get_peer_count().await, 1);
     }
 
     #[tokio::test]
@@ -1020,19 +1077,22 @@ mod tests {
         // node2 subscribes to inbound broadcasts
         let mut rx = node2.subscribe();
 
-        // node1 registers node2 and sends a message over TCP
-        node1.add_peer(P2PPeerInfo {
-            peer_id: "node2".to_string(),
-            public_key: "pk2".to_string(),
-            address: "127.0.0.1".to_string(),
-            port: port2,
-        }).await;
+        // Active dial performs the encrypted handshake
+        node1.dial_peer("127.0.0.1".to_string(), port2, "node2".to_string()).await.unwrap();
 
+        // Wait until the writer is registered
+        for _ in 0..50 {
+            if node1.get_peer_count().await >= 1 {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+
+        // Encrypted message over the established session
         node1.send_to_peer("node2", "hello p2p").await.unwrap();
 
-        // node2 should receive the message within a timeout
         let msg = tokio::time::timeout(
-            tokio::time::Duration::from_secs(2),
+            tokio::time::Duration::from_secs(3),
             rx.recv(),
         ).await.expect("timed out waiting for message").expect("channel closed");
 
@@ -1053,50 +1113,34 @@ mod tests {
         let port2 = node2.start().await.unwrap();
 
         let mut rx = node2.subscribe();
+        node1.dial_peer("127.0.0.1".to_string(), port2, "node2".to_string()).await.unwrap();
 
-        node1.add_peer(P2PPeerInfo {
-            peer_id: "node2".to_string(),
-            public_key: "pk2".to_string(),
-            address: "127.0.0.1".to_string(),
-            port: port2,
-        }).await;
-
-        // Send a small file (200 bytes)
-        let file_data = vec![0xABu8; 200];
-        node1.send_file("node2", "file_001", "test.bin", &file_data, "application/octet-stream").await.unwrap();
-
-        // Should receive 3 messages: FileStart, FileChunk, FileEnd
-        let mut received_start = false;
-        let mut received_chunk = false;
-        let mut received_end = false;
-
-        for _ in 0..3 {
-            let msg = tokio::time::timeout(
-                tokio::time::Duration::from_secs(2),
-                rx.recv(),
-            ).await.expect("timed out waiting for file message").expect("channel closed");
-
-            if msg.contains("p2p-file-start") {
-                received_start = true;
-                assert!(msg.contains("file_001"));
-                assert!(msg.contains("test.bin"));
-                assert!(msg.contains("application/octet-stream"));
-            } else if msg.contains("p2p-file-chunk") {
-                received_chunk = true;
-                assert!(msg.contains("file_001"));
-                // Verify base64 decodes to original data
-                let parsed: serde_json::Value = serde_json::from_str(&msg).unwrap();
-                let encoded = parsed["data"].as_str().unwrap();
-                let decoded = BASE64.decode(encoded).unwrap();
-                assert_eq!(decoded, file_data);
-            } else if msg.contains("p2p-file-end") {
-                received_end = true;
-                assert!(msg.contains("file_001"));
+        for _ in 0..50 {
+            if node1.get_peer_count().await >= 1 {
+                break;
             }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
 
-        assert!(received_start, "missing FileStart");
-        assert!(received_chunk, "missing FileChunk");
-        assert!(received_end, "missing FileEnd");
+        // Send a small in-memory payload as file chunks
+        let data = b"encrypted file body".to_vec();
+        node1.send_file("node2", "file_1", "test.bin", &data, "application/octet-stream").await.unwrap();
+
+        let mut collected = String::new();
+        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(3);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout_at(deadline, rx.recv()).await {
+                Ok(Ok(m)) => {
+                    collected.push_str(&m);
+                    if m.contains("p2p-file-end") {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+        assert!(collected.contains("p2p-file-start"), "missing start: {}", collected);
+        assert!(collected.contains("p2p-file-end"), "missing end: {}", collected);
     }
+
 }

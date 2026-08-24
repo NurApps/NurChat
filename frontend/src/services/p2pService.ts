@@ -49,7 +49,12 @@ export async function initP2P(): Promise<number> {
     const { invoke } = await import("@tauri-apps/api/core")
     const keys = await loadKeys()
     const peerId = keys?.publicKeyHex
-    myPort = await invoke<number>("init_p2p", { listenPort: 0, peerId })
+    // Deterministic transport identity: ECDH handshake key == identity key
+    myPort = await invoke<number>("init_p2p", {
+      listenPort: 0,
+      peerId,
+      identitySecretHex: keys?.privateKeyHex || null,
+    })
     initialized = true
     return myPort
   } catch {

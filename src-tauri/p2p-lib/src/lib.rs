@@ -31,6 +31,11 @@ pub struct P2PConfig {
     pub listen_port: u16,
     pub max_peers: usize,
     pub relay_enabled: bool,
+    /// Deterministic transport identity: the user's X25519 identity secret.
+    /// When set, ecdh_pub == peer identity public key, cryptographically
+    /// binding the encrypted channel to the user's well-known key
+    /// (anti-MITM: only the identity holder completes the handshake).
+    pub identity_secret: Option<[u8; 32]>,
 }
 
 impl Default for P2PConfig {
@@ -39,6 +44,7 @@ impl Default for P2PConfig {
             listen_port: 0,
             max_peers: 50,
             relay_enabled: true,
+            identity_secret: None,
         }
     }
 }
@@ -174,8 +180,12 @@ pub struct P2PNode {
 }
 
 impl P2PNode {
-    pub fn new(config: P2PConfig) ->     Self {
+    pub fn new(config: P2PConfig) -> Self {
         let (tx, _) = broadcast::channel(256);
+        let identity = match config.identity_secret {
+            Some(secret) => TransportIdentity::from_secret(secret),
+            None => TransportIdentity::generate(),
+        };
         Self {
             peers: Arc::new(RwLock::new(HashMap::new())),
             writers: Arc::new(RwLock::new(HashMap::new())),
@@ -184,7 +194,7 @@ impl P2PNode {
             listener_port: Arc::new(RwLock::new(0)),
             self_peer_id: Arc::new(RwLock::new(None)),
             seen_messages: Arc::new(RwLock::new(HashMap::new())),
-            identity: Arc::new(TransportIdentity::generate()),
+            identity: Arc::new(identity),
         }
     }
 
@@ -385,6 +395,11 @@ impl P2PNode {
         }
 
         let register_from_ack = outbound_hello.is_some();
+        // For anti-MITM binding on the initiator side: the identity key we
+        // EXPECT the responder to present (from invite link / address book).
+        let expected_remote_key: Option<String> = outbound_hello
+            .as_ref()
+            .and_then(|(_, pk)| (pk.len() == 64).then(|| pk.clone()));
 
         while let Some(raw_line) = lines.next_line().await? {
             if raw_line.is_empty() {
@@ -422,6 +437,22 @@ impl P2PNode {
                     // Establish the encrypted session BEFORE replying so the
                     // Ack itself travels in the clear but everything after it
                     // is protected.
+                    //
+                    // Anti-MITM binding: when the peer identifies itself by a
+                    // well-known X25519 public key (64 hex chars — the norm
+                    // for real clients whose peer_id IS the identity key),
+                    // the handshake ECDH key MUST match that identity. Only
+                    // the holder of the identity secret can complete the
+                    // handshake under that identity.
+                    if pid.len() == 64 && !ecdh_pub.is_empty() {
+                        let claimed = crypto::hex_decode(&pid)
+                            .map_err(|_| "invalid identity key".to_string())?;
+                        let presented = crypto::hex_decode(&ecdh_pub)?;
+                        if claimed != presented {
+                            eprintln!("[P2P] REJECTED: ECDH key mismatch for {}", &pid[..16]);
+                            return Err("identity/ecdh binding failed".into());
+                        }
+                    }
                     let their_ecdh = crypto::hex_decode(&ecdh_pub)?;
                     let crypto_session =
                         crypto::from_handshake(&identity, &their_ecdh, false)?;
@@ -647,6 +678,21 @@ impl P2PNode {
 
                         // Establish the encrypted session using the responder's
                         // transport key from the Ack.
+                        //
+                        // Anti-MITM binding (initiator side): we dialed a peer
+                        // whose identity key we KNOW (invite link / address
+                        // book). The Ack's ECDH key must match that expected
+                        // identity, otherwise reject.
+                        if let Some(expected_key) = &expected_remote_key {
+                            if !ack_ecdh.is_empty() {
+                                let expected = crypto::hex_decode(expected_key)?;
+                                let presented = crypto::hex_decode(&ack_ecdh)?;
+                                if expected != presented {
+                                    eprintln!("[P2P] REJECTED: Ack ECDH mismatch for {}", &expected_key[..16]);
+                                    return Err("identity/ecdh binding failed".into());
+                                }
+                            }
+                        }
                         let their_ecdh = crypto::hex_decode(&ack_ecdh)?;
                         let crypto_session =
                             crypto::from_handshake(&identity, &their_ecdh, true)?;
@@ -992,6 +1038,7 @@ mod tests {
             listen_port: 0,
             max_peers: 10,
             relay_enabled: true,
+            identity_secret: None,
         };
         let node = P2PNode::new(config);
         assert_eq!(node.get_peer_count().await, 0);
@@ -1022,6 +1069,7 @@ mod tests {
             listen_port: 0,
             max_peers: 2,
             relay_enabled: false,
+            identity_secret: None,
         };
         let node = P2PNode::new(config);
 
@@ -1048,8 +1096,8 @@ mod tests {
     
     #[tokio::test]
     async fn test_p2p_two_nodes_connect() {
-        let config1 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true };
-        let config2 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true };
+        let config1 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true, identity_secret: None };
+        let config2 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true, identity_secret: None };
 
         let node1 = P2PNode::new(config1);
         let node2 = P2PNode::new(config2);
@@ -1076,8 +1124,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_p2p_message_exchange() {
-        let config1 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true };
-        let config2 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true };
+        let config1 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true, identity_secret: None };
+        let config2 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true, identity_secret: None };
 
         let node1 = P2PNode::new(config1);
         let node2 = P2PNode::new(config2);
@@ -1114,8 +1162,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_p2p_file_transfer() {
-        let config1 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true };
-        let config2 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true };
+        let config1 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true, identity_secret: None };
+        let config2 = P2PConfig { listen_port: 0, max_peers: 10, relay_enabled: true, identity_secret: None };
 
         let node1 = P2PNode::new(config1);
         let node2 = P2PNode::new(config2);

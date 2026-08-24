@@ -136,9 +136,20 @@ fn p2p_get_invite_link(_state: State<'_, AppState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn init_p2p(app: tauri::AppHandle, state: State<'_, AppState>, listen_port: Option<u16>, peer_id: Option<String>) -> Result<u16, String> {
+async fn init_p2p(app: tauri::AppHandle, state: State<'_, AppState>, listen_port: Option<u16>, peer_id: Option<String>, identity_secret_hex: Option<String>) -> Result<u16, String> {
+    // Deterministic transport identity from the user's X25519 secret:
+    // ecdh_pub == peer identity key => MITM-proof handshake binding.
+    let identity_secret = identity_secret_hex.and_then(|hex| {
+        if hex.len() != 64 { return None; }
+        let mut buf = [0u8; 32];
+        (0..32).for_each(|i| {
+            buf[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).unwrap_or(0);
+        });
+        Some(buf)
+    });
     let config = P2PConfig {
         listen_port: listen_port.unwrap_or(0),
+        identity_secret,
         ..Default::default()
     };
     let node = P2PNode::new(config);

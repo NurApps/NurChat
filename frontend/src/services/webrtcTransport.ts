@@ -85,6 +85,7 @@ export class WebRTCTransport {
   private _globalMessageHandler: ((msg: RTCMessage) => void) | null = null
   private _globalFileHandler: ((msg: RTCMessage) => void) | null = null
   private _unlisteners: (() => void)[] = []
+  private negotiationState = new Map<string, { polite: boolean; makingOffer: boolean; ignoreOffer: boolean }>()
 
   get connectedPeers(): ReadonlySet<string> {
     return this._connectedPeers
@@ -138,14 +139,38 @@ export class WebRTCTransport {
     } catch {}
   }
 
-  async connectToPeer(remotePeerId: string): Promise<void> {
-    if (this.pcs.has(remotePeerId)) return
-
+  private createPeerConnection(remotePeerId: string): RTCPeerConnection {
     const iceServers = customIceServers || DEFAULT_ICE_SERVERS
     const pc = new RTCPeerConnection({ iceServers })
 
-    const dc = pc.createDataChannel("messages", { ordered: true })
-    this.setupDataChannel(remotePeerId, dc)
+    // Perfect negotiation: polite side rolls back on offer collisions,
+    // impolite side ignores the incoming offer. Deterministic per pair.
+    const polite = this.myPeerId < remotePeerId
+    const neg = {
+      polite,
+      makingOffer: false,
+      ignoreOffer: false,
+    }
+    this.negotiationState.set(remotePeerId, neg)
+
+    pc.onnegotiationneeded = async () => {
+      try {
+        neg.makingOffer = true
+        await pc.setLocalDescription()
+        if (this.signalingWs?.readyState === WebSocket.OPEN && pc.localDescription) {
+          this.signalingWs.send(JSON.stringify({
+            type: "offer",
+            from: this.myPeerId,
+            to: remotePeerId,
+            sdp: pc.localDescription,
+          }))
+        }
+      } catch (e) {
+        console.warn("[WebRTC] negotiation error:", e)
+      } finally {
+        neg.makingOffer = false
+      }
+    }
 
     pc.onicecandidate = (e) => {
       if (e.candidate && this.signalingWs?.readyState === WebSocket.OPEN) {
@@ -169,18 +194,19 @@ export class WebRTCTransport {
     }
 
     this.pcs.set(remotePeerId, pc)
+    return pc
+  }
 
-    const offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)
+  async connectToPeer(remotePeerId: string): Promise<void> {
+    if (this.pcs.has(remotePeerId)) return
 
-    if (this.signalingWs?.readyState === WebSocket.OPEN) {
-      this.signalingWs.send(JSON.stringify({
-        type: "offer",
-        from: this.myPeerId,
-        to: remotePeerId,
-        sdp: offer,
-      }))
-    }
+    const pc = this.createPeerConnection(remotePeerId)
+
+    const dc = pc.createDataChannel("messages", { ordered: true })
+    this.setupDataChannel(remotePeerId, dc)
+
+    // Initial offer fires via onnegotiationneeded automatically after
+    // createDataChannel — no manual createOffer needed here.
   }
 
   private setupDataChannel(peerId: string, dc: RTCDataChannel): void {
@@ -215,33 +241,25 @@ export class WebRTCTransport {
     const from = data.from as string
 
     if (type === "offer") {
-      const iceServers = customIceServers || DEFAULT_ICE_SERVERS
-      const pc = new RTCPeerConnection({ iceServers })
+      let pc = this.pcs.get(from)
+      const neg = this.negotiationState.get(from)
 
-      const dc = pc.createDataChannel("messages", { ordered: true })
-      this.setupDataChannel(from, dc)
-
-      pc.onicecandidate = (e) => {
-        if (e.candidate && this.signalingWs?.readyState === WebSocket.OPEN) {
-          this.signalingWs.send(JSON.stringify({
-            type: "ice-candidate",
-            from: this.myPeerId,
-            to: from,
-            candidate: e.candidate.toJSON(),
-          }))
-        }
+      // Offer collision: an offer arrives while we are making our own
+      // (signalingState !== stable). Impolite peer ignores it; polite peer
+      // rolls back implicitly via setRemoteDescription.
+      const collision = pc && (neg?.makingOffer || pc.signalingState !== "stable")
+      neg!.ignoreOffer = !neg!.polite && !!collision
+      if (neg!.ignoreOffer) {
+        console.info("[WebRTC] Ignoring offer collision (impolite)")
+        return
       }
 
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "connected") {
-          this._connectedPeers.add(from)
-        } else if (pc.connectionState === "failed") {
-          this._connectedPeers.delete(from)
-          this.cleanupPeer(from)
-        }
+      if (!pc) {
+        pc = this.createPeerConnection(from)
+        const dc = pc.createDataChannel("messages", { ordered: true })
+        this.setupDataChannel(from, dc)
       }
 
-      this.pcs.set(from, pc)
       await pc.setRemoteDescription(data.sdp as RTCSessionDescriptionInit)
 
       const answer = await pc.createAnswer()
@@ -255,13 +273,25 @@ export class WebRTCTransport {
       }))
     } else if (type === "answer") {
       const pc = this.pcs.get(from)
-      if (pc) {
-        await pc.setRemoteDescription(data.sdp as RTCSessionDescriptionInit)
+      if (!pc) return
+      const neg = this.negotiationState.get(from)
+      // Answer to a rolled-back offer — ignore stale answers
+      if (pc.signalingState === "have-remote-offer" || pc.signalingState === "stable") {
+        try {
+          await pc.setRemoteDescription(data.sdp as RTCSessionDescriptionInit)
+        } catch (e) {
+          if (!neg?.ignoreOffer) throw e
+        }
       }
     } else if (type === "ice-candidate") {
       const pc = this.pcs.get(from)
-      if (pc && data.candidate) {
+      const neg = this.negotiationState.get(from)
+      if (!pc || !data.candidate) return
+      try {
         await pc.addIceCandidate(data.candidate as RTCIceCandidateInit)
+      } catch (e) {
+        // Candidates can arrive before the remote description during glare
+        if (!neg?.ignoreOffer) console.warn("[WebRTC] addIceCandidate failed:", e)
       }
     }
   }
@@ -307,5 +337,6 @@ export class WebRTCTransport {
     }
     this.channels.delete(peerId)
     this.messageHandlers.delete(peerId)
+    this.negotiationState.delete(peerId)
   }
 }

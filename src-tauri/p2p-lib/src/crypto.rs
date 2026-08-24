@@ -29,6 +29,11 @@ impl TransportIdentity {
     pub fn generate() -> Self {
         let mut bytes = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut bytes);
+        Self::from_secret(bytes)
+    }
+
+    /// Deterministic identity from the user's X25519 secret key.
+    pub fn from_secret(bytes: [u8; 32]) -> Self {
         let secret = StaticSecret::from(bytes);
         let public = XPublicKey::from(&secret);
         Self { secret, public }

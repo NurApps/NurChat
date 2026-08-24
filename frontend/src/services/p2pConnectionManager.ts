@@ -64,6 +64,12 @@ export class P2PConnectionManager {
   async connect(peerId: string, peerAddress: string, peerPort: number, peerNatType?: NatType): Promise<void> {
     if (this.peers.has(peerId)) return
 
+    // Non-LAN: exchange public endpoints via signaling so the hole punch
+    // has real targets (both sides are usually behind routers).
+    if (!this.isLAN(peerAddress) && isTauri()) {
+      await this.exchangeNatInfo(peerId)
+    }
+
     const transport = this.selectTransport(peerAddress, peerNatType)
 
     if (transport === "webrtc" || !isTauri()) {
@@ -93,30 +99,33 @@ export class P2PConnectionManager {
         natType: peerNatType,
       })
     } catch (e) {
-      // Direct TCP failed — try a NAT hole punch (works when the remote has
-      // a reachable public endpoint, e.g. via UPnP or full-cone NAT) before
-      // falling back to WebRTC.
-      if (isTauri() && !this.isLAN(peerAddress)) {
-        try {
-          const { invoke } = await import("@tauri-apps/api/core")
-          const method = await invoke<string>("p2p_hole_punch", {
-            localPort: 0,
-            remotePublicIp: peerAddress,
-            remotePublicPort: peerPort,
-            remotePeerId: peerId,
-            remoteNatType: peerNatType || "unknown",
-          })
-          console.info("[P2P Manager] Hole punch succeeded via", method)
-          this.peers.set(peerId, {
-            peerId,
-            transport: "wan-tcp",
-            address: peerAddress,
-            port: peerPort,
-            natType: peerNatType,
-          })
-          return
-        } catch (e1) {
-          console.warn("[P2P Manager] Hole punch failed:", e1)
+      // Direct TCP failed — for WAN peers try, in order:
+      // 1. hole punch to the peer's PUBLIC endpoint (learned via signaling)
+      // 2. WebRTC fallback
+      if (!this.isLAN(peerAddress) && isTauri()) {
+        const pubEp = await this.waitForPeerEndpoint(peerId, 5000)
+        if (pubEp && pubEp.public_ip && pubEp.public_port > 0) {
+          try {
+            const { invoke } = await import("@tauri-apps/api/core")
+            const method = await invoke<string>("p2p_hole_punch", {
+              localPort: 0,
+              remotePublicIp: pubEp.public_ip,
+              remotePublicPort: pubEp.public_port,
+              remotePeerId: peerId,
+              remoteNatType: pubEp.nat_type || peerNatType || "unknown",
+            })
+            console.info("[P2P Manager] Hole punch succeeded via", method)
+            this.peers.set(peerId, {
+              peerId,
+              transport: "wan-tcp",
+              address: pubEp.public_ip,
+              port: pubEp.public_port,
+              natType: (pubEp.nat_type as NatType) || peerNatType,
+            })
+            return
+          } catch (e1) {
+            console.warn("[P2P Manager] Hole punch failed:", e1)
+          }
         }
       }
       console.warn(`[P2P Manager] ${transport} failed, trying WebRTC:`, e)
@@ -133,6 +142,81 @@ export class P2PConnectionManager {
         console.warn("[P2P Manager] All transports failed:", e2)
       }
     }
+  }
+
+  /**
+   * NAT endpoint exchange over the signaling channel:
+   * send our public endpoint and start listening for the peer's one.
+   * Both sides do this simultaneously on connect.
+   */
+  private peerEndpoints = new Map<string, { public_ip: string; public_port: number; nat_type: string }>()
+  private endpointWaiters = new Map<string, ((ep: { public_ip: string; public_port: number; nat_type: string } | null) => void)[]>()
+  private controlHooked = false
+
+  private async exchangeNatInfo(peerId: string): Promise<void> {
+    if (!this.natInfo || !this.myPeerId) return
+
+    if (!this.controlHooked) {
+      this.controlHooked = true
+      this.webrtc.onControl((msg) => {
+        if (msg.type !== "nat-info" || !msg.from) return
+        const ep = {
+          public_ip: String(msg.public_ip || ""),
+          public_port: Number(msg.public_port || 0),
+          nat_type: String(msg.nat_type || "unknown"),
+        }
+        this.peerEndpoints.set(String(msg.from), ep)
+        // Reverse attempt: while the initiator punches toward us, we punch
+        // back simultaneously — required for two restricted-cone routers.
+        if (!this.peers.has(String(msg.from)) && ep.public_ip && ep.public_port > 0 && isTauri()) {
+          import("@tauri-apps/api/core").then(({ invoke }) =>
+            invoke("p2p_hole_punch", {
+              localPort: 0,
+              remotePublicIp: ep.public_ip,
+              remotePublicPort: ep.public_port,
+              remotePeerId: msg.from,
+              remoteNatType: ep.nat_type,
+            }).then((m) => console.info("[P2P Manager] Reverse punch via", m))
+              .catch(() => {}),
+          )
+        }
+        const waiters = this.endpointWaiters.get(String(msg.from)) || []
+        this.endpointWaiters.delete(String(msg.from))
+        waiters.forEach((w) => w(ep))
+      })
+    }
+
+    const sent = this.webrtc.sendControl(peerId, {
+      type: "nat-info",
+      nat_type: this.natInfo.nat_type,
+      public_ip: this.natInfo.public_ip,
+      public_port: this.natInfo.public_port,
+      local_ip: this.natInfo.local_ip,
+      local_port: this.natInfo.local_port,
+    })
+    if (!sent) console.warn("[P2P Manager] signaling not open — NAT exchange skipped")
+  }
+
+  private waitForPeerEndpoint(
+    peerId: string,
+    timeoutMs: number,
+  ): Promise<{ public_ip: string; public_port: number; nat_type: string } | null> {
+    const cached = this.peerEndpoints.get(peerId)
+    if (cached) return Promise.resolve(cached)
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        const list = this.endpointWaiters.get(peerId) || []
+        this.endpointWaiters.set(peerId, list.filter((w) => w !== wrapped))
+        resolve(null)
+      }, timeoutMs)
+      const wrapped = (ep: { public_ip: string; public_port: number; nat_type: string } | null) => {
+        clearTimeout(timer)
+        resolve(ep)
+      }
+      const list = this.endpointWaiters.get(peerId) || []
+      list.push(wrapped)
+      this.endpointWaiters.set(peerId, list)
+    })
   }
 
   private selectTransport(address: string, peerNatType?: NatType): TransportType {

@@ -11,11 +11,18 @@ class SignalingManager:
     Forwards messages between peers. Supports buffering for offline targets.
 
     Message format (frontend → server):
-        {"type": "offer"|"answer"|"ice-candidate", "to": "<peer_id>", ...}
+        {"type": "offer"|"answer"|"ice-candidate"|"nat-info"|"punch-request", "to": "<peer_id>", ...}
 
     Message format (server → frontend):
         {"type": "<same>", "from": "<sender_id>", ...}
     """
+
+    # Fields forwarded alongside the envelope (SDP, ICE, NAT endpoints, ...)
+    FORWARDED_FIELDS = (
+        "sdp", "candidate", "data",
+        "nat_type", "public_ip", "public_port", "local_ip", "local_port",
+        "reason",
+    )
 
     def __init__(self):
         self.connections: dict[str, WebSocket] = {}
@@ -54,8 +61,8 @@ class SignalingManager:
                     "type": msg_type,
                     "from": user_id,
                 }
-                # Copy relevant fields (sdp, candidate, etc.)
-                for key in ("sdp", "candidate", "data"):
+                # Copy relevant fields (sdp, candidate, nat endpoints, etc.)
+                for key in self.FORWARDED_FIELDS:
                     if key in data:
                         forward[key] = data[key]
 

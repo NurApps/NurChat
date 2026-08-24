@@ -86,6 +86,7 @@ export class WebRTCTransport {
   private _globalFileHandler: ((msg: RTCMessage) => void) | null = null
   private _unlisteners: (() => void)[] = []
   private negotiationState = new Map<string, { polite: boolean; makingOffer: boolean; ignoreOffer: boolean }>()
+  private _controlHandler: ((msg: Record<string, unknown>) => void) | null = null
 
   get connectedPeers(): ReadonlySet<string> {
     return this._connectedPeers
@@ -293,7 +294,24 @@ export class WebRTCTransport {
         // Candidates can arrive before the remote description during glare
         if (!neg?.ignoreOffer) console.warn("[WebRTC] addIceCandidate failed:", e)
       }
+    } else if (type === "nat-info" || type === "punch-request") {
+      // Control-plane messages for NAT traversal coordination
+      this._controlHandler?.(data)
     }
+  }
+
+  /**
+   * Send a control-plane message over the signaling channel
+   * (used for NAT endpoint exchange and punch coordination).
+   */
+  sendControl(to: string, payload: Record<string, unknown>): boolean {
+    if (this.signalingWs?.readyState !== WebSocket.OPEN) return false
+    this.signalingWs.send(JSON.stringify({ from: this.myPeerId, to, ...payload }))
+    return true
+  }
+
+  onControl(handler: ((msg: Record<string, unknown>) => void) | null): void {
+    this._controlHandler = handler
   }
 
   async sendMessage(targetPeerId: string, msg: RTCMessage): Promise<void> {

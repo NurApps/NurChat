@@ -1,0 +1,30 @@
+# Production overlay: публичный relay с авто-HTTPS.
+# Использование:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Требуется: домен relay.nurchat.app -> A-запись на IP сервера.
+# Caddy сам получает и продлевает TLS-сертификат.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    networks:
+      - nurchat-network
+    depends_on:
+      - nurchat
+
+  nurchat:
+    # Не публикуем 8000 наружу — трафик идёт через Caddy
+    ports: []
+
+volumes:
+  caddy_data:
+  caddy_config:

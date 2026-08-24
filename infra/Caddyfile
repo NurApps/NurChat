@@ -1,0 +1,14 @@
+# Публичный relay NurChat — замени домен при необходимости
+relay.nurchat.app {
+	reverse_proxy nurchat:8000
+
+	# WebSocket'ы проксируются автоматически; повышенные лимиты для медиа
+	request_body {
+		max_size 100MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+	}
+}

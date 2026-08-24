@@ -428,7 +428,7 @@ export default function LoginPage() {
 
         <div className="login-links">
           <div className="links-row secondary">
-            <span style={{ fontSize: 12, opacity: 0.7 }}>Relay: {BASE_URL}</span>
+                        <span style={{ fontSize: 12, opacity: 0.7 }}>Транспорт: {BASE_URL}</span>
           </div>
         </div>
       </div>

@@ -197,6 +197,12 @@ pub async fn detect_nat(stun_servers: &[&str]) -> Result<NatInfo, String> {
             return Ok(cached.clone());
         }
     }
+    let result = detect_nat_uncached(stun_servers).await?;
+    unsafe { CACHED_NAT = Some(result.clone()); }
+    Ok(result)
+}
+
+async fn detect_nat_uncached(stun_servers: &[&str]) -> Result<NatInfo, String> {
 
     if stun_servers.is_empty() {
         return Err("No STUN servers provided".to_string());
@@ -309,11 +315,6 @@ pub async fn detect_nat(stun_servers: &[&str]) -> Result<NatInfo, String> {
         local_ip,
         local_port,
     };
-
-    // Cache the result
-    unsafe {
-        CACHED_NAT = Some(result.clone());
-    }
 
     Ok(result)
 }

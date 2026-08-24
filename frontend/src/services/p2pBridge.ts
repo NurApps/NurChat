@@ -70,6 +70,10 @@ const peerToUser = new Map<string, string>()
 const userToPeer = new Map<string, string>()
 const connectedPeers = new Set<string>()
 const messageQueue = new Map<string, string[]>()
+// Messages from peers whose user_id is not yet resolved are held here
+// while we resolve asynchronously instead of being dropped silently.
+const pendingFromUnresolved = new Map<string, Array<{ payload: string }>>()
+const resolvingPeers = new Set<string>()
 
 const KNOWN_PEERS_KEY = "p2p_known_peers"
 
@@ -125,6 +129,71 @@ export function registerPeer(userId: string, publicKeyHex: string) {
   userToPeer.set(userId, publicKeyHex)
 }
 
+/**
+ * Resolve a peer public key to a user_id asynchronously.
+ * Order: in-memory map -> known peers (localStorage) -> relay user search.
+ * Queued messages for the peer are flushed once resolved.
+ */
+async function resolveSenderUserId(peerId: string): Promise<string | null> {
+  const known = peerToUser.get(peerId)
+  if (known) return known
+
+  if (resolvingPeers.has(peerId)) return null
+  resolvingPeers.add(peerId)
+  try {
+    // 1. Known peers persisted from previous invite connections
+    for (const p of loadKnownPeers()) {
+      if (p.publicKey && p.publicKey.toLowerCase() === peerId.toLowerCase()) {
+        registerPeer(p.userId, p.publicKey)
+        return p.userId
+      }
+    }
+
+    // 2. Relay lookup by public key among all users
+    try {
+      const { api } = await import("./api")
+      const users = await api.getAllUsers()
+      const match = users.find((u) => (u.public_key || "").toLowerCase() === peerId.toLowerCase())
+      if (match) {
+        registerPeer(match.id, match.public_key || peerId)
+        return match.id
+      }
+    } catch { /* relay unavailable — stay unresolved */ }
+
+    return null
+  } finally {
+    resolvingPeers.delete(peerId)
+    const pending = pendingFromUnresolved.get(peerId)
+    if (pending) {
+      pendingFromUnresolved.delete(peerId)
+      const userId = peerToUser.get(peerId)
+      if (userId) {
+        for (const m of pending) _emitChatMessage(userId, m.payload)
+      }
+    }
+  }
+}
+
+function _emitChatMessage(senderUserId: string, payloadRaw: string) {
+  try {
+    const parsed = JSON.parse(payloadRaw)
+    if (parsed.type === "chat_message") {
+      emit({
+        type: "message_received",
+        data: {
+          sender_id: senderUserId,
+          content: parsed.content || "",
+          message_id: parsed.message_id,
+        },
+      })
+      return
+    }
+    emit({ type: "message_received", data: { sender_id: senderUserId, content: payloadRaw } })
+  } catch {
+    emit({ type: "message_received", data: { sender_id: senderUserId, content: payloadRaw } })
+  }
+}
+
 export function getPeerId(userId: string): string | undefined {
   return userToPeer.get(userId)
 }
@@ -170,8 +239,16 @@ export async function initP2PBridge(): Promise<void> {
 
   // Subscribe to inbound TCP text messages (from Rust p2p-lib)
   unlistenP2P = await onP2PMessage(async (msg) => {
-    const senderUserId = peerToUser.get(msg.from)
-    if (!senderUserId) return
+    let senderUserId = peerToUser.get(msg.from)
+    if (!senderUserId) {
+      // Hold the message and resolve the peer identity asynchronously
+      // (known peers -> relay lookup). Nothing is dropped silently.
+      const queue = pendingFromUnresolved.get(msg.from) || []
+      queue.push({ payload: msg.payload })
+      pendingFromUnresolved.set(msg.from, queue)
+      void resolveSenderUserId(msg.from)
+      return
+    }
 
     try {
       const parsed = JSON.parse(msg.payload)
@@ -199,38 +276,56 @@ export async function initP2PBridge(): Promise<void> {
   // Subscribe to WebRTC messages via connection manager
   connectionManager.onMessage((msg) => {
     const senderUserId = peerToUser.get(msg.from)
-    if (!senderUserId) return
-
-    try {
-      const parsed = JSON.parse(msg.payload)
-      if (parsed.type === "chat_message") {
-        emit({
-          type: "message_received",
-          data: {
-            sender_id: senderUserId,
-            content: parsed.content || "",
-            message_id: parsed.message_id,
-          },
-        })
-      }
-    } catch {
-      emit({
-        type: "message_received",
-        data: {
-          sender_id: senderUserId,
-          content: msg.payload,
-        },
-      })
+    if (!senderUserId) {
+      const queue = pendingFromUnresolved.get(msg.from) || []
+      queue.push({ payload: msg.payload })
+      pendingFromUnresolved.set(msg.from, queue)
+      void resolveSenderUserId(msg.from)
+      return
     }
+    _emitChatMessage(senderUserId, msg.payload)
   })
 
   // Subscribe to inbound TCP file and group events
   unlistenFile = onP2PFileEvent((payload) => {
     const type = payload.type as string
     const from = payload.from as string
-    const senderUserId = peerToUser.get(from)
-    if (!senderUserId) return
+    let senderUserId = peerToUser.get(from)
+    if (!senderUserId) {
+      // Resolve identity first; re-dispatch this event afterwards
+      void resolveSenderUserId(from).then((uid) => {
+        if (uid) _handleFileEvent(type, from, uid, payload)
+      })
+      return
+    }
+    _handleFileEvent(type, from, senderUserId, payload)
+  })
 
+  // Subscribe to WebRTC file events
+  connectionManager.onFileEvent((payload) => {
+    const type = payload.type as string
+    const from = payload.from as string
+    let senderUserId = peerToUser.get(from)
+    if (!senderUserId) {
+      void resolveSenderUserId(from).then((uid) => {
+        if (uid) _handleFileEvent(type, from, uid, payload)
+      })
+      return
+    }
+    _handleFileEvent(type, from, senderUserId, payload)
+  })
+
+  // Auto-reconnect to known peers
+  _autoConnectKnownPeers()
+
+  // Initialize call signaling listener
+  initCallSignaling()
+
+  // Refresh connected peers list periodically
+  _refreshConnectedPeers()
+}
+
+function _handleFileEvent(type: string, _from: string, senderUserId: string, payload: Record<string, unknown>) {
     if (type === "p2p-group-direct") {
       emit({
         type: "group_received",
@@ -342,81 +437,6 @@ export async function initP2PBridge(): Promise<void> {
         },
       })
     }
-  })
-
-  // Subscribe to WebRTC file events
-  connectionManager.onFileEvent((payload) => {
-    const type = payload.type as string
-    const from = payload.from as string
-    const senderUserId = peerToUser.get(from)
-    if (!senderUserId) return
-
-    if (type === "p2p-file-start") {
-      const fileId = payload.file_id as string
-      incomingFiles.set(fileId, {
-        sender_id: senderUserId,
-        file_id: fileId,
-        file_name: payload.file_name as string,
-        file_size: payload.file_size as number,
-        mime_type: payload.mime_type as string,
-        chunks: new Map(),
-        total_received: 0,
-      })
-    } else if (type === "p2p-file-chunk") {
-      const fileId = payload.file_id as string
-      const file = incomingFiles.get(fileId)
-      if (file) {
-        const offset = payload.offset as number
-        const data = payload.data as string
-        const binaryStr = atob(data)
-        const bytes = new Uint8Array(binaryStr.length)
-        for (let i = 0; i < binaryStr.length; i++) {
-          bytes[i] = binaryStr.charCodeAt(i)
-        }
-        file.chunks.set(offset, bytes)
-        file.total_received += bytes.length
-      }
-    } else if (type === "p2p-file-end") {
-      const fileId = payload.file_id as string
-      const file = incomingFiles.get(fileId)
-      if (file) {
-        const sortedOffsets = [...file.chunks.keys()].sort((a, b) => a - b)
-        const totalSize = sortedOffsets.reduce((sum, off) => sum + (file.chunks.get(off)?.length || 0), 0)
-        const assembled = new Uint8Array(totalSize)
-        let pos = 0
-        for (const offset of sortedOffsets) {
-          const chunk = file.chunks.get(offset)
-          if (chunk) {
-            assembled.set(chunk, pos)
-            pos += chunk.length
-          }
-        }
-
-        emit({
-          type: "file_received",
-          data: {
-            sender_id: senderUserId,
-            file_id: file.file_id,
-            file_name: file.file_name,
-            file_size: file.file_size,
-            mime_type: file.mime_type,
-            file_data: assembled,
-          },
-        })
-
-        incomingFiles.delete(fileId)
-      }
-    }
-  })
-
-  // Auto-reconnect to known peers
-  _autoConnectKnownPeers()
-
-  // Initialize call signaling listener
-  initCallSignaling()
-
-  // Refresh connected peers list periodically
-  _refreshConnectedPeers()
 }
 
 async function _autoConnectKnownPeers(): Promise<void> {

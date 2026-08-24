@@ -51,12 +51,24 @@ export default function P2PPage() {
     try {
       if (parsed.port === 0 || browserMode) {
         const { connectionManager } = await import("../services/p2pConnectionManager")
-        const keys = await loadKeys()
         await connectionManager.connect(parsed.publicKey, parsed.ip, parsed.port)
       } else {
         await connectToPeer(parsed.ip, parsed.port, parsed.publicKey)
       }
-      saveKnownPeer(`peer_${parsed.publicKey.slice(0, 8)}`, parsed.ip, parsed.port, parsed.publicKey)
+      // Persist with the REAL user_id from the invite link
+      // (nurchat://ip:port/USER_ID#key) so peer->user mapping works
+      // across restarts. Fall back to relay lookup by public key.
+      let realUserId = parsed.userId || ""
+      if (!realUserId) {
+        try {
+          const { api } = await import("../services/api")
+          const users = await api.getAllUsers()
+          realUserId = users.find((u) => (u.public_key || "").toLowerCase() === parsed.publicKey.toLowerCase())?.id || ""
+        } catch { /* relay unavailable */ }
+      }
+      const { registerPeer } = await import("../services/p2pBridge")
+      if (realUserId) registerPeer(realUserId, parsed.publicKey)
+      saveKnownPeer(realUserId || `peer_${parsed.publicKey.slice(0, 8)}`, parsed.ip, parsed.port, parsed.publicKey)
       setStatus("connected")
       setConnectedPeer(parsed.publicKey.slice(0, 8) + "...")
       setScanInput("")

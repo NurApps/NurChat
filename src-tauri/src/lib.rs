@@ -35,14 +35,15 @@ async fn p2p_get_port(state: State<'_, AppState>) -> Result<u16, String> {
 async fn p2p_connect_peer(state: State<'_, AppState>, address: String, port: u16, public_key: String) -> Result<(), String> {
     let p2p = state.p2p.read().await;
     let node = p2p.as_ref().ok_or("P2P not initialized")?;
-    let peer = P2PPeerInfo {
+    // Record the address book entry (used for re-dials) AND actively dial:
+    // handshake + writer registration happen in the background.
+    node.add_peer(P2PPeerInfo {
         peer_id: public_key.clone(),
-        public_key,
-        address,
+        public_key: public_key.clone(),
+        address: address.clone(),
         port,
-    };
-    node.add_peer(peer).await;
-    Ok(())
+    }).await;
+    node.dial_peer(address, port, public_key).await
 }
 
 #[tauri::command]

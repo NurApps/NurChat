@@ -137,7 +137,15 @@ pub enum P2PMessage {
         msg_id: String,
         delete_for_all: bool,
     },
-    Ack { ok: bool },
+    Ack {
+        ok: bool,
+        /// Responder identity (outbound handshake): lets the dialing side
+        /// learn the remote peer_id/public_key without a second Hello.
+        #[serde(default)]
+        peer_id: String,
+        #[serde(default)]
+        public_key: String,
+    },
 }
 
 struct PeerWriter {
@@ -196,7 +204,7 @@ impl P2PNode {
                         let seen_messages = seen_messages.clone();
                         let self_peer_id = self_peer_id.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = Self::handle_connection(stream, peers, writers, tx, max_peers, relay_enabled, seen_messages, self_peer_id).await {
+                            if let Err(e) = Self::handle_connection(stream, peers, writers, tx, max_peers, relay_enabled, seen_messages, self_peer_id, None).await {
                                 eprintln!("[P2P] Connection error: {}", e);
                             }
                         });
@@ -289,6 +297,9 @@ impl P2PNode {
         relay_enabled: bool,
         seen_messages: Arc<RwLock<HashMap<String, Instant>>>,
         self_peer_id: Arc<RwLock<Option<String>>>,
+        // Outbound dial: send our Hello first and register the remote side
+        // from its identity-bearing Ack instead of an inbound Hello.
+        outbound_hello: Option<(String, String)>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let (reader, mut writer) = stream.into_split();
         let mut lines = BufReader::new(reader).lines();
@@ -308,6 +319,18 @@ impl P2PNode {
             }
         });
 
+        if let Some((ref hello_peer_id, ref hello_public_key)) = outbound_hello {
+            let hello = P2PMessage::Hello {
+                peer_id: hello_peer_id.clone(),
+                public_key: hello_public_key.clone(),
+                signing_public_key: String::new(),
+            };
+            let json = serde_json::to_string(&hello)?;
+            write_tx.send(format!("{}\n", json)).await.map_err(|e| e.to_string())?;
+        }
+
+        let register_from_ack = outbound_hello.is_some();
+
         while let Some(line) = lines.next_line().await? {
             if line.is_empty() {
                 continue;
@@ -322,7 +345,7 @@ impl P2PNode {
                 P2PMessage::Hello { peer_id: pid, public_key, signing_public_key: _ } => {
                     let current_peers = peers.read().await;
                     if current_peers.len() >= max_peers {
-                        let ack = P2PMessage::Ack { ok: false };
+                        let ack = P2PMessage::Ack { ok: false, peer_id: String::new(), public_key: String::new() };
                         let ack_json = serde_json::to_string(&ack)?;
                         let _ = write_tx.send(format!("{}\n", ack_json)).await;
                         break;
@@ -339,7 +362,7 @@ impl P2PNode {
                     writers.write().await.insert(pid.clone(), PeerWriter { tx: write_tx.clone() });
                     peer_id = Some(pid.clone());
 
-                    let ack = P2PMessage::Ack { ok: true };
+                    let ack = P2PMessage::Ack { ok: true, peer_id: self_peer_id.read().await.clone().unwrap_or_default(), public_key: String::new() };
                     let ack_json = serde_json::to_string(&ack)?;
                     let _ = write_tx.send(format!("{}\n", ack_json)).await;
                     println!("[P2P] Peer connected: {}", pid);
@@ -531,7 +554,27 @@ impl P2PNode {
                     }))?;
                     let _ = tx.send(app_msg);
                 }
-                P2PMessage::Ack { .. } => {}
+                P2PMessage::Ack { ok, peer_id: ack_pid, public_key: ack_pub } => {
+                    // Outbound dial: register the remote side from Ack identity
+                    if register_from_ack && ok && !ack_pid.is_empty() && peer_id.is_none() {
+                        let current_peers = peers.read().await;
+                        if current_peers.len() >= max_peers {
+                            break;
+                        }
+                        drop(current_peers);
+
+                        let info = P2PPeerInfo {
+                            peer_id: ack_pid.clone(),
+                            public_key: ack_pub,
+                            address: "0.0.0.0".to_string(),
+                            port: 0,
+                        };
+                        peers.write().await.insert(ack_pid.clone(), info);
+                        writers.write().await.insert(ack_pid.clone(), PeerWriter { tx: write_tx.clone() });
+                        peer_id = Some(ack_pid.clone());
+                        println!("[P2P] Outbound dial registered: {}", ack_pid);
+                    }
+                }
             }
         }
 
@@ -769,6 +812,63 @@ impl P2PNode {
         self.self_peer_id.read().await.clone()
     }
 
+    /// Actively dial a peer: TCP connect + Hello handshake + writer
+    /// registration. The connection is kept alive in the background so
+    /// subsequent send_to_peer() calls use the existing writer.
+    pub async fn dial_peer(&self, address: String, port: u16, public_key: String) -> Result<(), String> {
+        if port == 0 {
+            return Err("Invalid port".to_string());
+        }
+        let addr = format!("{}:{}", address, port);
+
+        // Already connected?
+        {
+            let writers = self.writers.read().await;
+            if writers.contains_key(&public_key) {
+                return Ok(());
+            }
+        }
+
+        let stream = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            TcpStream::connect(&addr),
+        )
+        .await
+        .map_err(|_| format!("Connect timeout: {}", addr))?
+        .map_err(|e| format!("Connect failed ({}): {}", addr, e))?;
+
+        let self_id = self.get_self_peer_id().await.unwrap_or_default();
+        let peers = self.peers.clone();
+        let writers = self.writers.clone();
+        let tx = self.tx.clone();
+        let max_peers = self.config.max_peers;
+        let relay_enabled = self.config.relay_enabled;
+        let seen_messages = self.seen_messages.clone();
+        let self_peer_id = self.self_peer_id.clone();
+
+        tokio::spawn(async move {
+            // Keep our own address book entry up to date for re-dials
+            {
+                let mut p = peers.write().await;
+                p.entry(public_key.clone()).or_insert(P2PPeerInfo {
+                    peer_id: public_key.clone(),
+                    public_key: public_key.clone(),
+                    address: address.clone(),
+                    port,
+                });
+            }
+            if let Err(e) = Self::handle_connection(
+                stream, peers, writers, tx, max_peers, relay_enabled, seen_messages, self_peer_id,
+                Some((self_id, public_key)),
+            ).await {
+                eprintln!("[P2P] Dial error: {}", e);
+            }
+        });
+
+        println!("[P2P] Dialing {}", addr);
+        Ok(())
+    }
+
     pub async fn add_peer(&self, peer: P2PPeerInfo) {
         let mut peers = self.peers.write().await;
         if peers.len() < self.config.max_peers {
@@ -895,7 +995,7 @@ mod tests {
         let ack: P2PMessage = serde_json::from_str(&response).unwrap();
         
         match ack {
-            P2PMessage::Ack { ok } => assert!(ok),
+            P2PMessage::Ack { ok, .. } => assert!(ok),
             _ => panic!("Expected Ack"),
         }
         

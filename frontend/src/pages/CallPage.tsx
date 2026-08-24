@@ -73,6 +73,8 @@ export default function CallPage() {
   const remoteAudioRef = useRef<HTMLAudioElement>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const ringingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Original camera track saved while screen sharing (restored on stop)
+  const cameraTrackRef = useRef<MediaStreamTrack | null>(null)
   const statusRef = useRef<CallStatus>("connecting")
   const connectedRef = useRef(false)
   const pendingSignalsRef = useRef<{ type: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }[]>([])
@@ -94,6 +96,7 @@ export default function CallPage() {
     }
     wsReconnectRef.current.attempt = 0
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
+    cameraTrackRef.current = null
     pcRef.current?.close()
     wsRef.current?.close()
     localStreamRef.current = null
@@ -578,59 +581,74 @@ export default function CallPage() {
 
   const toggleScreenShare = useCallback(async () => {
     if (!pcRef.current || callType !== "video") return
-    
+
+    // Use replaceTrack() on the existing video sender — this avoids
+    // renegotiation entirely, unlike addTrack()/removeTrack().
+    const videoSender = pcRef.current.getSenders().find((s) => s.track?.kind === "video")
+      ?? pcRef.current.getSenders().find((s) => !s.track)
+
     try {
       if (screenSharing) {
         // Stop screen sharing - restore camera
-        const screenTrack = localStreamRef.current?.getTracks().find(t => t.kind === "video" && t.label.includes("screen"))
+        const cam = cameraTrackRef.current
+        const screenTrack = localStreamRef.current?.getVideoTracks().find((t) => t !== cam)
         if (screenTrack) {
           screenTrack.stop()
           localStreamRef.current?.removeTrack(screenTrack)
-          pcRef.current.getSenders().forEach(sender => {
-            if (sender.track === screenTrack) {
-              pcRef.current?.removeTrack(sender)
-            }
-          })
         }
-        
-        // Re-enable camera track if it exists
-        const cameraTrack = localStreamRef.current?.getTracks().find(t => t.kind === "video" && !t.label.includes("screen"))
-        if (cameraTrack) {
-          cameraTrack.enabled = true
+
+        const cameraTrack = cameraTrackRef.current
+        if (videoSender && cameraTrack && cameraTrack.readyState === "live") {
+          await videoSender.replaceTrack(cameraTrack)
+          localStreamRef.current?.addTrack(cameraTrack)
+        } else if (videoSender) {
+          await videoSender.replaceTrack(null)
         }
-        
+
+        if (localVideoRef.current && localStreamRef.current) {
+          localVideoRef.current.srcObject = new MediaStream(localStreamRef.current.getTracks())
+        }
+
         setScreenSharing(false)
         setCamOn(true)
       } else {
         // Start screen sharing
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: { cursor: "always" } as MediaTrackConstraints, 
-          audio: false 
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: "always" } as MediaTrackConstraints,
+          audio: false,
         })
-        
+
         const screenTrack = screenStream.getVideoTracks()[0]
         if (screenTrack && pcRef.current) {
-          // Disable camera track
-          const cameraTrack = localStreamRef.current?.getVideoTracks()[0]
+          // Remember the original camera track so we can restore it later
+          const cameraTrack = localStreamRef.current?.getVideoTracks().find((t) => !t.label.includes("screen")) || null
+          cameraTrackRef.current = cameraTrack
           if (cameraTrack) {
             cameraTrack.enabled = false
+            localStreamRef.current?.removeTrack(cameraTrack)
           }
-          
-          // Add screen track to peer connection
-          pcRef.current.addTrack(screenTrack, screenStream)
-          
-          // Add to local stream for preview
+
+          // Swap the outgoing video to the screen without renegotiation
+          if (videoSender) {
+            await videoSender.replaceTrack(screenTrack)
+          } else {
+            pcRef.current.addTrack(screenTrack, screenStream)
+          }
+
+          // Local preview shows the screen
           localStreamRef.current?.addTrack(screenTrack)
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = localStreamRef.current
+          if (localVideoRef.current && localStreamRef.current) {
+            localVideoRef.current.srcObject = new MediaStream(localStreamRef.current.getTracks())
           }
-          
+
           screenTrack.onended = () => {
             toggleScreenShare()
           }
-          
+
           setScreenSharing(true)
           setCamOn(false)
+        } else {
+          screenStream.getTracks().forEach((tr) => tr.stop())
         }
       }
     } catch (err) {

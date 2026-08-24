@@ -408,7 +408,8 @@ export default function LoginPage() {
             onClick={tab === "register" ? handleRegister : (awaiting2fa ? handleVerify2fa : handleLogin)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && tab === "login") {
-                awaiting2fa ? handleVerify2fa() : handleLogin()
+                if (awaiting2fa) handleVerify2fa()
+                else handleLogin()
               }
             }}
           >

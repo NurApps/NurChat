@@ -403,13 +403,17 @@ export async function toggleVideo(): Promise<boolean> {
     videoTrack.enabled = !videoTrack.enabled
     return videoTrack.enabled
   }
-  // Add video track if not present
+  // Add video track if not present (requires renegotiation)
   try {
     const videoStream = await navigator.mediaDevices.getUserMedia({ video: true })
     const newVideoTrack = videoStream.getVideoTracks()[0]
-    if (newVideoTrack) {
+    if (newVideoTrack && activeCall) {
       peerConnection.addTrack(newVideoTrack, videoStream)
       if (localStream) localStream.addTrack(newVideoTrack)
+      // addTrack() needs a fresh offer — renegotiate with the peer
+      const offer = await peerConnection.createOffer()
+      await peerConnection.setLocalDescription(offer)
+      await sendSignaling(activeCall.peerPublicKey, activeCall.callId, "offer", JSON.stringify(offer))
       return true
     }
   } catch { /* ignore */ }

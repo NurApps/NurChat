@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest"
 import { generateKeys, saveKeys, setupPreKeys, loadKeys } from "../services/e2e"
 import { api } from "../services/api"
 
-describe("registration flow (live relay)", () => {
+// Живой relay нужен только для этого файла — пропускаем, если он не запущен.
+const relayUp = await fetch("http://127.0.0.1:8000/health").then(() => true).catch(() => false)
+
+describe.skipIf(!relayUp)("registration flow (live relay)", () => {
   it("generateKeys -> register -> saveKeys -> setupPreKeys", async () => {
     const keys = await generateKeys()
     expect(keys.publicKeyHex).toHaveLength(64)

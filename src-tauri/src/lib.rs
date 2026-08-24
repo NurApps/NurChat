@@ -182,6 +182,7 @@ async fn p2p_detect_nat(stun_servers: Option<Vec<String>>) -> Result<nat::NatInf
 
 #[tauri::command]
 async fn p2p_hole_punch(
+    state: State<'_, AppState>,
     local_port: u16,
     remote_public_ip: String,
     remote_public_port: u16,
@@ -207,15 +208,28 @@ async fn p2p_hole_punch(
     let puncher = HolePuncher::new(stun, turn);
 
     let remote = PeerEndpoint {
-        peer_id: remote_peer_id,
-        public_ip: remote_public_ip,
+        peer_id: remote_peer_id.clone(),
+        public_ip: remote_public_ip.clone(),
         public_port: remote_public_port,
         nat_type: remote_nat_type,
     };
 
     let result = puncher.connect_with_fallback(local_port, &remote).await?;
 
-    // Return connection info (stream is kept alive by the caller via TcpStream)
+    // Hand the punched stream to the node: encrypted handshake runs as
+    // initiator and the connection stays alive like a regular dial.
+    {
+        let p2p = state.p2p.read().await;
+        let node = p2p.as_ref().ok_or("P2P not initialized")?;
+        node.adopt_stream(
+            result.stream,
+            remote_public_ip,
+            0,
+            remote_peer_id.clone(),
+        )
+        .await?;
+    }
+
     Ok(format!("{:?}", result.method))
 }
 

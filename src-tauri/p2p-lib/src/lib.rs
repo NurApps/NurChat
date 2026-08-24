@@ -909,6 +909,20 @@ impl P2PNode {
         .map_err(|_| format!("Connect timeout: {}", addr))?
         .map_err(|e| format!("Connect failed ({}): {}", addr, e))?;
 
+        println!("[P2P] Dialing {}", addr);
+        self.adopt_stream(stream, address, port, public_key).await
+    }
+
+    /// Take an already-connected TcpStream (from dial or hole punch),
+    /// run the encrypted handshake as initiator and keep the connection
+    /// alive in the background.
+    pub async fn adopt_stream(
+        &self,
+        stream: TcpStream,
+        address: String,
+        port: u16,
+        public_key: String,
+    ) -> Result<(), String> {
         let self_id = self.get_self_peer_id().await.unwrap_or_default();
         let peers = self.peers.clone();
         let writers = self.writers.clone();
@@ -938,7 +952,6 @@ impl P2PNode {
             }
         });
 
-        println!("[P2P] Dialing {}", addr);
         Ok(())
     }
 

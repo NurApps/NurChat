@@ -93,6 +93,32 @@ export class P2PConnectionManager {
         natType: peerNatType,
       })
     } catch (e) {
+      // Direct TCP failed — try a NAT hole punch (works when the remote has
+      // a reachable public endpoint, e.g. via UPnP or full-cone NAT) before
+      // falling back to WebRTC.
+      if (isTauri() && !this.isLAN(peerAddress)) {
+        try {
+          const { invoke } = await import("@tauri-apps/api/core")
+          const method = await invoke<string>("p2p_hole_punch", {
+            localPort: 0,
+            remotePublicIp: peerAddress,
+            remotePublicPort: peerPort,
+            remotePeerId: peerId,
+            remoteNatType: peerNatType || "unknown",
+          })
+          console.info("[P2P Manager] Hole punch succeeded via", method)
+          this.peers.set(peerId, {
+            peerId,
+            transport: "wan-tcp",
+            address: peerAddress,
+            port: peerPort,
+            natType: peerNatType,
+          })
+          return
+        } catch (e1) {
+          console.warn("[P2P Manager] Hole punch failed:", e1)
+        }
+      }
       console.warn(`[P2P Manager] ${transport} failed, trying WebRTC:`, e)
       try {
         await this.webrtc.connectToPeer(peerId)

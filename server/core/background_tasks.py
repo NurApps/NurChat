@@ -103,7 +103,7 @@ async def _deaf_relay_purge():
         now = datetime.now(timezone.utc)
         retention_cutoff = now - timedelta(hours=settings.MESSAGE_RETENTION_HOURS)
 
-        from sqlalchemy import or_, and_
+        from sqlalchemy import and_, or_
         targets = db.query(Message).filter(
             Message.scheduled_at.is_(None),
             or_(

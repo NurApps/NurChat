@@ -9,8 +9,8 @@ from server.core import models, schemas
 from server.core.database import get_db
 from server.core.security import security, verify_token_dependency
 from server.utils.logger import logger
-from shared.exceptions import ChatNotFoundError, MessageNotFoundError
 from shared.config import settings
+from shared.exceptions import ChatNotFoundError, MessageNotFoundError
 from shared.rate_limiter import limiter
 
 if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:

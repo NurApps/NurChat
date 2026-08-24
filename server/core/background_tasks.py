@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -86,6 +86,56 @@ async def _send_scheduled_messages():
         db.close()
 
 
+async def _deaf_relay_purge():
+    """Глухой relay: физически удалять СОДЕРЖИМОЕ сообщений.
+
+    Строка остаётся (id/чат/время — чтобы не ломать историю клиентов),
+    но содержимое затирается:
+    - delivered_at установлен (все получатели получили) → сразу
+    - недоставленное старше MESSAGE_RETENTION_HOURS → по TTL
+    """
+    db: Session = SessionLocal()
+    try:
+        from shared.config import settings
+        if not settings.RELAY_DEAF:
+            return
+
+        now = datetime.now(timezone.utc)
+        retention_cutoff = now - timedelta(hours=settings.MESSAGE_RETENTION_HOURS)
+
+        from sqlalchemy import or_, and_
+        targets = db.query(Message).filter(
+            Message.scheduled_at.is_(None),
+            or_(
+                Message.delivered_at.isnot(None),
+                and_(
+                    Message.delivered_at.is_(None),
+                    Message.created_at < retention_cutoff,
+                ),
+            ),
+            or_(
+                Message.content != "[purged]",
+                Message.encrypted_content.isnot(None),
+            ),
+        ).all()
+
+        count = 0
+        for msg in targets:
+            msg.content = "[purged]"
+            msg.encrypted_content = None
+            msg.edit_history = None
+            count += 1
+
+        if count:
+            db.commit()
+            logger.info("[DEAF] Purged content of %d messages", count)
+    except Exception as e:
+        logger.error(f"[DEAF] Purge error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 async def _background_loop():
     global _running
     _running = True
@@ -95,6 +145,7 @@ async def _background_loop():
         try:
             await _cleanup_expired_messages()
             await _send_scheduled_messages()
+            await _deaf_relay_purge()
         except Exception as e:
             logger.error(f"[BACKGROUND] Loop error: {e}")
 

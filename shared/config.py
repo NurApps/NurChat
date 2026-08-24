@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     P2P_RELAY_STORE_MESSAGES: bool = True
     P2P_PENDING_LIMIT: int = 500
     P2P_PENDING_TTL_DAYS: int = 7
+    # ── Глухой relay (публичные инстансы) ──
+    # RELAY_DEAF=true: сервер хранит сообщения только до доставки получателю
+    # и принимает ТОЛЬКО E2E-шифрованные сообщения (plaintext отклоняется).
+    RELAY_DEAF: bool = False
+    # Сколько часов держать недоставленное сообщение офлайн-получателя
+    MESSAGE_RETENTION_HOURS: int = 48
     P2P_DISCOVERY_TTL_SECONDS: int = 300
     WEBRTC_ICE_SERVERS: str | None = None  # JSON: [{"urls":"stun:...","username":"...","credential":"..."}]
     TURN_SERVERS: str | None = None  # JSON: [{"urls":"turn:...","username":"...","credential":"..."}]

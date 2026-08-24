@@ -10,6 +10,7 @@ from server.core.database import get_db
 from server.core.security import security, verify_token_dependency
 from server.utils.logger import logger
 from shared.exceptions import ChatNotFoundError, MessageNotFoundError
+from shared.config import settings
 from shared.rate_limiter import limiter
 
 if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
@@ -247,6 +248,25 @@ async def get_chat_messages(
             processed_messages.append(processed_msg)
         except Exception as e:
             logger.error(f"Error processing message {msg.id}: {e}")
+
+    # Глухой relay: получатель забрал историю → содержимое можно стирать.
+    # Только 1:1 чаты (2 участника): в группах другие получатели могли ещё
+    # не забрать сообщение.
+    if settings.RELAY_DEAF and messages:
+        from datetime import timezone as _tz
+        now_utc = datetime.now(_tz.utc)
+        participant_count = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == chat_id,
+        ).count()
+        if participant_count == 2:
+            undelivered_ids = [m.id for m in messages
+                              if m.user_id != user_id and m.delivered_at is None]
+            if undelivered_ids:
+                db.query(models.Message).filter(
+                    models.Message.id.in_(undelivered_ids)
+                ).update({models.Message.delivered_at: now_utc}, synchronize_session=False)
+                db.commit()
+
     return processed_messages
 
 
@@ -275,6 +295,14 @@ async def send_message(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
         message_content = message_data.content
         message_id = security.generate_message_id()
+
+        # Глухой relay: принимаем ТОЛЬКО E2E-шифрованные сообщения.
+        # Plaintext на публичном инстансе хранению не подлежит.
+        if settings.RELAY_DEAF and not message_data.encrypted_content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Этот relay работает в глухом режиме: только E2E-шифрованные сообщения",
+            )
 
         # E2E: store encrypted envelope if provided
         encrypted_content = message_data.encrypted_content

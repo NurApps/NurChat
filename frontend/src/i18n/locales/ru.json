@@ -71,7 +71,12 @@
     "registerBtn": "Зарегистрироваться",
     "loginBtn": "Войти",
     "fillAllFields": "Заполните все поля",
-    "wrongCredentials": "Неверный username или пароль"
+    "wrongCredentials": "Неверный username или пароль",
+    "enter2faCode": "Введите код 2FA",
+    "wrong2faCode": "Неверный код 2FA",
+    "code2faPlaceholder": "Код из приложения-аутентификатора",
+    "backToLogin": "← Вернуться ко входу",
+    "confirm2faBtn": "Подтвердить"
   },
   "chat": {
     "chats": "Чаты",

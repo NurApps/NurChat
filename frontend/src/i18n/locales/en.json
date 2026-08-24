@@ -71,7 +71,12 @@
     "registerBtn": "Sign Up",
     "loginBtn": "Sign In",
     "fillAllFields": "Fill in all fields",
-    "wrongCredentials": "Wrong username or password"
+    "wrongCredentials": "Wrong username or password",
+    "enter2faCode": "Enter 2FA code",
+    "wrong2faCode": "Wrong 2FA code",
+    "code2faPlaceholder": "Code from authenticator app",
+    "backToLogin": "← Back to login",
+    "confirm2faBtn": "Confirm"
   },
   "chat": {
     "chats": "Chats",

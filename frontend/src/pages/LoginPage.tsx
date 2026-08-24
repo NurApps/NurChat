@@ -29,6 +29,10 @@ export default function LoginPage() {
   const [loginUsername, setLoginUsername] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
 
+  // 2FA
+  const [awaiting2fa, setAwaiting2fa] = useState(false)
+  const [twoFactorCode, setTwoFactorCode] = useState("")
+
   // CAPTCHA
   const [captchaId, setCaptchaId] = useState("")
   const [captchaQuestion, setCaptchaQuestion] = useState("")
@@ -153,6 +157,16 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const res = await api.login(loginUsername.trim(), loginPassword)
+
+      // 2FA enabled: keep the pending token and ask for the code instead of
+      // navigating — the pending token does not grant API access.
+      if (res.requires_2fa) {
+        api.setToken(res.access_token)
+        setAwaiting2fa(true)
+        setError("")
+        return
+      }
+
       api.setToken(res.access_token)
       localStorage.setItem("user", JSON.stringify(res.user))
       const keys = await loadKeys()
@@ -165,6 +179,30 @@ export default function LoginPage() {
       } else {
         setError(msg || t("auth.wrongCredentials"))
       }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleVerify2fa() {
+    const code = twoFactorCode.trim()
+    if (!code) {
+      setError(t("auth.enter2faCode"))
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await api.verify2faLogin(code)
+      api.setToken(res.access_token)
+      localStorage.setItem("user", JSON.stringify(res.user))
+      const keys = await loadKeys()
+      if (keys) setupPreKeys(keys).catch(() => {})
+      setAwaiting2fa(false)
+      setTwoFactorCode("")
+      navigate("/chat", { replace: true })
+    } catch (err: any) {
+      const msg = err?.message || err?.toString() || ""
+      setError(msg.includes("Неверный код") ? t("auth.wrong2faCode") : (msg || t("auth.wrong2faCode")))
     } finally {
       setLoading(false)
     }
@@ -297,6 +335,33 @@ export default function LoginPage() {
               </div>
             )}
           </div>
+        ) : awaiting2fa ? (
+          <div className="login-fields">
+            <div className="field-wrapper">
+              <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              <input
+                className="login-input"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                placeholder={t("auth.code2faPlaceholder")}
+                value={twoFactorCode}
+                onChange={(e) => setTwoFactorCode(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleVerify2fa() }}
+              />
+            </div>
+            <button
+              className="link-btn"
+              type="button"
+              style={{ fontSize: 13 }}
+              onClick={() => { setAwaiting2fa(false); setTwoFactorCode(""); setError("") }}
+            >
+              {t("auth.backToLogin")}
+            </button>
+          </div>
         ) : (
           <div className="login-fields">
             <div className="field-wrapper">
@@ -340,7 +405,12 @@ export default function LoginPage() {
           <button
             className="login-btn"
             disabled={loading}
-            onClick={tab === "register" ? handleRegister : handleLogin}
+            onClick={tab === "register" ? handleRegister : (awaiting2fa ? handleVerify2fa : handleLogin)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && tab === "login") {
+                awaiting2fa ? handleVerify2fa() : handleLogin()
+              }
+            }}
           >
             {loading ? (
               <span className="btn-loading">
@@ -349,7 +419,7 @@ export default function LoginPage() {
               </span>
             ) : (
               <span className="btn-content">
-                {tab === "register" ? t("auth.registerBtn") : t("auth.loginBtn")}
+                {tab === "register" ? t("auth.registerBtn") : (awaiting2fa ? t("auth.confirm2faBtn") : t("auth.loginBtn"))}
               </span>
             )}
           </button>

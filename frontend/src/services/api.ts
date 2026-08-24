@@ -61,7 +61,10 @@ async function request<T>(
 export const api = {
   // Auth
   login: (username: string, password: string) =>
-    request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/login", { username, password }),
+    request<{ access_token: string; refresh_token?: string; token_type: string; user: UserResponse; requires_2fa?: boolean }>("POST", "/api/auth/login", { username, password }),
+
+  verify2faLogin: (code: string) =>
+    request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/2fa/verify-login", { code }),
 
   register: (username: string, password: string, first_name: string, last_name: string, captcha_id: string, captcha_code: string, public_key: string, signing_public_key: string) =>
     request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/register", { username, password, first_name, last_name, captcha_id, captcha_code, public_key, signing_public_key }),

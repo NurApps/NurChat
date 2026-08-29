@@ -174,15 +174,30 @@ export function generateInviteLink(publicKeyHex: string, port: number, ip = "127
   return `nurchat://${ip}:${port}#${publicKeyHex}`
 }
 
+export function generateTunnelInviteLink(publicKeyHex: string, tunnelHost: string): string {
+  // Use port 443 for HTTPS tunnel — friend's app will connect via relay
+  return `nurchat://${tunnelHost}:443#${publicKeyHex}`
+}
+
 export function parseInviteLink(link: string): { ip: string; port: number; publicKey: string; userId?: string } | null {
   try {
     const withoutProtocol = link.replace("nurchat://", "")
     const [addressPart, publicKey = ""] = withoutProtocol.split("#")
-    const [ip, portStr, ...userIdParts] = addressPart.split(":")
-    // Format with user_id: nurchat://ip:port/user_id#hash
-    const userId = portStr?.includes("/") ? portStr.split("/")[1] : undefined
-    const port = parseInt(userId ? portStr!.split("/")[0] : portStr!, 10)
-    return { ip, port, publicKey, userId }
+
+    // Handle domain:port or ip:port formats
+    // For domains like xxxx.trycloudflare.com:443, split on last colon
+    const lastColon = addressPart.lastIndexOf(":")
+    if (lastColon === -1) return null
+
+    const address = addressPart.substring(0, lastColon)
+    const portStr = addressPart.substring(lastColon + 1)
+
+    // Extract user_id if present (format: address:port/user_id)
+    const slashIdx = portStr.indexOf("/")
+    const port = parseInt(slashIdx === -1 ? portStr : portStr.substring(0, slashIdx), 10)
+    const userId = slashIdx === -1 ? undefined : portStr.substring(slashIdx + 1)
+
+    return { ip: address, port, publicKey, userId }
   } catch {
     return null
   }

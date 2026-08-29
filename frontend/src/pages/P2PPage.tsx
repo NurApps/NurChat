@@ -1,8 +1,9 @@
 ﻿import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { generateInviteLink, parseInviteLink, connectToPeer, getPeerCount, initP2P, getLocalIP, startLANDiscovery, isBrowserMode } from "../services/p2pService"
+import { generateInviteLink, generateTunnelInviteLink, parseInviteLink, connectToPeer, getPeerCount, initP2P, getLocalIP, startLANDiscovery, isBrowserMode } from "../services/p2pService"
 import { saveKnownPeer } from "../services/p2pBridge"
 import { loadKeys } from "../services/e2e"
+import { setRelayConfig } from "../config"
 import QRCode from "../components/QRCode"
 import P2POnboarding from "../components/P2POnboarding"
 
@@ -15,6 +16,11 @@ export default function P2PPage() {
   const [errorMsg, setErrorMsg] = useState("")
   const [copied, setCopied] = useState(false)
   const [connectedPeer, setConnectedPeer] = useState<string | null>(null)
+  const [tunnelUrl, setTunnelUrl] = useState<string | null>(null)
+  const [tunnelInviteLink, setTunnelInviteLink] = useState<string | null>(null)
+  const [tunnelLoading, setTunnelLoading] = useState(false)
+  const [tunnelCopied, setTunnelCopied] = useState(false)
+  const [tunnelInviteCopied, setTunnelInviteCopied] = useState(false)
   const browserMode = isBrowserMode()
 
   useEffect(() => {
@@ -108,6 +114,63 @@ export default function P2PPage() {
     } else {
       handleCopy()
     }
+  }
+
+  const handleStartTunnel = async () => {
+    setTunnelLoading(true)
+    try {
+      const { invoke } = await import("@tauri-apps/api/core")
+      const url = await invoke<string>("start_cloudflare_tunnel")
+      setTunnelUrl(url)
+
+      // Generate nurchat:// invite link with tunnel domain
+      const keys = await loadKeys()
+      if (keys) {
+        const host = url.replace("https://", "")
+        const invite = generateTunnelInviteLink(keys.publicKeyHex, host)
+        setTunnelInviteLink(invite)
+      }
+
+      // Auto-configure relay
+      const host = url.replace("https://", "")
+      setRelayConfig({ host, protocol: "https" })
+
+      // Reload to apply new relay
+      setTimeout(() => window.location.reload(), 1500)
+    } catch (err) {
+      console.error("Tunnel error:", err)
+      alert(`Ошибка: ${err}`)
+    } finally {
+      setTunnelLoading(false)
+    }
+  }
+
+  const handleStopTunnel = async () => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core")
+      await invoke("stop_cloudflare_tunnel")
+      setTunnelUrl(null)
+    } catch (err) {
+      console.error("Stop tunnel error:", err)
+    }
+  }
+
+  const handleCopyTunnelUrl = async () => {
+    if (!tunnelUrl) return
+    try {
+      await navigator.clipboard.writeText(tunnelUrl)
+      setTunnelCopied(true)
+      setTimeout(() => setTunnelCopied(false), 2000)
+    } catch {}
+  }
+
+  const handleCopyTunnelInvite = async () => {
+    if (!tunnelInviteLink) return
+    try {
+      await navigator.clipboard.writeText(tunnelInviteLink)
+      setTunnelInviteCopied(true)
+      setTimeout(() => setTunnelInviteCopied(false), 2000)
+    } catch {}
   }
 
   return (
@@ -273,6 +336,127 @@ export default function P2PPage() {
           {t("p2p.lanDesc")}
         </p>
       </div>
+
+      {/* Cloudflare Tunnel */}
+      {!browserMode && (
+        <div style={{
+          padding: 16, background: "var(--surface, #161b22)", borderRadius: 8,
+          border: "1px solid var(--border-color, #30363d)", marginBottom: 24,
+        }}>
+          <h3 style={{ marginBottom: 8, fontSize: 16 }}>
+            {"Туннель для друга"}
+          </h3>
+          <p style={{ fontSize: 12, color: "var(--text-secondary, #8b949e)", marginBottom: 12 }}>
+            {"Создайт туннель чтобы друг имел доступ к твоему релею. App скачает cloudflared автоматически."}
+          </p>
+
+          {tunnelLoading ? (
+            <div style={{
+              padding: 12, borderRadius: 8, textAlign: "center",
+              background: "rgba(31,111,235,0.1)", border: "1px solid rgba(31,111,235,0.3)",
+            }}>
+              <div style={{ fontSize: 14, color: "#1f6feb" }}>
+                {"Запуск туннеля..."}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-secondary, #666)", marginTop: 4 }}>
+                {"Скачивание cloudflared, если первый раз"}
+              </div>
+            </div>
+          ) : tunnelUrl ? (
+            <div>
+              <div style={{
+                padding: 12, borderRadius: 8, marginBottom: 8,
+                background: "rgba(35,134,54,0.1)", border: "1px solid rgba(35,134,54,0.3)",
+              }}>
+                <div style={{ fontSize: 13, color: "#4ade80", marginBottom: 8, fontWeight: 500 }}>
+                  {"Туннель активен"}
+                </div>
+
+                {/* Relay URL */}
+                <div style={{ fontSize: 12, color: "var(--text-secondary, #8b949e)", marginBottom: 4 }}>
+                  {"URL релея (для Настройки → Транспорт):"}
+                </div>
+                <div style={{
+                  padding: 8, borderRadius: 4,
+                  background: "var(--input-bg, var(--surface-variant, #0d1117))",
+                  fontFamily: "monospace", fontSize: 12, wordBreak: "break-all",
+                  border: "1px solid var(--border-color, #333)", color: "var(--text-primary, #c9d1d9)",
+                  marginBottom: 8,
+                }}>
+                  {tunnelUrl}
+                </div>
+                <button
+                  onClick={handleCopyTunnelUrl}
+                  style={{
+                    width: "100%", padding: "8px 12px", marginBottom: 12,
+                    background: tunnelCopied ? "#238636" : "#21262d",
+                    color: "#fff", border: "1px solid var(--border-color, #30363d)",
+                    borderRadius: 6, cursor: "pointer", fontSize: 13,
+                  }}
+                >
+                  {tunnelCopied ? "Скопировано" : "Копировать URL релея"}
+                </button>
+
+                {/* Nurchat invite link */}
+                {tunnelInviteLink && (
+                  <>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary, #8b949e)", marginBottom: 4 }}>
+                      {"Ссылка для подключения (nurchat://):"}
+                    </div>
+                    <div style={{
+                      padding: 8, borderRadius: 4,
+                      background: "var(--input-bg, var(--surface-variant, #0d1117))",
+                      fontFamily: "monospace", fontSize: 11, wordBreak: "break-all",
+                      border: "1px solid var(--border-color, #333)", color: "#fbbf24",
+                      marginBottom: 8,
+                    }}>
+                      {tunnelInviteLink}
+                    </div>
+                    <button
+                      onClick={handleCopyTunnelInvite}
+                      style={{
+                        width: "100%", padding: "8px 12px",
+                        background: tunnelInviteCopied ? "#238636" : "#1f6feb",
+                        color: "#fff", border: "none",
+                        borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 500,
+                      }}
+                    >
+                      {tunnelInviteCopied ? "Скопировано" : "Копировать nurchat:// ссылку"}
+                    </button>
+                  </>
+                )}
+
+                <div style={{ fontSize: 12, color: "var(--text-secondary, #8b949e)", marginTop: 12 }}>
+                  {"Отправь другу обе ссылки. Он вставит nurchat:// ссылку в P2P → Подключить."}
+                </div>
+
+                <button
+                  onClick={handleStopTunnel}
+                  style={{
+                    width: "100%", padding: "8px 12px", marginTop: 12,
+                    background: "#4a1c1c", color: "#f87171",
+                    border: "1px solid #6b2b2b", borderRadius: 6, cursor: "pointer",
+                    fontSize: 13,
+                  }}
+                >
+                  {"Остановить туннель"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={handleStartTunnel}
+              style={{
+                padding: "10px 16px", background: "#1f6feb", color: "#fff",
+                border: "none", borderRadius: 6, cursor: "pointer",
+                fontSize: 14, fontWeight: 500,
+              }}
+            >
+              {"Создать туннель"}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* How it works */}
       <div style={{

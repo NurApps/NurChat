@@ -5,9 +5,12 @@ use tauri::{Manager, State, Emitter};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tauri::menu::{MenuBuilder};
 use tokio::sync::RwLock;
+use tokio::process::{Child, Command as TokioCommand};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 struct AppState {
     p2p: RwLock<Option<P2PNode>>,
+    cloudflared: RwLock<Option<Child>>,
 }
 
 #[tauri::command]
@@ -311,6 +314,122 @@ fn share_invite(uri: String) -> Result<(), String> {
     open::that(&mailto).map_err(|e| format!("Failed to open mail: {e}"))
 }
 
+async fn download_cloudflared(dest: &std::path::Path) -> Result<(), String> {
+    let url = if cfg!(target_os = "windows") {
+        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+    } else if cfg!(target_os = "macos") {
+        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64"
+    } else {
+        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+    };
+
+    let response = reqwest::get(url).await.map_err(|e| format!("Failed to download cloudflared: {e}"))?;
+    let bytes = response.bytes().await.map_err(|e| format!("Failed to read cloudflared: {e}"))?;
+
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent).await.ok();
+    }
+    tokio::fs::write(dest, &bytes).await.map_err(|e| format!("Failed to write cloudflared: {e}"))?;
+
+    // Make executable on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(dest, Permissions::from_mode(0o755))
+            .await
+            .ok();
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn start_cloudflare_tunnel(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    // Check if tunnel already running
+    {
+        let mut cf = state.cloudflared.write().await;
+        if let Some(child) = cf.as_mut() {
+            if child.try_wait().ok().flatten().is_none() {
+                return Err("Tunnel already running".to_string());
+            }
+        }
+    }
+
+    // Path for cloudflared binary
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let binary_name = if cfg!(target_os = "windows") {
+        "cloudflared.exe"
+    } else {
+        "cloudflared"
+    };
+    let binary_path = app_dir.join(binary_name);
+
+    // Download if not present
+    if !binary_path.exists() {
+        download_cloudflared(&binary_path).await?;
+    }
+
+    // Spawn cloudflared tunnel
+    let mut child = TokioCommand::new(&binary_path)
+        .args(["tunnel", "--url", "http://localhost:8000"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("Failed to start cloudflared: {e}"))?;
+
+    // Read stdout to find the tunnel URL
+    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+    let reader = BufReader::new(stdout);
+    let mut lines = reader.lines();
+
+    let url = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        while let Some(line) = lines.next_line().await.map_err(|e| e.to_string())? {
+            if line.contains("trycloudflare.com") || line.contains("https://") {
+                // Extract URL from the line
+                for word in line.split_whitespace() {
+                    if word.starts_with("https://") && word.contains("trycloudflare.com") {
+                        return Ok::<_, String>(word.to_string());
+                    }
+                }
+            }
+        }
+        Err("Tunnel URL not found within timeout".to_string())
+    })
+    .await
+    .map_err(|_| "Timed out waiting for tunnel URL".to_string())??;
+
+    // Spawn a background task to forward remaining stdout to stderr (prevent buffer full)
+    tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut reader = lines.into_inner();
+        let mut buf = [0u8; 1024];
+        loop {
+            match reader.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    // Store the child process
+    {
+        let mut cf = state.cloudflared.write().await;
+        *cf = Some(child);
+    }
+
+    Ok(url)
+}
+
+#[tauri::command]
+async fn stop_cloudflare_tunnel(state: State<'_, AppState>) -> Result<(), String> {
+    let mut cf = state.cloudflared.write().await;
+    if let Some(mut child) = cf.take() {
+        child.kill().await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn check_update(current_version: String) -> Result<serde_json::Value, String> {
     let url = "https://api.github.com/repos/NurApps/NurChat_desktop/releases/latest";
@@ -387,6 +506,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             p2p: RwLock::new(None),
+            cloudflared: RwLock::new(None),
         })
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -417,6 +537,8 @@ pub fn run() {
             show_main_window,
             minimize_to_tray,
             share_invite,
+            start_cloudflare_tunnel,
+            stop_cloudflare_tunnel,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -503,7 +625,14 @@ pub fn run() {
                     }
                 }
                 tauri::RunEvent::ExitRequested { .. } => {
-                    // Cleanup handled by OS — no local server process
+                    // Kill cloudflared tunnel on exit
+                    if let Some(state) = app_handle.try_state::<AppState>() {
+                        if let Ok(mut cf) = state.cloudflared.try_write() {
+                            if let Some(mut child) = cf.take() {
+                                let _ = child.kill();
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }

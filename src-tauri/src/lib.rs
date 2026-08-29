@@ -142,14 +142,20 @@ fn p2p_get_invite_link(_state: State<'_, AppState>) -> Result<String, String> {
 async fn init_p2p(app: tauri::AppHandle, state: State<'_, AppState>, listen_port: Option<u16>, peer_id: Option<String>, identity_secret_hex: Option<String>) -> Result<u16, String> {
     // Deterministic transport identity from the user's X25519 secret:
     // ecdh_pub == peer identity key => MITM-proof handshake binding.
-    let identity_secret = identity_secret_hex.and_then(|hex| {
-        if hex.len() != 64 { return None; }
-        let mut buf = [0u8; 32];
-        (0..32).for_each(|i| {
-            buf[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).unwrap_or(0);
-        });
-        Some(buf)
-    });
+    let identity_secret = match identity_secret_hex {
+        Some(hex) => {
+            if hex.len() != 64 {
+                return Err(format!("Invalid identity key length: {} (expected 64 hex chars)", hex.len()));
+            }
+            let mut buf = [0u8; 32];
+            for i in 0..32 {
+                buf[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
+                    .map_err(|e| format!("Invalid hex at position {}: {}", i * 2, e))?;
+            }
+            Some(buf)
+        }
+        None => None,
+    };
     let config = P2PConfig {
         listen_port: listen_port.unwrap_or(0),
         identity_secret,
@@ -552,14 +558,14 @@ pub fn run() {
             // Relay server runs externally (shared instance via VITE_API_HOST)
             // No sidecar needed — connection configured in frontend config
 
-            // Wait for server to be ready (poll /api/health)
+            // Wait for server to be ready (poll /health)
             if !cfg!(debug_assertions) {
                 let handle = app.handle().clone();
                 tokio::spawn(async move {
                     use std::time::Duration;
                     for _ in 0..30 {
                         tokio::time::sleep(Duration::from_millis(500)).await;
-                        if let Ok(resp) = reqwest::get("http://127.0.0.1:8000/api/health").await {
+                        if let Ok(resp) = reqwest::get("http://127.0.0.1:8000/health").await {
                             if resp.status().is_success() {
                                 println!("[NurChat] Server is ready");
                                 let _ = handle.emit("server-ready", ());

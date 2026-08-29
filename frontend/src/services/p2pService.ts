@@ -57,8 +57,9 @@ export async function initP2P(): Promise<number> {
     })
     initialized = true
     return myPort
-  } catch {
-    initialized = true
+  } catch (err) {
+    console.error("[P2P] Init failed:", err)
+    // Don't set initialized = true — allow retry on next call
     return 0
   }
 }

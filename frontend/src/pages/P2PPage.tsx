@@ -338,19 +338,26 @@ export default function P2PPage() {
       </div>
 
       {/* Cloudflare Tunnel */}
-      {!browserMode && (
-        <div style={{
-          padding: 16, background: "var(--surface, #161b22)", borderRadius: 8,
-          border: "1px solid var(--border-color, #30363d)", marginBottom: 24,
-        }}>
-          <h3 style={{ marginBottom: 8, fontSize: 16 }}>
-            {"Туннель для друга"}
-          </h3>
-          <p style={{ fontSize: 12, color: "var(--text-secondary, #8b949e)", marginBottom: 12 }}>
-            {"Создайт туннель чтобы друг имел доступ к твоему релею. App скачает cloudflared автоматически."}
-          </p>
+      <div style={{
+        padding: 16, background: "var(--surface, #161b22)", borderRadius: 8,
+        border: "1px solid var(--border-color, #30363d)", marginBottom: 24,
+      }}>
+        <h3 style={{ marginBottom: 8, fontSize: 16 }}>
+          {"Туннель для друга"}
+        </h3>
+        <p style={{ fontSize: 12, color: "var(--text-secondary, #8b949e)", marginBottom: 12 }}>
+          {"Создайт туннель чтобы друг имел доступ к твоему релею. App скачает cloudflared автоматически."}
+        </p>
 
-          {tunnelLoading ? (
+        {browserMode ? (
+          <div style={{
+            padding: 10, borderRadius: 8,
+            background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)",
+            fontSize: 12, color: "#fbbf24",
+          }}>
+            {"Туннель доступен только в десктопном приложении (Tauri). Запусти npx tauri dev."}
+          </div>
+        ) : tunnelLoading ? (
             <div style={{
               padding: 12, borderRadius: 8, textAlign: "center",
               background: "rgba(31,111,235,0.1)", border: "1px solid rgba(31,111,235,0.3)",
@@ -456,7 +463,7 @@ export default function P2PPage() {
             </button>
           )}
         </div>
-      )}
+      </div>
 
       {/* How it works */}
       <div style={{

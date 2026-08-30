@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { avatarUrl } from "../config"
 import type { UserResponse } from "../types"
+import { formatDateShort, formatFull } from "../utils/format"
 import { getAvatarColor } from "../utils/avatar"
 import SafetyNumberModal from "./SafetyNumberModal"
 
@@ -20,7 +21,7 @@ function formatLastSeen(ts?: string, t?: (key: string, opts?: any) => string): s
     if (diff < 60000) return t ? t("userProfile.justNow") : "только что"
     if (diff < 3600000) return t ? t("userProfile.minutesAgo", { count: Math.floor(diff / 60000) }) : `${Math.floor(diff / 60000)} мин. назад`
     if (diff < 86400000) return t ? t("userProfile.hoursAgo", { count: Math.floor(diff / 3600000) }) : `${Math.floor(diff / 3600000)} ч. назад`
-    return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })
+    return formatDateShort(ts)
   } catch {
     return ts
   }
@@ -81,7 +82,7 @@ export default function UserProfileModal({ user, onClose }: Props) {
             <div className="upm-field">
               <span className="upm-field-label">{t("userProfile.registered")}</span>
               <span className="upm-field-value">
-                {new Date(user.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
+                {formatFull(user.created_at)}
               </span>
             </div>
           )}

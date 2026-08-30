@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
+import { formatDateShort } from "../utils/format"
 
 interface BlockedUser {
   id: number
@@ -110,7 +111,7 @@ export default function BlockedUsersPage() {
                       @{entry.blocked_user_id.slice(0, 8)}...
                     </div>
                     <div style={{ fontSize: 11, color: "#888" }}>
-                      {t("blocked.blockedOn", { date: new Date(entry.created_at).toLocaleDateString("ru-RU") })}
+                      {t("blocked.blockedOn", { date: formatDateShort(entry.created_at) })}
                     </div>
                   </div>
                 </div>

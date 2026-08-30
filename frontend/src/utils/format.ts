@@ -14,6 +14,14 @@ export function formatFull(iso: string): string {
   return new Date(iso).toLocaleString(i18n.language, { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: TZ })
 }
 
+export function formatDateShort(iso: string): string {
+  return new Date(iso).toLocaleDateString(i18n.language, { day: "numeric", month: "short", timeZone: TZ })
+}
+
+export function formatDateTimeShort(iso: string): string {
+  return new Date(iso).toLocaleString(i18n.language, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: TZ })
+}
+
 export function formatRelativeTime(iso: string): string {
   const now = Date.now()
   const d = new Date(iso).getTime()

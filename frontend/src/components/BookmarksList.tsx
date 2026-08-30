@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
+import { formatTime, formatDateShort } from "../utils/format"
 
 interface BookmarkItem {
   id: string
@@ -63,8 +64,8 @@ export default function BookmarksList({ onSelectMessage }: Props) {
         const preview = bm.message.content.length > 60
           ? bm.message.content.slice(0, 60) + "..."
           : bm.message.content
-        const time = new Date(bm.message.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-        const date = new Date(bm.message.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
+        const time = formatTime(bm.message.created_at)
+        const date = formatDateShort(bm.message.created_at)
 
         return (
           <div

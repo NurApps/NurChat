@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
+import { formatDateTimeShort } from "../utils/format"
 
 interface AuditEntry {
   id: number
@@ -18,7 +19,7 @@ function formatTime(ts?: string): string {
   const diff = now.getTime() - d.getTime()
   if (diff < 3600000) return `${Math.floor(diff / 60000)} мин. назад`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)} ч. назад`
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+  return formatDateTimeShort(ts)
 }
 
 const ACTION_ICONS: Record<string, string> = {

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import type { UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
+import { formatTime, formatDateShort } from "../utils/format"
 
 interface CallLog {
   id: number
@@ -30,12 +31,12 @@ function formatCallTime(ts: string): string {
   const now = new Date()
   const diff = now.getTime() - d.getTime()
   if (diff < 86400000) {
-    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+    return formatTime(ts)
   }
   if (diff < 604800000) {
-    return d.toLocaleDateString("ru-RU", { weekday: "short", hour: "2-digit", minute: "2-digit" })
+    return formatTime(ts)
   }
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
+  return formatDateShort(ts)
 }
 
 export default function CallHistoryPage() {

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { MobileMessageInput } from '../components/mobile/MobileMessageInput';
 import { SwipeableRow } from '../components/mobile/SwipeableRow';
 import { PullToRefresh } from '../components/mobile/PullToRefresh';
+import { formatTime } from '../utils/format';
 import { MobileMediaViewer } from '../components/mobile/MobileMediaViewer';
 import { BottomTabs } from '../components/mobile/BottomTabs';
 import { api } from '../services/api';
@@ -103,7 +104,7 @@ export default function MobileChatPage() {
               <div className={`message-bubble ${msg.sender_id === 'me' ? 'message-bubble--sent' : 'message-bubble--received'}`}>
                 <div className="message-bubble__text">{msg.content}</div>
                 <div className="message-bubble__time">
-                  {new Date(msg.created_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}
+                  {formatTime(msg.created_at)}
                   {msg.is_edited && <span className="message-bubble__edited"> (ред.)</span>}
                 </div>
               </div>

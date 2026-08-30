@@ -39,6 +39,10 @@ export function isBrowserMode(): boolean {
   return !isTauri()
 }
 
+export function isTauriAvailable(): boolean {
+  return isTauri()
+}
+
 export async function initP2P(): Promise<number> {
   if (initialized) return myPort
   if (!isTauri()) {

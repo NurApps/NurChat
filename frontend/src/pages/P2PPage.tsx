@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { generateInviteLink, generateTunnelInviteLink, parseInviteLink, connectToPeer, getPeerCount, initP2P, getLocalIP, startLANDiscovery, isBrowserMode } from "../services/p2pService"
+import { generateInviteLink, generateTunnelInviteLink, parseInviteLink, connectToPeer, getPeerCount, initP2P, getLocalIP, startLANDiscovery, isBrowserMode, isTauriAvailable } from "../services/p2pService"
 import { saveKnownPeer } from "../services/p2pBridge"
 import { loadKeys } from "../services/e2e"
 import { setRelayConfig } from "../config"
@@ -349,7 +349,7 @@ export default function P2PPage() {
           {"Создайт туннель чтобы друг имел доступ к твоему релею. App скачает cloudflared автоматически."}
         </p>
 
-        {browserMode ? (
+        {!isTauriAvailable() ? (
           <div style={{
             padding: 10, borderRadius: 8,
             background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)",

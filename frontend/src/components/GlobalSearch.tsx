@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import type { MessageResponse, ChatResponse } from "../types"
+import { formatTime } from "../utils/format"
 
 interface Props {
   chats?: ChatResponse[]
@@ -91,7 +92,7 @@ export default function GlobalSearch({ chats = [], onSelect, onSelectMessage, on
             <p className="global-search-empty">{t("chat.nothingFound")}</p>
           )}
           {results.map((r) => {
-            const time = new Date(r.message.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+            const time = formatTime(r.message.created_at)
             const chatName = r.chat.is_group ? (r.chat.name || t("chat.group")) : (r.chat.participants.find(p => p.id !== r.message.user_id)?.username || t("chat.chat"))
             return (
               <div key={r.message.id} className="global-search-item" onClick={() => { (onSelect || onSelectMessage)?.(r.chat.id, r.message.id); onClose() }}>

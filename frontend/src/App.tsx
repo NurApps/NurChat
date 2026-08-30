@@ -10,6 +10,7 @@ import { platform } from "./services/platform"
 import { e2eWorkerService } from "./services/e2eWorkerService"
 import { initSecureStorage } from "./services/e2e"
 import { useMobile } from "./hooks/useMobile"
+import { getPeerCount, isBrowserMode } from "./services/p2pService"
 
 // Mobile styles
 import "./styles/mobile.css"
@@ -44,6 +45,15 @@ function PageLoader() {
 function App() {
   const [serverReady, setServerReady] = useState(false)
   const { isMobile } = useMobile()
+
+  // Глобальный poll peerCount — работает на любой странице
+  useEffect(() => {
+    if (isBrowserMode()) return
+    const poll = setInterval(() => {
+      getPeerCount().catch(() => {})
+    }, 5000)
+    return () => clearInterval(poll)
+  }, [])
 
   // Инициализация E2E Web Worker при старте приложения
   // Показываем окно только после загрузки React (убирает белый экран)

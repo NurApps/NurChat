@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import type { MessageResponse } from "../types"
+import { formatTime, formatDateShort } from "../utils/format"
 
 interface PinnedMessageItem {
   id: string
@@ -43,24 +44,6 @@ export function PinnedMessagesModal({ chatId, isOpen, onClose, onMessageClick }:
 
   if (!isOpen) return null
 
-  const formatTime = (iso: string) => {
-    try {
-      const d = new Date(iso)
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    } catch {
-      return ""
-    }
-  }
-
-  const formatDate = (iso: string) => {
-    try {
-      const d = new Date(iso)
-      return d.toLocaleDateString([], { day: "numeric", month: "short" })
-    } catch {
-      return ""
-    }
-  }
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal pinned-modal" onClick={(e) => e.stopPropagation()}>
@@ -86,7 +69,7 @@ export function PinnedMessagesModal({ chatId, isOpen, onClose, onMessageClick }:
               >
                 <div className="pinned-item-header">
                   <span className="pinned-item-user">{pin.message.first_name || pin.message.username}</span>
-                  <span className="pinned-item-date">{formatDate(pin.message.created_at)} {formatTime(pin.message.created_at)}</span>
+                  <span className="pinned-item-date">{formatDateShort(pin.message.created_at)} {formatTime(pin.message.created_at)}</span>
                 </div>
                 <div className="pinned-item-content">{pin.message.content}</div>
               </div>

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { loadKeys, saveKeys, type E2EKeys } from "../services/e2e"
 import { encode as base64Encode, decode as base64Decode } from "base64-arraybuffer"
 import { BASE_URL } from "../config"
+import { formatFull } from "../utils/format"
 
 interface Backup {
   id: string
@@ -502,13 +503,7 @@ export default function BackupPage() {
                     v{backup.version} — {backup.chat_id}
                   </div>
                   <div style={{ fontSize: 11, color: "#888" }}>
-                    {new Date(backup.created_at).toLocaleDateString("ru-RU", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatFull(backup.created_at)}
                   </div>
                 </div>
                 <button

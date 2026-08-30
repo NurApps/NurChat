@@ -367,6 +367,10 @@ async function createPeerConnection(remoteUserId: string, initiator: boolean) {
       if (p) {
         p.stream = null
         p.pc = null
+        groupCall.participants.delete(remoteUserId)
+        if (groupCall.onParticipantLeft) {
+          groupCall.onParticipantLeft(remoteUserId)
+        }
       }
     }
   }

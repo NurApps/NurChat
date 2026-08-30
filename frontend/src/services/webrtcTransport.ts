@@ -249,8 +249,12 @@ export class WebRTCTransport {
       // (signalingState !== stable). Impolite peer ignores it; polite peer
       // rolls back implicitly via setRemoteDescription.
       const collision = pc && (neg?.makingOffer || pc.signalingState !== "stable")
-      neg!.ignoreOffer = !neg!.polite && !!collision
-      if (neg!.ignoreOffer) {
+      if (!neg) {
+        console.warn("[WebRTC] No negotiation state for peer", from)
+        return
+      }
+      neg.ignoreOffer = !neg.polite && !!collision
+      if (neg.ignoreOffer) {
         console.info("[WebRTC] Ignoring offer collision (impolite)")
         return
       }

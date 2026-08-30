@@ -481,7 +481,10 @@ export async function connectToUser(
   // Also try direct TCP as fallback
   try {
     await connectToPeer(address, port, publicKeyHex)
-  } catch {}
+  } catch (err) {
+    console.warn("[P2P] connectToPeer failed for", publicKeyHex.slice(0, 8), err)
+    return
+  }
 
   connectedPeers.add(publicKeyHex)
   const userId = peerToUser.get(publicKeyHex)

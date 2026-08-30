@@ -2,6 +2,8 @@ use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde::{Deserialize, Serialize};
+use hmac::{Hmac, Mac};
+use sha1::Sha1;
 
 use crate::nat::NatInfo;
 
@@ -13,6 +15,8 @@ const TURN_CLASS_REQUEST: u16 = 0x0000;
 const TURN_CLASS_SUCCESS: u16 = 0x0100;
 const TURN_CLASS_ERROR: u16 = 0x0110;
 
+const TURN_ATTR_USERNAME: u16 = 0x0006;
+const TURN_ATTR_MESSAGE_INTEGRITY: u16 = 0x0008;
 const TURN_ATTR_NONCE: u16 = 0x0015;
 const TURN_ATTR_REALM: u16 = 0x0014;
 const TURN_ATTR_XOR_RELAYED_ADDRESS: u16 = 0x0016;
@@ -234,7 +238,7 @@ impl HolePuncher {
     async fn allocate_relay(
         &self,
         stream: &mut TcpStream,
-        _turn: &TurnServer,
+        turn: &TurnServer,
     ) -> Result<TurnAllocation, String> {
         // Build Allocate request
         let mut attrs = Vec::new();
@@ -253,8 +257,8 @@ impl HolePuncher {
         let lifetime_bytes = lifetime.to_be_bytes();
         self.add_attr(&mut attrs, TURN_ATTR_LIFETIME, &lifetime_bytes);
 
-        // Build message
-        let msg = self.build_turn_message(TURN_METHOD_ALLOCATE | TURN_CLASS_REQUEST, &attrs);
+        // Build message (no auth on first attempt)
+        let msg = self.build_turn_message(TURN_METHOD_ALLOCATE | TURN_CLASS_REQUEST, &attrs, None, None, None);
 
         // Send
         stream.write_all(&msg).await
@@ -277,10 +281,70 @@ impl HolePuncher {
 
         let msg_type = u16::from_be_bytes([buf[0], buf[1]]);
 
-        // Check for error response
+        // Handle 401 Unauthorized: extract nonce+realm and retry with MESSAGE-INTEGRITY
         if msg_type & 0x0110 == TURN_CLASS_ERROR {
-            let (error_code, reason) = self.parse_error_response(&buf, len);
-            return Err(format!("TURN Allocate error {}: {}", error_code, reason));
+            let (error_code, _reason) = self.parse_error_response(&buf, len);
+            if error_code == 401 {
+                // Extract NONCE and REALM from the error response
+                let (_, nonce_val, realm_val, _) = self.parse_allocate_response(&buf, len)
+                    .map_err(|e| format!("Failed to parse 401 response: {}", e))?;
+                let nonce = nonce_val.unwrap_or_default();
+                let realm = realm_val.unwrap_or_default();
+                if nonce.is_empty() || realm.is_empty() {
+                    return Err("TURN 401 missing nonce or realm".to_string());
+                }
+
+                // Rebuild attrs and send with auth
+                let mut auth_attrs = Vec::new();
+                self.add_attr(&mut auth_attrs, TURN_ATTR_REQUESTED_TRANSPORT, &[
+                    0x06, 0x00, 0x00, 0x00,
+                ]);
+                self.add_attr(&mut auth_attrs, TURN_ATTR_LIFETIME, &lifetime_bytes);
+                self.add_attr(&mut auth_attrs, TURN_ATTR_NONCE, nonce.as_bytes());
+                self.add_attr(&mut auth_attrs, TURN_ATTR_REALM, realm.as_bytes());
+
+                let auth_msg = self.build_turn_message(
+                    TURN_METHOD_ALLOCATE | TURN_CLASS_REQUEST,
+                    &auth_attrs,
+                    Some(&turn.username),
+                    Some(&realm),
+                    Some(&nonce),
+                );
+
+                stream.write_all(&auth_msg).await
+                    .map_err(|e| format!("Failed to send authenticated Allocate: {}", e))?;
+
+                let mut buf2 = vec![0u8; 1500];
+                let len2 = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    stream.read(&mut buf2),
+                )
+                .await
+                .map_err(|_| "TURN Allocate response timed out".to_string())?
+                .map_err(|e| format!("Failed to read Allocate response: {}", e))?;
+
+                if len2 < 20 {
+                    return Err("TURN response too short".to_string());
+                }
+
+                let msg_type2 = u16::from_be_bytes([buf2[0], buf2[1]]);
+                if msg_type2 & 0x0110 == TURN_CLASS_ERROR {
+                    let (code, reason) = self.parse_error_response(&buf2, len2);
+                    return Err(format!("TURN Allocate error {}: {}", code, reason));
+                }
+                if msg_type2 & 0x0100 != TURN_CLASS_SUCCESS {
+                    return Err(format!("Unexpected TURN response type: 0x{:04x}", msg_type2));
+                }
+
+                let (relay_addr, nonce2, realm2, lifetime_val) = self.parse_allocate_response(&buf2, len2)?;
+                return Ok(TurnAllocation {
+                    relayed_addr: relay_addr,
+                    lifetime: lifetime_val,
+                    nonce: nonce2.unwrap_or(nonce),
+                    realm: realm2.unwrap_or(realm),
+                });
+            }
+            return Err(format!("TURN Allocate error {}: {}", error_code, _reason));
         }
 
         if msg_type & 0x0100 != TURN_CLASS_SUCCESS {
@@ -322,7 +386,7 @@ impl HolePuncher {
         self.add_attr(&mut attrs, TURN_ATTR_LIFETIME, &lifetime_bytes);
 
         // Build message
-        let msg = self.build_turn_message(TURN_METHOD_CREATE_PERMISSION | TURN_CLASS_REQUEST, &attrs);
+        let msg = self.build_turn_message(TURN_METHOD_CREATE_PERMISSION | TURN_CLASS_REQUEST, &attrs, None, allocation.realm.as_str().into(), allocation.nonce.as_str().into());
 
         stream.write_all(&msg).await
             .map_err(|e| format!("Failed to send CreatePermission request: {}", e))?;
@@ -365,7 +429,7 @@ impl HolePuncher {
         self.add_attr(&mut attrs, TURN_ATTR_XOR_PEER_ADDRESS, &peer_addr_bytes);
 
         // Build Connect request
-        let msg = self.build_turn_message(TURN_METHOD_CONNECT | TURN_CLASS_REQUEST, &attrs);
+        let msg = self.build_turn_message(TURN_METHOD_CONNECT | TURN_CLASS_REQUEST, &attrs, None, allocation.realm.as_str().into(), allocation.nonce.as_str().into());
 
         stream.write_all(&msg).await
             .map_err(|e| format!("Failed to send Connect request: {}", e))?;
@@ -391,14 +455,14 @@ impl HolePuncher {
     }
 
     /// Build a TURN message with header and attributes
-    fn build_turn_message(&self, msg_type: u16, attrs: &[u8]) -> Vec<u8> {
+    fn build_turn_message(&self, msg_type: u16, attrs: &[u8], username: Option<&str>, realm: Option<&str>, nonce: Option<&str>) -> Vec<u8> {
         let mut msg = Vec::new();
 
         // Header (20 bytes)
         msg.push((msg_type >> 8) as u8);
         msg.push(msg_type as u8);
 
-        // Message length
+        // Message length placeholder (will be updated after auth attrs)
         let len = attrs.len() as u16;
         msg.push((len >> 8) as u8);
         msg.push(len as u8);
@@ -417,6 +481,45 @@ impl HolePuncher {
 
         // Attributes
         msg.extend_from_slice(attrs);
+
+        // Add USERNAME + MESSAGE-INTEGRITY if credentials provided
+        if let (Some(user), Some(realm_val), Some(_nonce_val)) = (username, realm, nonce) {
+            let combined = format!("{}:{}", user, realm_val);
+            // USERNAME attribute
+            let user_bytes = combined.as_bytes();
+            msg.push((TURN_ATTR_USERNAME >> 8) as u8);
+            msg.push(TURN_ATTR_USERNAME as u8);
+            msg.push((user_bytes.len() >> 8) as u8);
+            msg.push(user_bytes.len() as u8);
+            msg.extend_from_slice(user_bytes);
+            let padding = (4 - user_bytes.len() % 4) % 4;
+            msg.extend(std::iter::repeat(0).take(padding));
+
+            // MESSAGE-INTEGRITY (placeholder, computed below)
+            // Reserve 20 bytes for the HMAC-SHA1 attribute
+            msg.push((TURN_ATTR_MESSAGE_INTEGRITY >> 8) as u8);
+            msg.push(TURN_ATTR_MESSAGE_INTEGRITY as u8);
+            msg.push(0x00);
+            msg.push(0x14); // 20 bytes
+            msg.extend(std::iter::repeat(0).take(20));
+
+            // Update message length in header
+            let body_len = msg.len() - 20; // header is 20 bytes
+            msg[2] = (body_len >> 8) as u8;
+            msg[3] = body_len as u8;
+
+            // Compute HMAC-SHA1 over the message body (from byte 20 onward)
+            let key = format!("{}:{}", user, realm_val);
+            let mut mac = Hmac::<Sha1>::new_from_slice(key.as_bytes())
+                .expect("HMAC can take key of any size");
+            mac.update(&msg[20..]);
+            let result = mac.finalize();
+            let hmac_bytes = result.into_bytes();
+
+            // Write HMAC into the last 20 bytes before the end
+            let hmac_start = msg.len() - 20;
+            msg[hmac_start..hmac_start + 20].copy_from_slice(&hmac_bytes);
+        }
 
         msg
     }
@@ -500,7 +603,13 @@ impl HolePuncher {
                             data[6] ^ ((MAGIC_COOKIE >> 8) as u8),
                             data[7] ^ (MAGIC_COOKIE as u8),
                         ];
-                        relay_addr = Some(format!("{}.{}.{}.{}:{}", ip[0], ip[1], ip[2], ip[3], port).parse().unwrap());
+                        relay_addr = match format!("{}.{}.{}.{}:{}", ip[0], ip[1], ip[2], ip[3], port).parse() {
+                            Ok(addr) => Some(addr),
+                            Err(e) => {
+                                eprintln!("[TURN] Failed to parse relay address: {}", e);
+                                None
+                            }
+                        };
                     }
                 }
                 TURN_ATTR_NONCE => {
@@ -596,7 +705,7 @@ mod tests {
     fn test_build_turn_message() {
         let puncher = HolePuncher::new(vec![], vec![]);
         let attrs = vec![0x00, 0x01, 0x00, 0x04, 0x01, 0x02, 0x03, 0x04];
-        let msg = puncher.build_turn_message(TURN_METHOD_ALLOCATE | TURN_CLASS_REQUEST, &attrs);
+        let msg = puncher.build_turn_message(TURN_METHOD_ALLOCATE | TURN_CLASS_REQUEST, &attrs, None, None, None);
 
         assert_eq!(msg.len(), 20 + attrs.len());
         assert_eq!(msg[0], ((TURN_METHOD_ALLOCATE | TURN_CLASS_REQUEST) >> 8) as u8);

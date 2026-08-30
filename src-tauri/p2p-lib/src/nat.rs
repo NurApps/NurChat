@@ -175,7 +175,8 @@ fn is_private_ip(ip: &str) -> bool {
 }
 
 /// Cached NAT info to avoid re-probing on every call
-static mut CACHED_NAT: Option<NatInfo> = None;
+use std::sync::OnceLock;
+static CACHED_NAT: OnceLock<NatInfo> = OnceLock::new();
 
 /// Resolve a STUN server string ("host:port" or "ip:port") into a SocketAddr,
 /// resolving hostnames via DNS (SocketAddr::from_str does not accept hostnames).
@@ -192,13 +193,11 @@ fn resolve_stun(server: &str) -> Result<SocketAddr, String> {
 
 pub async fn detect_nat(stun_servers: &[&str]) -> Result<NatInfo, String> {
     // Return cached result if available
-    unsafe {
-        if let Some(ref cached) = CACHED_NAT {
-            return Ok(cached.clone());
-        }
+    if let Some(cached) = CACHED_NAT.get() {
+        return Ok(cached.clone());
     }
     let result = detect_nat_uncached(stun_servers).await?;
-    unsafe { CACHED_NAT = Some(result.clone()); }
+    _ = CACHED_NAT.set(result.clone());
     Ok(result)
 }
 

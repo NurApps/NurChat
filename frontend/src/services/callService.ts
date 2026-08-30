@@ -472,7 +472,7 @@ export function initCallSignaling(): void {
       const callId = payload.call_id as string
 
       if (type === "p2p-call-offer") {
-        handleOffer(from, callId, payload.sdp as string, true)
+        handleOffer(from, callId, payload.sdp as string, payload.is_video as boolean ?? false)
       } else if (type === "p2p-call-answer") {
         handleAnswer(callId, payload.sdp as string)
       } else if (type === "p2p-call-candidate") {

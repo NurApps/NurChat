@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     ENABLE_METRICS: bool = False
     LOG_LEVEL: str = "INFO"
     LOG_TO_FILE: bool = True
+    TOTP_MASTER_KEY: str = ""  # Auto-generated if empty, persisted to .env
 
     # Alert thresholds
     WS_CONNECTIONS_WARN: int = 100
@@ -112,31 +113,31 @@ def create_directories():
 
 settings = Settings()
 
-if not settings.ENCRYPTION_KEY:
-    import logging
-    logging.critical(
-        "\n" + "!" * 72 + "\n"
-        "[FATAL] ENCRYPTION_KEY is NOT set!\n"
-        "Set a stable ENCRYPTION_KEY in .env or environment variable.\n"
-        "Generate with: python -c \"import secrets; print(secrets.token_hex(32))\"\n"
-        + "!" * 72
-    )
-    raise RuntimeError(
-        "ENCRYPTION_KEY is required. Set it in .env or as environment variable."
-    )
+# Auto-generate and persist keys if not set — users should NOT need .env for this
+_keys_file = Path(__file__).resolve().parent.parent / ".env"
 
-if not settings.JWT_SECRET_KEY:
-    import logging
-    logging.critical(
-        "\n" + "!" * 72 + "\n"
-        "[FATAL] JWT_SECRET_KEY is NOT set!\n"
-        "Set JWT_SECRET_KEY in .env or environment variable.\n"
-        "Generate with: python -c \"import secrets; print(secrets.token_hex(32))\"\n"
-        + "!" * 72
-    )
-    raise RuntimeError(
-        "JWT_SECRET_KEY is required. Set it in .env or as environment variable."
-    )
+def _ensure_key(name: str, value: str, generator) -> str:
+    """Return existing value or generate, persist to .env, and return."""
+    if value:
+        return value
+    generated = generator()
+    # Persist to .env for next restart
+    try:
+        existing = _keys_file.read_text(encoding="utf-8") if _keys_file.exists() else ""
+        if name not in existing:
+            with open(_keys_file, "a", encoding="utf-8") as f:
+                f.write(f"\n{name}={generated}\n")
+            print(f"[NurChat] Generated {name} and saved to .env")
+        else:
+            # Key exists in .env but wasn't loaded — env var takes precedence, just use it
+            pass
+    except Exception as e:
+        print(f"[NurChat] Warning: could not persist {name} to .env: {e}")
+    return generated
+
+import secrets
+settings.ENCRYPTION_KEY = _ensure_key("ENCRYPTION_KEY", settings.ENCRYPTION_KEY, lambda: secrets.token_hex(32))
+settings.JWT_SECRET_KEY = _ensure_key("JWT_SECRET_KEY", settings.JWT_SECRET_KEY, lambda: secrets.token_hex(32))
 
 ENCRYPTION_KEY = settings.ENCRYPTION_KEY.encode()
 

@@ -17,6 +17,8 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id as Argon2idKDF
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
+from shared.config import settings
+
 # ── Argon2id password hashing ──
 
 _ph = PasswordHasher(
@@ -155,24 +157,22 @@ def verify_backup_code(plain_code: str, hashed_json: str) -> tuple[bool, str]:
 
 # ── Master-key TOTP encryption (not password-dependent) ──
 
-_TOTP_MASTER_KEY = os.getenv("TOTP_MASTER_KEY")
+_TOTP_MASTER_KEY = settings.TOTP_MASTER_KEY
 if not _TOTP_MASTER_KEY:
     import logging
 
-    from shared.config import settings as _settings
-    if not _settings.DEBUG:
-        # Fail-fast in production: silently generated keys invalidate every
-        # stored 2FA secret on restart (DEVELOPMENT_PLAN.md, item S4).
-        raise RuntimeError(
-            "TOTP_MASTER_KEY не задан в .env. В production-режиме сервер "
-            "не стартует с временным ключом — все 2FA конфигурации сломаются "
-            "при перезапуске. Сгенерируйте ключ: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
-        )
+    # Auto-generate and persist to .env
     _TOTP_MASTER_KEY = secrets.token_urlsafe(32)
-    logging.getLogger("nurchat").critical(
-        "TOTP_MASTER_KEY не задан в .env — используется временный ключ (DEBUG). "
-        "ВСЕ 2FA конфигурации сломаются при перезапуске сервера!"
-    )
+    try:
+        from pathlib import Path
+        _env_file = Path(__file__).resolve().parent.parent.parent / ".env"
+        existing = _env_file.read_text(encoding="utf-8") if _env_file.exists() else ""
+        if "TOTP_MASTER_KEY" not in existing:
+            with open(_env_file, "a", encoding="utf-8") as f:
+                f.write(f"\nTOTP_MASTER_KEY={_TOTP_MASTER_KEY}\n")
+            logging.getLogger("nurchat").info("TOTP_MASTER_KEY generated and saved to .env")
+    except Exception as e:
+        logging.getLogger("nurchat").warning(f"Could not persist TOTP_MASTER_KEY: {e}")
 
 def _get_totp_cipher() -> Fernet:
     master_key = _TOTP_MASTER_KEY or secrets.token_urlsafe(32)

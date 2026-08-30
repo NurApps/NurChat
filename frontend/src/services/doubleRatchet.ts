@@ -58,6 +58,10 @@ export function fromBase64(b64: string): Uint8Array {
 
 // ─── HKDF (SHA-256 based) ───
 
+// WebCrypto rejects empty HMAC keys. HKDF spec allows empty salt, so we use
+// an all-zero 32-byte salt (equivalent to empty per RFC 5869 §2.2).
+const HKDF_SALT = new Uint8Array(32)
+
 async function hkdfExtract(salt: Uint8Array, ikm: Uint8Array): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey("raw", salt as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"])
   const result = await crypto.subtle.sign("HMAC", key, ikm as BufferSource)
@@ -95,8 +99,8 @@ class KDFChain {
   async nextMessageKey(ad: Uint8Array): Promise<{ msgKey: Uint8Array; chain: KDFChain }> {
     const infoMsg = u8Concat(ad, new TextEncoder().encode("|nurchat:msg"))
     const infoChain = u8Concat(ad, new TextEncoder().encode("|nurchat:chain"))
-    const msgKey = await hkdf(new Uint8Array(0), this.key, infoMsg, 32)
-    const nextKey = await hkdf(new Uint8Array(0), this.key, infoChain, 32)
+    const msgKey = await hkdf(HKDF_SALT, this.key, infoMsg, 32)
+    const nextKey = await hkdf(HKDF_SALT, this.key, infoChain, 32)
     return { msgKey, chain: new KDFChain(nextKey, this.step + 1) }
   }
 }
@@ -180,7 +184,7 @@ export class DoubleRatchetSession {
       dhInput = u8Concat(dhInput, dh4)
     }
 
-    const sk = await hkdf(new Uint8Array(0), dhInput, new TextEncoder().encode("X3DH_SK"), 32)
+    const sk = await hkdf(HKDF_SALT, dhInput, new TextEncoder().encode("X3DH_SK"), 32)
     return { sk, ephemeralSecret: ephemeralKp.secretKey }
   }
 
@@ -201,7 +205,7 @@ export class DoubleRatchetSession {
       dhInput = u8Concat(dhInput, dh4)
     }
 
-    return hkdf(new Uint8Array(0), dhInput, new TextEncoder().encode("X3DH_SK"), 32)
+    return hkdf(HKDF_SALT, dhInput, new TextEncoder().encode("X3DH_SK"), 32)
   }
 
   async initializeAsAlice(params: {

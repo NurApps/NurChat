@@ -229,7 +229,13 @@ export async function initP2PBridge(): Promise<void> {
   const keys = await import("./e2e").then(m => m.loadKeys()).catch(() => null)
   const myPeerId = keys?.publicKeyHex || ""
   const token = localStorage.getItem("token") || ""
-  const signalingUrl = `${WS_BASE}/signaling/${myPeerId}?token=${encodeURIComponent(token)}`
+  // Signaling WS requires user_id (not public key) to match JWT subject
+  let userId = ""
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]))
+    userId = payload.sub || ""
+  } catch {}
+  const signalingUrl = `${WS_BASE}/signaling/${userId}?token=${encodeURIComponent(token)}`
 
   try {
     await connectionManager.init(myPeerId, signalingUrl)

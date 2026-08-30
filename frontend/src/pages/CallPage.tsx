@@ -427,6 +427,7 @@ export default function CallPage() {
             case "call-rejected":
               setStatus("rejected")
               statusRef.current = "rejected"
+              if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(1000) }
               cleanup()
               setTimeout(() => navigate("/chat"), 1500)
               break
@@ -434,6 +435,7 @@ export default function CallPage() {
             case "call-ended":
               setStatus("ended")
               statusRef.current = "ended"
+              if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(1000) }
               cleanup()
               setTimeout(() => navigate("/chat"), 500)
               break
@@ -442,6 +444,11 @@ export default function CallPage() {
               setStatus("failed")
               statusRef.current = "failed"
               setMediaError(msg.message || msg.reason || t("call.peerUnavailable"))
+              // Prevent onclose from reconnecting: close WS with normal code
+              if (wsRef.current) {
+                wsRef.current.onclose = null
+                wsRef.current.close(1000)
+              }
               cleanup()
               setTimeout(() => navigate("/chat"), 1500)
               break
@@ -449,6 +456,7 @@ export default function CallPage() {
             case "call-timeout":
               setStatus("missed")
               statusRef.current = "missed"
+              if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(1000) }
               cleanup()
               setTimeout(() => navigate("/chat"), 1500)
               break

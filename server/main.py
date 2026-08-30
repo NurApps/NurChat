@@ -525,13 +525,18 @@ async def health_check():
             redis_ok = True
     except Exception as e:
         logger.debug("Redis health check failed: %s", e)
-    return {
-        "status": "healthy" if db_ok else "degraded",
-        "database": "connected" if db_ok else "error",
-        "redis": "connected" if redis_ok else "disconnected",
-        "service": "NurChat Server",
-        "version": "1.0.0"
-    }
+    status = "healthy" if db_ok else "degraded"
+    status_code = 200 if db_ok else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": status,
+            "database": "connected" if db_ok else "error",
+            "redis": "connected" if redis_ok else "disconnected",
+            "service": "NurChat Server",
+            "version": "1.0.0",
+        },
+    )
 
 # Prometheus metrics
 if settings.ENABLE_METRICS:

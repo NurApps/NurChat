@@ -723,7 +723,7 @@ export default function CallPage() {
   return (
     <div className="call-page">
       <div className="call-header">
-        <button className="call-back" onClick={() => { cleanup(); navigate("/chat") }}>
+        <button className="call-back" onClick={() => { statusRef.current = "ended"; cleanup(); navigate("/chat") }}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
         </button>
         <span className="call-title">{callType === "audio" ? t("call.audioCall") : t("call.videoCall")}</span>

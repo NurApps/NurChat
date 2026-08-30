@@ -39,23 +39,30 @@ async function request<T>(
 ): Promise<T> {
   const token = getToken()
   const csrfToken = csrfTokenCache || getCsrfToken()
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(csrfToken && method !== "GET" ? { "X-CSRF-Token": csrfToken } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  const headerToken = res.headers.get("X-CSRF-Token")
-  if (headerToken) csrfTokenCache = headerToken
-  if (!res.ok) {
-    const text = await res.text()
-    throw new ApiError(res.status, text || res.statusText)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(csrfToken && method !== "GET" ? { "X-CSRF-Token": csrfToken } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    })
+    const headerToken = res.headers.get("X-CSRF-Token")
+    if (headerToken) csrfTokenCache = headerToken
+    if (!res.ok) {
+      const text = await res.text()
+      throw new ApiError(res.status, text || res.statusText)
+    }
+    if (res.status === 204) return undefined as T
+    return res.json()
+  } finally {
+    clearTimeout(timeout)
   }
-  if (res.status === 204) return undefined as T
-  return res.json()
 }
 
 export const api = {

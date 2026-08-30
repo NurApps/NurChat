@@ -85,7 +85,19 @@ export function isInCall(): boolean {
 async function sendSignaling(target: string, callId: string, type: string, data: string): Promise<void> {
   if (!isTauri()) throw new Error("P2P call signaling not available in browser mode")
   const { invoke } = await import("@tauri-apps/api/core")
-  await invoke("p2p_send_call_signaling", { target, callId, signalType: type, data })
+  // Timeout: if P2P send hangs, don't block the app forever
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Signaling timeout")), 8000)
+  )
+  await Promise.race([
+    invoke("p2p_send_call_signaling", { target, callId, signalType: type, data }),
+    timeout,
+  ])
+}
+
+/** Fire-and-forget signaling — used for hangup so cleanup runs immediately. */
+function sendSignalingNoWait(target: string, callId: string, type: string, data: string): void {
+  sendSignaling(target, callId, type, data).catch(() => {})
 }
 
 // ─── Call lifecycle ───
@@ -159,7 +171,7 @@ export async function startCall(
   // Handle ICE candidates
   peerConnection.onicecandidate = (event) => {
     if (event.candidate && activeCall) {
-      sendSignaling(peerPublicKey, callId, "candidate", JSON.stringify(event.candidate.toJSON())).catch(() => {})
+      sendSignalingNoWait(peerPublicKey, callId, "candidate", JSON.stringify(event.candidate.toJSON()))
     }
   }
 
@@ -283,9 +295,8 @@ function handleHangup(callId: string): void {
 export async function endCall(): Promise<void> {
   if (!activeCall) return
   const { callId, peerPublicKey } = activeCall
-  try {
-    await sendSignaling(peerPublicKey, callId, "hangup", "")
-  } catch { /* ignore */ }
+  // Fire-and-forget: don't wait for signaling — cleanup immediately
+  sendSignalingNoWait(peerPublicKey, callId, "hangup", "")
   emitCallEvent({ type: "call_ended", callId })
   cleanup()
 }
@@ -328,7 +339,7 @@ export async function acceptCall(): Promise<void> {
 
   peerConnection.onicecandidate = (event) => {
     if (event.candidate && activeCall) {
-      sendSignaling(from, callId, "candidate", JSON.stringify(event.candidate.toJSON())).catch(() => {})
+      sendSignalingNoWait(from, callId, "candidate", JSON.stringify(event.candidate.toJSON()))
     }
   }
 

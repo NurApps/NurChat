@@ -165,8 +165,9 @@ export const useChatStore = create<ChatState>((set) => ({
     try {
       const data = await api.getChats()
       set({ chats: data || [] })
-    } catch {
-      set({ chats: [] })
+    } catch (err) {
+      console.error("[chatStore] loadChats failed:", err)
+      // Don't reset to empty — preserve stale data
     }
   },
 
@@ -174,8 +175,8 @@ export const useChatStore = create<ChatState>((set) => ({
     try {
       const data = await api.getContacts()
       set({ contacts: data || [] })
-    } catch {
-      set({ contacts: [] })
+    } catch (err) {
+      console.error("[chatStore] loadContacts failed:", err)
     }
   },
 
@@ -183,8 +184,8 @@ export const useChatStore = create<ChatState>((set) => ({
     try {
       const data = await api.getGroupInvites()
       set({ invites: data || [] })
-    } catch {
-      set({ invites: [] })
+    } catch (err) {
+      console.error("[chatStore] loadInvites failed:", err)
     }
   },
 

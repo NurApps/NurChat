@@ -516,7 +516,9 @@ async function _refreshConnectedPeers(): Promise<void> {
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn("[P2P Bridge] Refresh connected peers failed:", err)
+  }
 
   if (initialized) {
     setTimeout(_refreshConnectedPeers, 5000)

@@ -67,6 +67,31 @@ async def lifespan(app: FastAPI):
     file_cleanup_service.start_cleanup_scheduler()
     logger.info("File cleanup service started")
 
+    # Start ephemeral message cleanup
+    import asyncio
+    async def ephemeral_cleanup_loop():
+        while True:
+            try:
+                from server.core.database import SessionLocal
+                from server.core import models
+                from datetime import datetime, timezone
+                db = SessionLocal()
+                try:
+                    deleted = db.query(models.Message).filter(
+                        models.Message.expires_at.isnot(None),
+                        models.Message.expires_at < datetime.now(timezone.utc),
+                    ).delete(synchronize_session=False)
+                    if deleted:
+                        db.commit()
+                        logger.info(f"Ephemeral cleanup: deleted {deleted} expired messages")
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.warning(f"Ephemeral cleanup error: {e}")
+            await asyncio.sleep(300)  # every 5 minutes
+    ephemeral_task = asyncio.create_task(ephemeral_cleanup_loop())
+    logger.info("Ephemeral message cleanup started")
+
     # Start LAN discovery
     from server.core.discovery import start_discovery
     await start_discovery()
@@ -78,6 +103,13 @@ async def lifespan(app: FastAPI):
     logger.info("Background tasks started")
 
     yield
+
+    # Shutdown ephemeral cleanup
+    ephemeral_task.cancel()
+    try:
+        await ephemeral_task
+    except asyncio.CancelledError:
+        pass
 
     # Shutdown LAN discovery
     from server.core.discovery import stop_discovery

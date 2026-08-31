@@ -17,6 +17,7 @@ class GroupRenameRequest(BaseModel):
 
 
 @router.get("/contacts", response_model=list[schemas.ContactResponse])
+@limiter.limit("30/minute")
 async def get_contacts(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -435,11 +436,34 @@ async def remove_participant(
     if not target_participant:
         raise HTTPException(status_code=404, detail="Пользователь не в группе")
     db.delete(target_participant)
-    # Clear group key — must be re-initialized by admin
-    chat.group_key = None
-    chat.group_key_creator_id = None
+
+    # Rotate group key: generate new key, notify remaining members
+    import secrets as _secrets
+    import nacl.secret
+    new_group_key = _secrets.token_bytes(nacl.secret.SecretBox.KEY_SIZE)
+    chat.group_key = new_group_key.hex()
+    chat.group_key_creator_id = user_id
     db.commit()
-    return {"message": f"Пользователь {target_user_id} удалён из группы"}
+
+    # Notify remaining members via WebSocket to re-fetch group key
+    try:
+        from server.ws.chat_manager import connection_manager
+        remaining = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == group_id,
+        ).all()
+        for p in remaining:
+            await connection_manager.send_to_user(p.user_id, {
+                "event": "group_key_rotated",
+                "data": {
+                    "group_id": group_id,
+                    "removed_user_id": target_user_id,
+                    "message": "Ключ группы обновлён",
+                },
+            })
+    except Exception:
+        pass
+
+    return {"message": f"Пользователь {target_user_id} удалён из группы, ключ обновлён"}
 
 
 @router.post("/groups/{group_id}/leave")
@@ -456,8 +480,37 @@ async def leave_group(
     if not participant:
         raise HTTPException(status_code=404, detail="Вы не в этой группе")
     db.delete(participant)
+
+    # Rotate group key on leave
+    chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group).first()
+    if chat:
+        import secrets as _secrets
+        import nacl.secret
+        new_group_key = _secrets.token_bytes(nacl.secret.SecretBox.KEY_SIZE)
+        chat.group_key = new_group_key.hex()
+        chat.group_key_creator_id = user_id
+
     db.commit()
-    return {"message": "Вы вышли из группы"}
+
+    # Notify remaining members
+    try:
+        from server.ws.chat_manager import connection_manager
+        remaining = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == group_id,
+        ).all()
+        for p in remaining:
+            await connection_manager.send_to_user(p.user_id, {
+                "event": "group_key_rotated",
+                "data": {
+                    "group_id": group_id,
+                    "removed_user_id": user_id,
+                    "message": "Ключ группы обновлён",
+                },
+            })
+    except Exception:
+        pass
+
+    return {"message": "Вы вышли из группы, ключ обновлён"}
 
 
 @router.put("/groups/{group_id}/admin/{target_user_id}")

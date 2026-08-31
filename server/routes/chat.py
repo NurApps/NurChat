@@ -53,6 +53,7 @@ def _get_user_cached(db: Session, user_id: str):
 
 
 @router.get("/chats", response_model=list[schemas.ChatResponse])
+@limiter.limit("30/minute")
 async def get_user_chats(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
@@ -193,6 +194,7 @@ async def create_chat(
 
 
 @router.get("/chats/{chat_id}/messages", response_model=list[schemas.MessageResponse])
+@limiter.limit("60/minute")
 async def get_chat_messages(
     chat_id: str,
     skip: int = 0,
@@ -462,6 +464,7 @@ async def mark_message_as_read(
 
 
 @router.get("/messages/{message_id}/read-count")
+@limiter.limit("30/minute")
 async def get_read_count(
     message_id: str,
     db: Session = Depends(get_db),
@@ -609,6 +612,7 @@ async def edit_message(
 
 
 @router.get("/messages/{message_id}/edit-history")
+@limiter.limit("10/minute")
 async def get_edit_history(
     message_id: str,
     db: Session = Depends(get_db),
@@ -854,6 +858,7 @@ async def unblock_user(
 
 
 @router.get("/block", response_model=list[schemas.BlockedUserResponse])
+@limiter.limit("10/minute")
 async def get_blocked_users(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -865,6 +870,7 @@ async def get_blocked_users(
 
 
 @router.get("/chats/{chat_id}/export")
+@limiter.limit("5/minute")
 async def export_chat(
     chat_id: str,
     format: str = "json",
@@ -920,6 +926,7 @@ async def export_chat(
 
 
 @router.get("/chats/{chat_id}/search")
+@limiter.limit("10/minute")
 async def search_messages(
     chat_id: str,
     q: str,
@@ -1025,6 +1032,7 @@ async def toggle_reaction(
 
 
 @router.get("/messages/{message_id}/reactions", response_model=list[schemas.ReactionResponse])
+@limiter.limit("30/minute")
 async def get_reactions(
     message_id: str,
     db: Session = Depends(get_db),
@@ -1086,6 +1094,7 @@ async def set_group_key(
 
 
 @router.get("/chats/{chat_id}/group-key")
+@limiter.limit("10/minute")
 async def get_group_key(
     chat_id: str,
     db: Session = Depends(get_db),

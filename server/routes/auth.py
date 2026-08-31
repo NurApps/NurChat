@@ -291,6 +291,7 @@ async def login(
 
 
 @router.get("/me", response_model=schemas.UserResponse)
+@limiter.limit("30/minute")
 async def get_current_user(
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db)
@@ -356,6 +357,7 @@ async def delete_account(
 
 
 @router.get("/users", response_model=list[schemas.UserResponse])
+@limiter.limit("10/minute")
 async def get_all_users(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
@@ -383,6 +385,7 @@ async def get_all_users(
 
 
 @router.get("/user/{user_id}", response_model=schemas.UserResponse)
+@limiter.limit("30/minute")
 async def get_user(
     user_id: str,
     db: Session = Depends(get_db),
@@ -396,6 +399,7 @@ async def get_user(
 
 
 @router.post("/logout")
+@limiter.limit("10/minute")
 async def logout(
     request: Request,
     refresh_token_str: str = Body(None, embed=True),
@@ -557,7 +561,7 @@ async def rotate_key(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    """Ротация E2E ключа — сохраняет старый ключ в лог и обновляет на новый"""
+    """Ротация E2E ключа — сохраняет старый ключ в лог, обновляет на новый, уведомляет контакты"""
     user = db.query(models.User).filter(models.User.id == token["sub"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -574,6 +578,31 @@ async def rotate_key(
 
     user.public_key = new_public_key
     db.commit()
+
+    # Notify all contacts about key change via WebSocket
+    try:
+        from server.ws.chat_manager import connection_manager
+        contacts = db.query(models.Contact).filter(
+            or_(
+                models.Contact.user_id == user.id,
+                models.Contact.contact_id == user.id,
+            )
+        ).all()
+
+        notified = set()
+        for c in contacts:
+            peer_id = c.contact_id if c.user_id == user.id else c.user_id
+            if peer_id not in notified:
+                notified.add(peer_id)
+                await connection_manager.send_to_user(peer_id, {
+                    "event": "key_changed",
+                    "data": {
+                        "user_id": user.id,
+                        "new_public_key": new_public_key,
+                    },
+                })
+    except Exception:
+        pass  # best-effort notification
 
     return {"status": "ok", "old_key": old_key}
 

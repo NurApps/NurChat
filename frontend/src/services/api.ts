@@ -95,8 +95,8 @@ export const api = {
   getChatMessages: (chatId: string, skip = 0, limit = 50) =>
     request<MessageResponse[]>("GET", `/api/chat/chats/${chatId}/messages?skip=${skip}&limit=${limit}`),
 
-  sendMessage: (chatId: string, content: string, messageType = "text", fileId?: string, encryptedContent?: string, signature?: string, expiresAt?: string, replyToId?: string, sealedSender?: boolean) =>
-    request<MessageResponse>("POST", `/api/chat/chats/${chatId}/messages`, {
+  sendMessage: async (chatId: string, content: string, messageType = "text", fileId?: string, encryptedContent?: string, signature?: string, expiresAt?: string, replyToId?: string, sealedSender?: boolean): Promise<MessageResponse> => {
+    const body = {
       chat_id: chatId,
       content,
       message_type: messageType,
@@ -106,7 +106,24 @@ export const api = {
       expires_at: expiresAt,
       reply_to_id: replyToId,
       sealed_sender: sealedSender,
-    }),
+    }
+    // Retry with exponential backoff (up to 3 attempts)
+    let lastError: Error | null = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await request<MessageResponse>("POST", `/api/chat/chats/${chatId}/messages`, body)
+      } catch (err: any) {
+        lastError = err
+        const msg = err?.message || ""
+        // Don't retry on client errors (4xx) — only on network/5xx
+        if (msg.includes("4") && !msg.includes("5")) throw err
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)))
+        }
+      }
+    }
+    throw lastError
+  },
 
   deleteMessage: (messageId: string, deleteForAll = false) =>
     request<void>("DELETE", `/api/chat/messages/${messageId}?delete_for_all=${deleteForAll}`),

@@ -155,6 +155,7 @@ async def upload_file(
 
 
 @router.get("/download/{file_id}")
+@limiter.limit("30/minute")
 async def download_file(
     file_id: str,
     token: str | None = None,
@@ -243,6 +244,7 @@ async def delete_file(
 
 
 @router.get("/my-files", response_model=list[schemas.FileResponse])
+@limiter.limit("10/minute")
 async def get_my_files(
     skip: int = 0,
     limit: int = 50,
@@ -264,6 +266,7 @@ async def get_my_files(
 
 
 @router.get("/storage-info", response_model=schemas.StorageInfo)
+@limiter.limit("10/minute")
 async def get_storage_info(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)

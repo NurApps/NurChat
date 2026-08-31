@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./nurchat.db"
     SERVER_HOST: str = "127.0.0.1"
     SERVER_PORT: int = 8000
-    DEBUG: bool = True
+    DEBUG: bool = False
     USE_P2P: bool = True
     P2P_SIGNALING_PATH: str = "/ws/p2p"
     P2P_RELAY_STORE_MESSAGES: bool = True

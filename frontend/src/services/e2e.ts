@@ -277,27 +277,29 @@ export async function fetchAndVerifyBundle(
   try {
     const bundle = await api.getBundle(userId)
 
-    // Ed25519 public key MUST be exactly 32 bytes (64 hex chars).
-    // Some users have malformed keys in DB (64 bytes / 128 hex chars).
     const identityKeyBytes = hexToBytesSecure(bundle.identity_key)
     const spkBytes = hexToBytesSecure(bundle.signed_prekey)
     const sigBytes = hexToBytesSecure(bundle.signed_prekey_signature)
 
-    let sigValid = false
-    if (identityKeyBytes.length === 32 && spkBytes.length === 32 && sigBytes.length === 64) {
-      sigValid = signVerify(spkBytes, sigBytes, identityKeyBytes)
-    } else {
-      console.warn("[E2E] Malformed key sizes in bundle:",
-        "identity_key:", identityKeyBytes.length,
-        "spk:", spkBytes.length,
-        "sig:", sigBytes.length,
-        "— skipping verification")
-      // Still usable: trust the bundle but skip signature check
-      sigValid = true
+    // Ed25519 public key MUST be exactly 32 bytes (64 hex chars).
+    // SPK (X25519) MUST be exactly 32 bytes. Ed25519 signature MUST be 64 bytes.
+    // Reject malformed bundles — they indicate corrupted DB or MITM attempt.
+    if (identityKeyBytes.length !== 32) {
+      console.warn("[E2E] REJECTED bundle for", userId, ": identity_key is", identityKeyBytes.length, "bytes, expected 32")
+      return null
+    }
+    if (spkBytes.length !== 32) {
+      console.warn("[E2E] REJECTED bundle for", userId, ": signed_prekey is", spkBytes.length, "bytes, expected 32")
+      return null
+    }
+    if (sigBytes.length !== 64) {
+      console.warn("[E2E] REJECTED bundle for", userId, ": signature is", sigBytes.length, "bytes, expected 64")
+      return null
     }
 
+    const sigValid = signVerify(spkBytes, sigBytes, identityKeyBytes)
     if (!sigValid) {
-      console.warn("[E2E] SPK signature verification failed for", userId)
+      console.warn("[E2E] REJECTED bundle for", userId, ": SPK signature verification FAILED")
       return null
     }
 
@@ -399,6 +401,16 @@ export function removeSession(chatId: string): void {
   persistSessions().catch(console.error)
 }
 
+export function invalidateSessionsForUser(userId: string): void {
+  // Remove all sessions involving this user (by chat ID containing userId)
+  for (const [chatId] of sessionCache) {
+    if (chatId.includes(userId)) {
+      sessionCache.delete(chatId)
+    }
+  }
+  persistSessions().catch(console.error)
+}
+
 export async function clearSessions(): Promise<void> {
   sessionCache.clear()
   await clearSessionsSecure()
@@ -497,14 +509,25 @@ export async function decryptMessage(
     }
     const plaintext = await session.decryptMessage(ratchetEnvelope)
     await persistSessions()
-    if (envelope.senderSigningKey) {
-      const sigBytes = new Uint8Array(base64Decode(envelope.signature))
-      const valid = signVerify(
-        new TextEncoder().encode(plaintext),
-        sigBytes,
-        hexToBytesSecure(envelope.senderSigningKey),
-      )
-      if (!valid) return null
+
+    // Signature is MANDATORY — omit or invalid = reject message
+    if (!envelope.senderSigningKey || !envelope.signature) {
+      console.warn("[E2E] REJECTED message: missing senderSigningKey or signature")
+      return null
+    }
+    const sigBytes = new Uint8Array(base64Decode(envelope.signature))
+    if (sigBytes.length !== 64) {
+      console.warn("[E2E] REJECTED message: signature is", sigBytes.length, "bytes, expected 64")
+      return null
+    }
+    const valid = signVerify(
+      new TextEncoder().encode(plaintext),
+      sigBytes,
+      hexToBytesSecure(envelope.senderSigningKey),
+    )
+    if (!valid) {
+      console.warn("[E2E] REJECTED message: signature verification failed")
+      return null
     }
     return plaintext
   } catch (err) {

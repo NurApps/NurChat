@@ -103,6 +103,11 @@ export function useChatSocket({
           onMessage(data)
         }
         onChatUpdate()
+        // Track last message timestamp for offline sync
+        if (data.created_at) {
+          lastMessageAt = data.created_at
+          localStorage.setItem("ws_last_message_at", lastMessageAt)
+        }
         break
       }
       case "call_incoming": {
@@ -160,6 +165,17 @@ export function useChatSocket({
         wsRef.current?.send(JSON.stringify({ event: "pong", data: {} }))
         break
       }
+      case "key_changed": {
+        // Contact rotated their E2E key — invalidate cached sessions for them
+        if (data.user_id) {
+          import("../services/e2e").then(m => m.invalidateSessionsForUser(data.user_id)).catch(() => {})
+          import("../services/notifications").then(n => n.showNotification(
+            "Ключ собеседника изменён",
+            `${data.user_id.slice(0, 8)}... обновил ключ шифрования. Переподключение к сессии.`
+          )).catch(() => {})
+        }
+        break
+      }
       case "call_accept_response": {
         if (data.call_id && data.caller_id) {
           onNavigate(`/call/${data.caller_id}/audio`)
@@ -177,6 +193,24 @@ export function useChatSocket({
     }
   }, [])
 
+  // Sync messages received while offline
+  const syncMissedMessages = useCallback(async (since: string) => {
+    try {
+      const { default: api } = await import("../services/api")
+      const chats = await api.getChats()
+      for (const chat of chats.slice(0, 10)) { // limit to 10 most recent chats
+        const messages = await api.getChatMessages(chat.id, 0, 20)
+        for (const msg of messages) {
+          if (msg.created_at > since) {
+            handleWsEvent({ event: "new_message", data: msg }).catch(() => {})
+          }
+        }
+      }
+    } catch {
+      // Silent — chatStore refresh will catch up
+    }
+  }, [handleWsEvent])
+
   useEffect(() => {
     const userId = currentUser.id
     let stopped = false
@@ -186,6 +220,7 @@ export function useChatSocket({
     let reconnectTimer: ReturnType<typeof setTimeout>
     let reconnectAttempts = 0
     const MAX_RECONNECT = 10
+    let lastMessageAt: string | null = localStorage.getItem("ws_last_message_at")
 
     function connect() {
       const token = localStorage.getItem("token")
@@ -193,10 +228,15 @@ export function useChatSocket({
       const ws = new WebSocket(`${WS_BASE}/chat/${userId}?token=${encodeURIComponent(token)}`)
       wsRef.current = ws
       ws.onopen = () => {
+        const hadGap = reconnectAttempts > 0
         reconnectAttempts = 0
         console.log("WS connected")
         // Refetch missed data after a reconnect gap
         handlersRef.current.onChatUpdate()
+        // Sync messages received while offline
+        if (hadGap && lastMessageAt) {
+          syncMissedMessages(lastMessageAt).catch(() => {})
+        }
       }
       ws.onclose = (event) => {
         if (stopped) return

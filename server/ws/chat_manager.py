@@ -591,7 +591,8 @@ async def handle_websocket_connection(websocket: WebSocket, user_id: str, token:
     connected_at = last_alive
     idle_timeout = 120       # probe after 2 min of silence
     dead_after = 300         # drop if silent for 5 min total
-    reauth_interval = 300    # re-verify JWT every 5 min
+    last_token_check = 0.0
+    TOKEN_CHECK_INTERVAL = 10  # verify JWT every 10 seconds (on active messages)
 
     try:
         while True:
@@ -618,20 +619,22 @@ async def handle_websocket_connection(websocket: WebSocket, user_id: str, token:
                 logger.warning(f"Invalid JSON from {user_id}: {raw[:200]}")
                 await websocket.send_json({"event": "error", "data": {"message": "Невалидный JSON"}})
                 continue
-            await chat_manager.handle_message(user_id, data)
 
-            # Periodic token re-verification: a logged-out/expired session
-            # must not keep a live socket.
-            if token and time.monotonic() - connected_at > reauth_interval:
+            # Token re-verification: check periodically, not on every message
+            # to keep overhead minimal while catching revoked/expired tokens quickly.
+            now = time.monotonic()
+            if token and now - last_token_check > TOKEN_CHECK_INTERVAL:
+                last_token_check = now
                 from server.core.security import AuthenticationError
                 from server.core.security import security as sec
-                connected_at = time.monotonic()
                 try:
                     sec.verify_token(token)
                 except AuthenticationError:
                     logger.info(f"Closing WS for {user_id}: token no longer valid")
                     await websocket.close(code=4001, reason="Token expired")
                     break
+
+            await chat_manager.handle_message(user_id, data)
 
     except WebSocketDisconnect:
         connection_manager.disconnect(user_id, websocket)

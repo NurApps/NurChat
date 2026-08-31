@@ -13,7 +13,7 @@ import { getSettings, setSetting, clearSettings } from "../services/userSettings
 import { useTheme, THEMES } from "../context/ThemeContext"
 import type { UserResponse } from "../types"
 
-type SettingsTab = "profile" | "notifications" | "privacy" | "storage" | "security" | "account"
+type SettingsTab = "profile" | "notifications" | "privacy" | "storage" | "security" | "account" | "database"
 
 const TabIcons = {
   profile: (
@@ -44,6 +44,11 @@ const TabIcons = {
   account: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  ),
+  database: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
     </svg>
   ),
 }
@@ -88,6 +93,16 @@ export default function SettingsPage() {
   const [relaySaved, setRelaySaved] = useState(false)
   const [settings, setSettings] = useState(getSettings)
 
+  // Database state
+  const [dbStatus, setDbStatus] = useState<{dialect: string; url_masked: string; is_healthy: boolean; table_count: number; size_info: string | null; docker_available: boolean; docker_running: boolean} | null>(null)
+  const [pgHost, setPgHost] = useState("localhost")
+  const [pgPort, setPgPort] = useState("5432")
+  const [pgUser, setPgUser] = useState("nurchat")
+  const [pgPassword, setPgPassword] = useState("")
+  const [pgDatabase, setPgDatabase] = useState("nurchat")
+  const [pgTestResult, setPgTestResult] = useState<{ok: boolean; error?: string; version?: string} | null>(null)
+  const [pgLoading, setPgLoading] = useState(false)
+
   useEffect(() => {
     const cfg = getRelayConfig()
     setRelayHost(cfg.host)
@@ -111,6 +126,7 @@ export default function SettingsPage() {
     api.getStorageInfo?.().then((info: any) => setStorageInfo(info)).catch(() => {})
     platform.getAppVersion().then(setAppVersion).catch(() => setAppVersion("0.15.0"))
     loadTotpStatus()
+    loadDbStatus()
   }, [])
 
   const loadTotpStatus = async () => {
@@ -124,6 +140,85 @@ export default function SettingsPage() {
       }
     } catch (e) {
       console.error("Failed to load TOTP status:", e)
+    }
+  }
+
+  const loadDbStatus = async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/admin/db/status`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      })
+      if (res.ok) {
+        setDbStatus(await res.json())
+      }
+    } catch (e) {
+      console.error("Failed to load DB status:", e)
+    }
+  }
+
+  const handleTestPg = async () => {
+    setPgLoading(true)
+    setPgTestResult(null)
+    try {
+      const res = await fetch(`${BASE_URL}/api/admin/db/test-pg`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ host: pgHost, port: parseInt(pgPort), user: pgUser, password: pgPassword, database: pgDatabase }),
+      })
+      setPgTestResult(await res.json())
+    } catch (e: any) {
+      setPgTestResult({ ok: false, error: e.message })
+    } finally {
+      setPgLoading(false)
+    }
+  }
+
+  const handleSwitchToPg = async () => {
+    if (!confirm("This will update DATABASE_URL in .env and restart the server. Continue?")) return
+    setPgLoading(true)
+    try {
+      const res = await fetch(`${BASE_URL}/api/admin/db/switch-to-pg`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ host: pgHost, port: parseInt(pgPort), user: pgUser, password: pgPassword, database: pgDatabase }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setMsg("Database URL updated. Restart the server to apply.")
+      } else {
+        setMsg(data.error || "Failed to switch database")
+      }
+    } catch (e: any) {
+      setMsg(e.message || "Failed to switch database")
+    } finally {
+      setPgLoading(false)
+    }
+  }
+
+  const handleStartDockerPg = async () => {
+    setPgLoading(true)
+    try {
+      const res = await fetch(`${BASE_URL}/api/admin/db/start-docker-pg`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setMsg("PostgreSQL started. Waiting for health check...")
+        setTimeout(loadDbStatus, 3000)
+      } else {
+        setMsg(data.error || "Failed to start Docker")
+      }
+    } catch (e: any) {
+      setMsg(e.message || "Failed to start Docker")
+    } finally {
+      setPgLoading(false)
     }
   }
 
@@ -378,6 +473,7 @@ export default function SettingsPage() {
     { id: "storage", label: t("settings.storage"), icon: TabIcons.storage },
     { id: "security", label: t("settings.security"), icon: TabIcons.security },
     { id: "account", label: t("settings.account"), icon: TabIcons.account },
+    { id: "database", label: "Database", icon: TabIcons.database },
   ]
 
   const formatSize = (bytes: number) => {
@@ -897,6 +993,172 @@ export default function SettingsPage() {
                 </div>
                 <p className="settings-info-text">{t("settings.relayRestart")}</p>
               </div>
+            </div>
+          )}
+
+          {/* ─── Database ─── */}
+          {tab === "database" && (
+            <div className="settings-sections">
+              <div className="settings-group">
+                <h3 className="settings-group-title">Current Database</h3>
+                {dbStatus ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div className="settings-field-row">
+                      <span className="settings-field-label">Type</span>
+                      <span className="settings-field-value" style={{ fontWeight: 600 }}>
+                        {dbStatus.dialect === "postgresql" ? "PostgreSQL" : "SQLite"}
+                      </span>
+                    </div>
+                    <div className="settings-field-row">
+                      <span className="settings-field-label">Status</span>
+                      <span className={`settings-badge ${dbStatus.is_healthy ? "on" : "off"}`}>
+                        {dbStatus.is_healthy ? "Healthy" : "Error"}
+                      </span>
+                    </div>
+                    <div className="settings-field-row">
+                      <span className="settings-field-label">Tables</span>
+                      <span className="settings-field-value">{dbStatus.table_count}</span>
+                    </div>
+                    {dbStatus.size_info && (
+                      <div className="settings-field-row">
+                        <span className="settings-field-label">Size</span>
+                        <span className="settings-field-value">{dbStatus.size_info}</span>
+                      </div>
+                    )}
+                    <div className="settings-field-row">
+                      <span className="settings-field-label">Connection</span>
+                      <span className="settings-field-value" style={{ fontFamily: "monospace", fontSize: 12 }}>
+                        {dbStatus.url_masked}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="spinner" />
+                )}
+              </div>
+
+              {dbStatus?.dialect === "sqlite" && (
+                <div className="settings-group">
+                  <h3 className="settings-group-title">Switch to PostgreSQL</h3>
+                  <p className="settings-info-text">
+                    PostgreSQL is recommended for relay servers with multiple users.
+                    It handles concurrent connections better and supports advanced features.
+                  </p>
+
+                  {dbStatus.docker_available ? (
+                    <div style={{ marginBottom: 16 }}>
+                      <p className="settings-info-text" style={{ color: "var(--success)" }}>
+                        Docker is available. {dbStatus.docker_running ? "PostgreSQL is running." : "PostgreSQL is not running."}
+                      </p>
+                      {!dbStatus.docker_running && (
+                        <button
+                          className="settings-action-btn"
+                          onClick={handleStartDockerPg}
+                          disabled={pgLoading}
+                          style={{ marginTop: 8 }}
+                        >
+                          {pgLoading ? "Starting..." : "Start PostgreSQL (Docker)"}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="settings-info-text" style={{ color: "var(--warning)", marginBottom: 16 }}>
+                      Docker not found. Install Docker Desktop or connect to an existing PostgreSQL server.
+                    </p>
+                  )}
+
+                  <label className="settings-label">Host</label>
+                  <input
+                    className="settings-input"
+                    value={pgHost}
+                    onChange={(e) => setPgHost(e.target.value)}
+                    placeholder="localhost"
+                    style={{ width: "100%", marginBottom: 8 }}
+                  />
+
+                  <label className="settings-label">Port</label>
+                  <input
+                    className="settings-input"
+                    value={pgPort}
+                    onChange={(e) => setPgPort(e.target.value)}
+                    placeholder="5432"
+                    style={{ width: 120, marginBottom: 8 }}
+                  />
+
+                  <label className="settings-label">User</label>
+                  <input
+                    className="settings-input"
+                    value={pgUser}
+                    onChange={(e) => setPgUser(e.target.value)}
+                    placeholder="nurchat"
+                    style={{ width: "100%", marginBottom: 8 }}
+                  />
+
+                  <label className="settings-label">Password</label>
+                  <input
+                    className="settings-input"
+                    type="password"
+                    value={pgPassword}
+                    onChange={(e) => setPgPassword(e.target.value)}
+                    placeholder="Enter password"
+                    style={{ width: "100%", marginBottom: 8 }}
+                  />
+
+                  <label className="settings-label">Database</label>
+                  <input
+                    className="settings-input"
+                    value={pgDatabase}
+                    onChange={(e) => setPgDatabase(e.target.value)}
+                    placeholder="nurchat"
+                    style={{ width: "100%", marginBottom: 12 }}
+                  />
+
+                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                    <button
+                      className="settings-action-btn"
+                      onClick={handleTestPg}
+                      disabled={pgLoading || !pgPassword}
+                    >
+                      {pgLoading ? "Testing..." : "Test Connection"}
+                    </button>
+                    <button
+                      className="settings-save-btn"
+                      onClick={handleSwitchToPg}
+                      disabled={pgLoading || !pgPassword || !pgTestResult?.ok}
+                      style={{ width: "auto", padding: "0 16px" }}
+                    >
+                      Switch to PostgreSQL
+                    </button>
+                  </div>
+
+                  {pgTestResult && (
+                    <div style={{
+                      padding: 12,
+                      borderRadius: 8,
+                      background: pgTestResult.ok ? "rgba(76,175,80,0.1)" : "rgba(244,67,54,0.1)",
+                      border: `1px solid ${pgTestResult.ok ? "#4CAF50" : "#f44336"}`,
+                      fontSize: 13,
+                    }}>
+                      {pgTestResult.ok ? (
+                        <span style={{ color: "#4CAF50" }}>Connected: {pgTestResult.version}</span>
+                      ) : (
+                        <span style={{ color: "#f44336" }}>Error: {pgTestResult.error}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {dbStatus?.dialect === "postgresql" && (
+                <div className="settings-group">
+                  <h3 className="settings-group-title">PostgreSQL Tips</h3>
+                  <div style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.8 }}>
+                    <p>Backups: <code>pg_dump nurchat > backup.sql</code></p>
+                    <p>Restore: <code>psql nurchat < backup.sql</code></p>
+                    <p>Performance: Use connection pooling (PgBouncer) for 100+ users</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

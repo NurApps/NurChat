@@ -42,6 +42,7 @@ from server.routes import (
     transparency,
     webhooks,
 )
+from server.routes.admin.database import router as admin_db_router
 from server.utils.file_cleanup import file_cleanup_service
 from server.utils.logger import generate_request_id, logger, request_id_var
 from server.ws.chat_manager import handle_websocket_connection
@@ -314,6 +315,7 @@ app.include_router(transparency.router, tags=["Transparency"])
 app.include_router(polls.router, tags=["Polls"])
 app.include_router(push.router)
 app.include_router(contact_requests.router, tags=["Contact Requests"])
+app.include_router(admin_db_router)
 
 # WS rate limiting: max connections per IP
 _ws_connections: dict[str, int] = {}

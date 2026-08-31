@@ -17,8 +17,8 @@ export interface RelayConfig {
  * override. Add/remove entries here as infrastructure changes.
  */
 export const PUBLIC_RELAYS: RelayConfig[] = [
-  { host: "relay.nurchat.app", protocol: "https" },
-  // Mirrors (uncomment/add as they come online):
+  { host: "nurchat-relay.workers.dev", protocol: "https" },
+  // Add more relays as they come online:
   // { host: "relay-eu.nurchat.app", protocol: "https" },
 ]
 

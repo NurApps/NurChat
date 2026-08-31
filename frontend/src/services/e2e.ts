@@ -67,6 +67,57 @@ export interface E2EKeys {
   signingPublicHex: string
 }
 
+// ─── Safety Numbers (contact verification) ───
+
+import { sha256 } from "@noble/hashes/sha256"
+
+/**
+ * Generate Safety Number for verifying contact identity.
+ * Both parties compute this independently — if they match, keys are authentic.
+ *
+ * Algorithm: SHA-256(sorted(identity_key_A, identity_key_B)) → 12 groups of 5 digits
+ */
+export function generateSafetyNumber(
+  myIdentityKeyHex: string,
+  theirIdentityKeyHex: string,
+): { digits: string; qrData: string } {
+  const myKey = hexToBytesSecure(myIdentityKeyHex)
+  const theirKey = hexToBytesSecure(theirIdentityKeyHex)
+
+  // Sort keys (smaller first) so both parties compute the same hash
+  const [first, second] = u8Compare(myKey, theirKey) < 0 ? [myKey, theirKey] : [theirKey, myKey]
+
+  const combined = u8Concat(first, second)
+  const hash = sha256(combined)
+
+  // Convert to 12 groups of 5 digits (mod 1000 each → 0-999)
+  const digits: string[] = []
+  let offset = 0
+  for (let i = 0; i < 12; i++) {
+    // Read 2 bytes (16 bits) and mod 1000
+    const val = ((hash[offset] << 8) | hash[offset + 1]) % 1000
+    digits.push(val.toString().padStart(3, '0'))
+    offset = (offset + 2) % hash.length
+  }
+
+  return {
+    digits: digits.join(' '),
+    qrData: `nurchat-safety:${myIdentityKeyHex}:${theirIdentityKeyHex}`,
+  }
+}
+
+/**
+ * Verify that the other party's Safety Number matches.
+ */
+export function verifySafetyNumber(
+  myIdentityKeyHex: string,
+  theirIdentityKeyHex: string,
+  observedDigits: string,
+): boolean {
+  const expected = generateSafetyNumber(myIdentityKeyHex, theirIdentityKeyHex)
+  return expected.digits === observedDigits.replace(/\s/g, ' ').trim()
+}
+
 // ─── Encryption helpers (for session data at rest) ───
 
 async function deriveStorageKey(): Promise<Uint8Array> {

@@ -398,6 +398,24 @@ async def get_user(
     return schemas.UserResponse.model_validate(user)
 
 
+@router.get("/user/{user_id}/identity-keys")
+@limiter.limit("10/minute")
+async def get_identity_keys(
+    user_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """Получение публичных identity ключей для Safety Number verification"""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return {
+        "user_id": user.id,
+        "identity_key": user.signing_public_key or user.public_key,
+        "public_key": user.public_key,
+    }
+
+
 @router.post("/logout")
 @limiter.limit("10/minute")
 async def logout(

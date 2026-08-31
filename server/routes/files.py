@@ -100,6 +100,37 @@ async def upload_file(
 
         user_id = token["sub"]
 
+        # Virus scan: try ClamAV if available, skip if not installed
+        try:
+            import subprocess
+            import tempfile
+            # Save to temp file for scanning
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file.filename or ".tmp") as tmp:
+                content = await file.read()
+                tmp.write(content)
+                tmp_path = tmp.name
+                await file.seek(0)
+
+            result = subprocess.run(
+                ["clamscan", "--no-summary", tmp_path],
+                capture_output=True, text=True, timeout=30,
+            )
+            import os
+            os.unlink(tmp_path)
+
+            if result.returncode == 1:  # virus found
+                logger.warning(f"Virus detected in upload by {user_id}: {file.filename}")
+                raise HTTPException(status_code=422, detail="Файл содержит вредоносный код")
+            # returncode 0 = clean, 2 = error (skip scan)
+        except FileNotFoundError:
+            pass  # ClamAV not installed — skip scan
+        except subprocess.TimeoutExpired:
+            logger.warning("ClamAV scan timed out, allowing file")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Virus scan error (skipping): {e}")
+
         file_info = await file_storage.save_file(file, user_id, file_type)
         file_id = file_info["file_id"]
         file_path = file_info["file_path"]

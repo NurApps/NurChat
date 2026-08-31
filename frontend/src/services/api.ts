@@ -560,6 +560,9 @@ export const api = {
   cleanupPrekeys: () =>
     request<{ deleted: number }>("POST", "/api/keys/cleanup"),
 
+  getIdentityKeys: (userId: string) =>
+    request<{ user_id: string; identity_key: string; public_key: string }>("GET", `/api/auth/user/${userId}/identity-keys`),
+
   // Polls
   createPoll: (chatId: string, data: { question: string; options: { text: string }[]; is_anonymous?: boolean; allow_multiple?: boolean; expires_at?: string }) =>
     request<PollResponse>("POST", `/api/chat/chats/${chatId}/polls`, { ...data, chat_id: chatId }),

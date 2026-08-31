@@ -473,7 +473,7 @@ export default function SettingsPage() {
     { id: "storage", label: t("settings.storage"), icon: TabIcons.storage },
     { id: "security", label: t("settings.security"), icon: TabIcons.security },
     { id: "account", label: t("settings.account"), icon: TabIcons.account },
-    { id: "database", label: "Database", icon: TabIcons.database },
+    ...(localStorage.getItem("nurchat_debug") === "true" ? [{ id: "database" as SettingsTab, label: "Database", icon: TabIcons.database }] : []),
   ]
 
   const formatSize = (bytes: number) => {

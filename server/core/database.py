@@ -1,30 +1,35 @@
-from sqlalchemy import create_engine, event
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from shared.config import settings
 
-connect_args = {"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+# Detect dialect for connection args
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+connect_args = {"check_same_thread": False} if _is_sqlite else {}
 
 engine = create_engine(
     settings.DATABASE_URL,
     connect_args=connect_args,
-    pool_size=5,
-    max_overflow=10,
     pool_pre_ping=True,
+    pool_size=5 if _is_sqlite else 20,
+    max_overflow=10 if _is_sqlite else 40,
 )
 
-if "sqlite" in settings.DATABASE_URL:
+if _is_sqlite:
 
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 def get_db():
@@ -54,7 +59,6 @@ def create_tables():
 
     try:
         from alembic.config import Config
-
         from alembic import command
         alembic_cfg = Config("alembic.ini")
         command.upgrade(alembic_cfg, "head")

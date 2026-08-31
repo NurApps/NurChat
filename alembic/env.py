@@ -1,20 +1,16 @@
-from __future__ import annotations
-
 import os
 import sys
-
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
-
 from alembic import context
-from server.core import models  # noqa: F401 — register all models
-from server.core.database import Base
+
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
 from shared.config import settings
+from server.core.database import Base
+from server.core import models  # noqa: F401 — registers all models
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
@@ -44,10 +40,7 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
 

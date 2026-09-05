@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { api } from "../services/api"
 
 interface InviteModalProps {
   isOpen: boolean
@@ -14,9 +13,9 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
 
   useEffect(() => {
     if (isOpen) {
-      api.getP2PAddress()
-        .then((data) => setInviteLink(data.uri || ""))
-        .catch(() => setInviteLink(""))
+      // Generate a simple invite link pointing to the registration page
+      const base = window.location.origin
+      setInviteLink(`${base}/register`)
     }
   }, [isOpen])
 

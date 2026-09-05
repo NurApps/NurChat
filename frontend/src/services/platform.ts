@@ -1,12 +1,5 @@
 export type Runtime = "tauri" | "capacitor" | "web" | "unknown"
 
-export interface P2PPeerInfo {
-  peer_id: string
-  public_key: string
-  address: string
-  port: number
-}
-
 export interface UpdateInfo {
   has_update: boolean
   latest_version: string
@@ -34,8 +27,6 @@ export class Platform {
   readonly isTauri = this.runtime === "tauri"
   readonly isCapacitor = this.runtime === "capacitor"
   readonly isWeb = this.runtime === "web"
-
-  readonly supportsP2PHost = this.isTauri
 
   async invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
     if (!this.isTauri) {
@@ -159,36 +150,6 @@ export class Platform {
     if (!this.isTauri) return
     const { relaunch } = await import("@tauri-apps/plugin-process")
     await relaunch()
-  }
-
-  async initP2P(listenPort?: number): Promise<number | null> {
-    if (!this.supportsP2PHost) return null
-    try {
-      return await this.invoke<number>("init_p2p", { listen_port: listenPort })
-    } catch (e) {
-      console.error("P2P init failed:", e)
-      return null
-    }
-  }
-
-  async getP2PPeers(): Promise<P2PPeerInfo[]> {
-    if (!this.supportsP2PHost) return []
-    try {
-      return await this.invoke<P2PPeerInfo[]>("p2p_get_peers")
-    } catch (e) {
-      console.error("P2P get peers failed:", e)
-      return []
-    }
-  }
-
-  async getP2PPeerCount(): Promise<number> {
-    if (!this.supportsP2PHost) return 0
-    try {
-      return await this.invoke<number>("p2p_get_peer_count")
-    } catch (e) {
-      console.error("P2P get peer count failed:", e)
-      return 0
-    }
   }
 }
 

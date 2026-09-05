@@ -111,21 +111,28 @@ async def upload_file(
                 tmp_path = tmp.name
                 await file.seek(0)
 
-            result = subprocess.run(
-                ["clamscan", "--no-summary", tmp_path],
-                capture_output=True, text=True, timeout=30,
-            )
-            import os
-            os.unlink(tmp_path)
+            try:
+                result = subprocess.run(
+                    ["clamscan", "--no-summary", tmp_path],
+                    capture_output=True, text=True, timeout=30,
+                )
+                import os
+                os.unlink(tmp_path)
 
-            if result.returncode == 1:  # virus found
-                logger.warning(f"Virus detected in upload by {user_id}: {file.filename}")
-                raise HTTPException(status_code=422, detail="Файл содержит вредоносный код")
-            # returncode 0 = clean, 2 = error (skip scan)
+                if result.returncode == 1:  # virus found
+                    logger.warning(f"Virus detected in upload by {user_id}: {file.filename}")
+                    raise HTTPException(status_code=422, detail="Файл содержит вредоносный код")
+                elif result.returncode == 2:  # ClamAV error — reject to be safe
+                    logger.error(f"ClamAV error (returncode 2): {result.stderr}")
+                    raise HTTPException(status_code=422, detail="Ошибка антивируса. Попробуйте другой файл.")
+                # returncode 0 = clean
+            except subprocess.TimeoutExpired:
+                import os
+                os.unlink(tmp_path)
+                logger.warning("ClamAV scan timed out, rejecting file for safety")
+                raise HTTPException(status_code=422, detail="Сканирование заняло слишком много времени. Попробуйте меньший файл.")
         except FileNotFoundError:
             pass  # ClamAV not installed — skip scan
-        except subprocess.TimeoutExpired:
-            logger.warning("ClamAV scan timed out, allowing file")
         except HTTPException:
             raise
         except Exception as e:
@@ -188,6 +195,7 @@ async def upload_file(
 @router.get("/download/{file_id}")
 @limiter.limit("30/minute")
 async def download_file(
+    request: Request,
     file_id: str,
     token: str | None = None,
     db: Session = Depends(get_db),
@@ -277,6 +285,7 @@ async def delete_file(
 @router.get("/my-files", response_model=list[schemas.FileResponse])
 @limiter.limit("10/minute")
 async def get_my_files(
+    request: Request,
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
@@ -299,6 +308,7 @@ async def get_my_files(
 @router.get("/storage-info", response_model=schemas.StorageInfo)
 @limiter.limit("10/minute")
 async def get_storage_info(
+    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):

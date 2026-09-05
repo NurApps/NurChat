@@ -1,8 +1,10 @@
 import DOMPurify from "dompurify"
 
+const ALLOWED_TAGS = ["strong", "em", "code", "a"]
+const ALLOWED_ATTR = ["href", "target", "rel", "class"]
+
 export function renderMarkdown(text: string): React.ReactNode {
-  const safe = DOMPurify.sanitize(text, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
-  const lines = safe.split("\n")
+  const lines = text.split("\n")
   const elements: React.ReactNode[] = []
   let inCode = false
   let codeBuffer: string[] = []
@@ -24,17 +26,31 @@ export function renderMarkdown(text: string): React.ReactNode {
       continue
     }
 
-    const html = line
+    // 1. Escape HTML entities first (prevents XSS)
+    const escaped = line
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+
+    // 2. Apply markdown formatting (on escaped text)
+    let html = escaped
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
       .replace(/`([^`]+)`/g, "<code class='msg-inline-code'>$1</code>")
       .replace(
-        /(https?:\/\/[^\s<>"'()]+|[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/[^\s<>"'()]*)?)/gi,
+        /(https?:\/\/[^\s&lt;&gt;"'()]+|[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/[^\s&lt;&gt;"'()]*)?)/gi,
         (m) => {
           const href = m.startsWith("http") ? m : `https://${m}`
-          return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="msg-link">${m}</a>`
+          // Only allow http/https hrefs (blocks javascript:)
+          if (!href.startsWith("http")) return m
+          const safeHref = href.replace(/&amp;/g, "&")
+          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="msg-link">${m}</a>`
         }
       )
+
+    // 3. Sanitize AFTER regex (defense in depth)
+    html = DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR })
 
     elements.push(
       <span key={`line-${i}`}>

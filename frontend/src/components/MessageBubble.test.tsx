@@ -183,16 +183,6 @@ describe('MessageBubble', () => {
     expect(textarea.value).toBe('Edit me')
   })
 
-  it('calls onForward when forward menu item clicked', () => {
-    const onForward = vi.fn()
-    render(
-      <MessageBubble message={makeMessage()} currentUser={currentUser} isMyMessage={true} onForward={onForward} />
-    )
-    fireEvent.click(document.querySelector('.msg-menu-btn')!)
-    fireEvent.click(screen.getByText('Переслать'))
-    expect(onForward).toHaveBeenCalledWith('msg_1')
-  })
-
   it('shows forwarded indicator', () => {
     render(
       <MessageBubble

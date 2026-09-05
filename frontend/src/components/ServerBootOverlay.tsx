@@ -16,7 +16,6 @@ export default function ServerBootOverlay({ onReady }: Props) {
   // Relay setup state
   const [relayHost, setRelayHost] = useState("")
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("https")
-  const [customInput, setCustomInput] = useState(false)
 
   const checkHealth = useCallback(async (url?: string) => {
     const target = url || BASE_URL

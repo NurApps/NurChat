@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import func
@@ -9,6 +9,7 @@ from server.core.security import security, verify_token_dependency
 from server.utils.logger import logger
 from server.ws.chat_manager import connection_manager
 from server.ws.notifications import notification_manager
+from shared.rate_limiter import limiter
 
 router = APIRouter()
 
@@ -19,6 +20,7 @@ class GroupRenameRequest(BaseModel):
 @router.get("/contacts", response_model=list[schemas.ContactResponse])
 @limiter.limit("30/minute")
 async def get_contacts(
+    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
@@ -381,6 +383,8 @@ async def add_participant(
     ).first()
     if not caller:
         raise HTTPException(status_code=403, detail="Вы не участник группы")
+    if not caller.is_admin:
+        raise HTTPException(status_code=403, detail="Только админ может добавлять участников")
     target = db.query(models.User).filter(models.User.id == target_user_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -452,14 +456,14 @@ async def remove_participant(
             models.ChatParticipant.chat_id == group_id,
         ).all()
         for p in remaining:
-            await connection_manager.send_to_user(p.user_id, {
+            await connection_manager.send_personal_message({
                 "event": "group_key_rotated",
                 "data": {
                     "group_id": group_id,
                     "removed_user_id": target_user_id,
                     "message": "Ключ группы обновлён",
                 },
-            })
+            }, p.user_id)
     except Exception:
         pass
 
@@ -499,14 +503,14 @@ async def leave_group(
             models.ChatParticipant.chat_id == group_id,
         ).all()
         for p in remaining:
-            await connection_manager.send_to_user(p.user_id, {
+            await connection_manager.send_personal_message({
                 "event": "group_key_rotated",
                 "data": {
                     "group_id": group_id,
                     "removed_user_id": user_id,
                     "message": "Ключ группы обновлён",
                 },
-            })
+            }, p.user_id)
     except Exception:
         pass
 

@@ -1,6 +1,5 @@
 import AddContactModal from "./AddContactModal"
 import CreateChatModal from "./CreateChatModal"
-import ForwardModal from "./ForwardModal"
 import UserProfileModal from "./UserProfileModal"
 import GroupSettings from "./GroupSettings"
 import GlobalSearch from "./GlobalSearch"
@@ -18,10 +17,6 @@ interface Props {
   showCreateChat: boolean
   onCreateChat: (name: string, participantIds: string[], isSecret: boolean, expiresAfter: number) => void
   onCloseCreateChat: () => void
-  showForward: string | null
-  selectedChatId: string | undefined
-  onForward: (messageId: string, targetChatId: string) => void
-  onCloseForward: () => void
   profileUser: UserResponse | null
   onCloseProfile: () => void
   showGroupSettings: boolean
@@ -44,7 +39,6 @@ interface Props {
 export default function ChatModals({
   showAddContact, contacts, currentUser, onAddContact, onCloseAddContact,
   showCreateChat, onCreateChat, onCloseCreateChat,
-  showForward, selectedChatId, onForward, onCloseForward,
   profileUser, onCloseProfile,
   showGroupSettings, selectedChat, onCloseGroupSettings, onGroupUpdated,
   showGlobalSearch, chats, onSelectGlobalSearch, onCloseGlobalSearch,
@@ -67,15 +61,6 @@ export default function ChatModals({
           currentUserId={currentUser.id}
           onCreate={onCreateChat}
           onClose={onCloseCreateChat}
-        />
-      )}
-      {showForward && (
-        <ForwardModal
-          messageId={showForward}
-          sourceChatId={selectedChatId}
-          currentUserId={currentUser.id}
-          onForward={onForward}
-          onClose={onCloseForward}
         />
       )}
       {profileUser && (

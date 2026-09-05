@@ -19,56 +19,34 @@ from slowapi.errors import RateLimitExceeded
 from server.core.database import create_tables
 from server.middleware.csrf import CSRFMiddleware
 
-# Импорты routes
 from server.routes import (
-    audit,
     auth,
-    bookmarks,
     calls,
     chat,
     contact_requests,
     contacts_groups,
-    discovery,
     files,
-    forward,
-    group_calls,
     keys,
-    legal,
-    p2p,
-    pins,
-    polls,
     push,
-    stats,
-    transparency,
-    webhooks,
 )
-from server.routes.admin.database import router as admin_db_router
 from server.utils.file_cleanup import file_cleanup_service
 from server.utils.logger import generate_request_id, logger, request_id_var
 from server.ws.chat_manager import handle_websocket_connection
-from server.ws.group_call_signaling import group_call_manager
 from server.ws.notifications import handle_notifications_websocket
-from server.ws.p2p_manager import p2p_manager
 from server.ws.signaling import call_manager
-from server.ws.signaling_p2p import signaling_manager
 from shared.config import settings
 from shared.rate_limiter import limiter
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     logger.info("Starting NurChat Server...")
-
-    # Создаем таблицы БД
     create_tables()
     logger.info("Database tables created")
 
-    # Запускаем сервис очистки файлов
     file_cleanup_service.start_cleanup_scheduler()
     logger.info("File cleanup service started")
 
-    # Start ephemeral message cleanup
     import asyncio
     async def ephemeral_cleanup_loop():
         while True:
@@ -89,35 +67,22 @@ async def lifespan(app: FastAPI):
                     db.close()
             except Exception as e:
                 logger.warning(f"Ephemeral cleanup error: {e}")
-            await asyncio.sleep(300)  # every 5 minutes
+            await asyncio.sleep(300)
     ephemeral_task = asyncio.create_task(ephemeral_cleanup_loop())
     logger.info("Ephemeral message cleanup started")
 
-    # Start LAN discovery
-    from server.core.discovery import start_discovery
-    await start_discovery()
-    logger.info("LAN discovery service started")
-
-    # Start background tasks
     from server.core.background_tasks import start_background_tasks
     start_background_tasks()
     logger.info("Background tasks started")
 
     yield
 
-    # Shutdown ephemeral cleanup
     ephemeral_task.cancel()
     try:
         await ephemeral_task
     except asyncio.CancelledError:
         pass
 
-    # Shutdown LAN discovery
-    from server.core.discovery import stop_discovery
-    await stop_discovery()
-    logger.info("LAN discovery service stopped")
-
-    # Shutdown: close all WebSocket connections gracefully
     from server.ws.chat_manager import connection_manager
     for user_id, ws in list(connection_manager.active_connections.items()):
         try:
@@ -137,7 +102,6 @@ async def lifespan(app: FastAPI):
     call_manager.call_websockets.clear()
 
     logger.info("All WebSocket connections closed")
-
     file_cleanup_service.stop_cleanup_scheduler()
     logger.info("NurChat Server stopped")
 
@@ -151,7 +115,6 @@ app = FastAPI(
     openapi_url=None,
 )
 
-# CSRF Protection (защита от подделки межсайтовых запросов)
 app.add_middleware(
     CSRFMiddleware,
     secret_key=settings.JWT_SECRET_KEY,
@@ -167,11 +130,9 @@ app.add_middleware(
     ],
 )
 
-# Rate limiting (защита от брутфорса)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Custom exception handlers —TogetherException → proper HTTP codes
 from shared.exceptions import AuthenticationError, ChatNotFoundError, MessageNotFoundError, TogetherException
 
 
@@ -191,7 +152,6 @@ async def auth_error_handler(request: Request, exc: AuthenticationError):
 async def together_exception_handler(request: Request, exc: TogetherException):
     return JSONResponse(status_code=400, content={"detail": str(exc) or "Bad request"})
 
-# CORS — строгий белый список из .env (CORS_ORIGINS) или дефолтные
 import os
 
 _cors_origins_env = os.getenv("CORS_ORIGINS", "")
@@ -216,14 +176,12 @@ app.add_middleware(
     expose_headers=["X-CSRF-Token"],
 )
 
-# Глобальный обработчик исключений
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     global _error_count, _request_count
     _error_count += 1
     _request_count += 1
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    # Check error rate threshold
     if _request_count > 100:
         error_rate = (_error_count / _request_count) * 100
         if error_rate > settings.ERROR_RATE_WARN:
@@ -241,13 +199,11 @@ async def add_request_id(request: Request, call_next):
     response.headers["X-Request-ID"] = rid
     return response
 
-# Host header validation — reject poisoned Host headers
 @app.middleware("http")
 async def validate_host_header(request: Request, call_next):
     host = request.headers.get("host", "")
     if not host:
         return await call_next(request)
-    # Allow: localhost, 127.0.0.1, tauri, testserver, any IP/domain with dots
     allowed_prefixes = ("localhost", "127.0.0.1", "tauri", "testserver")
     if any(host.lower().startswith(p) for p in allowed_prefixes):
         return await call_next(request)
@@ -255,7 +211,6 @@ async def validate_host_header(request: Request, call_next):
         return await call_next(request)
     return JSONResponse(status_code=400, content={"detail": "Invalid Host header"})
 
-# Security headers
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -281,7 +236,6 @@ async def add_security_headers(request: Request, call_next):
         )
     return response
 
-# Body size limit
 MAX_BODY_SIZE = settings.MAX_FILE_SIZE
 
 @app.middleware("http")
@@ -294,30 +248,15 @@ async def limit_body_size(request: Request, call_next):
             return JSONResponse(status_code=413, content={"detail": f"Тело запроса слишком большое (макс. {max_mb}MB)"})
     return await call_next(request)
 
-# Роуты
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])
-app.include_router(group_calls.router, prefix="/api/group-calls", tags=["Group Calls"])
 app.include_router(files.router, prefix="/api/files", tags=["Files"])
-app.include_router(forward.router, prefix="/api/forward", tags=["Forward"])
-app.include_router(legal.router, prefix="/api/legal", tags=["Legal"])
 app.include_router(contacts_groups.router, prefix="/api/contacts-groups", tags=["Contacts and Groups"])
-app.include_router(p2p.router, prefix="/api/p2p", tags=["P2P"])
-app.include_router(bookmarks.router, tags=["Bookmarks"])
-app.include_router(pins.router, tags=["Pinned Messages"])
-app.include_router(stats.router, tags=["Statistics"])
-app.include_router(audit.router, prefix="/api/audit", tags=["Audit Logs"])
 app.include_router(keys.router, prefix="/api/keys", tags=["Keys"])
-app.include_router(discovery.router, prefix="/api/discover", tags=["LAN Discovery"])
-app.include_router(webhooks.router, prefix="/api", tags=["Webhooks"])
-app.include_router(transparency.router, tags=["Transparency"])
-app.include_router(polls.router, tags=["Polls"])
 app.include_router(push.router)
 app.include_router(contact_requests.router, tags=["Contact Requests"])
-app.include_router(admin_db_router)
 
-# WS rate limiting: max connections per IP
 _ws_connections: dict[str, int] = {}
 WS_MAX_PER_IP = 10
 _ws_lock = asyncio.Lock()
@@ -335,7 +274,6 @@ async def check_ws_rate_limit(ip: str) -> bool:
             return False
         _ws_connections[ip] = count + 1
         total_ws = sum(_ws_connections.values())
-    # Check WS connection threshold (outside lock — logging only)
     if total_ws > settings.WS_CONNECTIONS_WARN:
         logger.warning(f"WS connections ({total_ws}) exceed threshold ({settings.WS_CONNECTIONS_WARN})")
     return True
@@ -346,8 +284,6 @@ async def release_ws_connection(ip: str):
 
 async def _verify_ws_token(websocket: WebSocket, token: str | None, client_ip: str,
                            expected_user_id: str | None = None) -> dict | None:
-    # NOTE: does NOT release the ws connection slot on failure —
-    # the caller's finally/release path owns that to avoid double-decrement.
     if not token:
         await websocket.close(code=4001, reason="Token required")
         return None
@@ -364,7 +300,6 @@ async def _verify_ws_token(websocket: WebSocket, token: str | None, client_ip: s
         await websocket.close(code=4001, reason="Invalid token")
         return None
 
-# WebSocket для чатов
 @app.websocket("/ws/chat/{user_id}")
 async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
@@ -379,7 +314,6 @@ async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str
     finally:
         await release_ws_connection(client_ip)
 
-# WebSocket для звонков
 @app.websocket("/ws/calls/{user_id}")
 async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
@@ -394,129 +328,6 @@ async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: st
     finally:
         await release_ws_connection(client_ip)
 
-
-@app.websocket("/ws/group-calls/{user_id}")
-async def websocket_group_calls_endpoint(websocket: WebSocket, user_id: str, token: str):
-    client_ip = websocket.client.host if websocket.client else "unknown"
-    if not await check_ws_rate_limit(client_ip):
-        await websocket.close(code=4008)
-        return
-    if not await _verify_ws_token(websocket, token, client_ip, user_id):
-        await release_ws_connection(client_ip)
-        return
-    try:
-        await group_call_manager.handle(websocket, user_id)
-    finally:
-        await release_ws_connection(client_ip)
-
-# WebSocket для P2P signaling (только offer/answer/ICE)
-@app.websocket("/ws/signaling/{user_id}")
-async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token: str):
-    client_ip = websocket.client.host if websocket.client else "unknown"
-    if not await check_ws_rate_limit(client_ip):
-        await websocket.close(code=4008)
-        return
-    if not await _verify_ws_token(websocket, token, client_ip, user_id):
-        await release_ws_connection(client_ip)
-        return
-    try:
-        await signaling_manager.handle(websocket, user_id)
-    finally:
-        await release_ws_connection(client_ip)
-
-# WebSocket для P2P signalling и relay
-@app.websocket(settings.P2P_SIGNALING_PATH + "/{user_id}")
-async def websocket_p2p_endpoint(websocket: WebSocket, user_id: str, token: str):
-    client_ip = websocket.client.host if websocket.client else "unknown"
-    if not await check_ws_rate_limit(client_ip):
-        await websocket.close(code=4008)
-        return
-    if not await _verify_ws_token(websocket, token, client_ip, user_id):
-        await release_ws_connection(client_ip)
-        return
-    try:
-        await p2p_manager.handle_connection(websocket, user_id)
-    finally:
-        await release_ws_connection(client_ip)
-
-# WebSocket для удалённых P2P пиров (прямое соединение сервер-сервер)
-@app.websocket("/ws/remote/{node_id}")
-async def websocket_remote_endpoint(websocket: WebSocket, node_id: str, token: str):
-    client_ip = websocket.client.host if websocket.client else "unknown"
-    if not await check_ws_rate_limit(client_ip):
-        await websocket.close(code=4008)
-        return
-    if not token:
-        await websocket.close(code=4001, reason="Token required")
-        return
-    from server.core.security import AuthenticationError
-    from server.core.security import security as sec
-    try:
-        sec.verify_token(token)
-    except AuthenticationError:
-        await release_ws_connection(client_ip)
-        await websocket.close(code=4001, reason="Invalid token")
-        return
-
-    await websocket.accept()
-    try:
-        hello = await asyncio.wait_for(websocket.receive_json(), timeout=10)
-        if not isinstance(hello, dict) or hello.get("type") != "remote_hello":
-            await websocket.send_json({"type": "error", "message": "Expected remote_hello"})
-            await websocket.close()
-            return
-        address = hello.get("address", "unknown")
-        user_id = hello.get("user_id", "")
-        is_relay = bool(hello.get("is_relay", False))
-        relay_for = hello.get("relay_for", "")
-        if not user_id:
-            await websocket.send_json({"type": "error", "message": "user_id required"})
-            await websocket.close()
-            return
-        from server.ws.remote import remote_manager
-
-        if is_relay and relay_for:
-            peer = remote_manager.get_peer_by_user(relay_for)
-            if not peer:
-                await websocket.send_json({"type": "error", "message": "Relay target not connected"})
-                await websocket.close()
-                return
-            await remote_manager.connect(node_id, websocket, address, user_id, is_relay=True)
-            await websocket.send_json({"type": "remote_ack", "node_id": node_id, "relayed": True})
-        else:
-            await remote_manager.connect(node_id, websocket, address, user_id, is_relay=is_relay)
-            await websocket.send_json({"type": "remote_ack", "node_id": node_id})
-        while True:
-            data = await websocket.receive_json()
-            msg_type = data.get("type")
-            if msg_type == "relay_message":
-                target = data.get("target_user_id", "")
-                payload = data.get("payload", {})
-                sent = await remote_manager.relay_message(target, payload)
-                await websocket.send_json({
-                    "type": "relay_ack",
-                    "target": target,
-                    "delivered": sent,
-                })
-            elif msg_type == "relay_register":
-                peer = remote_manager.get_peer_by_node(node_id)
-                if peer:
-                    peer.is_relay = True
-                await websocket.send_json({"type": "relay_registered"})
-            elif msg_type == "ping":
-                await websocket.send_json({"type": "pong"})
-    except asyncio.TimeoutError:
-        await websocket.send_json({"type": "error", "message": "Handshake timeout"})
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        logger.error(f"Remote peer error: {e}")
-    finally:
-        from server.ws.remote import remote_manager
-        remote_manager.disconnect(node_id)
-        await release_ws_connection(client_ip)
-
-# WebSocket для уведомлений
 @app.websocket("/ws/notifications/{user_id}")
 async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
@@ -531,17 +342,12 @@ async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, t
     finally:
         await release_ws_connection(client_ip)
 
-# Статические файлы — НЕ монтируем /media напрямую (безопасность)
-# Файлы доступны только через авторизованный эндпоинт /api/files/download/{file_id}
-
-# Health check
 @app.get("/health")
 async def health_check():
     db_ok = False
     redis_ok = False
     try:
         from sqlalchemy import text
-
         from server.core.database import SessionLocal
         db = SessionLocal()
         try:
@@ -572,7 +378,6 @@ async def health_check():
         },
     )
 
-# Prometheus metrics
 if settings.ENABLE_METRICS:
     from prometheus_client import REGISTRY, Counter, Gauge, Histogram, generate_latest
 
@@ -601,7 +406,6 @@ async def root():
     }
 
 if __name__ == "__main__":
-    # PyInstaller fix: в --noconsole sys.stderr = None, валится uvicorn
     if sys.stderr is None:
         sys.stderr = io.StringIO()
 

@@ -24,6 +24,7 @@ class CallManager:
         self.user_calls: dict[str, str] = {}     # {user_id: call_id}
         self.call_websockets: dict[str, WebSocket] = {}  # {user_id: websocket}
         self.pending_messages: dict[str, list[dict]] = {}  # {user_id: [{"msg": ..., "ts": ...}]}
+        self.MAX_PENDING_PER_USER = 50  # Cap to prevent memory exhaustion
 
     async def handle_signaling(self, websocket: WebSocket, user_id: str):
         """Обработка WebRTC сигналов"""
@@ -397,6 +398,9 @@ class CallManager:
         else:
             if user_id not in self.pending_messages:
                 self.pending_messages[user_id] = []
+            # Cap pending messages per user to prevent memory exhaustion
+            if len(self.pending_messages[user_id]) >= self.MAX_PENDING_PER_USER:
+                self.pending_messages[user_id].pop(0)  # Drop oldest
             self.pending_messages[user_id].append({"msg": message, "ts": time.time()})
             logger.debug(f"Buffered message for {user_id} (not on calls WS yet)")
             return True

@@ -1,10 +1,8 @@
 import { useTranslation } from "react-i18next"
-import { useChatStore } from "../store/chatStore"
 import ChatListItem from "./ChatListItem"
 import ContactListItem from "./ContactListItem"
 import GroupInviteItem from "./GroupInviteItem"
 import { ChatListSkeleton } from "./Skeleton"
-import BookmarksList from "./BookmarksList"
 import FileManager from "./FileManager"
 import type { UserResponse, ChatResponse, ContactResponse } from "../types"
 
@@ -37,7 +35,6 @@ interface Props {
 const TABS = [
   { key: "chats", icon: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /> },
   { key: "contacts", icon: <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></> },
-  { key: "bookmarks", icon: <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /> },
   { key: "files", icon: <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /> },
   { key: "invites", icon: <><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></> },
 ] as const
@@ -115,15 +112,6 @@ export default function ChatSidebar({
               <GroupInviteItem key={invite.id} invite={invite}
                 onAccept={handleAcceptInvite} onDecline={handleDeclineInvite} />
             ))}
-          </div>
-        )}
-        {tab === "bookmarks" && (
-          <div className="list-scroll">
-            <BookmarksList onSelectMessage={(chatId, messageId) => {
-              const chat = useChatStore.getState().chats.find(c => c.id === chatId)
-              if (chat) { setSelectedChat(chat); setTab("chats") }
-              if (messageId) setScrollToMessageId(messageId)
-            }} />
           </div>
         )}
         {tab === "files" && (

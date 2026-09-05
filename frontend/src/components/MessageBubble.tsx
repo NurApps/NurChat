@@ -7,7 +7,6 @@ import { formatTime, formatFull } from "../utils/format"
 import { renderMarkdown } from "../utils/markdown"
 import MediaViewer from "./MediaViewer"
 import VoiceMessage from "./VoiceMessage"
-import ViewOnceMedia from "./ViewOnceMedia"
 
 interface Props {
   message: MessageResponse
@@ -17,14 +16,11 @@ interface Props {
   status?: string
   reactions?: Record<string, string[]>
   onDelete?: (id: string, deleteForAll?: boolean) => void
-  onForward?: (id: string) => void
   onReply?: (id: string) => void
   onEdit?: (id: string, content: string) => void
   onReaction?: (msgId: string, emoji: string, add: boolean) => void
   onViewProfile?: (user: UserResponse) => void
   onShowInfo?: (id: string) => void
-  onBookmark?: (messageId: string) => void
-  isBookmarked?: boolean
   onPin?: (messageId: string) => void
   highlightQuery?: string
 }
@@ -43,8 +39,8 @@ function renderHighlightedMarkdown(text: string, query: string): React.ReactNode
 
 export default function MessageBubble({
   message, currentUser, isMyMessage, isRead = false, status,
-  reactions = {}, onDelete, onForward, onReply, onEdit, onReaction, onViewProfile,
-  onBookmark, isBookmarked = false, onPin, highlightQuery, onShowInfo,
+  reactions = {}, onDelete, onReply, onEdit, onReaction, onViewProfile,
+  onPin, highlightQuery, onShowInfo,
 }: Props) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -146,7 +142,12 @@ export default function MessageBubble({
           </div>
         )
       }
-      return <ViewOnceMedia message={message} />
+      return (
+        <div className="viewonce-overlay">
+          <div className="viewonce-icon">&#128274;</div>
+          <div className="viewonce-text">{t("chat.viewOnce")}</div>
+        </div>
+      )
     }
     if (message.message_type === "text") return renderTextContent()
     return renderFileContent()
@@ -195,8 +196,7 @@ export default function MessageBubble({
 
   const renderFileContent = () => {
     const mt = message.message_type
-    const isP2PBlob = message.content?.startsWith("blob:")
-    const imageUrl = isP2PBlob ? message.content : (message.file_id ? api.getFileUrl(message.file_id) : null)
+    const imageUrl = message.file_id ? api.getFileUrl(message.file_id) : null
     const fileUrl = imageUrl
     if (mt === "image" && imageUrl) {
       return (
@@ -383,8 +383,6 @@ export default function MessageBubble({
         { label: t("chat.copy"), action: () => navigator.clipboard.writeText(content) },
         { label: t("common.edit"), action: () => { setEditText(message.content); setEditing(true); setMenuOpen(false) } },
         { label: t("chat.reply"), action: () => onReply?.(message.id) },
-        { label: t("chat.forward"), action: () => onForward?.(message.id) },
-        { label: isBookmarked ? t("chat.bookmarkRemove") : t("chat.bookmarkAdd"), action: () => onBookmark?.(message.id) },
         { label: t("chat.pin"), action: () => onPin?.(message.id) },
         { label: t("chat.info"), action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
         { label: t("common.delete"), action: () => setShowDeleteOptions(true) },
@@ -392,8 +390,6 @@ export default function MessageBubble({
     : [
         { label: t("chat.copy"), action: () => navigator.clipboard.writeText(content) },
         { label: t("chat.reply"), action: () => onReply?.(message.id) },
-        { label: t("chat.forward"), action: () => onForward?.(message.id) },
-        { label: isBookmarked ? t("chat.bookmarkRemove") : t("chat.bookmarkAdd"), action: () => onBookmark?.(message.id) },
         { label: t("chat.pin"), action: () => onPin?.(message.id) },
         { label: t("chat.info"), action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
       ]

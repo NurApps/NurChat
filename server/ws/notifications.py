@@ -87,34 +87,6 @@ class NotificationManager:
 
         await self._send_notification_to_user(user_id, notification)
 
-    async def send_storage_warning(self, user_id: str, used_percent: float):
-        """Уведомление о заполнении хранилища"""
-        if used_percent > 90:
-            level = "critical"
-            title = "Хранилище почти заполнено"
-            body = f"Использовано {used_percent:.1f}% хранилища. Освободите место."
-        elif used_percent > 75:
-            level = "warning"
-            title = "Хранилище заполняется"
-            body = f"Использовано {used_percent:.1f}% хранилища."
-        else:
-            return
-
-        notification = {
-            "id": security.generate_message_id(),
-            "type": "storage_warning",
-            "title": title,
-            "body": body,
-            "data": {
-                "level": level,
-                "used_percent": used_percent
-            },
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "read": False
-        }
-
-        await self._send_notification_to_user(user_id, notification)
-
     async def send_group_invite_notification(self, invite_data: dict, target_user_id: str):
         """Отправка уведомления о приглашении в группу"""
         notification = {
@@ -135,27 +107,6 @@ class NotificationManager:
         }
 
         await self._send_notification_to_user(target_user_id, notification)
-
-    async def send_message_deleted_notification(self, message_id: str, chat_id: str, deleted_by: str):
-        """Уведомление об удалении сообщения"""
-        notification = {
-            "id": security.generate_message_id(),
-            "type": "message_deleted",
-            "title": "Сообщение удалено",
-            "body": "Сообщение было удалено",
-            "data": {
-                "message_id": message_id,
-                "chat_id": chat_id,
-                "deleted_by": deleted_by
-            },
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "read": False
-        }
-
-        # Отправляем всем участникам чата
-        for user_id in self._get_chat_participants(chat_id):
-            if user_id != deleted_by:  # Не отправляем тому, кто удалил
-                await self._send_notification_to_user(user_id, notification)
 
     async def _send_notification_to_user(self, user_id: str, notification: dict):
         """Отправка уведомления конкретному пользователю"""

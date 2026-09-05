@@ -104,39 +104,6 @@ export interface FileUploadResponse {
   user_id: string
 }
 
-export interface WebhookResponse {
-  id: string
-  user_id: string
-  name: string
-  url: string
-  secret?: string
-  events: string[]
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface PollOptionResponse {
-  id: number
-  text: string
-  position: number
-  vote_count: number
-}
-
-export interface PollResponse {
-  id: string
-  chat_id: string
-  creator_id: string
-  question: string
-  is_anonymous: boolean
-  allow_multiple: boolean
-  expires_at?: string
-  created_at: string
-  options: PollOptionResponse[]
-  total_votes: number
-  my_votes: number[]
-}
-
 export interface ContactRequestResponse {
   id: string
   from_user_id: string

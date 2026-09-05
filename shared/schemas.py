@@ -10,30 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class BaseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-# TOTP 2FA Schemas
-class TOTPSetupResponse(BaseSchema):
-    """Response with QR code for TOTP setup"""
-    qr_code: str  # Data URI with QR code image
-    secret_hint: str  # First few characters of secret for manual entry (optional)
-    backup_codes: list[str] | None = None  # Recovery codes (optional for future)
-
-class TOTPVerifyRequest(BaseSchema):
-    """Request to verify TOTP code"""
-    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
-
-class TOTPEnableRequest(TOTPVerifyRequest):
-    """Request to enable TOTP after setup"""
-    pass
-
-class TOTPDisableRequest(TOTPVerifyRequest):
-    """Request to disable TOTP"""
-    pass
-
-class UserTOTPStatus(BaseSchema):
-    """TOTP status for user"""
-    enabled: bool
-    setup_required: bool  # True if secret exists but not enabled yet
-
 # User
 class UserBase(BaseSchema):
     id: str
@@ -42,29 +18,20 @@ class UserBase(BaseSchema):
     last_name: str | None = None
 
 class UserCreate(BaseSchema):
-    # Username: только латинские буквы и цифры, без ограничений по длине
     username: str = Field(..., description="Username (латинские буквы и цифры)")
     first_name: str | None = Field(None, description="Имя (обязательно)")
     last_name: str | None = Field(None, description="Фамилия (необязательно)")
-    # Пароль: минимум 4 символа или цифры, или если букв более 4, то без ограничений
-    password: str = Field(..., description="Password (минимум 4 символа или цифры, или >4 букв)")
-
-class UserUpdate(BaseSchema):
-    """Схема для обновления профиля пользователя"""
-    first_name: str | None = Field(None, min_length=2, max_length=100)
-    last_name: str | None = Field(None, max_length=100)
-    bio: str | None = Field(None, max_length=500)
-    status: str | None = Field(None, max_length=100)
+    password: str = Field(..., description="Password (минимум 4 символа)")
 
 class UserResponse(UserBase):
     created_at: datetime | None = None
     last_seen: datetime | None = None
     is_online: bool | None = None
-    public_key: str | None = None  # Публичный ключ для E2E шифрования
-    signing_public_key: str | None = None  # Ed25519 public key для верификации подписей
-    avatar_path: str | None = None  # Путь к аватару
-    status: str | None = None  # Статус пользователя
-    bio: str | None = None  # Биография пользователя
+    public_key: str | None = None
+    signing_public_key: str | None = None
+    avatar_path: str | None = None
+    status: str | None = None
+    bio: str | None = None
 
 # Chat
 class ChatBase(BaseSchema):
@@ -73,13 +40,11 @@ class ChatBase(BaseSchema):
     is_group: bool
 
 class ChatCreate(BaseSchema):
-    name: str | None = Field(None, max_length=100, description="Chat name must be up to 100 characters long")
+    name: str | None = Field(None, max_length=100)
     is_group: bool = False
     is_secret: bool = False
     disappears_after_seconds: int = 0
-    participant_ids: list[str] = Field(
-        ..., min_length=1, max_length=100, description="Chat must have 1-100 participants"
-    )
+    participant_ids: list[str] = Field(..., min_length=1, max_length=100)
 
     @field_validator('name')
     @classmethod
@@ -94,8 +59,8 @@ class ChatResponse(ChatBase):
     participants: list[UserResponse]
     last_message: Optional['MessageResponse'] = None
     unread_count: int = 0
-    is_pinned: bool = False  # Закреплён ли чат
-    is_muted: bool = False  # Отключены ли уведомления
+    is_pinned: bool = False
+    is_muted: bool = False
     is_secret: bool = False
     disappears_after_seconds: int = 0
 
@@ -111,9 +76,7 @@ class MessageBase(BaseSchema):
 
 class MessageCreate(BaseSchema):
     chat_id: str = Field(..., min_length=1, max_length=100)
-    content: str = Field(
-        ..., min_length=1, max_length=5000, description="Message content must be 1-5000 characters long"
-    )
+    content: str = Field(..., min_length=1, max_length=5000)
     message_type: str = Field(default="text", pattern=r"^(text|image|video|audio|file|location|contact|voice)$")
     file_id: str | None = Field(None, max_length=100)
     forwarded_from: str | None = Field(None, max_length=100)
@@ -121,14 +84,13 @@ class MessageCreate(BaseSchema):
     encrypted_content: str | None = None
     signature: str | None = None
     expires_at: datetime | None = None
-    sealed_sender: bool = Field(default=False, description="Message uses sealed sender (relay cannot see sender)")
-    scheduled_at: datetime | None = Field(None, description="Send message later")
-    is_view_once: bool = Field(default=False, description="Delete after one view")
+    sealed_sender: bool = Field(default=False)
+    scheduled_at: datetime | None = None
+    is_view_once: bool = Field(default=False)
 
     @field_validator('content')
     @classmethod
     def validate_content(cls, v):
-        # Remove any potentially harmful content
         if '<script' in v.lower() or 'javascript:' in v.lower():
             raise ValueError('Content contains forbidden characters')
         return v
@@ -183,9 +145,7 @@ class Token(BaseSchema):
     refresh_token: str | None = None
     token_type: str
     user: UserResponse
-    private_key: str | None = None
-    signing_private_key: str | None = None  # Ed25519 private key (returned once on register)
-    requires_2fa: bool = False  # True if 2FA is enabled but not yet verified
+    requires_2fa: bool = False
 
 # 2FA
 class TwoFASetupRequest(BaseSchema):
@@ -198,14 +158,14 @@ class TwoFASetupResponse(BaseSchema):
     backup_codes: list[str] = Field(..., description="Plaintext backup codes (shown once)")
 
 class TwoFAVerifyRequest(BaseSchema):
-    code: str = Field(..., min_length=6, max_length=7, description="6-digit TOTP code (e.g. 123456 or 123 456)")
+    code: str = Field(..., min_length=6, max_length=7)
 
 class TwoFALoginRequest(BaseSchema):
     code: str = Field(..., description="6-digit TOTP code or backup code (XXXX-XXXX)")
-    password: str | None = Field(None, description="Password (optional — TOTP secret uses master key)")
+    password: str | None = Field(None)
 
 class TwoFAEnableRequest(BaseSchema):
-    code: str = Field(..., min_length=6, max_length=7, description="6-digit TOTP code to confirm setup")
+    code: str = Field(..., min_length=6, max_length=7)
     password: str = Field(..., description="Current password")
 
 class TwoFADisableRequest(BaseSchema):
@@ -216,11 +176,6 @@ class TwoFAResponse(BaseSchema):
     enabled: bool
     backup_codes_remaining: int = 0
 
-# Forward
-class ForwardRequest(BaseSchema):
-    message_id: str = Field(..., min_length=1, max_length=100)
-    target_chat_ids: list[str] = Field(..., min_length=1, max_length=50, description="Can forward to 1-50 chats")
-
 # Contacts
 class ContactBase(BaseSchema):
     id: str
@@ -228,7 +183,7 @@ class ContactBase(BaseSchema):
     contact_user_id: str
 
 class ContactCreate(BaseSchema):
-    contact_user_id: str = Field(..., min_length=1, max_length=100, description="ID контакта для добавления")
+    contact_user_id: str = Field(..., min_length=1, max_length=100)
 
 class ContactResponse(ContactBase):
     created_at: datetime
@@ -241,11 +196,11 @@ class GroupInviteBase(BaseSchema):
     group_id: str
     inviter_id: str
     invitee_id: str
-    status: str  # pending, accepted, declined
+    status: str
 
 class GroupInviteCreate(BaseSchema):
-    group_id: str = Field(..., min_length=1, max_length=100, description="ID группы для приглашения")
-    invitee_id: str = Field(..., min_length=1, max_length=100, description="ID пользователя для приглашения")
+    group_id: str = Field(..., min_length=1, max_length=100)
+    invitee_id: str = Field(..., min_length=1, max_length=100)
 
 class GroupInviteResponse(GroupInviteBase):
     created_at: datetime
@@ -257,7 +212,7 @@ class GroupInviteResponse(GroupInviteBase):
 # Calls
 class CallStartRequest(BaseSchema):
     target_user_id: str = Field(..., min_length=1, max_length=100)
-    call_type: str = Field(..., pattern=r"^(audio|video)$", description="Call type must be either 'audio' or 'video'")
+    call_type: str = Field(..., pattern=r"^(audio|video)$")
     chat_id: str | None = Field(None, max_length=100)
 
 class CallResponse(BaseSchema):
@@ -274,28 +229,6 @@ class CallResponse(BaseSchema):
 class CallHistoryResponse(BaseSchema):
     calls: list[CallResponse]
     total: int
-
-# Group Calls
-class GroupCallStartRequest(BaseSchema):
-    chat_id: str = Field(..., min_length=1, max_length=100)
-    call_type: str = Field(..., pattern=r"^(audio|video)$")
-
-class GroupCallParticipantResponse(BaseSchema):
-    user_id: str
-    username: str | None = None
-    is_muted: bool = False
-    is_video_off: bool = False
-    joined_at: datetime
-
-class GroupCallResponse(BaseSchema):
-    call_id: str
-    chat_id: str
-    created_by: str
-    call_type: str
-    started_at: datetime
-    ended_at: datetime | None = None
-    participants: list[GroupCallParticipantResponse] = []
-    participant_count: int = 0
 
 # Files
 class StorageInfo(BaseSchema):
@@ -320,37 +253,6 @@ class BlockedUserBase(BaseSchema):
 class BlockedUserResponse(BlockedUserBase):
     pass
 
-class P2PIdentityResponse(BaseSchema):
-    user_id: str
-    peer_id: str
-    public_key: str
-    signing_public_key: str
-    updated_at: datetime
-
-
-class P2PPendingResponse(BaseSchema):
-    id: str
-    sender_id: str
-    payload: str
-    created_at: datetime
-
-
-class P2PPeerResponse(BaseSchema):
-    user_id: str
-    username: str
-    peer_id: str
-    public_key: str
-    signing_public_key: str | None = None
-    is_online: bool = False
-
-
-class P2PBackupResponse(BaseSchema):
-    id: str
-    chat_id: str
-    payload: str
-    version: int
-    created_at: datetime
-
 class ReactionBase(BaseSchema):
     id: int
     message_id: str
@@ -363,88 +265,6 @@ class ReactionCreate(BaseSchema):
 
 class ReactionResponse(ReactionBase):
     user: UserResponse
-
-# Pinned Messages
-class PinnedMessageResponse(BaseSchema):
-    id: int
-    chat_id: str
-    message_id: str
-    pinned_by: str
-    created_at: datetime
-    message: MessageResponse
-    pinned_by_user: UserResponse
-
-# Webhooks
-class WebhookCreate(BaseSchema):
-    name: str = Field(..., min_length=1, max_length=100)
-    url: str = Field(..., max_length=500)
-    secret: str | None = Field(None, max_length=256)
-    events: list[str] = Field(..., min_length=1)
-
-class WebhookUpdate(BaseSchema):
-    name: str | None = Field(None, max_length=100)
-    url: str | None = Field(None, max_length=500)
-    secret: str | None = None
-    events: list[str] | None = None
-    is_active: bool | None = None
-
-class WebhookResponse(BaseSchema):
-    id: str
-    user_id: str
-    name: str
-    url: str
-    secret: str | None = None
-    events: list[str]
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
-
-# Statistics
-class StatsResponse(BaseSchema):
-    total_messages: int
-    total_chats: int
-    total_files: int
-    messages_by_day: list[dict]
-    top_contacts: list[dict]
-    message_types_breakdown: dict
-
-# Polls
-class PollOptionCreate(BaseSchema):
-    text: str = Field(..., min_length=1, max_length=200)
-
-class PollCreate(BaseSchema):
-    chat_id: str = Field(..., min_length=1, max_length=100)
-    question: str = Field(..., min_length=1, max_length=500)
-    options: list[PollOptionCreate] = Field(..., min_length=2, max_length=10)
-    is_anonymous: bool = True
-    allow_multiple: bool = False
-    expires_at: datetime | None = None
-
-class PollOptionResponse(BaseSchema):
-    id: int
-    text: str
-    position: int
-    vote_count: int = 0
-
-class PollVoteResponse(BaseSchema):
-    option_id: int
-    user_id: str
-
-class PollResponse(BaseSchema):
-    id: str
-    chat_id: str
-    creator_id: str
-    question: str
-    is_anonymous: bool
-    allow_multiple: bool
-    expires_at: datetime | None = None
-    created_at: datetime
-    options: list[PollOptionResponse]
-    total_votes: int = 0
-    my_votes: list[int] = []
-
-class PollVoteRequest(BaseSchema):
-    option_ids: list[int] = Field(..., min_length=1, max_length=10)
 
 # Contact Requests
 class ContactRequestCreate(BaseSchema):
@@ -461,10 +281,6 @@ class ContactRequestResponse(BaseSchema):
     updated_at: datetime
     from_user: UserResponse
     to_user: UserResponse
-
-# Scheduled messages
-class ScheduleMessageRequest(BaseSchema):
-    scheduled_at: datetime = Field(..., description="ISO datetime when to send")
 
 
 # Обновляем ссылки для рекурсивных типов

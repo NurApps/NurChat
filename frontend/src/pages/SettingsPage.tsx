@@ -406,7 +406,6 @@ export default function SettingsPage() {
   }
 
   const handleClearCache = () => {
-    localStorage.removeItem("p2p_keys")
     setMsg(t("settings.cacheCleared"))
   }
 
@@ -1153,8 +1152,8 @@ export default function SettingsPage() {
                 <div className="settings-group">
                   <h3 className="settings-group-title">PostgreSQL Tips</h3>
                   <div style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.8 }}>
-                    <p>Backups: <code>pg_dump nurchat > backup.sql</code></p>
-                    <p>Restore: <code>psql nurchat < backup.sql</code></p>
+                    <p>Backups: <code>pg_dump nurchat {">"} backup.sql</code></p>
+                    <p>Restore: <code>psql nurchat {"<"} backup.sql</code></p>
                     <p>Performance: Use connection pooling (PgBouncer) for 100+ users</p>
                   </div>
                 </div>

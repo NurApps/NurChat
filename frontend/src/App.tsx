@@ -10,28 +10,17 @@ import { platform } from "./services/platform"
 import { e2eWorkerService } from "./services/e2eWorkerService"
 import { initSecureStorage } from "./services/e2e"
 import { useMobile } from "./hooks/useMobile"
-import { getPeerCount, isBrowserMode } from "./services/p2pService"
 
-// Mobile styles
 import "./styles/mobile.css"
 
-// Desktop pages
 const LoginPage = lazy(() => import("./pages/LoginPage"))
 const ChatPage = lazy(() => import("./pages/ChatPage"))
 const CallPage = lazy(() => import("./pages/CallPage"))
 const SettingsPage = lazy(() => import("./pages/SettingsPage"))
 const ProfilePage = lazy(() => import("./pages/ProfilePage"))
-const LegalPage = lazy(() => import("./pages/LegalPage"))
-const P2PStatusPage = lazy(() => import("./pages/P2PStatusPage"))
-const P2PPage = lazy(() => import("./pages/P2PPage"))
-const StatsPage = lazy(() => import("./pages/StatsPage"))
 const CallHistoryPage = lazy(() => import("./pages/CallHistoryPage"))
-const AuditLogPage = lazy(() => import("./pages/AuditLogPage"))
-const BackupPage = lazy(() => import("./pages/BackupPage"))
 const BlockedUsersPage = lazy(() => import("./pages/BlockedUsersPage"))
-const WebhooksPage = lazy(() => import("./pages/WebhooksPage"))
 
-// Mobile pages
 const MobileChatPage = lazy(() => import("./pages/MobileChatPage"))
 
 function PageLoader() {
@@ -46,17 +35,6 @@ function App() {
   const [serverReady, setServerReady] = useState(false)
   const { isMobile } = useMobile()
 
-  // Глобальный poll peerCount — работает на любой странице
-  useEffect(() => {
-    if (isBrowserMode()) return
-    const poll = setInterval(() => {
-      getPeerCount().catch(() => {})
-    }, 5000)
-    return () => clearInterval(poll)
-  }, [])
-
-  // Инициализация E2E Web Worker при старте приложения
-  // Показываем окно только после загрузки React (убирает белый экран)
   useEffect(() => {
     platform.showMainWindow()
   }, [])
@@ -71,7 +49,6 @@ function App() {
       }
     }
 
-    // Initialize secure storage (migrate from localStorage if needed)
     initSecureStorage().then((result) => {
       if (result.migrated) {
         console.log('[App] Secure storage migration complete')
@@ -82,7 +59,6 @@ function App() {
 
     initWorker()
 
-    // Очистка при размонтировании
     return () => {
       e2eWorkerService.terminate()
     }
@@ -100,7 +76,6 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             
-            {/* Mobile routes */}
             {isMobile ? (
               <>
                 <Route path="/chat" element={<AuthGuard><MobileChatPage /></AuthGuard>} />
@@ -111,20 +86,12 @@ function App() {
               </>
             ) : (
               <>
-                {/* Desktop routes */}
                 <Route path="/chat" element={<AuthGuard><ChatPage /></AuthGuard>} />
                 <Route path="/call/:userId/:type" element={<AuthGuard><CallPage /></AuthGuard>} />
                 <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
                 <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
-                <Route path="/legal" element={<AuthGuard><LegalPage /></AuthGuard>} />
-                <Route path="/p2p" element={<AuthGuard><P2PStatusPage /></AuthGuard>} />
-                <Route path="/p2p/connect" element={<AuthGuard><P2PPage /></AuthGuard>} />
-                <Route path="/stats" element={<AuthGuard><StatsPage /></AuthGuard>} />
                 <Route path="/calls" element={<AuthGuard><CallHistoryPage /></AuthGuard>} />
-                <Route path="/audit" element={<AuthGuard><AuditLogPage /></AuthGuard>} />
-                <Route path="/backup" element={<AuthGuard><BackupPage /></AuthGuard>} />
                 <Route path="/blocked" element={<AuthGuard><BlockedUsersPage /></AuthGuard>} />
-                <Route path="/webhooks" element={<AuthGuard><WebhooksPage /></AuthGuard>} />
               </>
             )}
             

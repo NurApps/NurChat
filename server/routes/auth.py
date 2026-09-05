@@ -293,6 +293,7 @@ async def login(
 @router.get("/me", response_model=schemas.UserResponse)
 @limiter.limit("30/minute")
 async def get_current_user(
+    request: Request,
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db)
 ):
@@ -359,6 +360,7 @@ async def delete_account(
 @router.get("/users", response_model=list[schemas.UserResponse])
 @limiter.limit("10/minute")
 async def get_all_users(
+    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
     q: str = "",
@@ -387,6 +389,7 @@ async def get_all_users(
 @router.get("/user/{user_id}", response_model=schemas.UserResponse)
 @limiter.limit("30/minute")
 async def get_user(
+    request: Request,
     user_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -401,6 +404,7 @@ async def get_user(
 @router.get("/user/{user_id}/identity-keys")
 @limiter.limit("10/minute")
 async def get_identity_keys(
+    request: Request,
     user_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -603,22 +607,22 @@ async def rotate_key(
         contacts = db.query(models.Contact).filter(
             or_(
                 models.Contact.user_id == user.id,
-                models.Contact.contact_id == user.id,
+                models.Contact.contact_user_id == user.id,
             )
         ).all()
 
         notified = set()
         for c in contacts:
-            peer_id = c.contact_id if c.user_id == user.id else c.user_id
+            peer_id = c.contact_user_id if c.user_id == user.id else c.user_id
             if peer_id not in notified:
                 notified.add(peer_id)
-                await connection_manager.send_to_user(peer_id, {
+                await connection_manager.send_personal_message({
                     "event": "key_changed",
                     "data": {
                         "user_id": user.id,
                         "new_public_key": new_public_key,
                     },
-                })
+                }, peer_id)
     except Exception:
         pass  # best-effort notification
 
@@ -695,7 +699,9 @@ async def enable_2fa(
 
 
 @router.post("/2fa/verify-login")
+@limiter.limit("5/minute")
 async def verify_2fa_login_with_token(
+    request: Request,
     body: schemas.TwoFALoginRequest,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_pending_2fa_dependency),

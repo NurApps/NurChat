@@ -239,10 +239,6 @@ class ConnectionManager:
         """Проверка онлайн статуса пользователя"""
         return user_id in self.active_connections
 
-    def get_online_users(self) -> list[str]:
-        """Получение списка онлайн пользователей"""
-        return list(self.active_connections.keys())
-
 class ChatManager:
     """Менеджер чатов для обработки WebSocket сообщений"""
 
@@ -558,25 +554,6 @@ class ChatManager:
             data["chat_id"]
         )
         logger.info(f"Edit message {data['message_id']} by {user_id} notified to {len(sent_to)} users")
-
-    async def send_sync_event(self, event_data: dict, chat_id: str, exclude_user: str = None):
-        """Отправка события синхронизации всем участникам чата"""
-        sync_event = {
-            "event": WS_EVENTS["SYNC_EVENT"],  # Предполагаем, что SYNC_EVENT определен в constants
-            "data": {
-                **event_data,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        }
-
-        sent_to = await self.connection_manager.broadcast_to_chat(
-            sync_event,
-            chat_id,
-            exclude_user=exclude_user
-        )
-
-        logger.info(f"Sync event sent to {len(sent_to)} users in chat {chat_id}")
-        return sent_to
 
 # Глобальные экземпляры
 connection_manager = ConnectionManager()

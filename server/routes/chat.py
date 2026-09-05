@@ -20,8 +20,6 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, or_
 
-from server.core.cache import chat_cache, user_cache
-from server.core.webhook_delivery import fire_webhooks
 from server.utils.mentions import parse_mentions, resolve_mentioned_users
 from server.ws.chat_manager import connection_manager
 from server.ws.notifications import notification_manager
@@ -29,32 +27,10 @@ from server.ws.notifications import notification_manager
 router = APIRouter()
 
 
-def _get_participant(db: Session, chat_id: str, user_id: str):
-    cache_key = f"participant:{chat_id}:{user_id}"
-    cached = chat_cache.get(cache_key)
-    if cached is not None:
-        return cached
-    participant = db.query(models.ChatParticipant).filter(
-        models.ChatParticipant.chat_id == chat_id,
-        models.ChatParticipant.user_id == user_id,
-    ).first()
-    chat_cache.set(cache_key, participant, ttl=30)
-    return participant
-
-
-def _get_user_cached(db: Session, user_id: str):
-    cached = user_cache.get(user_id)
-    if cached is not None:
-        return cached
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if user:
-        user_cache.set(user_id, user)
-    return user
-
-
 @router.get("/chats", response_model=list[schemas.ChatResponse])
 @limiter.limit("30/minute")
 async def get_user_chats(
+    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
     search: str | None = None
@@ -196,6 +172,7 @@ async def create_chat(
 @router.get("/chats/{chat_id}/messages", response_model=list[schemas.MessageResponse])
 @limiter.limit("60/minute")
 async def get_chat_messages(
+    request: Request,
     chat_id: str,
     skip: int = 0,
     limit: int = 50,
@@ -395,19 +372,6 @@ async def send_message(
             except Exception as mention_error:
                 logger.error(f"Failed to process mentions: {mention_error}")
 
-            try:
-                await fire_webhooks(db, user_id, "message.new", {
-                    "message_id": message_id,
-                    "chat_id": chat_id,
-                    "content": message_data.content,
-                    "message_type": message_data.message_type,
-                    "user_id": user_id,
-                    "username": message_full.user.username if message_full.user else None,
-                    "timestamp": message_full.created_at.isoformat() if message_full.created_at else None,
-                })
-            except Exception as wh_error:
-                logger.error(f"Failed to fire webhooks: {wh_error}")
-
             return schemas.MessageResponse.model_validate(message_full)
     except ChatNotFoundError:
         raise
@@ -466,6 +430,7 @@ async def mark_message_as_read(
 @router.get("/messages/{message_id}/read-count")
 @limiter.limit("30/minute")
 async def get_read_count(
+    request: Request,
     message_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -512,15 +477,6 @@ async def delete_message(
         else:
             message.is_deleted = True
         db.commit()
-
-        try:
-            await fire_webhooks(db, user_id, "message.deleted", {
-                "message_id": message_id,
-                "chat_id": message.chat_id,
-                "user_id": user_id,
-            })
-        except Exception as wh_error:
-            logger.error(f"Failed to fire webhooks: {wh_error}")
 
         return {"message": "Сообщение удалено"}
     except MessageNotFoundError:
@@ -589,17 +545,6 @@ async def edit_message(
         }
         await connection_manager.broadcast_to_chat(edit_event, message.chat_id)
 
-        try:
-            await fire_webhooks(db, user_id, "message.edited", {
-                "message_id": message_id,
-                "chat_id": message.chat_id,
-                "new_content": new_content,
-                "user_id": user_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
-        except Exception as wh_error:
-            logger.error(f"Failed to fire webhooks: {wh_error}")
-
         return {"message": "Сообщение отредактировано"}
     except MessageNotFoundError:
         raise
@@ -614,6 +559,7 @@ async def edit_message(
 @router.get("/messages/{message_id}/edit-history")
 @limiter.limit("10/minute")
 async def get_edit_history(
+    request: Request,
     message_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -860,6 +806,7 @@ async def unblock_user(
 @router.get("/block", response_model=list[schemas.BlockedUserResponse])
 @limiter.limit("10/minute")
 async def get_blocked_users(
+    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
@@ -872,6 +819,7 @@ async def get_blocked_users(
 @router.get("/chats/{chat_id}/export")
 @limiter.limit("5/minute")
 async def export_chat(
+    request: Request,
     chat_id: str,
     format: str = "json",
     db: Session = Depends(get_db),
@@ -928,6 +876,7 @@ async def export_chat(
 @router.get("/chats/{chat_id}/search")
 @limiter.limit("10/minute")
 async def search_messages(
+    request: Request,
     chat_id: str,
     q: str,
     skip: int = 0,
@@ -1034,6 +983,7 @@ async def toggle_reaction(
 @router.get("/messages/{message_id}/reactions", response_model=list[schemas.ReactionResponse])
 @limiter.limit("30/minute")
 async def get_reactions(
+    request: Request,
     message_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -1096,6 +1046,7 @@ async def set_group_key(
 @router.get("/chats/{chat_id}/group-key")
 @limiter.limit("10/minute")
 async def get_group_key(
+    request: Request,
     chat_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),

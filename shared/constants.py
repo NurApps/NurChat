@@ -76,26 +76,6 @@ CRDT_OPS = {
 # Reactions (как в Telegram)
 REACTION_LIST = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
-# P2P WebSocket типы
-P2P_MSG_HELLO = "p2p-hello"
-P2P_MSG_HELLO_ACK = "p2p-hello-ack"
-P2P_MSG_SIGNALING = "p2p-signaling"
-P2P_MSG_DELIVER = "p2p-deliver"
-P2P_MSG_SYNC = "p2p-sync"
-P2P_MSG_CRDT_SYNC = "p2p-crdt-sync"
-P2P_MSG_DELIVERED = "p2p-delivered"
-P2P_MSG_QUEUED = "p2p-queued"
-P2P_MSG_ERROR = "p2p-error"
-
-# Типы P2P сообщений
-P2P_MESSAGE_TYPES = {
-    "TEXT": "chat.message",
-    "GROUP_CREATE": "group.create",
-    "GROUP_KEY": "group.key",
-    "GROUP_MEMBER_ADD": "group.member_add",
-    "GROUP_MEMBER_REMOVE": "group.member_remove",
-}
-
 # Коды ошибок
 ERROR_CODES = {
     "AUTH_FAILED": "auth_failed",

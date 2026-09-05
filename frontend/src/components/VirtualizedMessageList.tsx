@@ -7,15 +7,12 @@ interface RowProps {
   messages: MessageResponse[]
   currentUser: UserResponse
   reactions?: Record<string, Record<string, string[]>>
-  bookmarkedIds?: Set<string>
   searchQuery?: string
   onReply: (id: string) => void
   onDelete: (id: string, deleteForAll?: boolean) => void
-  onForward: (id: string) => void
   onReaction: (id: string, emoji: string, add: boolean) => void
   onEdit: (id: string, content: string) => void
   onViewProfile: (user: UserResponse) => void
-  onBookmark: (id: string) => void
   onPin: (id: string) => void
   onShowInfo: (id: string) => void
 }
@@ -27,8 +24,8 @@ interface Props extends RowProps {
 const DEFAULT_ROW_HEIGHT = 80
 
 const Row = ({
-  index, style, messages, currentUser, reactions = {}, bookmarkedIds = new Set(), searchQuery,
-  onReply, onDelete, onForward, onReaction, onEdit, onViewProfile, onBookmark, onPin, onShowInfo,
+  index, style, messages, currentUser, reactions = {}, searchQuery,
+  onReply, onDelete, onReaction, onEdit, onViewProfile, onPin, onShowInfo,
 }: RowProps & { index: number; style: React.CSSProperties }) => {
   const msg = messages[index]
   if (!msg) return null
@@ -42,12 +39,9 @@ const Row = ({
         reactions={reactions[msg.id]}
         onReply={onReply}
         onDelete={onDelete}
-        onForward={onForward}
         onReaction={onReaction}
         onEdit={onEdit}
         onViewProfile={onViewProfile}
-        onBookmark={onBookmark}
-        isBookmarked={bookmarkedIds.has(msg.id)}
         onPin={onPin}
         highlightQuery={searchQuery}
         onShowInfo={onShowInfo}
@@ -81,18 +75,13 @@ export default function VirtualizedMessageList(props: Props) {
   }, [scrollToBottom])
 
   return (
-    <div style={{ flex: 1, minHeight: 0 }}>
-      <List
-        className="virtualized-message-list"
-        listRef={listRef}
-        rowCount={messages.length}
-        rowHeight={rowHeight}
-        rowComponent={Row}
-        rowProps={{ messages, ...rowProps }}
-        overscanCount={6}
-        onResize={handleResize}
-        style={{ height: "100%" }}
-      />
-    </div>
+    <List
+      ref={listRef}
+      rowHeight={rowHeight}
+      rowCount={messages.length}
+      onRowsRendered={handleResize}
+    >
+      {(rowProps: RowProps) => Row}
+    </List>
   )
 }

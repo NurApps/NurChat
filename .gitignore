@@ -18,6 +18,11 @@ target/
 *.env.*
 .mimocode/
 
+# Secrets (NEVER commit)
+vapid_keys.json
+*.pem
+*.key
+
 # Update signing key (NEVER commit — add to GitHub Secrets as UPDATE_KEY)
 update_key_private.key
 

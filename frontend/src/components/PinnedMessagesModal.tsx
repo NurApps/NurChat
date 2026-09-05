@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import type { MessageResponse } from "../types"
 import { formatTime, formatDateShort } from "../utils/format"
 
 interface PinnedMessageItem {

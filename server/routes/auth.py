@@ -69,65 +69,60 @@ async def register(
     db: Session = Depends(get_db)
 ):
     """Регистрация пользователя с именем и фамилией"""
+    # Validate CAPTCHA first
+    if not validate_captcha(captcha_id, captcha_code):
+        logger.warning(f"Registration: invalid CAPTCHA from {client_ip(request)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверная CAPTCHA"
+        )
+
+    if not first_name or len(first_name.strip()) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Имя должно содержать минимум 2 символа"
+        )
+
+    existing_user = db.query(models.User).filter(
+        models.User.username == username
+    ).first()
+    if existing_user:
+        logger.warning(f"Registration: username already taken: {username}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username уже занят"
+        )
+
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пароль должен содержать минимум 8 символов"
+        )
+    if not re.search(r"[A-Z]", password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пароль должен содержать заглавную латинскую букву"
+        )
+    if not re.search(r"[a-z]", password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пароль должен содержать строчную латинскую букву"
+        )
+    if not re.search(r"\d", password) and not any(not c.isascii() for c in password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пароль должен содержать хотя бы одну цифру"
+        )
+
+    if not public_key or not signing_public_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="public_key и signing_public_key обязательны (генерируются на клиенте)"
+        )
+
+    # All validation passed — create user
     try:
-        # Validate CAPTCHA first
-        if not validate_captcha(captcha_id, captcha_code):
-            logger.warning(f"Registration attempt with invalid CAPTCHA: {captcha_id}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Неверная CAPTCHA"
-            )
-
-        if not first_name or len(first_name.strip()) < 2:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Имя должно содержать минимум 2 символа"
-            )
-
-        existing_user = db.query(models.User).filter(
-            models.User.username == username
-        ).first()
-        if existing_user:
-            logger.warning(f"Registration attempt with existing username: {username}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username уже занят"
-            )
-
-        if len(password) < 8:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пароль должен содержать минимум 8 символов"
-            )
-        if not re.search(r"[A-Z]", password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пароль должен содержать заглавную латинскую букву"
-            )
-        if not re.search(r"[a-z]", password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пароль должен содержать строчную латинскую букву"
-            )
-        if not re.search(r"\d", password) and not any(not c.isascii() for c in password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пароль должен содержать хотя бы одну цифру"
-            )
-
         hashed_password = hash_password_argon2(password)
-
-        # Identity keys MUST be generated client-side: the private key never
-        # leaves the user's device (see AGENTS.md / DEVELOPMENT_PLAN.md S3).
-        if not public_key or not signing_public_key:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="public_key и signing_public_key обязательны (генерируются на клиенте)"
-            )
-
-        user_public_key = public_key
-        user_signing_public_key = signing_public_key
-
         user_id = security.generate_user_id()
         now = datetime.now(timezone.utc)
 
@@ -137,8 +132,8 @@ async def register(
             first_name=first_name.strip(),
             last_name=last_name.strip() if last_name else None,
             hashed_password=hashed_password,
-            public_key=user_public_key,
-            signing_public_key=user_signing_public_key,
+            public_key=public_key,
+            signing_public_key=signing_public_key,
             created_at=now,
             last_seen=now,
             is_online=False,
@@ -148,42 +143,39 @@ async def register(
         db.commit()
         db.refresh(user)
 
-        logger.info(f"New user registered: {user.username} ({user.first_name} {user.last_name or ''}) (ID: {user.id})")
+        logger.info(f"Registration: new user {user.username} (ID: {user.id}) from {client_ip(request)}")
         log_audit(user.id, "user_register", {"username": user.username}, ip_address=client_ip(request))
 
         access_token = security.create_access_token(
             data={"sub": user.id, "username": user.username}
         )
-
-        response = schemas.UserResponse(
-            id=user.id,
-            username=user.username,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            created_at=now,
-            last_seen=now,
-            is_online=False,
-            public_key=user_public_key,
-            signing_public_key=user_signing_public_key,
-            avatar_path=None,
-            status=None,
-            bio=None,
-        )
         refresh_token = security.create_refresh_token(
             data={"sub": user.id, "username": user.username}
         )
-        result = {
+
+        return {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
-            "user": response,
+            "user": schemas.UserResponse(
+                id=user.id,
+                username=user.username,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                created_at=now,
+                last_seen=now,
+                is_online=False,
+                public_key=public_key,
+                signing_public_key=signing_public_key,
+                avatar_path=None,
+                status=None,
+                bio=None,
+            ),
         }
-        # NOTE: private keys are NEVER generated or returned by the server.
-        return result
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Registration error: {e}")
+        logger.error(f"Registration failed for {username}: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [tab, setTab] = useState<Tab>("register")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [serverUnavailable, setServerUnavailable] = useState(false)
 
   // Register fields
   const [firstName, setFirstName] = useState("")
@@ -38,22 +39,31 @@ export default function LoginPage() {
   const [captchaQuestion, setCaptchaQuestion] = useState("")
   const [captchaAnswer, setCaptchaAnswer] = useState("")
 
-  // Auto-login
+  // Auto-login or check server health
   useEffect(() => {
     const token = localStorage.getItem("token")
-    if (!token) {
-      setChecking(false)
+    if (token) {
+      api.getCurrentUser()
+        .then(async (user) => {
+          localStorage.setItem("user", JSON.stringify(user))
+          const keys = await loadKeys()
+          if (keys) setupPreKeys(keys).catch(() => {})
+          navigate("/chat", { replace: true })
+        })
+        .catch(() => {
+          api.clearToken()
+          setChecking(false)
+        })
       return
     }
-    api.getCurrentUser()
-      .then(async (user) => {
-        localStorage.setItem("user", JSON.stringify(user))
-        const keys = await loadKeys()
-        if (keys) setupPreKeys(keys).catch(() => {})
-        navigate("/chat", { replace: true })
+    // No token — check if server is reachable before showing register/login
+    fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(5000) })
+      .then((r) => {
+        if (r.ok) setChecking(false)
+        else setServerUnavailable(true), setChecking(false)
       })
       .catch(() => {
-        api.clearToken()
+        setServerUnavailable(true)
         setChecking(false)
       })
   }, [navigate])
@@ -212,6 +222,30 @@ export default function LoginPage() {
     return (
       <div className="auth-loading">
         <div className="spinner" />
+      </div>
+    )
+  }
+
+  if (serverUnavailable) {
+    return (
+      <div className="login-page">
+        <div className="login-container">
+          <div className="login-logo">
+            <div className="logo-circle">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={TG_BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            </div>
+            <h1 className="login-title">NurChat</h1>
+            <p className="login-subtitle">{t("auth.subtitle")}</p>
+          </div>
+          <div className="auth-error-box">
+            <p>{t("errors.serverUnavailable")}: {BASE_URL}</p>
+            <button className="auth-btn" onClick={() => window.location.reload()}>
+              {t("common.retry")}
+            </button>
+          </div>
+        </div>
       </div>
     )
   }

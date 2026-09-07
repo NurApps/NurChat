@@ -7,7 +7,7 @@ import logging
 from fastapi import Request
 
 from server.core import models
-from server.core.database import get_db
+from server.core.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,10 @@ def log_audit(
     details: dict | None = None,
     ip_address: str | None = None,
 ):
-    """Log an audit event (non-blocking, best-effort)"""
+    """Log an audit event (non-blocking, best-effort). Uses direct Session."""
+    db = None
     try:
-        db = next(get_db())
+        db = SessionLocal()
         audit_log = models.AuditLog(
             user_id=user_id,
             action=action,
@@ -56,6 +57,17 @@ def log_audit(
         db.commit()
     except Exception as e:
         logger.error(f"Audit log failed: {e}")
+        if db:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+    finally:
+        if db:
+            try:
+                db.close()
+            except Exception:
+                pass
 
 
 def get_audit_logs(
@@ -64,8 +76,9 @@ def get_audit_logs(
     limit: int = 100,
 ) -> list[dict]:
     """Get audit logs for a user"""
+    db = None
     try:
-        db = next(get_db())
+        db = SessionLocal()
         logs = (
             db.query(models.AuditLog)
             .filter(models.AuditLog.user_id == user_id)
@@ -88,3 +101,9 @@ def get_audit_logs(
     except Exception as e:
         logger.error(f"Get audit logs failed: {e}")
         return []
+    finally:
+        if db:
+            try:
+                db.close()
+            except Exception:
+                pass

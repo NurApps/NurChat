@@ -69,7 +69,7 @@ export interface E2EKeys {
 
 // ─── Safety Numbers (contact verification) ───
 
-import { sha256 } from "@noble/hashes/sha2"
+import { sha256 } from "@noble/hashes/sha2.js"
 
 /**
  * Generate Safety Number for verifying contact identity.

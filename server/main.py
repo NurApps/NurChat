@@ -1,20 +1,11 @@
-import asyncio
-import io
-import os
-import sys
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-from contextlib import asynccontextmanager
-
-import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
+from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from contextlib import asynccontextmanager
+import asyncio
 
 from server.core.database import create_tables
 from server.middleware.csrf import CSRFMiddleware
@@ -47,41 +38,11 @@ async def lifespan(app: FastAPI):
     file_cleanup_service.start_cleanup_scheduler()
     logger.info("File cleanup service started")
 
-    import asyncio
-    async def ephemeral_cleanup_loop():
-        while True:
-            try:
-                from server.core.database import SessionLocal
-                from server.core import models
-                from datetime import datetime, timezone
-                db = SessionLocal()
-                try:
-                    deleted = db.query(models.Message).filter(
-                        models.Message.expires_at.isnot(None),
-                        models.Message.expires_at < datetime.now(timezone.utc),
-                    ).delete(synchronize_session=False)
-                    if deleted:
-                        db.commit()
-                        logger.info(f"Ephemeral cleanup: deleted {deleted} expired messages")
-                finally:
-                    db.close()
-            except Exception as e:
-                logger.warning(f"Ephemeral cleanup error: {e}")
-            await asyncio.sleep(300)
-    ephemeral_task = asyncio.create_task(ephemeral_cleanup_loop())
-    logger.info("Ephemeral message cleanup started")
-
     from server.core.background_tasks import start_background_tasks
     start_background_tasks()
     logger.info("Background tasks started")
 
     yield
-
-    ephemeral_task.cancel()
-    try:
-        await ephemeral_task
-    except asyncio.CancelledError:
-        pass
 
     from server.ws.chat_manager import connection_manager
     for user_id, ws in list(connection_manager.active_connections.items()):
@@ -93,7 +54,6 @@ async def lifespan(app: FastAPI):
     connection_manager.user_chats.clear()
     connection_manager.chat_users.clear()
 
-    from server.ws.signaling import call_manager
     for user_id, ws in list(call_manager.call_websockets.items()):
         try:
             await ws.close(code=1001, reason="Server shutting down")
@@ -131,7 +91,7 @@ app.add_middleware(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 from shared.exceptions import AuthenticationError, ChatNotFoundError, MessageNotFoundError, TogetherException
 
@@ -175,6 +135,9 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-Password-Confirmation", "Accept"],
     expose_headers=["X-CSRF-Token"],
 )
+
+_error_count = 0
+_request_count = 0
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -248,6 +211,7 @@ async def limit_body_size(request: Request, call_next):
             return JSONResponse(status_code=413, content={"detail": f"Тело запроса слишком большое (макс. {max_mb}MB)"})
     return await call_next(request)
 
+# Routes
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])
@@ -260,9 +224,6 @@ app.include_router(contact_requests.router, tags=["Contact Requests"])
 _ws_connections: dict[str, int] = {}
 WS_MAX_PER_IP = 10
 _ws_lock = asyncio.Lock()
-
-_error_count = 0
-_request_count = 0
 
 
 async def check_ws_rate_limit(ip: str) -> bool:
@@ -325,6 +286,21 @@ async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: st
         return
     try:
         await call_manager.handle_signaling(websocket, user_id)
+    finally:
+        await release_ws_connection(client_ip)
+
+@app.websocket("/ws/signaling/{user_id}")
+async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token: str):
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if not await check_ws_rate_limit(client_ip):
+        await websocket.close(code=4008)
+        return
+    if not await _verify_ws_token(websocket, token, client_ip, user_id):
+        await release_ws_connection(client_ip)
+        return
+    try:
+        from server.ws.signaling import call_manager as signaling_call_manager
+        await signaling_call_manager.handle_signaling(websocket, user_id)
     finally:
         await release_ws_connection(client_ip)
 
@@ -394,26 +370,4 @@ if settings.ENABLE_METRICS:
 
     @app.get("/metrics")
     async def metrics():
-        from starlette.responses import Response
-        return Response(content=generate_latest(REGISTRY), media_type="text/plain; version=0.0.4; charset=utf-8")
-
-@app.get("/")
-async def root():
-    return {
-        "message": "Welcome to NurChat API",
-        "version": "1.0.0",
-        "health": "/health"
-    }
-
-if __name__ == "__main__":
-    if sys.stderr is None:
-        sys.stderr = io.StringIO()
-
-    uvicorn.run(
-        app,
-        host=settings.SERVER_HOST,
-        port=settings.SERVER_PORT,
-        reload=False,
-        log_level="info",
-        log_config=None
-    )
+        return JSONResponse(content={"metrics": "prometheus"})

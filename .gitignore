@@ -32,6 +32,8 @@ update_key_private.key
 # Database
 nurchat.db
 *.db
+*.db-shm
+*.db-wal
 
 # Windows system files
 desktop.ini

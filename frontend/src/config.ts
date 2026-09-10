@@ -15,11 +15,14 @@ export interface RelayConfig {
  * Public relays hosted by the project (like Tox community bootstrap nodes).
  * Order matters — probed top-down at startup when the user has no manual
  * override. Add/remove entries here as infrastructure changes.
+ *
+ * NOTE: empty by default — the old workers.dev entry never resolved (DNS),
+ * and a dead entry only adds a 4s startup hang before fallback to local.
+ * Add your relay here once DEPLOY.md section 1 is done, e.g.:
+ *   { host: "relay.example.com", protocol: "https" },
  */
 export const PUBLIC_RELAYS: RelayConfig[] = [
-  { host: "nurchat-relay.workers.dev", protocol: "https" },
-  // Add more relays as they come online:
-  // { host: "relay-eu.nurchat.app", protocol: "https" },
+  // { host: "relay.nurchat.app", protocol: "https" },
 ]
 
 /**

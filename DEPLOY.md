@@ -3,6 +3,39 @@
 Минимальный VPS: 1 CPU / 1 GB RAM / 10 GB SSD (до ~500 активных пользователей).
 Для роста: 2 CPU / 4 GB RAM, PostgreSQL на отдельном volume.
 
+## 0. Бесплатные варианты (без VPS за деньги)
+
+**Вариант A — Oracle Cloud Always Free (рекомендуется).**
+4 ARM CPU + 24 GB RAM + 200 GB диска — бесплатно навсегда, настоящий VPS,
+`docker compose` работает как на платном. Нюансы: нужна карта для
+верификации (деньги не списывают), ARM — наши образы
+(`python:3.12-slim`, `postgres:15-alpine`, `redis:7-alpine`, `coturn`)
+мультиархные, заводится без правок. Регион выбирайте где есть capacity
+(Frankfurt/Zurich обычно ок). Дальше — раздел 1.
+
+**Вариант B — домашний ПК + Cloudflare Tunnel (0 ₽, без карты).**
+Релей крутится дома (хоть на старом ноутбуке), наружу торчит через
+`cloudflared` — белый IP и проброс портов не нужны, HTTPS-домен бесплатно:
+
+```bash
+# На домашней машине: релей как обычно
+docker compose up -d --build
+# Туннель (ставится отдельно: https://developers.cloudflare.com/cloudflare-one/)
+cloudflared tunnel --url http://localhost:8000
+# cloudflared выдаст https://xxx.trycloudflare.com → раздайте его пользователям
+# Для постоянного домена: свой домен на Cloudflare + named tunnel (тоже бесплатно)
+```
+
+Нюансы: звонки за NAT без TURN могут деградировать (туннель плохо
+дружит с UDP-диапазонами coturn — STUN остаётся, прямого P2P WebRTC
+обычно хватает); аптайм = аптайм домашнего ПК; электричество ваше.
+
+**Не подходят:** Render/HuggingFace free (засыпают — мессенджер так
+не работает), Railway/Heroku-подобные (триал кончится).
+
+Какой бы вариант ни выбрали — добавьте хост в `PUBLIC_RELAYS`
+(`frontend/src/config.ts`), иначе клиенты будут упираться в localhost.
+
 ## 1. Первичный деплой
 
 ```bash

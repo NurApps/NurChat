@@ -27,6 +27,11 @@ export const PUBLIC_RELAYS: RelayConfig[] = [
 
 /**
  * Probe PUBLIC_RELAYS and return the first healthy one (or null).
+ *
+ * Probe order is SHUFFLED on every fresh resolve so load spreads across
+ * community relays instead of hammering the first entry. The winner is
+ * then sticky (cached in localStorage) — accounts live on ONE relay,
+ * so re-rolling randomly on every launch would log the user out.
  */
 async function probePublicRelays(): Promise<RelayConfig | null> {
   // Previously resolved relay — use without re-probing
@@ -38,7 +43,13 @@ async function probePublicRelays(): Promise<RelayConfig | null> {
     }
   } catch { /* ignore */ }
 
-  for (const candidate of PUBLIC_RELAYS) {
+  const shuffled = [...PUBLIC_RELAYS]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+
+  for (const candidate of shuffled) {
     try {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 4000)

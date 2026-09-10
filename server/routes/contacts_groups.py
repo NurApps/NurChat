@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import func
 
@@ -12,9 +11,6 @@ from server.ws.notifications import notification_manager
 from shared.rate_limiter import limiter
 
 router = APIRouter()
-
-class GroupRenameRequest(BaseModel):
-    name: str
 
 
 @router.get("/contacts", response_model=list[schemas.ContactResponse])
@@ -441,12 +437,10 @@ async def remove_participant(
         raise HTTPException(status_code=404, detail="Пользователь не в группе")
     db.delete(target_participant)
 
-    # Rotate group key: generate new key, notify remaining members
-    import secrets as _secrets
-    import nacl.secret
-    new_group_key = _secrets.token_bytes(nacl.secret.SecretBox.KEY_SIZE)
-    chat.group_key = new_group_key.hex()
-    chat.group_key_creator_id = user_id
+    # Invalidate group key — admin re-initializes it via POST /group-key.
+    # (Never store a raw key: get_group_key expects JSON {user_id: sealed}.)
+    chat.group_key = None
+    chat.group_key_creator_id = None
     db.commit()
 
     # Notify remaining members via WebSocket to re-fetch group key
@@ -485,14 +479,11 @@ async def leave_group(
         raise HTTPException(status_code=404, detail="Вы не в этой группе")
     db.delete(participant)
 
-    # Rotate group key on leave
+    # Invalidate group key on leave — admin re-initializes it.
     chat = db.query(models.Chat).filter(models.Chat.id == group_id, models.Chat.is_group).first()
     if chat:
-        import secrets as _secrets
-        import nacl.secret
-        new_group_key = _secrets.token_bytes(nacl.secret.SecretBox.KEY_SIZE)
-        chat.group_key = new_group_key.hex()
-        chat.group_key_creator_id = user_id
+        chat.group_key = None
+        chat.group_key_creator_id = None
 
     db.commit()
 

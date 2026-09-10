@@ -177,8 +177,9 @@ class NotificationManager:
         if user_id in self.user_notifications:
             self.user_notifications[user_id].clear()
 
-    def _truncate_message_preview(self, content: str, max_length: int = 100) -> str:
+    def _truncate_message_preview(self, content: str | None, max_length: int = 100) -> str:
         """Обрезка текста сообщения для превью"""
+        content = content or ""
         if len(content) <= max_length:
             return content
         return content[:max_length] + "..."
@@ -250,4 +251,7 @@ async def handle_notifications_websocket(websocket: WebSocket, user_id: str):
     except Exception as e:
         logger.error(f"WebSocket error in notifications for {user_id}: {e}")
     finally:
-        await websocket.close()
+        try:
+            await websocket.close()
+        except Exception:
+            pass

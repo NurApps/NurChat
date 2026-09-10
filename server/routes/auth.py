@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from server.core import models, schemas

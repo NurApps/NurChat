@@ -249,6 +249,10 @@ class CallManager:
         if not call:
             return
 
+        if user_id not in (call["caller_id"], call["callee_id"]):
+            logger.warning(f"User {user_id} tried to reject call {call_id} without being a participant")
+            return
+
         reason = data.get("reason", "rejected")
 
         # Уведомляем звонящего об отклонении
@@ -288,6 +292,10 @@ class CallManager:
         if not call:
             return
 
+        if user_id not in (call["caller_id"], call["callee_id"]):
+            logger.warning(f"User {user_id} tried to end call {call_id} without being a participant")
+            return
+
         # Уведомляем второго участника о завершении
         call_ended = {
             "type": "call-ended",
@@ -310,7 +318,9 @@ class CallManager:
 
     async def _handle_call_timeout(self, user_id: str, data: dict):
         """Обработка таймаута звонка"""
-        call_id = data["call_id"]
+        call_id = data.get("call_id")
+        if not call_id:
+            return
         call = self.active_calls.get(call_id)
 
         if not call or call["caller_id"] != user_id:
@@ -428,6 +438,21 @@ class CallManager:
         db: Session = SessionLocal()
         try:
             now = datetime.now(timezone.utc)
+            existing = db.query(models.CallLog).filter(
+                models.CallLog.call_id == call_id
+            ).first()
+            if existing:
+                # Update the existing row instead of inserting a duplicate
+                # (accept → end would otherwise create two history entries)
+                existing.ended_at = now
+                if duration is not None:
+                    existing.duration = int(duration)
+                if ended_by:
+                    existing.ended_by = ended_by
+                db.commit()
+                logger.debug(f"Call {call_id} updated in DB with action: {action}")
+                return
+
             call_log = models.CallLog(
                 call_id=call_id,
                 caller_id=call["caller_id"],
@@ -435,7 +460,7 @@ class CallManager:
                 call_type=call["call_type"],
                 started_at=call["started_at"],
                 ended_at=now,
-                duration=duration or 0,
+                duration=int(duration) if duration else 0,
                 ended_by=ended_by or call["caller_id"]
             )
 

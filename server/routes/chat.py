@@ -46,18 +46,23 @@ async def get_user_chats(
     if not chat_ids:
         return []
 
-    # Batch load last messages for all chats
+    # Batch load last messages for all chats (portable: no DISTINCT ON,
+    # which is PostgreSQL-only and silently wrong on SQLite)
     last_msg_subq = (
-        db.query(models.Message.chat_id, models.Message.id.label("msg_id"))
+        db.query(
+            models.Message.chat_id,
+            func.max(models.Message.created_at).label("max_created"),
+        )
         .filter(models.Message.chat_id.in_(chat_ids))
-        .order_by(models.Message.chat_id, models.Message.created_at.desc())
-        .distinct(models.Message.chat_id)
+        .group_by(models.Message.chat_id)
         .subquery()
     )
     last_messages = {}
     if chat_ids:
         msgs = db.query(models.Message).join(
-            last_msg_subq, models.Message.id == last_msg_subq.c.msg_id
+            last_msg_subq,
+            (models.Message.chat_id == last_msg_subq.c.chat_id)
+            & (models.Message.created_at == last_msg_subq.c.max_created),
         ).options(joinedload(models.Message.user)).all()
         last_messages = {m.chat_id: m for m in msgs}
 
@@ -140,21 +145,20 @@ async def create_chat(
             disappears_after_seconds=chat_data.disappears_after_seconds,
         )
         db.add(chat)
-        added = 0
+        added_uids: list[str] = []
         for uid in chat_data.participant_ids:
             exists = db.query(models.User).filter(models.User.id == uid).first()
             if exists:
                 is_creator = (uid == user_id and chat_data.is_group)
                 db.add(models.ChatParticipant(chat_id=chat_id, user_id=uid, is_admin=is_creator))
-                added += 1
+                added_uids.append(uid)
             else:
                 logger.warning(f"User {uid} does not exist, skipping")
         db.commit()
         db.refresh(chat)
-        for uid in chat_data.participant_ids:
-            if db.query(models.User).filter(models.User.id == uid).first():
-                connection_manager.add_user_to_chat(user_id=uid, chat_id=chat_id)
-        logger.info(f"Chat created: {chat_id} with {added} participants")
+        for uid in added_uids:
+            connection_manager.add_user_to_chat(user_id=uid, chat_id=chat_id)
+        logger.info(f"Chat created: {chat_id} with {len(added_uids)} participants")
         return schemas.ChatResponse(
             id=chat.id, name=chat.name, is_group=chat.is_group,
             is_secret=chat.is_secret,
@@ -309,6 +313,9 @@ async def send_message(
             joinedload(models.Message.user),
             joinedload(models.Message.reply_to).joinedload(models.Message.user)
         ).filter(models.Message.id == message_id).first()
+        if not message_full:
+            logger.error(f"Message {message_id} vanished right after commit in chat {chat_id}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось сохранить сообщение")
         if message_full:
             participants = db.query(models.ChatParticipant).filter(
                 models.ChatParticipant.chat_id == chat_id,
@@ -473,6 +480,7 @@ async def delete_message(
             logger.warning(f"User {user_id} tried to delete message {message_id} not owned by them")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нельзя удалить чужое сообщение")
         if delete_for_all:
+            message.is_deleted = True
             message.deleted_for_all = True
         else:
             message.is_deleted = True
@@ -760,6 +768,11 @@ async def block_user(
         user_id = token["sub"]
         logger.info(f"User {user_id} blocking user {blocked_user_id}")
 
+        if blocked_user_id == user_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Нельзя заблокировать самого себя")
+        target = db.query(models.User).filter(models.User.id == blocked_user_id).first()
+        if not target:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
         existing = db.query(models.BlockedUser).filter(
             models.BlockedUser.user_id == user_id,
             models.BlockedUser.blocked_user_id == blocked_user_id,

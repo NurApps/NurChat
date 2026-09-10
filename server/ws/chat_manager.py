@@ -210,7 +210,6 @@ class ConnectionManager:
             return
 
         for chat_id in self.user_chats[user_id]:
-            import asyncio
             asyncio.create_task(self.broadcast_to_chat(message, chat_id, exclude_user=user_id))
 
     def add_user_to_chat(self, user_id: str, chat_id: str):
@@ -301,6 +300,12 @@ class ChatManager:
         allowed_types = {"text", "image", "video", "audio", "file", "location", "contact", "voice"}
         if message_type not in allowed_types:
             logger.warning(f"Invalid message_type from {user_id}: {message_type}")
+            return
+
+        # Глухой relay: принимаем ТОЛЬКО E2E-шифрованные сообщения (как HTTP-путь)
+        from shared.config import settings as _settings
+        if _settings.RELAY_DEAF and not data.get("encrypted_content"):
+            logger.warning(f"RELAY_DEAF: rejected plaintext WS message from {user_id}")
             return
 
         # Сохраняем сообщение в БД
@@ -464,7 +469,6 @@ class ChatManager:
                     message.is_deleted = True
                     if delete_for_all and message.user_id == user_id:
                         message.deleted_for_all = True
-                        message.content = None
                     db.commit()
                 else:
                     logger.warning(

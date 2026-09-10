@@ -104,8 +104,8 @@ async def upload_file(
         try:
             import subprocess
             import tempfile
-            # Save to temp file for scanning
-            with tempfile.NamedTemporaryFile(delete=False, suffix=file.filename or ".tmp") as tmp:
+            # Save to temp file for scanning (fixed suffix: filename may contain path chars)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".tmp") as tmp:
                 content = await file.read()
                 tmp.write(content)
                 tmp_path = tmp.name

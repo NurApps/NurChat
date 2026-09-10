@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str = ""
     VAPID_CLAIM_EMAIL: str = "admin@nurchat.app"
 
+    # WebRTC (calls): STUN/TURN/ICE. Пусто = только публичные STUN.
+    STUN_SERVERS: str = "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
+    WEBRTC_ICE_SERVERS: str = ""
+    TURN_SERVERS: str = ""
+    TURN_USERNAME: str = ""
+    TURN_CREDENTIAL: str = "CHANGE_ME_IN_PRODUCTION"
+
     @classmethod
     def settings_customise_sources(
         cls,

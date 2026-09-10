@@ -93,6 +93,7 @@ class Message(Base):
     scheduled_at = Column(DateTime(timezone=True), nullable=True)
     is_view_once = Column(Boolean, default=False)
     viewed_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)  # глухой relay: получатель забрал историю
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="messages")

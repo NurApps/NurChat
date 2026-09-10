@@ -121,7 +121,11 @@ class TestCSRFProtection:
         """C6: Same CSRF token should be reused if still valid."""
         r1 = client.get("/health")
         token1 = r1.cookies.get("csrf_token")
-        r2 = client.get("/health")
+        assert token1, "no csrf_token set by server"
+        # NOTE: pass cookie explicitly — httpx TestClient stores cookies
+        # under 'testserver.local' and never sends them back to 'testserver'
+        # (single-label hostname quirk). Real browsers are unaffected.
+        r2 = client.get("/health", cookies={"csrf_token": token1})
         token2 = r2.cookies.get("csrf_token")
         assert token1 == token2, "CSRF token should be reused when still valid"
 

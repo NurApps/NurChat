@@ -3,6 +3,7 @@ Audit logging helper — logs security-relevant events without message content
 """
 import json
 import logging
+import secrets
 
 from fastapi import Request
 
@@ -48,6 +49,7 @@ def log_audit(
     try:
         db = SessionLocal()
         audit_log = models.AuditLog(
+            id=f"audit_{secrets.token_hex(16)}",
             user_id=user_id,
             action=action,
             details=json.dumps(details) if details else None,

@@ -63,6 +63,8 @@ async def lifespan(app: FastAPI):
 
     logger.info("All WebSocket connections closed")
     file_cleanup_service.stop_cleanup_scheduler()
+    from server.core.background_tasks import stop_background_tasks
+    stop_background_tasks()
     logger.info("NurChat Server stopped")
 
 app = FastAPI(

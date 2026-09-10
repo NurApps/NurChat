@@ -23,7 +23,7 @@ export default function NotificationToast({ toast, onClose, onClick }: Props) {
   if (!toast) return null
 
   return (
-    <div className="toast-notification" onClick={() => onClick?.(toast.chatId)}>
+    <div className="toast-notification" role="status" aria-live="polite" onClick={() => onClick?.(toast.chatId)}>
       <div className="toast-content">
         <strong className="toast-title">{toast.title}</strong>
         <span className="toast-body">{toast.body}</span>

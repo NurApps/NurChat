@@ -13,6 +13,13 @@ export interface UserResponse {
   bio?: string
 }
 
+export interface MessageReplyPreview {
+  id: string
+  content: string
+  user_id: string
+  user: UserResponse
+}
+
 export interface MessageResponse {
   id: string
   content: string
@@ -21,16 +28,24 @@ export interface MessageResponse {
   message_type: string
   file_id?: string
   file?: { id: string; filename: string; file_type: string; file_size: number; ipfs_hash?: string; uploaded_at: string; user_id: string }
+
+  file?: { id: string; filename: string; file_type: string; file_size: number; uploaded_at: string; user_id: string }
   encrypted_content?: string
   signature?: string
   user: UserResponse
   created_at: string
+  edited_at?: string
   is_read?: boolean
   is_deleted?: boolean
   deleted_for_all?: boolean
   forwarded_from?: string
+  reply_to_id?: string
+  reply_to?: MessageReplyPreview
   reactions?: Record<string, string[]>
   expires_at?: string
+  scheduled_at?: string
+  is_view_once?: boolean
+  viewed_at?: string
   is_pinned?: boolean
 }
 
@@ -86,8 +101,19 @@ export interface FileUploadResponse {
   file_type: string
   file_size: number
   file_path: string
-  ipfs_hash?: string
   ttl_days: number
   uploaded_at: string
   user_id: string
+}
+
+export interface ContactRequestResponse {
+  id: string
+  from_user_id: string
+  to_user_id: string
+  message?: string
+  status: "pending" | "accepted" | "rejected"
+  created_at: string
+  updated_at: string
+  from_user: UserResponse
+  to_user: UserResponse
 }

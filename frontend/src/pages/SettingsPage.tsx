@@ -1,13 +1,20 @@
-import { useState, useEffect, useRef } from "react"
+﻿import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { getVersion } from "@tauri-apps/api/app"
 import { open } from "@tauri-apps/plugin-shell"
+
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import { BASE_URL, avatarUrl } from "../config"
+import { csrfHeader } from "../services/api"
+import { BASE_URL, avatarUrl, getRelayConfig, setRelayConfig, resetRelayConfig } from "../config"
 import { useAvatar } from "../hooks/useAvatar"
 import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
 import { checkForUpdates } from "../services/updateService"
+
+import { platform } from "../services/platform"
+import { getSettings, setSetting, clearSettings } from "../services/userSettings"
+import { useTheme, THEMES } from "../context/ThemeContext"
 import type { UserResponse } from "../types"
 
 type SettingsTab = "profile" | "notifications" | "privacy" | "storage" | "security" | "account"
@@ -47,6 +54,7 @@ const TabIcons = {
 
 export default function SettingsPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
   const [user, setUser] = useState<UserResponse | null>(null)
   const [firstName, setFirstName] = useState("")
@@ -78,6 +86,19 @@ export default function SettingsPage() {
   const [totpBackupCodes, setTotpBackupCodes] = useState<string[]>([])
   const [totpLoading, setTotpLoading] = useState(false)
 
+  const { theme, setTheme } = useTheme()
+
+  const [relayHost, setRelayHost] = useState("")
+  const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("http")
+  const [relaySaved, setRelaySaved] = useState(false)
+  const [settings, setSettings] = useState(getSettings)
+
+  useEffect(() => {
+    const cfg = getRelayConfig()
+    setRelayHost(cfg.host)
+    setRelayProtocol(cfg.protocol)
+  }, [])
+
   useEffect(() => {
     api.getCurrentUser()
       .then((u: UserResponse) => {
@@ -91,15 +112,19 @@ export default function SettingsPage() {
   }, [navigate])
 
   useEffect(() => {
-    setE2eEnabled(hasKeys())
+    hasKeys().then(setE2eEnabled).catch(() => setE2eEnabled(false))
     api.getStorageInfo?.().then((info: any) => setStorageInfo(info)).catch(() => {})
     getVersion().then(setAppVersion).catch(() => setAppVersion("0.15.0"))
+
+    platform.getAppVersion().then(setAppVersion).catch(() => setAppVersion("0.15.0"))
     loadTotpStatus()
   }, [])
 
   const loadTotpStatus = async () => {
     try {
       const res = await fetch(`${BASE_URL}/api/auth/totp/status`, {
+
+      const res = await fetch(`${BASE_URL}/api/auth/2fa/status`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       })
       if (res.ok) {
@@ -110,6 +135,8 @@ export default function SettingsPage() {
       console.error("Failed to load TOTP status:", e)
     }
   }
+
+
 
   const handleTotpSetup = async () => {
     setTotpLoading(true)
@@ -124,6 +151,19 @@ export default function SettingsPage() {
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.detail || "Ошибка настройки TOTP")
+
+      const res = await fetch(`${BASE_URL}/api/auth/2fa/setup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
+        },
+        body: JSON.stringify({ password: totpPassword }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || t("settings.totpSetupError"))
       }
       const data = await res.json()
       setTotpQrCode(data.qr_code)
@@ -132,6 +172,8 @@ export default function SettingsPage() {
       setTotpBackupCodes(data.backup_codes || [])
     } catch (e: any) {
       setMsg(e.message || "Ошибка настройки TOTP")
+
+      setMsg(e.message || t("settings.totpSetupError"))
     } finally {
       setTotpLoading(false)
     }
@@ -140,22 +182,30 @@ export default function SettingsPage() {
   const handleTotpEnable = async () => {
     if (!totpCode || totpCode.length < 6) {
       setMsg("Введите 6-значный код из приложения аутентификации")
+
+      setMsg(t("settings.totpCodePlaceholder"))
       return
     }
     setTotpLoading(true)
     setMsg("")
     try {
       const res = await fetch(`${BASE_URL}/api/auth/totp/enable`, {
+
+      const res = await fetch(`${BASE_URL}/api/auth/2fa/enable`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`,
+
+          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: JSON.stringify({ code: totpCode }),
       })
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.detail || "Ошибка включения TOTP")
+
+        throw new Error(err.detail || t("settings.totpEnableError"))
       }
       setTotpEnabled(true)
       setTotpSetupMode("idle")
@@ -164,6 +214,10 @@ export default function SettingsPage() {
       setMsg("TOTP 2FA успешно включен! Сохраните резервные коды.")
     } catch (e: any) {
       setMsg(e.message || "Ошибка включения TOTP")
+
+      setMsg(t("settings.totpEnabledSuccess"))
+    } catch (e: any) {
+      setMsg(e.message || t("settings.totpEnableError"))
     } finally {
       setTotpLoading(false)
     }
@@ -172,22 +226,30 @@ export default function SettingsPage() {
   const handleTotpDisable = async () => {
     if (!totpCode) {
       setMsg("Введите код TOTP или резервный код для отключения")
+
+      setMsg(t("settings.totpCodeOrBackup"))
       return
     }
     setTotpLoading(true)
     setMsg("")
     try {
       const res = await fetch(`${BASE_URL}/api/auth/totp/disable`, {
+
+      const res = await fetch(`${BASE_URL}/api/auth/2fa/disable`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("token")}`,
+
+          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: JSON.stringify({ code: totpCode }),
       })
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.detail || "Ошибка отключения TOTP")
+
+        throw new Error(err.detail || t("settings.totpDisableError"))
       }
       setTotpEnabled(false)
       setTotpSetupMode("idle")
@@ -196,6 +258,10 @@ export default function SettingsPage() {
       setMsg("TOTP 2FA отключен")
     } catch (e: any) {
       setMsg(e.message || "Ошибка отключения TOTP")
+
+      setMsg(t("settings.totpDisabledSuccess"))
+    } catch (e: any) {
+      setMsg(e.message || t("settings.totpDisableError"))
     } finally {
       setTotpLoading(false)
     }
@@ -212,43 +278,46 @@ export default function SettingsPage() {
       if (bio) form.append("bio", bio)
       const res = await fetch(`${BASE_URL}/api/auth/profile/update`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
+        },
         body: form,
       })
       if (!res.ok) throw new Error(await res.text())
       const updated = await res.json()
       localStorage.setItem("user", JSON.stringify(updated))
       setUser(updated)
-      setMsg("Сохранено")
+      setMsg(t("settings.saved"))
     } catch (e: any) {
-      setMsg(e.message || "Ошибка")
+      setMsg(e.message || t("settings.error"))
     } finally {
       setSaving(false)
     }
   }
 
-  const handleClearE2EKeys = () => {
-    if (!confirm("Вы уверены? Вы не сможете расшифровать старые сообщения.")) return
-    clearKeys()
+  const handleClearE2EKeys = async () => {
+    if (!confirm(t("settings.confirmClearE2E"))) return
+    await clearKeys()
     setE2eEnabled(false)
-    setMsg("E2E ключи удалены")
+    setMsg(t("settings.e2eKeysDeleted"))
   }
 
   const handlePinSetup = () => {
     if (pinStep === "enter") {
-      if (pinInput.length < 4) { setMsg("PIN должен быть минимум 4 цифры"); return }
+      if (pinInput.length < 4) { setMsg(t("settings.pinMinLength")); return }
       setPinStep("confirm")
       setPinInput("")
       setMsg("")
     } else {
-      if (pinInput !== pinConfirm) { setMsg("PIN-коды не совпадают"); return }
+      if (pinInput !== pinConfirm) { setMsg(t("settings.pinMismatch")); return }
       setPin(pinInput).then(() => {
         setPinEnabled(true)
         setPinSetup("idle")
         setPinInput("")
         setPinConfirm("")
         setPinStep("enter")
-        setMsg("PIN-код установлен")
+        setMsg(t("settings.pinSetSuccess"))
       })
     }
   }
@@ -256,19 +325,19 @@ export default function SettingsPage() {
   const handlePinChange = async () => {
     if (pinStep === "enter") {
       const ok = await verifyPin(pinInput)
-      if (!ok) { setMsg("Неверный текущий PIN"); return }
+      if (!ok) { setMsg(t("settings.pinWrongCurrent")); return }
       setPinStep("confirm")
       setPinInput("")
       setMsg("")
     } else {
-      if (pinInput.length < 4) { setMsg("PIN должен быть минимум 4 цифры"); return }
+      if (pinInput.length < 4) { setMsg(t("settings.pinMinLength")); return }
       setPin(pinInput).then(() => {
         setPinEnabled(true)
         setPinSetup("idle")
         setPinInput("")
         setPinConfirm("")
         setPinStep("enter")
-        setMsg("PIN-код изменён")
+        setMsg(t("settings.pinChanged"))
       })
     }
   }
@@ -276,23 +345,34 @@ export default function SettingsPage() {
   const handlePinRemove = async () => {
     if (pinStep === "enter") {
       const ok = await verifyPin(pinInput)
-      if (!ok) { setMsg("Неверный PIN"); return }
+      if (!ok) { setMsg(t("settings.pinWrong")); return }
       clearPin()
       setPinEnabled(false)
       setPinSetup("idle")
       setPinInput("")
       setPinStep("enter")
-      setMsg("PIN-код отключён")
+      setMsg(t("settings.pinRemoved"))
     }
   }
 
   const handleClearCache = () => {
-    localStorage.removeItem("p2p_keys")
-    setMsg("Кэш очищен")
+    setMsg(t("settings.cacheCleared"))
+  }
+
+  const handleSaveRelay = () => {
+    const host = relayHost.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
+    if (!host) {
+      resetRelayConfig()
+    } else {
+      setRelayConfig({ host, protocol: relayProtocol })
+    }
+    setRelaySaved(true)
+    setTimeout(() => setRelaySaved(false), 3000)
+    setMsg(t("settings.relaySaved"))
   }
 
   const handleLogout = () => {
-    if (!confirm("Выйти из аккаунта?")) return
+    if (!confirm(t("settings.confirmLogout"))) return
     api.clearToken()
     clearPin()
     navigate("/login", { replace: true })
@@ -312,15 +392,22 @@ export default function SettingsPage() {
   }
 
   const handleDeleteAccount = async () => {
-    if (!confirm("Вы уверены? Это действие необратимо!")) return
-    if (!confirm("Точно удалить аккаунт?")) return
+    if (!confirm(t("settings.confirmDeleteAccount"))) return
+    if (!confirm(t("settings.confirmDeleteAccountSecond"))) return
     try {
+      await api.deleteAccount()
+      clearKeys()
+      clearSettings()
       api.clearToken()
       clearPin()
       navigate("/login", { replace: true })
     } catch {
-      setMsg("Ошибка удаления")
+      setMsg(t("settings.deleteError"))
     }
+  }
+
+  const handleToggleSetting = (key: keyof typeof settings, value: boolean) => {
+    setSettings(setSetting(key, value))
   }
 
   if (!user) return <div className="auth-loading"><div className="spinner" /></div>
@@ -329,18 +416,18 @@ export default function SettingsPage() {
   const initial = user.username[0]?.toUpperCase() || "?"
 
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-    { id: "profile", label: "Профиль", icon: TabIcons.profile },
-    { id: "notifications", label: "Уведомления", icon: TabIcons.notifications },
-    { id: "privacy", label: "Приватность", icon: TabIcons.privacy },
-    { id: "storage", label: "Хранилище", icon: TabIcons.storage },
-    { id: "security", label: "Безопасность", icon: TabIcons.security },
-    { id: "account", label: "Аккаунт", icon: TabIcons.account },
+    { id: "profile", label: t("settings.profile"), icon: TabIcons.profile },
+    { id: "notifications", label: t("settings.notifications"), icon: TabIcons.notifications },
+    { id: "privacy", label: t("settings.privacy"), icon: TabIcons.privacy },
+    { id: "storage", label: t("settings.storage"), icon: TabIcons.storage },
+    { id: "security", label: t("settings.security"), icon: TabIcons.security },
+    { id: "account", label: t("settings.account"), icon: TabIcons.account },
   ]
 
   const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} Б`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`
+    if (bytes < 1024) return `${bytes} ${t("files.sizeB")}`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${t("files.sizeKB")}`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} ${t("files.sizeMB")}`
   }
 
   return (
@@ -351,7 +438,7 @@ export default function SettingsPage() {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h2>Настройки</h2>
+        <h2>{t("settings.title")}</h2>
       </div>
 
       <div className="settings-body">
@@ -387,11 +474,11 @@ export default function SettingsPage() {
                 </div>
                 <div className="avatar-actions">
                   <button className="avatar-btn" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                    {uploading ? "..." : "Сменить аватар"}
+                    {uploading ? "..." : t("profile.changeAvatar")}
                   </button>
                   {user.avatar_path && (
                     <button className="avatar-btn danger" onClick={deleteAvatar} disabled={uploading}>
-                      Удалить
+                      {t("common.delete")}
                     </button>
                   )}
                 </div>
@@ -402,24 +489,47 @@ export default function SettingsPage() {
               </div>
 
               <div className="settings-fields">
-                <label className="settings-label">Имя</label>
+                <label className="settings-label">{t("profile.firstName")}</label>
                 <input className="settings-input" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
 
-                <label className="settings-label">Фамилия</label>
+                <label className="settings-label">{t("profile.lastName")}</label>
                 <input className="settings-input" value={lastName} onChange={(e) => setLastName(e.target.value)} />
 
-                <label className="settings-label">Статус</label>
-                <input className="settings-input" placeholder="Например: в сети, занят..." value={status} onChange={(e) => setStatus(e.target.value)} />
+                <label className="settings-label">{t("settings.status")}</label>
+                <input className="settings-input" placeholder={t("settings.statusPlaceholder")} value={status} onChange={(e) => setStatus(e.target.value)} />
 
-                <label className="settings-label">О себе</label>
-                <textarea className="settings-textarea" rows={3} placeholder="Расскажите о себе..." value={bio} onChange={(e) => setBio(e.target.value)} />
+                <label className="settings-label">{t("profile.bio")}</label>
+                <textarea className="settings-textarea" rows={3} placeholder={t("settings.bioPlaceholder")} value={bio} onChange={(e) => setBio(e.target.value)} />
               </div>
 
-              {msg && <p className={`settings-msg ${msg === "Сохранено" ? "ok" : "err"}`}>{msg}</p>}
+              {msg && <p className={`settings-msg ${msg === t("settings.saved") ? "ok" : "err"}`}>{msg}</p>}
 
               <button className="settings-save-btn" disabled={saving} onClick={handleSave}>
-                {saving ? "Сохранение..." : "Сохранить"}
+                {saving ? t("settings.saving") : t("common.save")}
               </button>
+
+              <div className="settings-group" style={{ marginTop: 24 }}>
+                <h3 className="settings-group-title">{t("settings.themeTitle")}</h3>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      className={`settings-tab ${theme === t.id ? "active" : ""}`}
+                      onClick={() => setTheme(t.id)}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        border: theme === t.id ? "2px solid var(--accent)" : "2px solid transparent",
+                        background: theme === t.id ? "var(--surface-variant)" : "var(--card-bg)",
+                        cursor: "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </>
           )}
 
@@ -427,25 +537,25 @@ export default function SettingsPage() {
           {tab === "notifications" && (
             <div className="settings-sections">
               <div className="settings-group">
-                <h3 className="settings-group-title">Звуки</h3>
+                <h3 className="settings-group-title">{t("settings.sounds")}</h3>
                 <div className="settings-toggle-row">
-                  <span>Звук сообщений</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <span>{t("settings.messageSound")}</span>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.messageSound} onChange={(e) => handleToggleSetting("messageSound", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
                 <div className="settings-toggle-row">
-                  <span>Звук звонков</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <span>{t("settings.callSound")}</span>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.callSound} onChange={(e) => handleToggleSetting("callSound", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
               </div>
               <div className="settings-group">
-                <h3 className="settings-group-title">Отображение</h3>
+                <h3 className="settings-group-title">{t("settings.display")}</h3>
                 <div className="settings-toggle-row">
-                  <span>Превью сообщений</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <span>{t("settings.messagePreview")}</span>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.messagePreview} onChange={(e) => handleToggleSetting("messagePreview", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
                 <div className="settings-toggle-row">
-                  <span>Уведомления на рабочем столе</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <span>{t("settings.desktopNotifications")}</span>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.desktopNotifications} onChange={(e) => handleToggleSetting("desktopNotifications", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
               </div>
             </div>
@@ -455,20 +565,20 @@ export default function SettingsPage() {
           {tab === "privacy" && (
             <div className="settings-sections">
               <div className="settings-group">
-                <h3 className="settings-group-title">Видимость</h3>
+                <h3 className="settings-group-title">{t("settings.visibility")}</h3>
                 <div className="settings-toggle-row">
-                  <span>Показывать статус «в сети»</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <span>{t("settings.showOnline")}</span>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.showOnline} onChange={(e) => handleToggleSetting("showOnline", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
                 <div className="settings-toggle-row">
-                  <span>Показывать время последнего входа</span>
-                  <label className="settings-toggle"><input type="checkbox" defaultChecked /><span className="settings-toggle-slider" /></label>
+                  <span>{t("settings.showLastSeen")}</span>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.showLastSeen} onChange={(e) => handleToggleSetting("showLastSeen", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
               </div>
               <div className="settings-group">
-                <h3 className="settings-group-title">Блокировка</h3>
-                <p className="settings-info-text">Заблокированные пользователи не смогут отправлять вам сообщения.</p>
-                <button className="settings-link-btn">Управление блокировками</button>
+                <h3 className="settings-group-title">{t("settings.blocking")}</h3>
+                <p className="settings-info-text">{t("settings.blockingDesc")}</p>
+                <button className="settings-link-btn" onClick={() => navigate("/blocked")}>{t("settings.manageBlocking")}</button>
               </div>
             </div>
           )}
@@ -477,22 +587,22 @@ export default function SettingsPage() {
           {tab === "storage" && (
             <div className="settings-sections">
               <div className="settings-group">
-                <h3 className="settings-group-title">Использование</h3>
+                <h3 className="settings-group-title">{t("settings.usage")}</h3>
                 {storageInfo ? (
                   <div className="settings-storage-info">
                     <div className="settings-storage-bar">
                       <div className="settings-storage-fill" style={{ width: `${Math.min(100, (storageInfo.total / (1024 * 1024 * 100)) * 100)}%` }} />
                     </div>
-                    <p>{formatSize(storageInfo.total)} использовано · {storageInfo.files} файлов</p>
+                    <p>{formatSize(storageInfo.total)} {t("settings.used")} · {storageInfo.files} {t("settings.filesCount")}</p>
                   </div>
                 ) : (
-                  <p className="settings-info-text">Загрузка информации...</p>
+                  <p className="settings-info-text">{t("settings.loadingInfo")}</p>
                 )}
               </div>
               <div className="settings-group">
-                <h3 className="settings-group-title">Управление</h3>
-                <button className="settings-action-btn" onClick={handleClearCache}>Очистить кэш P2P</button>
-                <p className="settings-info-text">Файлы старше 30 дней автоматически удаляются.</p>
+                <h3 className="settings-group-title">{t("settings.management")}</h3>
+                <button className="settings-action-btn" onClick={handleClearCache}>{t("settings.clearP2pCache")}</button>
+                <p className="settings-info-text">{t("settings.autoDelete")}</p>
               </div>
             </div>
           )}
@@ -616,29 +726,145 @@ export default function SettingsPage() {
               
               <div className="settings-group">
                 <h3 className="settings-group-title">End-to-End шифрование</h3>
+
+                <h3 className="settings-group-title">{t("settings.totp2fa")}</h3>
                 <div className="settings-toggle-row">
-                  <span>E2E шифрование</span>
+                  <span>TOTP 2FA</span>
+                  <span className={`settings-badge ${totpEnabled ? "on" : "off"}`}>
+                    {totpEnabled ? t("settings.totpEnabled") : t("settings.totpDisabled")}
+                  </span>
+                </div>
+                <p className="settings-info-text">
+                  {totpEnabled
+                    ? t("settings.totpEnabledDesc")
+                    : t("settings.totpDisabledDesc")}
+                </p>
+                
+                {!totpEnabled && totpSetupMode === "idle" && (
+                  <div>
+                    <input
+                      className="settings-input"
+                      type="password"
+                      placeholder={t("settings.totpPasswordPlaceholder")}
+                      value={totpPassword}
+                      onChange={(e) => setTotpPassword(e.target.value)}
+                      style={{ width: "100%", marginBottom: 8 }}
+                    />
+                    <button 
+                      className="settings-action-btn" 
+                      onClick={handleTotpSetup}
+                      disabled={totpLoading || !totpPassword}
+                    >
+                      {totpLoading ? t("settings.totpLoading") : t("settings.totpSetup")}
+                    </button>
+                  </div>
+                )}
+                
+                {totpSetupMode === "enable" && (
+                  <div style={{ padding: 16, borderRadius: 8, background: "var(--input-bg)", border: "1px solid var(--border)" }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>{t("settings.totpScanQr")}</p>
+                    {totpQrCode && (
+                      <img src={totpQrCode} alt="TOTP QR Code" style={{ width: 200, height: 200, marginBottom: 12 }} />
+                    )}
+                    {totpManualKey && (
+                      <p style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>
+                        {t("settings.totpManualKey")} <strong>{totpManualKey}</strong>
+                      </p>
+                    )}
+                    <p style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>{t("settings.totpEnterCode")}</p>
+                    <input
+                      className="settings-input"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                      style={{ width: 140, marginBottom: 12 }}
+                    />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        className="settings-save-btn"
+                        onClick={handleTotpEnable}
+                        disabled={totpLoading || totpCode.length !== 6}
+                      >
+                        {totpLoading ? t("settings.totpCheck") : t("settings.totpEnable")}
+                      </button>
+                      <button
+                        className="avatar-btn"
+                        onClick={() => { setTotpSetupMode("idle"); setTotpCode(""); setTotpPassword(""); }}
+                        disabled={totpLoading}
+                      >
+                        {t("common.cancel")}
+                      </button>
+                    </div>
+                    {totpBackupCodes.length > 0 && (
+                      <div style={{ marginTop: 16, padding: 12, background: "rgba(76,175,80,0.1)", borderRadius: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#4CAF50", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          <span>{t("settings.totpSaveBackup")}</span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 4, fontSize: 11 }}>
+                          {totpBackupCodes.map((code, i) => (
+                            <div key={i} style={{ fontFamily: "monospace", background: "#fff", padding: "2px 6px", borderRadius: 4 }}>
+                              {code}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {totpEnabled && (
+                  <div>
+                    <p style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>{t("settings.totpDisableHint")}</p>
+                    <input
+                      className="settings-input"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={12}
+                      placeholder={t("settings.totpDisablePlaceholder")}
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value)}
+                      style={{ width: 180, marginBottom: 8 }}
+                    />
+                    <button 
+                      className="settings-action-btn danger" 
+                      onClick={handleTotpDisable}
+                      disabled={totpLoading || !totpCode}
+                    >
+                      {totpLoading ? t("settings.totpDisabling") : t("settings.totpDisable")}
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+              <div className="settings-group">
+                <h3 className="settings-group-title">{t("settings.e2eTitle")}</h3>
+                <div className="settings-toggle-row">
+                  <span>{t("settings.e2eEnabled")}</span>
                   <span className={`settings-badge ${e2eEnabled ? "on" : "off"}`}>
-                    {e2eEnabled ? "Включено" : "Выключено"}
+                    {e2eEnabled ? t("settings.e2eOn") : t("settings.e2eOff")}
                   </span>
                 </div>
                 <p className="settings-info-text">
                   {e2eEnabled
-                    ? "Ваши сообщения зашифрованы. Только вы и собеседник можете их прочитать."
-                    : "E2E ключи не найдены. Сообщения будут отправлены без шифрования."}
+                    ? t("settings.e2eEnabledDesc")
+                    : t("settings.e2eDisabledDesc")}
                 </p>
                 {e2eEnabled && (
                   <button className="settings-action-btn danger" onClick={handleClearE2EKeys}>
-                    Удалить E2E ключи
+                    {t("settings.deleteE2eKeys")}
                   </button>
                 )}
               </div>
               <div className="settings-group">
-                <h3 className="settings-group-title">PIN-блокировка</h3>
+                <h3 className="settings-group-title">{t("settings.pinTitle")}</h3>
                 <div className="settings-toggle-row">
-                  <span>PIN-код</span>
+                  <span>{t("settings.pinCode")}</span>
                   <span className={`settings-badge ${pinEnabled ? "on" : "off"}`}>
-                    {pinEnabled ? "Включён" : "Выключен"}
+                    {pinEnabled ? t("settings.pinEnabled") : t("settings.pinDisabled")}
                   </span>
                 </div>
                 {pinSetup === "idle" ? (
@@ -646,15 +872,15 @@ export default function SettingsPage() {
                     {pinEnabled ? (
                       <div style={{ display: "flex", gap: 8 }}>
                         <button className="settings-action-btn" onClick={() => { setPinSetup("change"); setPinStep("enter"); setPinInput(""); setMsg("") }}>
-                          Изменить PIN
+                          {t("settings.changePin")}
                         </button>
                         <button className="settings-action-btn danger" onClick={() => { setPinSetup("remove"); setPinStep("enter"); setPinInput(""); setMsg("") }}>
-                          Отключить
+                          {t("settings.disablePin")}
                         </button>
                       </div>
                     ) : (
                       <button className="settings-action-btn" onClick={() => { setPinSetup("set"); setPinStep("enter"); setPinInput(""); setMsg("") }}>
-                        Установить PIN-код
+                        {t("settings.setPin")}
                       </button>
                     )}
                   </div>
@@ -662,12 +888,12 @@ export default function SettingsPage() {
                   <div className="settings-pin-setup">
                     <p className="settings-info-text">
                       {pinSetup === "remove"
-                        ? "Введите текущий PIN для отключения"
+                        ? t("settings.pinEnterCurrent")
                         : pinStep === "enter"
                           ? pinSetup === "set"
-                            ? "Введите новый PIN-код (4+ цифр)"
-                            : "Введите текущий PIN-код"
-                          : "Подтвердите PIN-код"}
+                            ? t("settings.pinEnterNew")
+                            : t("settings.pinEnterCurrentCode")
+                          : t("settings.pinConfirmCode")}
                     </p>
                     <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                       <input
@@ -677,7 +903,7 @@ export default function SettingsPage() {
                         maxLength={6}
                         value={pinInput}
                         onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ""))}
-                        placeholder="PIN"
+                        placeholder={t("settings.pinPlaceholder")}
                         style={{ width: 120 }}
                       />
                       {pinStep === "confirm" && (
@@ -688,7 +914,7 @@ export default function SettingsPage() {
                           maxLength={6}
                           value={pinConfirm}
                           onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ""))}
-                          placeholder="Подтвердите"
+                          placeholder={t("settings.pinConfirmPlaceholder")}
                           style={{ width: 140 }}
                         />
                       )}
@@ -704,33 +930,27 @@ export default function SettingsPage() {
                         style={{ width: "auto", padding: "0 16px", height: 44, background: "#555" }}
                         onClick={() => { setPinSetup("idle"); setPinInput(""); setPinConfirm(""); setPinStep("enter"); setMsg("") }}
                       >
-                        Отмена
+                        {t("common.cancel")}
                       </button>
                     </div>
                   </div>
                 )}
               </div>
               <div className="settings-group">
-                <h3 className="settings-group-title">Сессии</h3>
-                <p className="settings-info-text">Вы вошли как @{user.username} на этом устройстве.</p>
+                <h3 className="settings-group-title">{t("settings.sessions")}</h3>
+                <p className="settings-info-text">{t("settings.sessionDesc", { username: user.username })}</p>
                 <button className="settings-action-btn danger" onClick={() => { api.clearToken(); clearPin(); navigate("/login", { replace: true }) }}>
-                  Выйти из всех устройств
+                  {t("settings.logoutAllDevices")}
                 </button>
               </div>
               <div className="settings-group">
-                <h3 className="settings-group-title">Дополнительно</h3>
+                <h3 className="settings-group-title">{t("settings.advanced")}</h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <button className="settings-action-btn" onClick={() => navigate("/backup")}>
-                    Бэкапы и восстановление
-                  </button>
                   <button className="settings-action-btn" onClick={() => navigate("/calls")}>
-                    История звонков
-                  </button>
-                  <button className="settings-action-btn" onClick={() => navigate("/audit")}>
-                    История действий
+                    {t("settings.callHistory")}
                   </button>
                   <button className="settings-action-btn" onClick={() => navigate("/blocked")}>
-                    Заблокированные
+                    {t("settings.blocked")}
                   </button>
                 </div>
               </div>
@@ -741,7 +961,7 @@ export default function SettingsPage() {
           {tab === "account" && (
             <div className="settings-sections">
               <div className="settings-group">
-                <h3 className="settings-group-title">Аккаунт</h3>
+                <h3 className="settings-group-title">{t("settings.account")}</h3>
                 <div className="settings-field-row">
                   <span className="settings-field-label">Username</span>
                   <span className="settings-field-value">@{user.username}</span>
@@ -752,22 +972,24 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="settings-group">
-                <h3 className="settings-group-title">Действия</h3>
-                <button className="settings-action-btn" onClick={handleLogout}>Выйти из аккаунта</button>
-                <button className="settings-action-btn danger" onClick={handleDeleteAccount}>Удалить аккаунт</button>
+                <h3 className="settings-group-title">{t("settings.actions")}</h3>
+                <button className="settings-action-btn" onClick={handleLogout}>{t("settings.logoutAccount")}</button>
+                <button className="settings-action-btn danger" onClick={handleDeleteAccount}>{t("settings.deleteAccount")}</button>
               </div>
               <div className="settings-group">
-                <h3 className="settings-group-title">О приложении</h3>
+                <h3 className="settings-group-title">{t("settings.aboutApp")}</h3>
                 <div className="settings-field-row">
                   <span className="settings-field-label">Версия</span>
+
+                  <span className="settings-field-label">{t("settings.version")}</span>
                   <span className="settings-field-value">{appVersion || "0.15.0"}</span>
                 </div>
                 <div className="settings-field-row">
-                  <span className="settings-field-label">Лицензия</span>
+                  <span className="settings-field-label">{t("settings.license")}</span>
                   <span className="settings-field-value">AGPL-3.0</span>
                 </div>
                 <div className="settings-field-row">
-                  <span className="settings-field-label">Разработчик</span>
+                  <span className="settings-field-label">{t("settings.developer")}</span>
                   <span className="settings-field-value">NurApps</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}>
@@ -786,6 +1008,62 @@ export default function SettingsPage() {
                     <span style={{ color: "var(--error)", fontSize: "13px" }}>Ошибка проверки обновлений</span>
                   )}
                 </div>
+
+                    {updateStatus === "checking" ? t("settings.checkingUpdate") : t("settings.checkUpdate")}
+                  </button>
+                  {updateStatus === "available" && (
+                    <button className="settings-action-btn" onClick={() => platform.openExternal(updateUrl)}>
+                      {t("settings.downloadVersion", { version: appVersion })}
+                    </button>
+                  )}
+                  {updateStatus === "latest" && (
+                    <span style={{ color: "var(--success)", fontSize: "13px" }}>{t("settings.latestVersion")}</span>
+                  )}
+                  {updateStatus === "error" && (
+                    <span style={{ color: "var(--error)", fontSize: "13px" }}>{t("settings.updateError")}</span>
+                  )}
+                </div>
+              </div>
+              <div className="settings-group">
+                <h3 className="settings-group-title">{t("settings.relay")}</h3>
+                <p className="settings-info-text">{t("settings.relayDesc")}</p>
+                <label className="settings-label">{t("settings.relayProtocol")}</label>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  {(["http", "https"] as const).map((p) => (
+                    <button
+                      key={p}
+                      className={`settings-tab ${relayProtocol === p ? "active" : ""}`}
+                      onClick={() => setRelayProtocol(p)}
+                      style={{
+                        padding: "6px 14px",
+                        borderRadius: 8,
+                        border: relayProtocol === p ? "2px solid var(--accent)" : "2px solid transparent",
+                        background: relayProtocol === p ? "var(--surface-variant)" : "var(--card-bg)",
+                        cursor: "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <label className="settings-label">{t("settings.relayHost")}</label>
+                <input
+                  className="settings-input"
+                  placeholder="127.0.0.1:8000"
+                  value={relayHost}
+                  onChange={(e) => { setRelayHost(e.target.value); setRelaySaved(false) }}
+                  style={{ width: "100%", marginBottom: 8 }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="settings-save-btn" onClick={handleSaveRelay} style={{ width: "auto", padding: "0 16px", height: 40 }}>
+                    {relaySaved ? t("settings.relaySaved") : t("common.save")}
+                  </button>
+                  <button className="settings-action-btn" onClick={() => { resetRelayConfig(); setRelayHost(getRelayConfig().host); setRelayProtocol(getRelayConfig().protocol); setMsg(t("settings.relayReset")) }}>
+                    {t("settings.relayReset")}
+                  </button>
+                </div>
+                <p className="settings-info-text">{t("settings.relayRestart")}</p>
               </div>
             </div>
           )}

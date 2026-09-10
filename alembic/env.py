@@ -9,11 +9,23 @@ if project_root not in sys.path:
 
 from logging.config import fileConfig
 
+
+import os
+import sys
+from logging.config import fileConfig
+
+from sqlalchemy import engine_from_config, pool
+
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from server.core import models  # noqa: F401 — registers all models
 from server.core.database import Base
 from server.core import models  # noqa: F401 — register all models
+
 from shared.config import settings
 
 config = context.config

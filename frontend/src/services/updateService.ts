@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 
+import { platform } from "./platform"
+
 interface UpdateInfo {
   has_update: boolean
   latest_version: string
@@ -18,4 +20,6 @@ export async function checkForUpdates(): Promise<UpdateInfo | null> {
   } catch {
     return null
   }
+
+  return platform.checkForUpdates()
 }

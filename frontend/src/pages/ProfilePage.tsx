@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import { avatarUrl } from "../config"
 import { useAvatar } from "../hooks/useAvatar"
+import { formatDateShort } from "../utils/format"
 import type { UserResponse } from "../types"
 
 export default function ProfilePage() {
@@ -80,7 +81,7 @@ export default function ProfilePage() {
           </div>
           <div className="profile-field">
             <span className="profile-field-label">Дата регистрации</span>
-            <span className="profile-field-value">{user.created_at ? new Date(user.created_at).toLocaleDateString("ru-RU") : "—"}</span>
+            <span className="profile-field-value">{user.created_at ? formatDateShort(user.created_at) : "—"}</span>
           </div>
         </div>
 

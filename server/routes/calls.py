@@ -1,7 +1,6 @@
-import secrets
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from server.core import models, schemas
@@ -9,13 +8,9 @@ from server.core.database import get_db
 from server.core.security import security, verify_token_dependency
 from server.utils.logger import logger
 from server.ws.notifications import notification_manager
-from server.ws.signaling import call_manager
 
 router = APIRouter()
 
-def generate_call_id():
-    """Генерация ID звонка"""
-    return f"call_{secrets.token_hex(16)}"
 
 @router.post("/start-call", response_model=schemas.CallResponse)
 async def start_call(
@@ -49,7 +44,8 @@ async def start_call(
             ).first()
 
             if not caller_in_chat or not target_in_chat:
-                logger.warning(f"Users {token['sub']} and {call_data.target_user_id} are not in the same chat: {call_data.chat_id}")
+                uid1, uid2 = token["sub"], call_data.target_user_id
+                logger.warning(f"Users {uid1} and {uid2} not in same chat: {call_data.chat_id}")
                 raise HTTPException(status_code=403, detail="Пользователи не в одном чате")
 
         # Генерируем ID звонка
@@ -85,10 +81,8 @@ async def start_call(
     except Exception as e:
         logger.error(f"Start call error: {e}")
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Внутренняя ошибка сервера"
-        )
+        raise
+
 
 @router.post("/end-call/{call_id}")
 async def end_call(
@@ -132,10 +126,7 @@ async def end_call(
     except Exception as e:
         logger.error(f"End call error: {e}")
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Внутренняя ошибка сервера"
-        )
+        raise
 
 @router.get("/call-history", response_model=schemas.CallHistoryResponse)
 async def get_call_history(
@@ -144,26 +135,22 @@ async def get_call_history(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    """Получение истории звонков пользователя"""
-    try:
-        logger.info(f"Getting call history for user: {token['sub']}, skip: {skip}, limit: {limit}")
+    logger.info(f"Getting call history for user: {token['sub']}, skip: {skip}, limit: {limit}")
 
-        # Ограничиваем лимит для безопасности
-        if limit > 100:
-            limit = 100
+    if limit > 100:
+        limit = 100
 
-        # Получаем звонки где пользователь был caller или callee
-        calls = db.query(models.CallLog).filter(
-            (models.CallLog.caller_id == token["sub"]) |
-            (models.CallLog.callee_id == token["sub"])
-        ).order_by(models.CallLog.started_at.desc()).offset(skip).limit(limit).all()
+    calls = db.query(models.CallLog).filter(
+        (models.CallLog.caller_id == token["sub"]) |
+        (models.CallLog.callee_id == token["sub"])
+    ).order_by(models.CallLog.started_at.desc()).offset(skip).limit(limit).all()
 
-        total = db.query(models.CallLog).filter(
-            (models.CallLog.caller_id == token["sub"]) |
-            (models.CallLog.callee_id == token["sub"])
-        ).count()
+    total = db.query(models.CallLog).filter(
+        (models.CallLog.caller_id == token["sub"]) |
+        (models.CallLog.callee_id == token["sub"])
+    ).count()
 
-        call_responses = [schemas.CallResponse.model_validate(call) for call in calls]
+    call_responses = [schemas.CallResponse.model_validate(call) for call in calls]
 
         logger.info(f"Retrieved {len(call_responses)} calls for user: {token['sub']}, total: {total}")
         return schemas.CallHistoryResponse(
@@ -177,6 +164,12 @@ async def get_call_history(
             detail="Внутренняя ошибка сервера"
         )
 
+    logger.info(f"Retrieved {len(call_responses)} calls for user: {token['sub']}, total: {total}")
+    return schemas.CallHistoryResponse(
+        calls=call_responses,
+        total=total
+    )
+
 
 @router.get("/ice-servers")
 async def get_ice_servers(token: dict = Depends(verify_token_dependency)):
@@ -187,6 +180,18 @@ async def get_ice_servers(token: dict = Depends(verify_token_dependency)):
         {"urls": "stun:stun.l.google.com:19302"},
         {"urls": "stun:stun1.l.google.com:19302"},
     ]
+
+
+    from shared.config import settings
+
+    # Parse STUN servers
+    stun_list = [
+        {"urls": s.strip()}
+        for s in settings.STUN_SERVERS.split(",")
+        if s.strip()
+    ]
+
+    # Parse custom ICE servers (takes precedence)
     if settings.WEBRTC_ICE_SERVERS:
         try:
             custom = json.loads(settings.WEBRTC_ICE_SERVERS)
@@ -195,3 +200,24 @@ async def get_ice_servers(token: dict = Depends(verify_token_dependency)):
         except Exception:
             pass
     return {"ice_servers": default_ice}
+
+
+    # Use TURN_SERVERS config if set, with credentials from config
+    if settings.TURN_SERVERS:
+        try:
+            turn_list = json.loads(settings.TURN_SERVERS)
+            if isinstance(turn_list, list) and len(turn_list) > 0:
+                return {"ice_servers": turn_list}
+        except Exception:
+            pass
+
+    # Fallback: build TURN entry from TURN_USERNAME/TURN_CREDENTIAL if set
+    if settings.TURN_CREDENTIAL != "CHANGE_ME_IN_PRODUCTION":
+        turn_server = {
+            "urls": ["turn:nurchat-turn:3478?transport=tcp"],
+            "username": settings.TURN_USERNAME,
+            "credential": settings.TURN_CREDENTIAL,
+        }
+        return {"ice_servers": stun_list + [turn_server]}
+
+    return {"ice_servers": stun_list}

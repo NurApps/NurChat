@@ -549,11 +549,16 @@
   position: absolute;
   top: -40px;
   right: -8px;
+
+  top: 8px;
+  right: 8px;
   width: 36px;
   height: 36px;
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.15);
+
+  background: rgba(0, 0, 0, 0.5);
   color: white;
   cursor: pointer;
   display: flex;
@@ -732,3 +737,48 @@
 
 .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
 .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+
+/* ─── Poll creation modal ─── */
+.poll-modal { max-width: 420px; }
+.poll-form { gap: 10px; padding: 4px 0; }
+.poll-option-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+.poll-input {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, var(--border));
+  background: var(--input-bg, var(--surface-variant));
+  color: var(--text-primary, var(--text));
+  font-size: 14px;
+  outline: none;
+}
+.poll-input:focus { border-color: var(--accent); }
+.poll-remove-btn {
+  flex: none;
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  border: none; border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.poll-remove-btn:hover { background: rgba(var(--danger-rgb, 220, 38, 38), 0.1); color: var(--danger, #dc2626); }
+.poll-add-btn {
+  padding: 8px 12px;
+  border: 1px dashed var(--border-color, var(--border));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+}
+.poll-add-btn:hover { border-color: var(--accent); }
+.poll-check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px;
+  color: var(--text-primary, var(--text));
+  cursor: pointer;
+}
+.poll-check input { width: 16px; height: 16px; accent-color: var(--accent); }

@@ -1,6 +1,8 @@
 import { create } from "zustand"
 import type {
   ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, UserResponse,
+
+  ChatResponse, ContactResponse, GroupInviteResponse, UserResponse,
 } from "../types"
 import { api } from "../services/api"
 
@@ -20,6 +22,8 @@ interface IncomingCall {
 
 type Tab = "chats" | "contacts" | "invites" | "bookmarks" | "files"
 
+type Tab = "chats" | "contacts" | "invites" | "files"
+
 interface ChatState {
   currentUser: UserResponse
   tab: Tab
@@ -31,6 +35,7 @@ interface ChatState {
   messages: MessageResponse[]
   loadingMore: boolean
   hasMore: boolean
+
   onlineUsers: Record<string, boolean>
   typingUsers: Record<string, Record<string, boolean>>
   toast: Toast | null
@@ -59,6 +64,16 @@ interface ChatState {
   setSelectedChat: (chat: ChatResponse | null) => void
   setMessages: (messages: MessageResponse[]) => void
   setHasMore: (hasMore: boolean) => void
+
+
+  input: string
+  showEmoji: boolean
+  uploading: boolean
+  uploadProgress: number
+
+  setTab: (tab: Tab) => void
+  setSearch: (search: string) => void
+  setSelectedChat: (chat: ChatResponse | null) => void
   setOnlineUsers: (fn: Record<string, boolean> | ((prev: Record<string, boolean>) => Record<string, boolean>)) => void
   setTypingUsers: (fn: Record<string, Record<string, boolean>> | ((prev: Record<string, Record<string, boolean>>) => Record<string, Record<string, boolean>>)) => void
   setToast: (toast: Toast | null) => void
@@ -79,9 +94,17 @@ interface ChatState {
   setUploadProgress: (progress: number) => void
   setP2pConnected: (fn: Record<string, boolean> | ((prev: Record<string, boolean>) => Record<string, boolean>)) => void
 
+
+  setInput: (input: string | ((prev: string) => string)) => void
+  setShowEmoji: (show: boolean) => void
+  setUploading: (uploading: boolean) => void
+  setUploadProgress: (progress: number) => void
+
   loadChats: () => Promise<void>
   loadContacts: () => Promise<void>
   loadInvites: () => Promise<void>
+
+  refreshCurrentUser: () => void
 }
 
 function getCurrentUser(): UserResponse {
@@ -103,6 +126,7 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   loadingMore: false,
   hasMore: true,
+
   onlineUsers: {},
   typingUsers: {},
   toast: null,
@@ -131,6 +155,16 @@ export const useChatStore = create<ChatState>((set) => ({
   setSelectedChat: (chat) => set({ selectedChat: chat }),
   setMessages: (messages) => set({ messages }),
   setHasMore: (hasMore) => set({ hasMore }),
+
+
+  input: "",
+  showEmoji: false,
+  uploading: false,
+  uploadProgress: 0,
+
+  setTab: (tab) => set({ tab }),
+  setSearch: (search) => set({ search }),
+  setSelectedChat: (chat) => set({ selectedChat: chat }),
   setOnlineUsers: (fn) => set((state) => ({ onlineUsers: typeof fn === "function" ? fn(state.onlineUsers) : fn })),
   setTypingUsers: (fn) => set((state) => ({ typingUsers: typeof fn === "function" ? fn(state.typingUsers) : fn })),
   setToast: (toast) => set({ toast }),
@@ -151,12 +185,21 @@ export const useChatStore = create<ChatState>((set) => ({
   setUploadProgress: (progress) => set({ uploadProgress: progress }),
   setP2pConnected: (fn) => set((state) => ({ p2pConnected: typeof fn === "function" ? fn(state.p2pConnected) : fn })),
 
+
+  setInput: (input) => set((state) => ({ input: typeof input === "function" ? input(state.input) : input })),
+  setShowEmoji: (show) => set({ showEmoji: show }),
+  setUploading: (uploading) => set({ uploading }),
+  setUploadProgress: (progress) => set({ uploadProgress: progress }),
+
   loadChats: async () => {
     try {
       const data = await api.getChats()
       set({ chats: data || [] })
     } catch {
       set({ chats: [] })
+
+    } catch (err) {
+      console.error("[chatStore] loadChats failed:", err)
     }
   },
 
@@ -166,6 +209,9 @@ export const useChatStore = create<ChatState>((set) => ({
       set({ contacts: data || [] })
     } catch {
       set({ contacts: [] })
+
+    } catch (err) {
+      console.error("[chatStore] loadContacts failed:", err)
     }
   },
 
@@ -176,5 +222,14 @@ export const useChatStore = create<ChatState>((set) => ({
     } catch {
       set({ invites: [] })
     }
+  },
+
+    } catch (err) {
+      console.error("[chatStore] loadInvites failed:", err)
+    }
+  },
+
+  refreshCurrentUser: () => {
+    set({ currentUser: getCurrentUser() })
   },
 }))

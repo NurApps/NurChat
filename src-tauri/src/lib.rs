@@ -9,93 +9,33 @@ use std::path::PathBuf;
 use tauri::{Emitter, Manager, State};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tauri::menu::{MenuBuilder};
+
+use tauri::{Manager, State, Emitter};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+use tauri::menu::MenuBuilder;
 use tokio::sync::RwLock;
+use tokio::process::{Child, Command as TokioCommand};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 struct AppState {
-    ipfs: RwLock<Option<IpfsClient>>,
-    p2p: RwLock<Option<P2PNode>>,
-    server: ServerManager,
+    cloudflared: RwLock<Option<Child>>,
 }
 
 #[tauri::command]
-async fn ipfs_add_file(state: State<'_, AppState>, file_path: String) -> Result<IpfsAddResult, String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    client.add_file(&PathBuf::from(file_path)).await
-}
-
-#[tauri::command]
-async fn ipfs_cat(state: State<'_, AppState>, hash: String) -> Result<Vec<u8>, String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    client.cat(&hash).await
-}
-
-#[tauri::command]
-async fn ipfs_pin(state: State<'_, AppState>, hash: String) -> Result<(), String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    client.pin(&hash).await
-}
-
-#[tauri::command]
-async fn ipfs_unpin(state: State<'_, AppState>, hash: String) -> Result<(), String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    client.unpin(&hash).await
-}
-
-#[tauri::command]
-async fn ipfs_list_pins(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    client.ls_pins().await
-}
-
-#[tauri::command]
-async fn ipfs_is_online(state: State<'_, AppState>) -> Result<bool, String> {
-    let ipfs = state.ipfs.read().await;
-    let client = ipfs.as_ref().ok_or("IPFS not configured")?;
-    Ok(client.is_online().await)
-}
-
-#[tauri::command]
-async fn p2p_get_peers(state: State<'_, AppState>) -> Result<Vec<P2PPeerInfo>, String> {
-    let p2p = state.p2p.read().await;
-    let node = p2p.as_ref().ok_or("P2P not initialized")?;
-    Ok(node.get_peers().await)
-}
-
-#[tauri::command]
-async fn p2p_get_peer_count(state: State<'_, AppState>) -> Result<usize, String> {
-    let p2p = state.p2p.read().await;
-    let node = p2p.as_ref().ok_or("P2P not initialized")?;
-    Ok(node.get_peer_count().await)
-}
-
-#[tauri::command]
-async fn init_ipfs(state: State<'_, AppState>, api_url: Option<String>) -> Result<bool, String> {
-    let url = api_url.unwrap_or_else(|| "http://127.0.0.1:5001".to_string());
-    let client = IpfsClient::new(&url);
-    let online = client.is_online().await;
-    if online {
-        let mut ipfs = state.ipfs.write().await;
-        *ipfs = Some(client);
+async fn get_local_ip() -> Result<String, String> {
+    use std::net::ToSocketAddrs;
+    let target = "8.8.8.8:53".to_socket_addrs()
+        .map_err(|e| e.to_string())?
+        .next()
+        .ok_or("no address")?;
+    let bind_addr: std::net::SocketAddr = ([0, 0, 0, 0], 0).into();
+    let socket = tokio::net::UdpSocket::bind(bind_addr).await.map_err(|e| e.to_string())?;
+    if socket.connect(target).await.is_ok() {
+        if let Ok(local) = socket.local_addr() {
+            return Ok(local.ip().to_string());
+        }
     }
-    Ok(online)
-}
-
-#[tauri::command]
-async fn init_p2p(state: State<'_, AppState>, listen_port: Option<u16>) -> Result<u16, String> {
-    let config = P2PConfig {
-        listen_port: listen_port.unwrap_or(0),
-        ..Default::default()
-    };
-    let node = P2PNode::new(config);
-    let port = node.start().await?;
-    let mut p2p = state.p2p.write().await;
-    *p2p = Some(node);
-    Ok(port)
+    Ok("127.0.0.1".to_string())
 }
 
 #[tauri::command]
@@ -150,6 +90,7 @@ async fn fetch_register(body: String) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+
 fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -169,9 +110,118 @@ fn minimize_to_tray(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn share_invite(uri: String) -> Result<(), String> {
     // Open default mail client with invite URI
+
     let body = format!("Присоединяйся ко мне в NurChat!\n\nМоя ссылка: {}\n\nУстанови NurChat: https://github.com/NurApps/NurChat_desktop/releases", uri);
     let mailto = format!("mailto:?subject=Приглашение в NurChat&body={}", urlencoding(&body));
     open::that(&mailto).map_err(|e| format!("Failed to open mail: {e}"))
+}
+
+
+async fn download_cloudflared(dest: &std::path::Path) -> Result<(), String> {
+    let url = if cfg!(target_os = "windows") {
+        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+    } else if cfg!(target_os = "macos") {
+        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64"
+    } else {
+        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+    };
+
+    let response = reqwest::get(url).await.map_err(|e| format!("Failed to download cloudflared: {e}"))?;
+    let bytes = response.bytes().await.map_err(|e| format!("Failed to read cloudflared: {e}"))?;
+
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent).await.ok();
+    }
+    tokio::fs::write(dest, &bytes).await.map_err(|e| format!("Failed to write cloudflared: {e}"))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(dest, Permissions::from_mode(0o755))
+            .await
+            .ok();
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn start_cloudflare_tunnel(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    {
+        let mut cf = state.cloudflared.write().await;
+        if let Some(child) = cf.as_mut() {
+            if child.try_wait().ok().flatten().is_none() {
+                return Err("Tunnel already running".to_string());
+            }
+        }
+    }
+
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let binary_name = if cfg!(target_os = "windows") {
+        "cloudflared.exe"
+    } else {
+        "cloudflared"
+    };
+    let binary_path = app_dir.join(binary_name);
+
+    if !binary_path.exists() {
+        download_cloudflared(&binary_path).await?;
+    }
+
+    let mut child = TokioCommand::new(&binary_path)
+        .args(["tunnel", "--url", "http://localhost:8000"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("Failed to start cloudflared: {e}"))?;
+
+    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+    let reader = BufReader::new(stdout);
+    let mut lines = reader.lines();
+
+    let url = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        while let Some(line) = lines.next_line().await.map_err(|e| e.to_string())? {
+            if line.contains("trycloudflare.com") || line.contains("https://") {
+                for word in line.split_whitespace() {
+                    if word.starts_with("https://") && word.contains("trycloudflare.com") {
+                        return Ok::<_, String>(word.to_string());
+                    }
+                }
+            }
+        }
+        Err("Tunnel URL not found within timeout".to_string())
+    })
+    .await
+    .map_err(|_| "Timed out waiting for tunnel URL".to_string())??;
+
+    tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut reader = lines.into_inner();
+        let mut buf = [0u8; 1024];
+        loop {
+            match reader.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    {
+        let mut cf = state.cloudflared.write().await;
+        *cf = Some(child);
+    }
+
+    Ok(url)
+}
+
+#[tauri::command]
+async fn stop_cloudflare_tunnel(state: State<'_, AppState>) -> Result<(), String> {
+    let mut cf = state.cloudflared.write().await;
+    if let Some(mut child) = cf.take() {
+        child.kill().await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -194,6 +244,19 @@ async fn check_update(current_version: String) -> Result<serde_json::Value, Stri
     
     Ok(serde_json::json!({
         "has_update": latest != current,
+
+
+    fn parse_semver(v: &str) -> Vec<u64> {
+        v.split('.')
+            .map(|p| p.split('-').next().unwrap_or("0").parse().unwrap_or(0))
+            .collect()
+    }
+    let latest_v = parse_semver(latest);
+    let current_v = parse_semver(current);
+    let has_update = latest_v > current_v;
+
+    Ok(serde_json::json!({
+        "has_update": has_update,
         "latest_version": tag_name,
         "url": data["html_url"],
         "body": data["body"],
@@ -231,41 +294,34 @@ mod tests {
             })
         });
         // Should fail gracefully, not panic
+
         assert!(result.is_err() || result.is_ok());
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let server = ServerManager::new();
-
     tauri::Builder::default()
         .manage(AppState {
-            ipfs: RwLock::new(None),
-            p2p: RwLock::new(None),
-            server,
+            cloudflared: RwLock::new(None),
         })
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
-            ipfs_add_file,
-            ipfs_cat,
-            ipfs_pin,
-            ipfs_unpin,
-            ipfs_list_pins,
-            ipfs_is_online,
-            init_ipfs,
-            p2p_get_peers,
-            p2p_get_peer_count,
-            init_p2p,
+            get_local_ip,
             download_and_open_file,
             fetch_captcha,
             fetch_register,
+
             check_update,
             get_app_version,
             show_main_window,
             minimize_to_tray,
             share_invite,
+
+            start_cloudflare_tunnel,
+            stop_cloudflare_tunnel,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -322,6 +378,25 @@ pub fn run() {
             }
 
             // Tray icon
+
+            if !cfg!(debug_assertions) {
+                let handle = app.handle().clone();
+                tokio::spawn(async move {
+                    use std::time::Duration;
+                    for _ in 0..30 {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        if let Ok(resp) = reqwest::get("http://127.0.0.1:8000/health").await {
+                            if resp.status().is_success() {
+                                println!("[NurChat] Server is ready");
+                                let _ = handle.emit("server-ready", ());
+                                return;
+                            }
+                        }
+                    }
+                    eprintln!("[NurChat] Server failed to start within 15s");
+                });
+            }
+
             let show_label = "Показать NurChat";
             let quit_label = "Выйти";
 
@@ -344,6 +419,7 @@ pub fn run() {
                         "quit" => {
                             let state = app.state::<AppState>();
                             state.server.stop();
+
                             app.exit(0);
                         }
                         _ => {}
@@ -369,6 +445,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             let state = app_handle.state::<AppState>();
+
             match event {
                 tauri::RunEvent::WindowEvent { label, event: win_event, .. } => {
                     if let tauri::WindowEvent::CloseRequested { .. } = win_event {
@@ -379,6 +456,15 @@ pub fn run() {
                 }
                 tauri::RunEvent::Exit => {
                     state.server.stop();
+
+                tauri::RunEvent::ExitRequested { .. } => {
+                    if let Some(state) = app_handle.try_state::<AppState>() {
+                        if let Ok(mut cf) = state.cloudflared.try_write() {
+                            if let Some(mut child) = cf.take() {
+                                let _ = child.kill();
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }

@@ -21,12 +21,42 @@ target/
 # Federation signing keys (auto-generated, NEVER commit)
 federation_keys.json
 
+# Secrets (NEVER commit)
+vapid_keys.json
+*.pem
+*.key
+
 # Update signing key (NEVER commit — add to GitHub Secrets as UPDATE_KEY)
 update_key_private.key
 
 # Agent/IDE workspace files
 .opencode/
 .agents/
+
+
+# Database
+nurchat.db
+*.db
+*.db-shm
+*.db-wal
+backup/
+
+# Windows system files
+desktop.ini
+
+# Generated/cache directories
+.nurchat_cache/
+.ruff_cache/
+logs/
+media/
+server/logs/
+server/media/
+server/legal/
+p2pchat/models/
+src-tauri/gen/
+src-tauri/nsis/
+docs/
+frontend/public/fonts/
 
 # IDE specific
 .vscode/
@@ -104,3 +134,10 @@ develop-eggs/
 .installed.cfg
 lib/
 lib64/
+
+
+# Internal planning documents
+*.plan.md
+DEVELOPMENT_PLAN.md
+CRYPTO_MILITARY_PLAN.md
+P2P_MIGRATION_PLAN.md

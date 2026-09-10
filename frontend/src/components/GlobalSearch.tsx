@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import type { MessageResponse, ChatResponse } from "../types"
+import { formatTime } from "../utils/format"
 
 interface Props {
   chats?: ChatResponse[]
@@ -14,7 +16,19 @@ interface SearchResult {
   message: MessageResponse
 }
 
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query.trim()) return text
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"))
+  return parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase()
+      ? <mark key={i} className="gs-highlight">{part}</mark>
+      : part
+  )
+}
+
 export default function GlobalSearch({ chats = [], onSelect, onSelectMessage, onClose }: Props) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -51,7 +65,7 @@ export default function GlobalSearch({ chats = [], onSelect, onSelectMessage, on
   }, [query, chats])
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label={t("chat.searchAllChats")}>
       <div className="global-search-modal" onClick={(e) => e.stopPropagation()}>
         <div className="global-search-header">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2">
@@ -61,7 +75,7 @@ export default function GlobalSearch({ chats = [], onSelect, onSelectMessage, on
             ref={inputRef}
             className="global-search-input"
             type="text"
-            placeholder="Поиск по всем чатам..."
+            placeholder={t("chat.searchAllChats")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -73,19 +87,19 @@ export default function GlobalSearch({ chats = [], onSelect, onSelectMessage, on
           </button>
         </div>
         <div className="global-search-results">
-          {searching && <p className="global-search-empty">Поиск...</p>}
+          {searching && <p className="global-search-empty">{t("common.loading")}</p>}
           {!searching && results.length === 0 && query.trim() && (
-            <p className="global-search-empty">Ничего не найдено</p>
+            <p className="global-search-empty">{t("chat.nothingFound")}</p>
           )}
           {results.map((r) => {
-            const time = new Date(r.message.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-            const chatName = r.chat.is_group ? (r.chat.name || "Группа") : (r.chat.participants.find(p => p.id !== r.message.user_id)?.username || "Чат")
+            const time = formatTime(r.message.created_at)
+            const chatName = r.chat.is_group ? (r.chat.name || t("chat.group")) : (r.chat.participants.find(p => p.id !== r.message.user_id)?.username || t("chat.chat"))
             return (
               <div key={r.message.id} className="global-search-item" onClick={() => { (onSelect || onSelectMessage)?.(r.chat.id, r.message.id); onClose() }}>
                 <div className="gs-chat-name">{chatName}</div>
                 <div className="gs-message">
                   <span className="gs-sender">{r.message.user?.username || "User"}</span>
-                  <span className="gs-text">{r.message.content.slice(0, 80)}</span>
+                  <span className="gs-text">{highlightText(r.message.content.slice(0, 80), query)}</span>
                 </div>
                 <span className="gs-time">{time}</span>
               </div>

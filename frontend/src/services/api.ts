@@ -1,5 +1,5 @@
 import { BASE_URL } from "../config"
-import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse } from "../types"
+import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse, ContactRequestResponse } from "../types"
 
 class ApiError extends Error {
   status: number
@@ -20,6 +20,18 @@ function getCsrfToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+
+export function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+export function csrfHeader(): string | null {
+  return csrfTokenCache || getCsrfToken()
+}
+
+let csrfTokenCache: string | null = null;
+
 async function request<T>(
   method: string,
   path: string,
@@ -39,18 +51,46 @@ async function request<T>(
   if (!res.ok) {
     const text = await res.text()
     throw new ApiError(res.status, text || res.statusText)
+
+  const csrfToken = csrfTokenCache || getCsrfToken()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(csrfToken && method !== "GET" ? { "X-CSRF-Token": csrfToken } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    })
+    const headerToken = res.headers.get("X-CSRF-Token")
+    if (headerToken) csrfTokenCache = headerToken
+    if (!res.ok) {
+      const text = await res.text()
+      throw new ApiError(res.status, text || res.statusText)
+    }
+    if (res.status === 204) return undefined as T
+    return res.json()
+  } finally {
+    clearTimeout(timeout)
   }
-  if (res.status === 204) return undefined as T
-  return res.json()
 }
 
 export const api = {
-  // Auth
   login: (username: string, password: string) =>
-    request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/login", { username, password }),
+    request<{ access_token: string; refresh_token?: string; token_type: string; user: UserResponse; requires_2fa?: boolean }>("POST", "/api/auth/login", { username, password }),
 
-  register: (username: string, password: string, first_name?: string, last_name?: string) =>
-    request<{ access_token: string; token_type: string; user: UserResponse; private_key?: string; signing_private_key?: string }>("POST", "/api/auth/register", { username, password, first_name, last_name }),
+  verify2faLogin: (code: string) =>
+    request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/2fa/verify-login", { code }),
+
+  register: (username: string, password: string, first_name: string, last_name: string, captcha_id: string, captcha_code: string, public_key: string, signing_public_key: string) =>
+    request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/register", { username, password, first_name, last_name, captcha_id, captcha_code, public_key, signing_public_key }),
+
+  getCaptcha: () =>
+    request<{ captcha_id: string; question: string }>("GET", "/api/auth/captcha"),
 
   getCurrentUser: () =>
     request<UserResponse>("GET", "/api/auth/me"),
@@ -58,15 +98,17 @@ export const api = {
   getAllUsers: () =>
     request<UserResponse[]>("GET", "/api/auth/users"),
 
-  // Chats (server: /api/chat prefix)
+  getUser: (userId: string) =>
+    request<UserResponse>("GET", `/api/auth/user/${userId}`),
+
   getChats: (search?: string) =>
     request<ChatResponse[]>("GET", "/api/chat/chats" + (search ? `?search=${encodeURIComponent(search)}` : "")),
 
   getChatMessages: (chatId: string, skip = 0, limit = 50) =>
     request<MessageResponse[]>("GET", `/api/chat/chats/${chatId}/messages?skip=${skip}&limit=${limit}`),
 
-  sendMessage: (chatId: string, content: string, messageType = "text", fileId?: string, encryptedContent?: string, signature?: string, expiresAt?: string) =>
-    request<MessageResponse>("POST", `/api/chat/chats/${chatId}/messages`, {
+  sendMessage: async (chatId: string, content: string, messageType = "text", fileId?: string, encryptedContent?: string, signature?: string, expiresAt?: string, replyToId?: string): Promise<MessageResponse> => {
+    const body = {
       chat_id: chatId,
       content,
       message_type: messageType,
@@ -74,7 +116,23 @@ export const api = {
       encrypted_content: encryptedContent,
       signature,
       expires_at: expiresAt,
-    }),
+      reply_to_id: replyToId,
+    }
+    let lastError: Error | null = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await request<MessageResponse>("POST", `/api/chat/chats/${chatId}/messages`, body)
+      } catch (err: any) {
+        lastError = err
+        const msg = err?.message || ""
+        if (msg.includes("4") && !msg.includes("5")) throw err
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)))
+        }
+      }
+    }
+    throw lastError
+  },
 
   deleteMessage: (messageId: string, deleteForAll = false) =>
     request<void>("DELETE", `/api/chat/messages/${messageId}?delete_for_all=${deleteForAll}`),
@@ -82,10 +140,9 @@ export const api = {
   editMessage: (messageId: string, content: string) =>
     request<MessageResponse>("PUT", `/api/chat/messages/${messageId}/edit?new_content=${encodeURIComponent(content)}`),
 
-  rotateKey: (newPublicKey: string) =>
-    request<{ status: string; old_key: string }>("POST", "/api/auth/profile/rotate-key", { new_public_key: newPublicKey }),
+  deleteAccount: () =>
+    request<{ message: string }>("DELETE", "/api/auth/account"),
 
-  // Contacts (server: /api/contacts-groups prefix)
   getContacts: () =>
     request<ContactResponse[]>("GET", "/api/contacts-groups/contacts"),
 
@@ -95,7 +152,6 @@ export const api = {
   removeContact: (contactId: string) =>
     request<void>("DELETE", `/api/contacts-groups/contacts/${contactId}`),
 
-  // Groups (server: /api/contacts-groups prefix)
   getGroupInvites: () =>
     request<GroupInviteResponse[]>("GET", "/api/contacts-groups/groups/invites"),
 
@@ -105,7 +161,6 @@ export const api = {
   declineGroupInvite: (inviteId: string) =>
     request<void>("PUT", `/api/contacts-groups/groups/invites/${inviteId}/decline`),
 
-  // Group management
   renameGroup: (groupId: string, name: string) =>
     request<ChatResponse>("PUT", `/api/contacts-groups/groups/${groupId}/rename`, { name }),
 
@@ -136,60 +191,45 @@ export const api = {
   muteChat: (chatId: string, mute: boolean) =>
     request<void>("POST", `/api/chat/chats/${chatId}/mute?mute=${mute}`),
 
-  // Read receipts
-  markAsRead: (messageId: string) =>
-    request<{ message: string }>("POST", `/api/chat/messages/${messageId}/mark-as-read`),
+  markAsRead: (chatId: string) =>
+    request<{ message: string }>("POST", `/api/chat/chats/${chatId}/read`),
 
   getReadCount: (messageId: string) =>
     request<{ read_count: number; total_participants: number }>("GET", `/api/chat/messages/${messageId}/read-count`),
 
-  // Search
   searchMessages: (chatId: string, query: string) =>
     request<MessageResponse[]>("GET", `/api/chat/chats/${chatId}/search?q=${encodeURIComponent(query)}`),
 
-  // Blocked users
   getBlockedUsers: () =>
     request<Array<{ id: number; user_id: string; blocked_user_id: string; created_at: string }>>("GET", "/api/chat/block"),
-
-  blockUser: (userId: string) =>
-    request<{ message: string }>("POST", `/api/chat/block/${userId}`),
 
   unblockUser: (userId: string) =>
     request<{ message: string }>(`DELETE`, `/api/chat/block/${userId}`),
 
-  // Export
   exportChat: (chatId: string, format: string = "json") =>
     request<{ chat_name: string; export_date: string; messages: { id: string; sender: string; content: string; type: string; timestamp: string }[] }>(
       "GET", `/api/chat/chats/${chatId}/export?format=${format}`
     ),
 
-  // Reactions
   toggleReaction: (messageId: string, emoji: string) =>
     request<ReactionResponse[]>("POST", `/api/chat/messages/${messageId}/react`, { emoji }),
 
-  getReactions: (messageId: string) =>
-    request<ReactionResponse[]>("GET", `/api/chat/messages/${messageId}/reactions`),
+  globalSearch: (query: string) =>
+    request<MessageResponse[]>("GET", `/api/chat/search-global?q=${encodeURIComponent(query)}`),
 
-  // Forward
-  forwardMessage: (messageId: string, targetChatIds: string[]) =>
-    request<MessageResponse[]>("POST", "/api/forward/forward", { message_id: messageId, target_chat_ids: targetChatIds }),
-
-  getForwardChats: () =>
-    request<ChatResponse[]>("GET", "/api/forward/chats/available-for-forward"),
-
-  // Files
   uploadFile: async (file: File, fileType: string, onProgress?: (percent: number) => void): Promise<FileUploadResponse> => {
     const token = getToken()
+    const csrf = getCsrfToken()
     const form = new FormData()
     form.append("file", file)
     form.append("file_type", fileType)
 
-    // Use XMLHttpRequest for progress tracking
     if (onProgress) {
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhr.open("POST", `${BASE_URL}/api/files/upload`)
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`)
+        if (csrf) xhr.setRequestHeader("X-CSRF-Token", csrf)
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             onProgress(Math.round((e.loaded / e.total) * 100))
@@ -242,7 +282,6 @@ export const api = {
   getStorageInfo: () =>
     request<{ total: number; files: number }>("GET", "/api/files/storage-info"),
 
-  // Calls
   getCallHistory: (skip = 0, limit = 50) =>
     request<{ calls: Array<{
       id: number
@@ -385,103 +424,70 @@ export const api = {
   setGroupKey: (chatId: string, encryptedKeys: Record<string, string>) =>
     request<void>("POST", `/api/chat/chats/${chatId}/group-key`, { encrypted_keys: encryptedKeys }),
 
+
+  setGroupKey: (chatId: string, encryptedKeys: Record<string, string>, creatorId?: string) =>
+    request<void>("POST", `/api/chat/chats/${chatId}/group-key`, { encrypted_keys: encryptedKeys, creator_id: creatorId }),
+
   getGroupKey: (chatId: string) =>
-    request<{ encrypted_key: string; chat_id: string }>("GET", `/api/chat/chats/${chatId}/group-key`),
+    request<{ encrypted_key: string; chat_id: string; creator_id: string | null }>("GET", `/api/chat/chats/${chatId}/group-key`),
 
-  // Bookmarks
-  getBookmarks: (chatId?: string) =>
-    request<{ id: string; message_id: string; user_id: string; chat_id: string; created_at: string; message: MessageResponse }[]>(
-      "GET", "/api/bookmarks" + (chatId ? `?chat_id=${chatId}` : "")
-    ),
-
-  addBookmark: (messageId: string, chatId: string) =>
-    request<{ id: string; message_id: string; user_id: string; chat_id: string; created_at: string }>(
-      "POST", "/api/bookmarks", { message_id: messageId, chat_id: chatId }
-    ),
-
-  removeBookmark: (messageId: string) =>
-    request<void>("DELETE", `/api/bookmarks/${messageId}`),
-
-  // Pinned Messages
-  getPinnedMessages: (chatId: string) =>
-    request<{ id: number; message_id: string; pinned_by: string; created_at: string; message: MessageResponse }[]>(
-      "GET", `/api/chat/chats/${chatId}/pinned`
-    ),
-
-  pinMessage: (chatId: string, messageId: string) =>
-    request<void>("POST", `/api/chat/chats/${chatId}/pin-message`, { message_id: messageId }),
-
-  unpinMessage: (chatId: string, messageId: string) =>
-    request<void>("DELETE", `/api/chat/chats/${chatId}/pin-message?message_id=${messageId}`),
-
-  // Global Search
-  globalSearch: (query: string) =>
-    request<MessageResponse[]>("GET", `/api/chat/search-global?q=${encodeURIComponent(query)}`),
-
-  // Mark as Read
-  markChatRead: (chatId: string) =>
-    request<void>("POST", `/api/chat/chats/${chatId}/read`),
-
-  // Stats
-  getStats: () =>
-    request<{
-      total_messages: number
-      total_chats: number
-      total_files: number
-      messages_by_day: { date: string; count: number }[]
-      top_contacts: { user_id: string; username: string; first_name: string; message_count: number }[]
-      message_types: Record<string, number>
-    }>("GET", "/api/stats"),
-
-  // Ephemeral messages
-  sendEphemeralMessage: (chatId: string, content: string, expiresInSeconds: number, messageType = "text", fileId?: string) =>
-    request<MessageResponse>("POST", `/api/chat/chats/${chatId}/messages-ephemeral?content=${encodeURIComponent(content)}&expires_in_seconds=${expiresInSeconds}&message_type=${messageType}${fileId ? `&file_id=${fileId}` : ""}`),
-
-  // Files list
   getMyFiles: (fileType?: string) =>
     request<FileUploadResponse[]>("GET", "/api/files/my-files" + (fileType ? `?file_type=${fileType}` : "")),
 
-  // Misc
-  testConnection: () =>
-    request<{ status: string }>("GET", "/api/health"),
+  getVapidPublicKey: () =>
+    request<{ public_key: string }>("GET", "/api/push/vapid-public-key"),
 
-  // Federation
-  resolveRemoteUser: (address: string) =>
-    request<{ username: string; display_name: string; public_key: string; server_name: string; is_local: boolean; address?: string }>(
-      "GET", `/api/federation/resolve?address=${encodeURIComponent(address)}`
-    ),
+  subscribePush: (subscription: { endpoint: string; p256dh: string; auth: string }) =>
+    request<{ message: string }>("POST", "/api/push/subscribe", subscription),
 
-  createRemoteChat: (remoteAddress: string) =>
-    request<{ remote_address: string; display_name: string; public_key: string; server_name: string; username: string }>(
-      "POST", "/api/federation/chat", { remote_address: remoteAddress }
-    ),
+  unsubscribePush: (endpoint: string) =>
+    request<{ message: string }>("DELETE", `/api/push/unsubscribe?endpoint=${encodeURIComponent(endpoint)}`),
 
-  getFederationInfo: () =>
-    request<{ server_name: string; public_key: string; federation_enabled: boolean }>(
-      "GET", "/.well-known/nurchat.json"
-    ),
+  getIncomingContactRequests: () =>
+    request<ContactRequestResponse[]>("GET", "/api/contacts/requests/incoming"),
+
+  getSentContactRequests: () =>
+    request<ContactRequestResponse[]>("GET", "/api/contacts/requests/sent"),
+
+  acceptContactRequest: (requestId: string) =>
+    request<ContactRequestResponse>("POST", `/api/contacts/requests/${requestId}/accept`),
+
+  rejectContactRequest: (requestId: string) =>
+    request<{ detail: string }>("POST", `/api/contacts/requests/${requestId}/reject`),
+
+  uploadSignedPrekey: (publicKey: string, signature: string) =>
+    request<{ status: string }>("POST", `/api/keys/signed-prekey?public_key=${encodeURIComponent(publicKey)}&signature=${encodeURIComponent(signature)}`),
+
+  uploadOneTimePrekeys: (publicKeys: string[]) =>
+    request<{ count: number }>("POST", "/api/keys/one-time", { public_keys: publicKeys }),
+
+  getBundle: (userId: string) =>
+    request<{ identity_key: string; signed_prekey: string; signed_prekey_signature: string; one_time_prekey: string | null; registration_id: number }>("GET", `/api/keys/bundle/${userId}`),
+
+  getOneTimePrekeyCount: (userId: string) =>
+    request<{ count: number }>("GET", `/api/keys/one-time-count/${userId}`),
+
+  getIdentityKeys: (userId: string) =>
+    request<{ user_id: string; identity_key: string; public_key: string }>("GET", `/api/auth/user/${userId}/identity-keys`),
 
   setToken: (token: string) => {
     localStorage.setItem("token", token)
-  },
-
-  clearToken: () => {
-    localStorage.removeItem("token")
-    localStorage.removeItem("user")
   },
 
   isAuthenticated: () => {
     return !!getToken()
   },
 
-  // Audit logs
-  getAuditLogs: (skip = 0, limit = 100) =>
-    request<{ logs: Array<{
-      id: number
-      action: string
-      action_label: string
-      details?: Record<string, unknown>
-      ip_address?: string
-      created_at?: string
-    }>; actions: Record<string, string> }>("GET", `/api/audit/audit-logs?skip=${skip}&limit=${limit}`),
+  clearToken: () => {
+    const token = getToken()
+    if (token) {
+      fetch(`${BASE_URL}/api/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).catch(() => {})
+    }
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+  },
 }

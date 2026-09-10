@@ -6,14 +6,14 @@ from datetime import datetime, timezone
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
+from server.core.redis_manager import publish_presence, set_user_offline, set_user_online
 from shared.constants import WS_EVENTS
 from shared.config import settings
-
-from server.core.redis_manager import publish_presence, set_user_online, set_user_offline
 
 from ..core import models
 from ..core.database import SessionLocal
 from ..core.security import security
+from ..utils.mentions import parse_mentions, resolve_mentioned_users
 
 logger = logging.getLogger("nurchat_ws")
 
@@ -30,6 +30,14 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, user_id: str):
         """Подключение пользователя к WebSocket"""
+        # If a previous socket for this user is still open (reconnect overlap),
+        # close it so the stale receive loop exits and can't ghost the session.
+        old = self.active_connections.get(user_id)
+        if old is not None and old is not websocket:
+            try:
+                await old.close(code=4000, reason="Replaced by new connection")
+            except Exception:
+                pass
         await websocket.accept()
         self.active_connections[user_id] = websocket
 
@@ -44,21 +52,29 @@ class ConnectionManager:
 
         logger.info(f"User {user_id} connected to WebSocket. Active chats: {len(self.user_chats.get(user_id, []))}")
 
-    def disconnect(self, user_id: str):
-        """Отключение пользователя"""
-        if user_id in self.active_connections:
-            del self.active_connections[user_id]
-            # Clean up reverse index
-            for cid in self.user_chats.get(user_id, []):
-                if cid in self.chat_users:
-                    self.chat_users[cid].discard(user_id)
-            # Обновляем статус оффлайн
-            self._update_user_online_status_sync(user_id, False)
-            self._notify_user_offline(user_id)
-            asyncio.ensure_future(set_user_offline(user_id))
-            asyncio.ensure_future(publish_presence(user_id, "offline"))
+    def disconnect(self, user_id: str, websocket: WebSocket | None = None):
+        """Отключение пользователя.
 
-            logger.info(f"User {user_id} disconnected from WebSocket")
+        If `websocket` is given, only remove state when it still owns the slot —
+        prevents a stale handler's disconnect from killing the fresh reconnect.
+        """
+        current = self.active_connections.get(user_id)
+        if current is None:
+            return
+        if websocket is not None and current is not websocket:
+            return  # a newer connection has already replaced this one
+        del self.active_connections[user_id]
+        # Clean up reverse index
+        for cid in self.user_chats.get(user_id, []):
+            if cid in self.chat_users:
+                self.chat_users[cid].discard(user_id)
+        # Обновляем статус оффлайн
+        self._update_user_online_status_sync(user_id, False)
+        self._notify_user_offline(user_id)
+        asyncio.ensure_future(set_user_offline(user_id))
+        asyncio.ensure_future(publish_presence(user_id, "offline"))
+
+        logger.info(f"User {user_id} disconnected from WebSocket")
 
     async def _load_user_chats(self, user_id: str):
         """Загрузка чатов пользователя из БД"""
@@ -195,7 +211,6 @@ class ConnectionManager:
             return
 
         for chat_id in self.user_chats[user_id]:
-            import asyncio
             asyncio.create_task(self.broadcast_to_chat(message, chat_id, exclude_user=user_id))
 
     def add_user_to_chat(self, user_id: str, chat_id: str):
@@ -223,10 +238,6 @@ class ConnectionManager:
     def is_user_online(self, user_id: str) -> bool:
         """Проверка онлайн статуса пользователя"""
         return user_id in self.active_connections
-
-    def get_online_users(self) -> list[str]:
-        """Получение списка онлайн пользователей"""
-        return list(self.active_connections.keys())
 
 class ChatManager:
     """Менеджер чатов для обработки WebSocket сообщений"""
@@ -277,22 +288,48 @@ class ChatManager:
 
     async def _handle_new_message(self, user_id: str, data: dict):
         """Обработка нового сообщения"""
-        # Валидируем данные
+        # Валидируем данные — same constraints as the HTTP path (MessageCreate)
         if not all(k in data for k in ["chat_id", "content", "message_type"]):
             logger.warning(f"Invalid message data from {user_id}")
+            return
+        content = data["content"]
+        message_type = data["message_type"]
+        if not isinstance(content, str) or not (1 <= len(content) <= 5000):
+            desc = len(content) if isinstance(content, str) else type(content).__name__
+            logger.warning(f"Invalid content from {user_id}: {desc}")
+            return
+        allowed_types = {"text", "image", "video", "audio", "file", "location", "contact", "voice"}
+        if message_type not in allowed_types:
+            logger.warning(f"Invalid message_type from {user_id}: {message_type}")
+            return
+
+        # Глухой relay: принимаем ТОЛЬКО E2E-шифрованные сообщения (как HTTP-путь)
+        from shared.config import settings as _settings
+        if _settings.RELAY_DEAF and not data.get("encrypted_content"):
+            logger.warning(f"RELAY_DEAF: rejected plaintext WS message from {user_id}")
             return
 
         # Сохраняем сообщение в БД
         db: Session = SessionLocal()
         try:
+            # Verify sender is a participant of the chat
+            sender_participant = db.query(models.ChatParticipant).filter(
+                models.ChatParticipant.chat_id == data["chat_id"],
+                models.ChatParticipant.user_id == user_id
+            ).first()
+            if not sender_participant:
+                logger.warning(f"User {user_id} is not a participant of chat {data['chat_id']}")
+                return
+
             message_id = security.generate_message_id()
             message = models.Message(
                 id=message_id,
                 chat_id=data["chat_id"],
                 user_id=user_id,
-                content=data["content"],  # Уже зашифровано
-                message_type=data["message_type"],
-                file_id=data.get("file_id")
+                content=content,
+                message_type=message_type,
+                file_id=data.get("file_id"),
+                reply_to_id=data.get("reply_to_id"),
             )
             db.add(message)
             db.commit()
@@ -310,6 +347,24 @@ class ChatManager:
             sender = db.query(models.User).filter(models.User.id == user_id).first()
             sender_username = sender.username if sender else "Unknown"
             logger.debug(f"Message {message_id} saved to DB")
+
+            mentioned_usernames = parse_mentions(data.get("content", ""))
+            if mentioned_usernames:
+                mentioned_users = resolve_mentioned_users(db, mentioned_usernames, data["chat_id"])
+                for mentioned in mentioned_users:
+                    if mentioned.id == user_id:
+                        continue
+                    mention_event = {
+                        "event": "mention",
+                        "data": {
+                            "chat_id": data["chat_id"],
+                            "message_id": message_id,
+                            "mentioned_by": user_id,
+                            "mentioned_by_username": sender_username,
+                            "content_preview": (data.get("content") or "")[:100],
+                        }
+                    }
+                    await self.connection_manager.send_personal_message(mention_event, mentioned.id)
         except Exception as e:
             logger.error(f"Error saving message to DB: {e}")
             db.rollback()
@@ -317,8 +372,6 @@ class ChatManager:
         finally:
             db.close()
 
-        # Сервер больше не дешифрует сообщения - сообщения зашифрованы клиентом
-        # Отправляем как есть, получатель расшифрует на своей стороне
         message_event = {
             "event": WS_EVENTS["MESSAGE"],
             "data": {
@@ -416,12 +469,35 @@ class ChatManager:
         if not all(k in data for k in ["message_id", "chat_id"]):
             return
 
+        delete_for_all = bool(data.get("delete_for_all", False))
+
+        # Persist the deletion (only the author may delete for all)
+        db: Session = SessionLocal()
+        try:
+            message = db.query(models.Message).filter(
+                models.Message.id == data["message_id"],
+                models.Message.chat_id == data["chat_id"],
+            ).first()
+            if message:
+                if not delete_for_all or message.user_id == user_id:
+                    message.is_deleted = True
+                    if delete_for_all and message.user_id == user_id:
+                        message.deleted_for_all = True
+                    db.commit()
+                else:
+                    logger.warning(
+                        f"User {user_id} tried to delete-for-all message {data['message_id']} of another user"
+                    )
+                    return
+        finally:
+            db.close()
+
         delete_event = {
             "event": WS_EVENTS["DELETE_MESSAGE"],
             "data": {
                 "message_id": data["message_id"],
                 "chat_id": data["chat_id"],
-                "delete_for_all": data.get("delete_for_all", False),
+                "delete_for_all": delete_for_all,
                 "deleted_by": user_id,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
@@ -448,7 +524,29 @@ class ChatManager:
                 models.Message.user_id == user_id
             ).first()
             if message:
+                # Save to edit_history
+                import json
+                history = []
+                if message.edit_history:
+                    try:
+                        history = json.loads(message.edit_history)
+                    except (json.JSONDecodeError, TypeError):
+                        history = []
+                edited_at_str = (
+                    message.edited_at.isoformat() if message.edited_at
+                    else message.created_at.isoformat() if message.created_at
+                    else None
+                )
+                history.append({
+                    "content": message.content,
+                    "edited_at": edited_at_str,
+                })
+                if len(history) > 50:
+                    history = history[-50:]
+
                 message.content = data["new_content"]
+                message.edited_at = datetime.now(timezone.utc)
+                message.edit_history = json.dumps(history, ensure_ascii=False)
                 db.commit()
                 logger.info(f"Message {data['message_id']} edited by {user_id}")
         except Exception as e:
@@ -464,6 +562,7 @@ class ChatManager:
                 "chat_id": data["chat_id"],
                 "new_content": data["new_content"],
                 "edited_by": user_id,
+                "edited_at": datetime.now(timezone.utc).isoformat(),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         }
@@ -474,45 +573,69 @@ class ChatManager:
         )
         logger.info(f"Edit message {data['message_id']} by {user_id} notified to {len(sent_to)} users")
 
-    async def send_sync_event(self, event_data: dict, chat_id: str, exclude_user: str = None):
-        """Отправка события синхронизации всем участникам чата"""
-        sync_event = {
-            "event": WS_EVENTS["SYNC_EVENT"],  # Предполагаем, что SYNC_EVENT определен в constants
-            "data": {
-                **event_data,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        }
-
-        sent_to = await self.connection_manager.broadcast_to_chat(
-            sync_event,
-            chat_id,
-            exclude_user=exclude_user
-        )
-
-        logger.info(f"Sync event sent to {len(sent_to)} users in chat {chat_id}")
-        return sent_to
-
 # Глобальные экземпляры
 connection_manager = ConnectionManager()
 chat_manager = ChatManager(connection_manager)
 
-async def handle_websocket_connection(websocket: WebSocket, user_id: str):
+async def handle_websocket_connection(websocket: WebSocket, user_id: str, token: str | None = None):
     """Основной обработчик WebSocket соединения"""
+    import time
     await connection_manager.connect(websocket, user_id)
+
+    last_alive = time.monotonic()
+    idle_timeout = 120       # probe after 2 min of silence
+    dead_after = 300         # drop if silent for 5 min total
+    last_token_check = 0.0
+    token_check_interval = 10  # verify JWT every 10 seconds (on active messages)
 
     try:
         while True:
             raw = await websocket.receive_text()
+
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=idle_timeout)
+            except asyncio.TimeoutError:
+                now = time.monotonic()
+                if now - last_alive > dead_after:
+                    logger.info(f"Dropping dead WS connection for {user_id} (idle {int(now - last_alive)}s)")
+                    break
+                # Liveness probe — client replies with pong (updates last_alive)
+                await websocket.send_json({"event": "ping"})
+                continue
+
+            last_alive = time.monotonic()
+
             if len(raw) > 1024 * 1024:
                 logger.warning(f"Oversized WS message from {user_id}: {len(raw)} bytes")
                 await websocket.send_json({"event": "error", "data": {"message": "Сообщение слишком большое"}})
                 continue
             data = json_lib.loads(raw)
+
+            try:
+                data = json_lib.loads(raw)
+            except (json_lib.JSONDecodeError, ValueError):
+                logger.warning(f"Invalid JSON from {user_id}: {raw[:200]}")
+                await websocket.send_json({"event": "error", "data": {"message": "Невалидный JSON"}})
+                continue
+
+            # Token re-verification: check periodically, not on every message
+            # to keep overhead minimal while catching revoked/expired tokens quickly.
+            now = time.monotonic()
+            if token and now - last_token_check > token_check_interval:
+                last_token_check = now
+                from server.core.security import AuthenticationError
+                from server.core.security import security as sec
+                try:
+                    sec.verify_token(token)
+                except AuthenticationError:
+                    logger.info(f"Closing WS for {user_id}: token no longer valid")
+                    await websocket.close(code=4001, reason="Token expired")
+                    break
+
             await chat_manager.handle_message(user_id, data)
 
     except WebSocketDisconnect:
-        connection_manager.disconnect(user_id)
+        connection_manager.disconnect(user_id, websocket)
     except Exception as e:
         logger.error(f"WebSocket error for {user_id}: {e}")
-        connection_manager.disconnect(user_id)
+        connection_manager.disconnect(user_id, websocket)

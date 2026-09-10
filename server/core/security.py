@@ -2,11 +2,15 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+
+from typing import cast
+
+import jwt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer
-from jose import JWTError, jwt
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from nacl import public
 
+from server.utils.security import is_token_revoked, revoke_token
 from shared.config import settings
 from shared.exceptions import AuthenticationError
 
@@ -31,6 +35,8 @@ class SecurityManager:
         else:
             expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         to_encode.update({"exp": expire, "type": "access"})
+
+        to_encode.update({"exp": expire, "type": "access", "jti": secrets.token_hex(16)})
         return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
     @staticmethod
@@ -41,24 +47,51 @@ class SecurityManager:
         to_encode.update({"exp": expire, "type": "refresh"})
         return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+        to_encode.update({"exp": expire, "type": "refresh", "jti": secrets.token_hex(16)})
+        return cast(str, jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM))
+
+    @staticmethod
+    def revoke(token_str: str) -> None:
+        """Revoke a token by adding its jti to blacklist (until its natural expiry)."""
+        try:
+            payload = jwt.decode(token_str, SECRET_KEY, algorithms=[ALGORITHM])
+            jti = payload.get("jti")
+            if jti:
+                exp = payload.get("exp")
+                expires_at = datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None
+                revoke_token(jti, expires_at)
+        except jwt.PyJWTError:
+            pass
+
     @staticmethod
     def verify_token(token: str) -> dict:
-        """Верификация JWT токена"""
+        """Верификация JWT токена (включая проверку отзыва)"""
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            return payload
-        except JWTError:
+            jti = payload.get("jti")
+            if jti and is_token_revoked(jti):
+                raise AuthenticationError("Токен отозван")
+            return cast(dict, payload)
+        except jwt.PyJWTError:
             raise AuthenticationError("Невалидный токен")
 
     @staticmethod
     def verify_refresh_token(token: str) -> dict:
         """Верификация refresh токена"""
+
+        """Верификация refresh токена (включая проверку отзыва)"""
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             if payload.get("type") != "refresh":
                 raise AuthenticationError("Неверный тип токена")
             return payload
         except JWTError:
+
+            jti = payload.get("jti")
+            if jti and is_token_revoked(jti):
+                raise AuthenticationError("Токен отозван")
+            return cast(dict, payload)
+        except jwt.PyJWTError:
             raise AuthenticationError("Невалидный refresh токен")
 
     @staticmethod
@@ -130,13 +163,49 @@ class EncryptionManager:
         except Exception as e:
             raise Exception(f"Ошибка дешифрования: {e}")
 
-async def verify_token_dependency(credentials: HTTPBearer = Depends(security_scheme)) -> dict:
+async def verify_token_dependency(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)) -> dict:
     """FastAPI dependency to extract and verify JWT token from Authorization header"""
     token = credentials.credentials
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
-    except JWTError:
+        jti = payload.get("jti")
+        if jti and is_token_revoked(jti):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # A 2FA-pending token grants NO API access — it may only be used
+        # by verify_pending_2fa_dependency (the /2fa/verify-login endpoint).
+        if payload.get("2fa_pending"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Требуется завершить двухфакторную аутентификацию",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return cast(dict, payload)
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+async def verify_pending_2fa_dependency(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)) -> dict:
+    """Dependency for the /2fa/verify-login endpoint: accepts ONLY 2FA-pending tokens."""
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        jti = payload.get("jti")
+        if jti and is_token_revoked(jti):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return cast(dict, payload)
+    except jwt.PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",

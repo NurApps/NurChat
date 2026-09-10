@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from "react"
-import DOMPurify from "dompurify"
+import React, { useState, useEffect, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import type { MessageResponse, UserResponse } from "../types"
 import { api } from "../services/api"
 import { ipfsGatewayUrl } from "../config"
 import { getAvatarColor } from "../utils/avatar"
+import { formatTime, formatFull } from "../utils/format"
+import { renderMarkdown } from "../utils/markdown"
 import MediaViewer from "./MediaViewer"
 import VoiceMessage from "./VoiceMessage"
 
@@ -15,74 +17,50 @@ interface Props {
   status?: string
   reactions?: Record<string, string[]>
   onDelete?: (id: string, deleteForAll?: boolean) => void
-  onForward?: (id: string) => void
   onReply?: (id: string) => void
   onEdit?: (id: string, content: string) => void
   onReaction?: (msgId: string, emoji: string, add: boolean) => void
   onViewProfile?: (user: UserResponse) => void
   onShowInfo?: (id: string) => void
-  onBookmark?: (messageId: string) => void
-  isBookmarked?: boolean
-  onPin?: (messageId: string) => void
   highlightQuery?: string
 }
 
 const REACTION_LIST = ["👍", "❤️", "😂", "😮", "😢", "😡"]
 
-function formatTime(ts: string): string {
-  try {
-    return new Date(ts).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-  } catch {
-    return ""
-  }
-}
-
-function highlightText(text: string, query: string): React.ReactNode[] {
-  if (!query.trim()) return [text]
+function renderHighlightedMarkdown(text: string, query: string): React.ReactNode {
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   const parts = text.split(new RegExp(`(${escaped})`, "gi"))
   return parts.map((part, i) =>
     part.toLowerCase() === query.toLowerCase()
       ? <mark key={i} className="search-highlight">{part}</mark>
-      : part
+      : <React.Fragment key={i}>{renderMarkdown(part)}</React.Fragment>
   )
-}
-
-function sanitizeText(text: string): string {
-  return DOMPurify.sanitize(text, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
-}
-
-function parseLinks(text: string): Array<{ type: "text" | "link"; value: string; href?: string }> {
-  const safe = sanitizeText(text)
-  const parts: Array<{ type: "text" | "link"; value: string; href?: string }> = []
-  const re = /(https?:\/\/[^\s<>"\'()]+|[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/[^\s<>"\'()]*)?)/gi
-  let last = 0
-  let m: RegExpExecArray | null
-  while ((m = re.exec(safe)) !== null) {
-    if (m.index > last) parts.push({ type: "text", value: safe.slice(last, m.index) })
-    const url = m[0]
-    parts.push({ type: "link", value: url, href: url.startsWith("http") ? url : `https://${url}` })
-    last = re.lastIndex
-  }
-  if (last < safe.length) parts.push({ type: "text", value: safe.slice(last) })
-  return parts
 }
 
 export default function MessageBubble({
   message, currentUser, isMyMessage, isRead = false, status,
-  reactions = {}, onDelete, onForward, onReply, onEdit, onReaction, onViewProfile,
-  onBookmark, isBookmarked = false, onPin, highlightQuery, onShowInfo,
+  reactions = {}, onDelete, onReply, onEdit, onReaction, onViewProfile,
+  highlightQuery, onShowInfo,
 }: Props) {
+  const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(message.content)
   const [showDeleteOptions, setShowDeleteOptions] = useState(false)
   const [readCount, setReadCount] = useState<{ read: number; total: number } | null>(null)
+  const [, setExpiryTick] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const content = message.content
   const time = formatTime(message.created_at)
-  const isReply = content.startsWith("↩️ Ответ ")
   const peerId = currentUser.id
+
+  // Tick every second while an ephemeral countdown is active
+  useEffect(() => {
+    if (!message.expires_at) return
+    if (new Date(message.expires_at).getTime() <= Date.now()) return
+    const id = setInterval(() => setExpiryTick((t) => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [message.expires_at])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -97,11 +75,11 @@ export default function MessageBubble({
   }, [menuOpen])
 
   useEffect(() => {
-    if (!isMyMessage) return
+    if (!menuOpen || !isMyMessage) return
     api.getReadCount(message.id).then((data) => {
       setReadCount({ read: data.read_count, total: data.total_participants - 1 })
     }).catch(() => {})
-  }, [isMyMessage, message.id])
+  }, [menuOpen, isMyMessage, message.id])
 
   const senderName = message.user?.username || "User"
   const avatarChar = senderName[0]?.toUpperCase() || "?"
@@ -138,6 +116,8 @@ export default function MessageBubble({
     )
     if (isRead || (readCount && readCount.read > 0)) return (
       <span className="msg-status read" title={readCount ? `${readCount.read}/${readCount.total} прочитали` : "Прочитано"}>
+
+      <span className="msg-status read" title={readCount ? `${readCount.read}/${readCount.total} ${t("chat.readStatus")}` : t("chat.readStatus")}>
         <svg width="16" height="10" viewBox="0 0 24 16" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="2 8 7 13 13 3"/><polyline points="11 8 16 13 22 3"/></svg>
         {readCount && readCount.total > 1 && <span className="msg-read-count">{readCount.read}/{readCount.total}</span>}
       </span>
@@ -155,6 +135,22 @@ export default function MessageBubble({
   }
 
   const renderContent = () => {
+    if (message.is_view_once && message.message_type !== "text") {
+      if (message.viewed_at || (message.is_deleted && message.deleted_for_all)) {
+        return (
+          <div className="viewonce-overlay viewonce-viewed">
+            <div className="viewonce-icon">&#128274;</div>
+            <div className="viewonce-text">{t("chat.viewOnceDeleted")}</div>
+          </div>
+        )
+      }
+      return (
+        <div className="viewonce-overlay">
+          <div className="viewonce-icon">&#128274;</div>
+          <div className="viewonce-text">{t("chat.viewOnce")}</div>
+        </div>
+      )
+    }
     if (message.message_type === "text") return renderTextContent()
     return renderFileContent()
   }
@@ -172,51 +168,28 @@ export default function MessageBubble({
             rows={2}
           />
           <div className="msg-edit-actions">
-            <button className="msg-edit-cancel" onClick={() => { setEditText(message.content); setEditing(false) }}>Отмена</button>
-            <button className="msg-edit-save" onClick={handleEditSave}>Сохранить</button>
+            <button className="msg-edit-cancel" onClick={() => { setEditText(message.content); setEditing(false) }}>{t("common.cancel")}</button>
+            <button className="msg-edit-save" onClick={handleEditSave}>{t("common.save")}</button>
           </div>
         </div>
       )
     }
-    if (isReply) return renderReplyContent()
-    const parts = parseLinks(content)
-    return (
-      <p className="msg-text">
-        {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
-        {parts.map((p, i) =>
-          p.type === "link" ? (
-            <a key={i} href={p.href} target="_blank" rel="noopener noreferrer" className="msg-link">{p.value}</a>
-          ) : (
-            <span key={i}>{highlightQuery ? highlightText(p.value, highlightQuery) : p.value}</span>
-          )
-        )}
-      </p>
-    )
-  }
-
-  const renderReplyContent = () => {
-    const lines = content.split("\n")
-    const quoted = lines[0].replace("↩️ Ответ ", "").trim()
-    const reply = lines.slice(1).join("\n")
-    const parts = parseLinks(reply)
+    const replyTo = message.reply_to
+    const rendered = highlightQuery
+      ? renderHighlightedMarkdown(content, highlightQuery)
+      : renderMarkdown(content)
     return (
       <div className="msg-reply-wrapper">
-        <div className="msg-reply-border">
-          <span className="msg-reply-sender">{quoted}</span>
-          <span className="msg-reply-text">{reply.slice(0, 60)}{reply.length > 60 ? "..." : ""}</span>
-        </div>
-        {reply && (
-          <p className="msg-text">
-            {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
-            {parts.map((p, i) =>
-              p.type === "link" ? (
-                <a key={i} href={p.href} target="_blank" rel="noopener noreferrer" className="msg-link">{p.value}</a>
-              ) : (
-                <span key={i}>{p.value}</span>
-              )
-            )}
-          </p>
+        {replyTo && (
+          <div className="msg-reply-border" onClick={() => {/* scroll to replied message */}}>
+            <span className="msg-reply-sender">{replyTo.user?.username || t("chat.user")}</span>
+            <span className="msg-reply-text">{(replyTo.content || "").slice(0, 60)}{(replyTo.content || "").length > 60 ? "..." : ""}</span>
+          </div>
         )}
+        <p className="msg-text">
+          {message.forwarded_from && <span className="msg-forwarded">⟳ {t("chat.forwarded")}</span>}
+          {rendered}
+        </p>
       </div>
     )
   }
@@ -229,16 +202,20 @@ export default function MessageBubble({
     // IPFS fallback: use gateway if ipfs_hash is available
     const ipfsUrl = message.file?.ipfs_hash ? ipfsGatewayUrl(message.file.ipfs_hash) : null
     const imageUrl = ipfsUrl || fileUrl
+
+    const imageUrl = message.file_id ? api.getFileUrl(message.file_id) : null
+    const fileUrl = imageUrl
     if (mt === "image" && imageUrl) {
       return (
         <div className="msg-file">
-          {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
+          {message.forwarded_from && <span className="msg-forwarded">⟳ {t("chat.forwarded")}</span>}
           <img
             src={imageUrl}
             alt={content}
             className="msg-image"
             loading="lazy"
             onError={(e) => { if (ipfsUrl && fileUrl) (e.target as HTMLImageElement).src = fileUrl }}
+
             onClick={() => setMediaViewer({ type: "image", url: imageUrl, filename: content || undefined })}
             style={{ cursor: "pointer" }}
           />
@@ -299,14 +276,14 @@ export default function MessageBubble({
     const icon = fileIcons[mt] || fileIcons.file
     return (
       <div className="msg-file" onClick={() => fileUrl && message.file_id && setMediaViewer({ type: "document", url: fileUrl, filename: content || undefined })} style={{ cursor: fileUrl ? "pointer" : undefined }}>
-        {message.forwarded_from && <span className="msg-forwarded">⟳ Переслано</span>}
+        {message.forwarded_from && <span className="msg-forwarded">⟳ {t("chat.forwarded")}</span>}
         <span className="msg-file-icon">{icon}</span>
         {message.file_id ? (
           <span className="msg-link msg-download-btn">
-            {content || "Скачать файл"}
+            {content || t("chat.download")}
           </span>
         ) : (
-          <p className="msg-text">{content || "Файл"}</p>
+          <p className="msg-text">{content || t("chat.fileLabel")}</p>
         )}
       </div>
     )
@@ -337,12 +314,12 @@ export default function MessageBubble({
     return (
       <div className="msg-delete-options">
         <button onClick={() => { onDelete?.(message.id, false); setShowDeleteOptions(false); setMenuOpen(false) }}>
-          Удалить у себя
+          {t("chat.deleteForSelf")}
         </button>
         <button onClick={() => { onDelete?.(message.id, true); setShowDeleteOptions(false); setMenuOpen(false) }}>
-          Удалить у всех
+          {t("chat.deleteForAll")}
         </button>
-        <button className="danger" onClick={() => setShowDeleteOptions(false)}>Отмена</button>
+        <button className="danger" onClick={() => setShowDeleteOptions(false)}>{t("common.cancel")}</button>
       </div>
     )
   }
@@ -351,21 +328,39 @@ export default function MessageBubble({
     <div className={`msg-bubble ${isMyMessage ? "mine" : "other"} ${(message.is_deleted || message.deleted_for_all) ? "deleted" : ""}`}>
       <div className="msg-bubble-inner">
         {(message.is_deleted || message.deleted_for_all) ? (
-          <p className="msg-text deleted"><em>Сообщение удалено</em></p>
+          <p className="msg-text deleted"><em>{t("chat.messageDeleted")}</em></p>
         ) : editing ? (
           renderContent()
         ) : (
           <>
             {renderContent()}
             <div className="msg-footer">
-              <span className="msg-time" title={new Date(message.created_at).toLocaleString("ru-RU")}>
+              <span className="msg-time" title={formatFull(message.created_at)}>
                 {time}
               </span>
               {message.expires_at && (
                   <span className="msg-ephemeral" title={`Исчезнет ${new Date(message.expires_at).toLocaleString("ru-RU")}`}>
                   <span className="msg-ephemeral-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
                 </span>
+
+              {message.edited_at && (
+                <span className="msg-edited" title={t("chat.edited")}>{t("chat.editedShort")}</span>
               )}
+              {message.expires_at && (() => {
+                const remaining = Math.max(0, Math.floor((new Date(message.expires_at).getTime() - Date.now()) / 1000))
+                if (remaining <= 0) return null
+                const timeStr = remaining >= 3600
+                  ? `${Math.floor(remaining / 3600)}ч ${Math.floor((remaining % 3600) / 60)}м`
+                  : remaining >= 60
+                    ? `${Math.floor(remaining / 60)}м ${remaining % 60}с`
+                    : `${remaining}с`
+                return (
+                  <span className="msg-expiry" title={t("chat.expiresAt", { time: formatFull(message.expires_at) })}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    {timeStr}
+                  </span>
+                )
+              })()}
               {isMyMessage && renderStatusIcon()}
             </div>
             {renderReactionBar()}
@@ -399,21 +394,16 @@ export default function MessageBubble({
 
   const menuItems = isMyMessage
     ? [
-        { label: "Копировать", action: () => navigator.clipboard.writeText(content) },
-        { label: "Редактировать", action: () => { setEditText(message.content); setEditing(true); setMenuOpen(false) } },
-        { label: "Ответить", action: () => onReply?.(message.id) },
-        { label: "Переслать", action: () => onForward?.(message.id) },
-        { label: isBookmarked ? "Убрать из избранного" : "В избранное", action: () => onBookmark?.(message.id) },
-        { label: "Закрепить", action: () => onPin?.(message.id) },
-        { label: "Информация", action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
-        { label: "Удалить", action: () => setShowDeleteOptions(true) },
+        { label: t("chat.copy"), action: () => navigator.clipboard.writeText(content) },
+        { label: t("common.edit"), action: () => { setEditText(message.content); setEditing(true); setMenuOpen(false) } },
+        { label: t("chat.reply"), action: () => onReply?.(message.id) },
+        { label: t("chat.info"), action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
+        { label: t("common.delete"), action: () => setShowDeleteOptions(true) },
       ]
     : [
-        { label: "Копировать", action: () => navigator.clipboard.writeText(content) },
-        { label: "Переслать", action: () => onForward?.(message.id) },
-        { label: isBookmarked ? "Убрать из избранного" : "В избранное", action: () => onBookmark?.(message.id) },
-        { label: "Закрепить", action: () => onPin?.(message.id) },
-        { label: "Информация", action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
+        { label: t("chat.copy"), action: () => navigator.clipboard.writeText(content) },
+        { label: t("chat.reply"), action: () => onReply?.(message.id) },
+        { label: t("chat.info"), action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
       ]
 
   if (!isMyMessage) {
@@ -430,12 +420,24 @@ export default function MessageBubble({
         {bubble}
         <div className="msg-menu-area" ref={menuRef}>
           <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="Меню сообщения">
+
+          <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label={t("chat.messageMenu")} aria-expanded={menuOpen} aria-haspopup="menu">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
           {menuOpen && !showDeleteOptions && (
-            <div className="msg-dropdown">
-              {menuItems.map((item) => (
-                <button key={item.label} onClick={() => { item.action(); setMenuOpen(false) }}>{item.label}</button>
+            <div className="msg-dropdown" role="menu" aria-label={t("chat.messageMenu")}>
+              <div className="reaction-picker" role="menuitem">
+                {REACTION_LIST.map((emoji) => (
+                  <button key={emoji} className="reaction-pick-btn"
+                    onClick={() => { onReaction?.(message.id, emoji, true); setMenuOpen(false) }}>
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+              {menuItems.map((item, i) => (
+                <button key={item.label} role="menuitem" tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); if (e.key === "ArrowDown" && i < menuItems.length - 1) (e.currentTarget.nextElementSibling as HTMLElement)?.focus(); if (e.key === "ArrowUp" && i > 0) (e.currentTarget.previousElementSibling as HTMLElement)?.focus() }}
+                  onClick={() => { item.action(); setMenuOpen(false) }}>{item.label}</button>
               ))}
             </div>
           )}
@@ -461,12 +463,24 @@ export default function MessageBubble({
       <div className="msg-spacer" />
       <div className="msg-menu-area" ref={menuRef}>
         <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="Меню сообщения">
+
+        <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label={t("chat.messageMenu")} aria-expanded={menuOpen} aria-haspopup="menu">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
         </button>
         {menuOpen && !showDeleteOptions && (
-          <div className="msg-dropdown right">
-            {menuItems.map((item) => (
-              <button key={item.label} onClick={() => { item.action(); setMenuOpen(false) }}>{item.label}</button>
+          <div className="msg-dropdown right" role="menu" aria-label={t("chat.messageMenu")}>
+            <div className="reaction-picker" role="menuitem">
+              {REACTION_LIST.map((emoji) => (
+                <button key={emoji} className="reaction-pick-btn"
+                  onClick={() => { onReaction?.(message.id, emoji, true); setMenuOpen(false) }}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            {menuItems.map((item, i) => (
+              <button key={item.label} role="menuitem" tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); if (e.key === "ArrowDown" && i < menuItems.length - 1) (e.currentTarget.nextElementSibling as HTMLElement)?.focus(); if (e.key === "ArrowUp" && i > 0) (e.currentTarget.previousElementSibling as HTMLElement)?.focus() }}
+                onClick={() => { item.action(); setMenuOpen(false) }}>{item.label}</button>
             ))}
           </div>
         )}

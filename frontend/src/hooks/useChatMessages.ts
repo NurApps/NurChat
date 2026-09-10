@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from "react"
 import { api } from "../services/api"
 import { decryptMessage, isE2EEnabled, type E2EKeys } from "../services/e2e"
-import { getGroupKeyForChat, decryptGroupMessage } from "../services/groupE2E"
+import { fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
 import type { ChatResponse, MessageResponse, UserResponse } from "../types"
 
 interface UseChatMessagesOptions {
@@ -9,21 +9,31 @@ interface UseChatMessagesOptions {
   e2eKeys: E2EKeys | null
 }
 
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16)
+  }
+  return bytes
+}
+
 export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions) {
   const [messages, setMessages] = useState<MessageResponse[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const chatIdRef = useRef<string | null>(null)
 
   const decryptMessages = useCallback(async (msgs: MessageResponse[], chat: ChatResponse): Promise<MessageResponse[]> => {
     if (!e2eKeys || !isE2EEnabled(chat.participants, e2eKeys)) return msgs
     const peer = chat.participants.find(p => p.id !== currentUser.id)
     if (!peer?.public_key) return msgs
 
-    let groupKey: CryptoKey | null = null
+    let groupKey: Uint8Array | null = null
     if (chat.is_group) {
-      try { groupKey = await getGroupKeyForChat(chat.id) } catch {}
+      try { groupKey = await fetchGroupKey(chat.id, hexToBytes(e2eKeys.privateKeyHex)) } catch {}
     }
 
     const results: MessageResponse[] = []
@@ -33,7 +43,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
           const envelope = JSON.parse(msg.encrypted_content)
           if (envelope.group_encrypted && groupKey) {
             try {
-              const plain = await decryptGroupMessage(envelope.group_encrypted, groupKey)
+              const plain = await decryptGroupMessageRatcheted(envelope.group_encrypted, groupKey, chat.id)
               results.push({ ...msg, content: plain || "[не удалось расшифровать]" })
             } catch {
               results.push({ ...msg, content: "[ошибка расшифровки группы]" })
@@ -53,13 +63,19 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   }, [e2eKeys, currentUser.id])
 
   const loadMessages = useCallback(async (chat: ChatResponse) => {
+    chatIdRef.current = chat.id
+    setInitialLoading(true)
     try {
       const msgs = await api.getChatMessages(chat.id, 0, 50)
+      if (chatIdRef.current !== chat.id) return
       const decrypted = await decryptMessages(msgs, chat)
+      if (chatIdRef.current !== chat.id) return
       setMessages(decrypted)
       setHasMore(decrypted.length >= 50)
     } catch (e) {
       console.error("Load messages failed:", e)
+    } finally {
+      if (chatIdRef.current === chat.id) setInitialLoading(false)
     }
   }, [decryptMessages])
 
@@ -86,7 +102,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
         m.id === data.message_id ? { ...m, is_deleted: true, deleted_for_all: data.delete_for_all || false } : m
       ))
     } else if (data._edit) {
-      setMessages((prev) => prev.map((m) => m.id === data.message_id ? { ...m, content: data.content } : m))
+      setMessages((prev) => prev.map((m) => m.id === data.message_id ? { ...m, content: data.content, edited_at: data.edited_at || m.edited_at } : m))
     } else {
       setMessages((prev) => [...prev, data])
     }
@@ -105,7 +121,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   }, [])
 
   return {
-    messages, setMessages, loadingMore, hasMore, containerRef, endRef,
+    messages, setMessages, loadingMore, initialLoading, hasMore, containerRef, endRef,
     loadMessages, loadMore, handleWsMessage, addMessage, updateMessage, removeMessage, setHasMore,
   }
 }

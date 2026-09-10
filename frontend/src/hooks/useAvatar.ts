@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react"
 import { BASE_URL } from "../config"
+import { csrfHeader } from "../services/api"
 import type { UserResponse } from "../types"
 
 export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
@@ -15,7 +16,10 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
       form.append("file", file)
       const res = await fetch(`${BASE_URL}/api/auth/profile/avatar`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
+        },
         body: form,
       })
       if (!res.ok) throw new Error(await res.text())
@@ -37,7 +41,10 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
       const token = localStorage.getItem("token")
       const res = await fetch(`${BASE_URL}/api/auth/profile/avatar`, {
         method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
+        },
       })
       if (!res.ok) throw new Error(await res.text())
       const updated: UserResponse = await res.json()

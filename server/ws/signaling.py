@@ -1,10 +1,11 @@
 import logging
+import time
 from datetime import datetime, timezone
 
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
-from shared.constants import CALL_STATUS, CALL_TYPES
+from shared.constants import CALL_STATUS
 
 from ..core import models
 from ..core.database import SessionLocal
@@ -13,6 +14,8 @@ from .notifications import notification_manager
 
 logger = logging.getLogger("nurchat_ws")
 
+PENDING_MESSAGE_TTL_SECONDS = 24 * 60 * 60  # 24 hours
+
 class CallManager:
     """Менеджер звонков через WebRTC для NurChat"""
 
@@ -20,7 +23,8 @@ class CallManager:
         self.active_calls: dict[str, dict] = {}  # {call_id: call_data}
         self.user_calls: dict[str, str] = {}     # {user_id: call_id}
         self.call_websockets: dict[str, WebSocket] = {}  # {user_id: websocket}
-        self.pending_messages: dict[str, list[dict]] = {}  # {user_id: [messages]}
+        self.pending_messages: dict[str, list[dict]] = {}  # {user_id: [{"msg": ..., "ts": ...}]}
+        self.MAX_PENDING_PER_USER = 50  # Cap to prevent memory exhaustion
 
     async def handle_signaling(self, websocket: WebSocket, user_id: str):
         """Обработка WebRTC сигналов"""
@@ -86,11 +90,27 @@ class CallManager:
 
         logger.info(f"User {user_id} joined call {call_id}")
 
+        await self._send_to_user(user_id, {
+            "type": "call-request",
+            "call_id": call_id,
+            "caller_id": call["caller_id"],
+            "call_type": call["call_type"],
+        })
+
     async def _handle_call_request(self, user_id: str, data: dict):
         """Обработка запроса на звонок"""
-        target_user_id = data["target_user_id"]
-        call_id = data["call_id"]
+        target_user_id = data.get("target_user_id")
+        call_id = data.get("call_id")
         call_type = data.get("call_type", "audio")
+
+        if not target_user_id or not call_id:
+            await self._send_to_user(user_id, {
+                "type": "call-failed",
+                "call_id": call_id or "unknown",
+                "reason": "invalid_request",
+                "message": "Missing target_user_id or call_id"
+            })
+            return
 
         # Проверяем, что целевой пользователь существует и онлайн
         if not connection_manager.is_user_online(target_user_id):
@@ -138,10 +158,12 @@ class CallManager:
             caller_name = user_id  # fallback
             try:
                 db = SessionLocal()
-                caller = db.query(models.User).filter(models.User.id == user_id).first()
-                if caller:
-                    caller_name = caller.username or caller.first_name or user_id
-                db.close()
+                try:
+                    caller = db.query(models.User).filter(models.User.id == user_id).first()
+                    if caller:
+                        caller_name = caller.username or caller.first_name or user_id
+                finally:
+                    db.close()
             except Exception:
                 pass
 
@@ -176,7 +198,9 @@ class CallManager:
 
     async def _handle_call_accept(self, user_id: str, data: dict):
         """Обработка принятия звонка"""
-        call_id = data["call_id"]
+        call_id = data.get("call_id")
+        if not call_id:
+            return
         call = self.active_calls.get(call_id)
 
         if not call or call["callee_id"] != user_id:
@@ -217,10 +241,16 @@ class CallManager:
 
     async def _handle_call_reject(self, user_id: str, data: dict):
         """Обработка отклонения звонка"""
-        call_id = data["call_id"]
+        call_id = data.get("call_id")
+        if not call_id:
+            return
         call = self.active_calls.get(call_id)
 
         if not call:
+            return
+
+        if user_id not in (call["caller_id"], call["callee_id"]):
+            logger.warning(f"User {user_id} tried to reject call {call_id} without being a participant")
             return
 
         reason = data.get("reason", "rejected")
@@ -254,10 +284,16 @@ class CallManager:
 
     async def _handle_call_end(self, user_id: str, data: dict):
         """Обработка завершения звонка"""
-        call_id = data["call_id"]
+        call_id = data.get("call_id")
+        if not call_id:
+            return
         call = self.active_calls.get(call_id)
 
         if not call:
+            return
+
+        if user_id not in (call["caller_id"], call["callee_id"]):
+            logger.warning(f"User {user_id} tried to end call {call_id} without being a participant")
             return
 
         # Уведомляем второго участника о завершении
@@ -282,7 +318,9 @@ class CallManager:
 
     async def _handle_call_timeout(self, user_id: str, data: dict):
         """Обработка таймаута звонка"""
-        call_id = data["call_id"]
+        call_id = data.get("call_id")
+        if not call_id:
+            return
         call = self.active_calls.get(call_id)
 
         if not call or call["caller_id"] != user_id:
@@ -370,18 +408,25 @@ class CallManager:
         else:
             if user_id not in self.pending_messages:
                 self.pending_messages[user_id] = []
-            self.pending_messages[user_id].append(message)
+            # Cap pending messages per user to prevent memory exhaustion
+            if len(self.pending_messages[user_id]) >= self.MAX_PENDING_PER_USER:
+                self.pending_messages[user_id].pop(0)  # Drop oldest
+            self.pending_messages[user_id].append({"msg": message, "ts": time.time()})
             logger.debug(f"Buffered message for {user_id} (not on calls WS yet)")
             return True
 
     async def _flush_pending_messages(self, user_id: str):
-        """Отправка буферизированных сообщений при подключении"""
+        """Отправка буферизированных сообщений при подключении (с TTL)"""
         if user_id in self.pending_messages:
+            now = time.time()
             messages = self.pending_messages.pop(user_id)
-            for msg in messages:
+            for entry in messages:
+                if now - entry["ts"] > PENDING_MESSAGE_TTL_SECONDS:
+                    logger.debug(f"Discarding expired pending message for {user_id}")
+                    continue
                 if user_id in self.call_websockets:
                     try:
-                        await self.call_websockets[user_id].send_json(msg)
+                        await self.call_websockets[user_id].send_json(entry["msg"])
                     except Exception:
                         break
 
@@ -393,6 +438,21 @@ class CallManager:
         db: Session = SessionLocal()
         try:
             now = datetime.now(timezone.utc)
+            existing = db.query(models.CallLog).filter(
+                models.CallLog.call_id == call_id
+            ).first()
+            if existing:
+                # Update the existing row instead of inserting a duplicate
+                # (accept → end would otherwise create two history entries)
+                existing.ended_at = now
+                if duration is not None:
+                    existing.duration = int(duration)
+                if ended_by:
+                    existing.ended_by = ended_by
+                db.commit()
+                logger.debug(f"Call {call_id} updated in DB with action: {action}")
+                return
+
             call_log = models.CallLog(
                 call_id=call_id,
                 caller_id=call["caller_id"],
@@ -400,7 +460,7 @@ class CallManager:
                 call_type=call["call_type"],
                 started_at=call["started_at"],
                 ended_at=now,
-                duration=duration or 0,
+                duration=int(duration) if duration else 0,
                 ended_by=ended_by or call["caller_id"]
             )
 

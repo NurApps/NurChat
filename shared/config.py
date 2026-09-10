@@ -1,16 +1,19 @@
+import secrets
+import sys
 from pathlib import Path
 from typing import Any
 
 import sys
 
 # Должно быть самым первым — до любого вывода в консоль
+
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(errors='replace')
 if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(errors='replace')
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -45,20 +48,54 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = ""
     S3_BUCKET: str = ""
     S3_REGION: str = "us-east-1"
+
+    # Connection pool (0 = sensible default per dialect).
+    # Supabase free allows ~60 direct connections — keep pool small.
+    DATABASE_POOL_SIZE: int = 0
+    DATABASE_MAX_OVERFLOW: int = 0
+    SERVER_HOST: str = "127.0.0.1"
+    SERVER_PORT: int = 8000
+    DEBUG: bool = False
+    # Deaf relay = conductor, not storage: delete message rows after
+    # delivery to all recipients (history lives on devices only).
+    # True by default — storing other people's plaintext is not our job.
+    RELAY_DEAF: bool = True
+    MESSAGE_RETENTION_HOURS: int = 48
+    CLIENT_HOST: str = "localhost"
     CLIENT_PORT: int = 8001
     MEDIA_ROOT: str = "media"
     MAX_FILE_SIZE: int = 50 * 1024 * 1024
     FILE_TTL_DAYS: int = 30
-    ENCRYPTION_KEY: str = "your_default_encryption_key_here"
-    JWT_SECRET_KEY: str = ""  # Auto-generated if empty, separate from ENCRYPTION_KEY
+    ENCRYPTION_KEY: str = ""
+    JWT_SECRET_KEY: str = ""
     WS_RECONNECT_TIMEOUT: int = 5
     CLEANUP_INTERVAL_HOURS: int = 6
     ORPHANED_CLEANUP_HOURS: int = 12
     REDIS_URL: str = "redis://localhost:6379/0"
-    USE_REDIS: bool = False
+    USE_REDIS: bool = True
     ENABLE_METRICS: bool = False
     LOG_LEVEL: str = "INFO"
     LOG_TO_FILE: bool = True
+    TOTP_MASTER_KEY: str = ""
+
+
+    WS_CONNECTIONS_WARN: int = 100
+    ERROR_RATE_WARN: float = 5.0
+
+    # Privacy: store client IPs in audit log / security logs.
+    # False = deaf relay sees minimum (no IP column filled).
+    # IP rate-limiting still works in-memory regardless of this flag.
+    LOG_IPS: bool = False
+
+    VAPID_PRIVATE_KEY: str = ""
+    VAPID_CLAIM_EMAIL: str = "admin@nurchat.app"
+
+    # WebRTC (calls): STUN/TURN/ICE. Пусто = только публичные STUN.
+    STUN_SERVERS: str = "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
+    WEBRTC_ICE_SERVERS: str = ""
+    TURN_SERVERS: str = ""
+    TURN_USERNAME: str = ""
+    TURN_CREDENTIAL: str = "CHANGE_ME_IN_PRODUCTION"
 
     @classmethod
     def settings_customise_sources(
@@ -74,6 +111,17 @@ class Settings(BaseSettings):
         from pydantic_settings.sources import DotEnvSettingsSource
 
         env_path = Path(__file__).resolve().parent.parent / ".env"
+
+        import sys
+
+        from pydantic_settings.sources import DotEnvSettingsSource
+
+        if getattr(sys, 'frozen', False):
+            exe_dir = Path(sys.executable).resolve().parent
+            env_path = exe_dir / ".env"
+        else:
+            env_path = Path(__file__).resolve().parent.parent / ".env"
+
         if not env_path.exists():
             env_path = Path(os.getcwd()) / ".env"
 
@@ -89,7 +137,6 @@ class Settings(BaseSettings):
             return v.lower() not in ("0", "false", "no", "off", "release")
         return bool(v)
 
-# Создаем необходимые директории
 def create_directories():
     directories = [
         "media",
@@ -99,12 +146,10 @@ def create_directories():
         "media/documents",
         "media/video_circles",
         "logs",
-        "legal"
     ]
     for directory in directories:
         Path(directory).mkdir(parents=True, exist_ok=True)
 
-create_directories()
 settings = Settings()
 
 _env_written = False
@@ -161,5 +206,24 @@ if _env_written:
             logging.getLogger("nurchat").info("Auto-generated keys written to %s", _env_path)
     except Exception as _exc:
         logging.getLogger("nurchat").warning("Failed to write .env: %s", _exc)
+
+_keys_file = Path(__file__).resolve().parent.parent / ".env"
+
+def _ensure_key(name: str, value: str, generator) -> str:
+    if value:
+        return value
+    generated = generator()
+    try:
+        existing = _keys_file.read_text(encoding="utf-8") if _keys_file.exists() else ""
+        if name not in existing:
+            with open(_keys_file, "a", encoding="utf-8") as f:
+                f.write(f"\n{name}={generated}\n")
+            print(f"[NurChat] Generated {name} and saved to .env")
+    except Exception as e:
+        print(f"[NurChat] Warning: could not persist {name} to .env: {e}")
+    return generated
+
+settings.ENCRYPTION_KEY = _ensure_key("ENCRYPTION_KEY", settings.ENCRYPTION_KEY, lambda: secrets.token_hex(32))
+settings.JWT_SECRET_KEY = _ensure_key("JWT_SECRET_KEY", settings.JWT_SECRET_KEY, lambda: secrets.token_hex(32))
 
 ENCRYPTION_KEY = settings.ENCRYPTION_KEY.encode()

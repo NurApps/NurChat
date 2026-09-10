@@ -2,10 +2,16 @@
 
 import base64
 import hashlib
+
+"""Security utilities: Argon2id hashing, TOTP 2FA, backup codes, token blacklist."""
+
+import base64
 import io
 import json
 import secrets
 import string
+
+from datetime import datetime, timezone
 
 import pyotp
 import qrcode
@@ -13,6 +19,12 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id as Argon2idKDF
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.argon2 import Argon2id as Argon2idKDF
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+from shared.config import settings
 
 # ── Argon2id password hashing ──
 
@@ -148,3 +160,122 @@ def verify_backup_code(plain_code: str, hashed_json: str) -> tuple[bool, str]:
             return True, json.dumps(hashes)
 
     return False, hashed_json
+
+
+
+# ── Master-key TOTP encryption (not password-dependent) ──
+
+_TOTP_MASTER_KEY = settings.TOTP_MASTER_KEY
+if not _TOTP_MASTER_KEY:
+    import logging
+
+    # Auto-generate and persist to .env
+    _TOTP_MASTER_KEY = secrets.token_urlsafe(32)
+    try:
+        from pathlib import Path
+        _env_file = Path(__file__).resolve().parent.parent.parent / ".env"
+        existing = _env_file.read_text(encoding="utf-8") if _env_file.exists() else ""
+        if "TOTP_MASTER_KEY" not in existing:
+            with open(_env_file, "a", encoding="utf-8") as f:
+                f.write(f"\nTOTP_MASTER_KEY={_TOTP_MASTER_KEY}\n")
+            logging.getLogger("nurchat").info("TOTP_MASTER_KEY generated and saved to .env")
+    except Exception as e:
+        logging.getLogger("nurchat").warning(f"Could not persist TOTP_MASTER_KEY: {e}")
+
+def _get_totp_cipher() -> Fernet:
+    master_key = _TOTP_MASTER_KEY or secrets.token_urlsafe(32)
+    key_bytes = master_key.encode("utf-8")
+    if len(key_bytes) < 32:
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b"nurchat_totp_salt_v1",
+            iterations=100000,
+        )
+        key_bytes = base64.urlsafe_b64encode(kdf.derive(key_bytes))
+    else:
+        key_bytes = key_bytes[:32].ljust(32, b"=")
+        key_bytes = base64.urlsafe_b64encode(key_bytes)
+    return Fernet(key_bytes)
+
+
+def encrypt_totp_secret(secret: str) -> str:
+    """Encrypt TOTP secret with master key (not password-dependent)."""
+    fernet = _get_totp_cipher()
+    encrypted = fernet.encrypt(secret.encode("utf-8"))
+    return base64.b64encode(encrypted).decode("utf-8")
+
+
+def decrypt_totp_secret(encrypted_secret: str) -> str | None:
+    """Decrypt TOTP secret with master key."""
+    try:
+        fernet = _get_totp_cipher()
+        encrypted_bytes = base64.b64decode(encrypted_secret.encode("utf-8"))
+        decrypted = fernet.decrypt(encrypted_bytes)
+        return decrypted.decode("utf-8")
+    except Exception:
+        return None
+
+
+# ── Token blacklist (JWT revocation) ──
+# In-memory set backed by persistent DB storage so revocations survive restarts.
+
+_BLACKLIST: set[str] = set()
+_blacklist_loaded = False
+
+
+def _persist_revocation(jti: str, expires_at=None) -> None:
+    try:
+        from server.core.database import SessionLocal
+        from server.core.models import RevokedToken
+        db = SessionLocal()
+        try:
+            if not db.query(RevokedToken).filter(RevokedToken.jti == jti).first():
+                db.add(RevokedToken(jti=jti, expires_at=expires_at))
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        # DB unavailable — in-memory revocation still applies for this process
+        pass
+
+
+def _load_persisted_blacklist() -> None:
+    global _blacklist_loaded
+    if _blacklist_loaded:
+        return
+    _blacklist_loaded = True
+    try:
+        from server.core.database import SessionLocal
+        from server.core.models import RevokedToken
+        db = SessionLocal()
+        try:
+            now = datetime.now(timezone.utc)
+            for row in db.query(RevokedToken.jti).all():
+                _BLACKLIST.add(row[0])
+            # Purge entries whose tokens have already expired —
+            # an expired JWT fails validation anyway, no need to keep it.
+            purged = db.query(RevokedToken).filter(
+                RevokedToken.expires_at.isnot(None),
+                RevokedToken.expires_at < now,
+            ).delete(synchronize_session=False)
+            if purged:
+                db.commit()
+                _BLACKLIST.intersection_update({
+                    j for (j,) in db.query(RevokedToken.jti).all()
+                })
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+def revoke_token(jti: str, expires_at=None) -> None:
+    _BLACKLIST.add(jti)
+    _persist_revocation(jti, expires_at)
+
+def is_token_revoked(jti: str) -> bool:
+    if jti in _BLACKLIST:
+        return True
+    _load_persisted_blacklist()
+    return jti in _BLACKLIST

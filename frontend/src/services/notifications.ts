@@ -1,43 +1,58 @@
-import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification"
+import { platform } from "./platform"
+import { getSettings } from "./userSettings"
+import { initPushNotifications } from "./push"
 
-let permissionGranted = false
+let audioCtx: AudioContext | null = null
 
-export async function initNotifications() {
+function ensureAudioContext(): AudioContext | null {
   try {
-    permissionGranted = await isPermissionGranted()
-    if (!permissionGranted) {
-      const result = await requestPermission()
-      permissionGranted = result === "granted"
+    if (!audioCtx) {
+      const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!Ctor) return null
+      audioCtx = new Ctor()
     }
+    if (audioCtx.state === "suspended") void audioCtx.resume()
+    return audioCtx
   } catch {
-    // Tauri not available (dev mode / browser) — use browser Notification API
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission()
-    }
+    return null
   }
 }
 
-export function sendDesktopNotification(title: string, body: string, chatId?: string) {
-  const doSend = () => {
-    try {
-      // Prefer Tauri plugin
-      sendNotification({ title, body })
-    } catch {
-      // Fallback to browser API
-      if ("Notification" in window && Notification.permission === "granted") {
-        const n = new Notification(title, { body, icon: "/nurchat.png" })
-        if (chatId) {
-          n.onclick = () => {
-            window.location.hash = `#/chat`
-            n.close()
-          }
-        }
-      }
+export function playMessageSound(): void {
+  if (!getSettings().messageSound) return
+  const ctx = ensureAudioContext()
+  if (!ctx) return
+  try {
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = "sine"
+    osc.frequency.value = 880
+    gain.gain.setValueAtTime(0.12, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.2)
+    osc.connect(gain).connect(ctx.destination)
+    osc.onended = () => {
+      osc.disconnect()
+      gain.disconnect()
     }
+    osc.start()
+    osc.stop(ctx.currentTime + 0.2)
+  } catch {
+    /* ignore audio errors */
   }
+}
 
-  // Only notify if window is not focused
-  if (!document.hasFocus()) {
-    doSend()
-  }
+export async function initNotifications(): Promise<boolean> {
+  const granted = await requestNotificationPermission()
+  // Initialize Web Push in background (non-blocking)
+  initPushNotifications().catch(() => {})
+  return granted
+}
+
+export async function requestNotificationPermission(): Promise<boolean> {
+  return platform.requestNotificationPermission()
+}
+
+export async function showNotification(title: string, body: string): Promise<void> {
+  if (!getSettings().desktopNotifications) return
+  await platform.showNotification(title, getSettings().messagePreview ? body : "…")
 }

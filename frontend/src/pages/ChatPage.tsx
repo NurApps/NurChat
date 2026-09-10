@@ -1,29 +1,31 @@
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import { p2pClient } from "../services/p2p"
+
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts"
 import { useChatSocket } from "../hooks/useChatSocket"
 import { useChatMessages } from "../hooks/useChatMessages"
 import { useChatActions } from "../hooks/useChatActions"
 import { useChatTyping } from "../hooks/useChatTyping"
 import { loadKeys as loadE2EKeys, decryptMessage, type E2EKeys } from "../services/e2e"
+
+
+import { useMobile } from "../hooks/useMobile"
+import OfflineBanner from "../components/OfflineBanner"
+import { BottomTabs } from "../components/mobile/BottomTabs"
+import { loadKeys as loadE2EKeys, decryptMessage, type E2EKeys } from "../services/e2e"
+import { initGroupKey } from "../services/groupE2E"
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications } from "../services/notifications"
 import { clearPin } from "../services/pinLock"
 import { avatarUrl } from "../config"
 import { useChatStore } from "../store/chatStore"
 import TopBar from "../components/TopBar"
-import ChatListItem from "../components/ChatListItem"
-import ContactListItem from "../components/ContactListItem"
-import GroupInviteItem from "../components/GroupInviteItem"
 import MessageBubble from "../components/MessageBubble"
 import VirtualizedMessageList from "../components/VirtualizedMessageList"
 import EmojiPicker from "../components/EmojiPicker"
-import AddContactModal from "../components/AddContactModal"
 import CreateChatModal from "../components/CreateChatModal"
-import ForwardModal from "../components/ForwardModal"
 import NotificationToast from "../components/NotificationToast"
 import BookmarksList from "../components/BookmarksList"
 import UserProfileModal from "../components/UserProfileModal"
@@ -35,11 +37,18 @@ import LinkPreview from "../components/LinkPreview"
 import MessageInfoModal from "../components/MessageInfoModal"
 import type { UserResponse, MessageResponse } from "../types"
 
+import { MessageListSkeleton } from "../components/Skeleton"
+import type { UserResponse, MessageResponse } from "../types"
+import ChatSidebar from "../components/ChatSidebar"
+import ChatModals from "../components/ChatModals"
+
 import { getDraft, saveDraft, removeDraft } from "../utils/drafts"
 
 export default function ChatPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+
+  const { isMobile } = useMobile()
 
   const currentUser = useChatStore((s) => s.currentUser)
   const tab = useChatStore((s) => s.tab)
@@ -55,6 +64,17 @@ export default function ChatPage() {
   const input = useChatStore((s) => s.input)
   const showEmoji = useChatStore((s) => s.showEmoji)
   const showStickers = useChatStore((s) => s.showStickers)
+
+  const filteredChats = useMemo(() => {
+    return chats.filter((c) => {
+      if (!search) return true
+      const name = c.is_group ? c.name : c.participants.find((p) => p.id !== currentUser.id)?.username
+      return name?.toLowerCase().includes(search.toLowerCase())
+    })
+  }, [chats, search, currentUser.id])
+
+  const input = useChatStore((s) => s.input)
+  const showEmoji = useChatStore((s) => s.showEmoji)
   const uploading = useChatStore((s) => s.uploading)
   const uploadProgress = useChatStore((s) => s.uploadProgress)
   const toast = useChatStore((s) => s.toast)
@@ -73,6 +93,10 @@ export default function ChatPage() {
   const setInput = useChatStore((s) => s.setInput)
   const setShowEmoji = useChatStore((s) => s.setShowEmoji)
   const setShowStickers = useChatStore((s) => s.setShowStickers)
+
+  const setSelectedChat = useChatStore((s) => s.setSelectedChat)
+  const setInput = useChatStore((s) => s.setInput)
+  const setShowEmoji = useChatStore((s) => s.setShowEmoji)
   const setShowAddContact = useChatStore((s) => s.setShowAddContact)
   const setShowCreateChat = useChatStore((s) => s.setShowCreateChat)
   const setOnlineUsers = useChatStore((s) => s.setOnlineUsers)
@@ -87,6 +111,9 @@ export default function ChatPage() {
   const typingUsers = useChatStore((s) => s.typingUsers)
   const setTypingUsers = useChatStore((s) => s.setTypingUsers)
   const setP2pConnected = useChatStore((s) => s.setP2pConnected)
+
+  const typingUsers = useChatStore((s) => s.typingUsers)
+  const setTypingUsers = useChatStore((s) => s.setTypingUsers)
   const setUploading = useChatStore((s) => s.setUploading)
   const setUploadProgress = useChatStore((s) => s.setUploadProgress)
   const loadChats = useChatStore((s) => s.loadChats)
@@ -97,6 +124,10 @@ export default function ChatPage() {
   const [mentionIndex, setMentionIndex] = useState(-1)
   const [e2eKeys] = useState<E2EKeys | null>(loadE2EKeys)
   const [keyWarning, setKeyWarning] = useState<string | null>(null)
+
+  const [e2eKeys, setE2eKeys] = useState<E2EKeys | null>(null)
+  const [keyWarning, setKeyWarning] = useState<string | null>(null)
+  const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
@@ -104,13 +135,18 @@ export default function ChatPage() {
   const [searchResults, setSearchResults] = useState<MessageResponse[]>([])
   const [searching, setSearching] = useState(false)
 
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [ephemeralSeconds, setEphemeralSeconds] = useState<number | null>(null)
+  const [showEphemeralMenu, setShowEphemeralMenu] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const {
-    messages, setMessages, loadingMore, hasMore, containerRef: messagesContainerRef, endRef: messagesEndRef,
+    messages, setMessages, loadingMore, initialLoading, hasMore, containerRef: messagesContainerRef, endRef: messagesEndRef,
     loadMessages, loadMore, addMessage, updateMessage, setHasMore,
   } = useChatMessages({ currentUser, e2eKeys })
 
@@ -163,11 +199,75 @@ export default function ChatPage() {
     replyTo, setReplyTo, showForward, setShowForward, pinnedMessage, setPinnedMessage,
     handleSend: handleSendAction, handleReply, handleReaction, handleForward, handleEditMessage, handleDeleteMessage,
     handlePinMessage, handlePin, handleMute, handleDeleteChat,
+
+
+  const { wsRef, chatIdRef } = useChatSocket({
+    currentUser, selectedChat,
+    mutedChatIds: useMemo(() => new Set(chats.filter(c => c.is_muted).map(c => c.id)), [chats]),
+    onMessage: useCallback(async (data: any) => {
+      if (data._update) { updateMessage(data.message_id as string, { is_read: true }); return }
+      if (data._delete) { updateMessage(data.message_id as string, { is_deleted: true, deleted_for_all: data.delete_for_all as boolean }); return }
+      if (data._edit) { updateMessage(data.message_id as string, { content: data.content as string }); return }
+      if (data.encrypted_content && e2eKeys && selectedChat) {
+        try {
+          const peer = selectedChat.participants.find((p: any) => p.id !== currentUser.id)
+          if (peer?.public_key) {
+            const envelope = JSON.parse(data.encrypted_content)
+            const plain = await decryptMessage(
+              envelope, e2eKeys, peer.public_key, selectedChat.id,
+            )
+            if (plain) data.content = plain
+          }
+        } catch (e) { console.warn("[WS] decrypt failed:", e) }
+      }
+      addMessage(data as unknown as MessageResponse)
+    }, [addMessage, updateMessage, e2eKeys, currentUser, selectedChat]),
+    onChatUpdate: loadChats,
+    onToast: setToast,
+    onIncomingCall: setIncomingCall,
+    onTypingUsers: socketTypingCb,
+    onOnlineUsers: setOnlineUsers,
+    onMention: useCallback((data) => {
+      setToast({
+        id: `mention_${data.message_id}`,
+        title: `@${data.mentioned_by_username}`,
+        body: `Упомянул(а) вас: ${data.content_preview}`,
+        chatId: data.chat_id,
+      })
+    }, [setToast]),
+    onReactions: useCallback(() => undefined, []),
+    onNavigate: navigate,
+  })
+
+  const { isOnline: offlineQueueIsOnline, pendingCount } = { isOnline: navigator.onLine, pendingCount: 0 }
+
+  const sendWs = useCallback((data: Record<string, unknown>) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(data))
+  }, [wsRef])
+
+  const { sendTyping: sendTypingRaw, typingTimerRef } = useChatTyping(sendWs)
+
+  const sendTyping = useCallback((isTyping: boolean) => {
+    const chatId = useChatStore.getState().selectedChat?.id
+    if (!chatId) return
+    sendTypingRaw(isTyping, chatId)
+  }, [sendTypingRaw])
+
+  const {
+    replyTo, setReplyTo,
+    handleSend: handleSendAction, handleReply, handleReaction, handleEditMessage, handleDeleteMessage,
+    handlePin, handleMute, handleDeleteChat,
   } = useChatActions({
     currentUser, selectedChat, addMessage, setMessages, loadChats,
     sendTyping,
     setErrorToast: (msg) => { if (msg !== null) setErrorToast(msg) },
   })
+
+
+  // Load E2E keys asynchronously
+  useEffect(() => {
+    loadE2EKeys().then(setE2eKeys).catch(() => setE2eKeys(null))
+  }, [])
 
   useEffect(() => {
     loadChats()
@@ -177,11 +277,13 @@ export default function ChatPage() {
   }, [loadChats, loadContacts, loadInvites])
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    const user = JSON.parse(localStorage.getItem("user") || "null")
-    const p2pKeys = localStorage.getItem("p2p_keys")
-    if (user && token && p2pKeys && !p2pClient.isConnected) {
-      p2pClient.connect(user.id, token)
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
     }
   }, [])
 
@@ -204,6 +306,17 @@ export default function ChatPage() {
     })
     return unsub
   }, [selectedChat, setP2pConnected])
+
+    if (!showEphemeralMenu) return
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest(".ephemeral-menu") && !target.closest(".ephemeral-active")) {
+        setShowEphemeralMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [showEphemeralMenu])
 
   useEffect(() => {
     const container = messagesContainerRef.current
@@ -237,6 +350,16 @@ export default function ChatPage() {
     return unsub
   }, [selectedChat, setMessages, currentUser])
 
+    if (!scrollToMessageId) return
+    const el = document.getElementById(`msg-${scrollToMessageId}`)
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+      el.classList.add("msg-highlighted")
+      setTimeout(() => el.classList.remove("msg-highlighted"), 2000)
+      setScrollToMessageId(null)
+    }
+  }, [scrollToMessageId, messages])
+
   useEffect(() => {
     if (selectedChat) chatIdRef.current = selectedChat.id
   }, [selectedChat, chatIdRef])
@@ -245,6 +368,9 @@ export default function ChatPage() {
     const { chats, selectedChat, input } = useChatStore.getState()
     const chat = chats.find((c) => c.id === chatId)
     if (!chat) return
+
+    const idx = filteredChats.findIndex((c) => c.id === chatId)
+    if (idx >= 0) setChatIndex(idx)
 
     setKeyWarning(null)
     if (chat.participants.length === 2) {
@@ -261,12 +387,12 @@ export default function ChatPage() {
     setMessages([])
     setReplyTo(null)
     setShowEmoji(false)
-    setShowStickers(false)
     setHasMore(true)
     setInput(getDraft(chatId))
     api.markAsRead(chatId).catch(() => {})
     loadChats()
     loadMessages(chat)
+  }, [currentUser, loadChats, loadMessages, setMessages, setReplyTo, setHasMore, setSelectedChat, setShowEmoji, setInput, t, filteredChats])
 
     api.getPinnedMessages(chatId)
       .then((pins) => setPinnedMessage(pins.length > 0 ? pins[0].message : null))
@@ -277,6 +403,7 @@ export default function ChatPage() {
       if (peer) p2pClient.initiateDirectConnection(peer.id)
     }
   }, [currentUser, loadChats, loadMessages, setPinnedMessage, setMessages, setReplyTo, setHasMore, setSelectedChat, setShowEmoji, setShowStickers, setInput, t])
+
 
   useEffect(() => {
     const container = messagesContainerRef.current
@@ -342,6 +469,31 @@ export default function ChatPage() {
           (p) => p.id !== currentUser.id && p.username.toLowerCase().includes(mentionQuery.toLowerCase())
         ) || []
         if (candidates.length > 0) { e.preventDefault(); insertMention(candidates[0].username); return }
+
+
+  const chatListRef = useRef<HTMLDivElement>(null)
+  const [chatIndex, setChatIndex] = useState(0)
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (mentionQuery) {
+      const selectedChat = useChatStore.getState().selectedChat
+      const candidates = selectedChat?.participants.filter(
+        (p) => p.id !== currentUser.id && p.username.toLowerCase().includes(mentionQuery.toLowerCase())
+      ) || []
+      if (e.key === "ArrowDown") {
+        e.preventDefault()
+        setMentionIndex((prev) => Math.min(prev + 1, candidates.length - 1))
+        return
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault()
+        setMentionIndex((prev) => Math.max(prev - 1, 0))
+        return
+      }
+      if ((e.key === "Enter" || e.key === "Tab") && candidates.length > 0) {
+        e.preventDefault()
+        insertMention(candidates[Math.max(0, mentionIndex)].username)
+        return
       }
       if (e.key === "Escape") { setMentionQuery(""); setMentionIndex(-1); return }
     }
@@ -351,6 +503,7 @@ export default function ChatPage() {
     }
   }
 
+  const sendingRef = useRef(false)
   const handleSend = useCallback(async () => {
     const input = useChatStore.getState().input
     const text = input.trim()
@@ -363,6 +516,23 @@ export default function ChatPage() {
     setMentionIndex(-1)
     if (chat) removeDraft(chat.id)
   }, [handleSendAction, setInput, setReplyTo])
+
+    // Guard against Enter-spam / double-submit duplicates
+    if (sendingRef.current) return
+    sendingRef.current = true
+    try {
+      const expiresAt = ephemeralSeconds ? new Date(Date.now() + ephemeralSeconds * 1000).toISOString() : undefined
+      const ok = await handleSendAction(input, expiresAt)
+      if (!ok) return // keep input so the user can retry
+      setInput("")
+      setReplyTo(null)
+      setMentionQuery("")
+      setMentionIndex(-1)
+      removeDraft(chat.id)
+    } finally {
+      sendingRef.current = false
+    }
+  }, [handleSendAction, setInput, setReplyTo, ephemeralSeconds])
 
   const handleExportChat = useCallback(async () => {
     if (!selectedChat) return
@@ -383,8 +553,24 @@ export default function ChatPage() {
     onSearch: () => setShowGlobalSearch(true),
     onNewChat: () => setShowAddContact(true),
     onExport: handleExportChat,
+    onFindInChat: () => { setSearchQuery(""); setScrollToMessageId(null) },
+    onJumpToLatest: () => { if (selectedChat) { setTab("chats") } },
+    onPrevChat: () => {
+      const list = filteredChats
+      if (list.length === 0) return
+      const idx = Math.max(0, chatIndex - 1)
+      setChatIndex(idx)
+      setSelectedChat(list[idx])
+    },
+    onNextChat: () => {
+      const list = filteredChats
+      if (list.length === 0) return
+      const idx = Math.min(list.length - 1, chatIndex + 1)
+      setChatIndex(idx)
+      setSelectedChat(list[idx])
+    },
     onEscape: () => {
-      setShowEmoji(false); setShowStickers(false); setShowAddContact(false); setShowCreateChat(false)
+      setShowEmoji(false); setShowAddContact(false); setShowCreateChat(false)
       setShowForward(null); setShowGlobalSearch(false); setShowGroupSettings(false); setProfileUser(null)
     },
   })
@@ -424,6 +610,7 @@ export default function ChatPage() {
     } catch { setErrorToast(t("errors.remoteConnect")) }
   }, [currentUser.id, loadChats, setMessages, setErrorToast, setShowAddContact, setSelectedChat, setTab, t])
 
+
   const handleCreateChat = useCallback(async (participantIds: string[], name: string | null, isSecret?: boolean, secretTtl?: number) => {
     try {
       const isGroup = participantIds.length > 1
@@ -442,6 +629,30 @@ export default function ChatPage() {
       else { await api.addBookmark(messageId, selectedChat.id); setBookmarkedIds((prev) => new Set(prev).add(messageId)) }
     } catch { setErrorToast(isBookmarked ? t("errors.removeBookmark") : t("errors.addBookmark")) }
   }, [selectedChat, bookmarkedIds, setErrorToast, setBookmarkedIds, t])
+
+
+      // Initialize group E2E key for new group chats
+      if (isGroup && e2eKeys) {
+        try {
+          const allIds = [...participantIds]
+          const users = await Promise.all(allIds.map(id => api.getUser(id).catch(() => null)))
+          const participants = users
+            .filter((u): u is NonNullable<typeof u> => u !== null)
+            .map(u => ({ user_id: u.id, public_key: u.public_key }))
+          if (participants.length > 0) {
+            const hexToBytesLocal = (hex: string) => {
+              const bytes = new Uint8Array(hex.length / 2)
+              for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16)
+              return bytes
+            }
+            await initGroupKey(chat.id, hexToBytesLocal(e2eKeys.privateKeyHex), currentUser.id, participants)
+          }
+        } catch (e) { console.error("Group key init failed:", e) }
+      }
+    } catch { setErrorToast(t("errors.createChat")) }
+  }, [loadChats, setMessages, setErrorToast, setShowCreateChat, setSelectedChat, setTab, t, e2eKeys, currentUser.id])
+
+  const handleEmojiSelect = useCallback((emoji: string) => setInput((prev) => prev + emoji), [setInput])
 
   const handleSearchMessages = useCallback(async () => {
     if (!searchQuery.trim() || !selectedChat) return
@@ -479,20 +690,32 @@ export default function ChatPage() {
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop())
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+        setRecording(false)
         setRecordingTime(0)
-        if (chunks.length === 0 || !selectedChat) return
+        // Read the chat at stop-time, not start-time — the user may
+        // have switched chats while recording.
+        const targetChat = useChatStore.getState().selectedChat
+        if (chunks.length === 0 || !targetChat) return
         const blob = new Blob(chunks, { type: mr.mimeType })
         const file = new File([blob], `voice_${Date.now()}.webm`, { type: mr.mimeType })
         setUploading(true)
         try {
           const uploaded = await api.uploadFile(file, "voice")
           const msg = await api.sendMessage(selectedChat.id, t("chat.voiceMessage"), "voice", uploaded.id)
+
+          const msg = await api.sendMessage(targetChat.id, t("chat.voiceMessage"), "voice", uploaded.id)
           addMessage(msg); loadChats()
         } catch { console.error("Voice failed") }
         setUploading(false)
       }
-      mr.start(); setMediaRecorder(mr); setRecording(true)
-      recordingTimerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000)
+      const MAX_DURATION = 300
+      mr.start(); setMediaRecorder(mr); setRecording(true); setRecordingTime(0)
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime((t) => {
+          if (t + 1 >= MAX_DURATION) { mr.stop(); return MAX_DURATION }
+          return t + 1
+        })
+      }, 1000)
     } catch { console.error("Microphone denied") }
   }, [selectedChat, loadChats, addMessage, setUploading, t])
 
@@ -516,18 +739,12 @@ export default function ChatPage() {
   const handleProfile = useCallback(() => navigate("/profile"), [navigate])
   const handleLogout = useCallback(() => { api.clearToken(); clearPin(); navigate("/login", { replace: true }) }, [navigate])
   const handleSettings = useCallback(() => navigate("/settings"), [navigate])
-  const handleLegal = useCallback(() => navigate("/legal"), [navigate])
-  const handleP2P = useCallback(() => navigate("/p2p"), [navigate])
 
   const mentionCandidates = mentionQuery && selectedChat
     ? selectedChat.participants.filter((p) => p.id !== currentUser.id && p.username.toLowerCase().includes(mentionQuery.toLowerCase()))
     : []
 
-  const filteredChats = chats.filter((c) => {
-    if (!search) return true
-    const name = c.is_group ? c.name : c.participants.find((p) => p.id !== currentUser.id)?.username
-    return name?.toLowerCase().includes(search.toLowerCase())
-  })
+  const unreadCount = chats.reduce((sum, c) => sum + ((c as Record<string, unknown>).unread_count as number || 0), 0)
 
   const selectedChatName = selectedChat
     ? selectedChat.is_group ? (selectedChat.name || t("chat.chats")) : selectedChat.participants.find((p) => p.id !== currentUser.id)?.username || t("chat.chats")
@@ -545,6 +762,7 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
+      <OfflineBanner isOnline={offlineQueueIsOnline} pendingCount={pendingCount} />
       <TopBar
         username={currentUser.username}
         avatarChar={currentUser.username[0]?.toUpperCase() || "?"}
@@ -553,8 +771,6 @@ export default function ChatPage() {
         onLogout={handleLogout}
         onSwitchAccount={handleLogout}
         onSettings={handleSettings}
-        onLegal={handleLegal}
-        onP2P={handleP2P}
       />
 
       <NotificationToast toast={toast} onClose={() => setToast(null)} onClick={(chatId) => { setToast(null); if (chatId) handleSelectChat(chatId) }} />
@@ -565,6 +781,15 @@ export default function ChatPage() {
             <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
           </svg>
           <span>{errorToast}</span>
+        </div>
+      )}
+
+      {!isOnline && (
+        <div className="offline-banner" role="alert">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" /><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" /><path d="M10.71 5.05A16 16 0 0 1 22.56 9" /><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" />
+          </svg>
+          <span>{t("common.serverUnavailable")}</span>
         </div>
       )}
 
@@ -674,11 +899,27 @@ export default function ChatPage() {
           </div>
         </div>
 
+        {/* Sidebar — hidden on mobile when chat selected */}
+        {!(isMobile && selectedChat) && (
+        <ChatSidebar
+          tab={tab} setTab={setTab} search={search} setSearch={setSearch}
+          chats={chats} filteredChats={filteredChats} contacts={contacts} invites={invites}
+          currentUser={currentUser} chatListRef={chatListRef}
+          scrollToMessageId={scrollToMessageId} setScrollToMessageId={setScrollToMessageId}
+          setSelectedChat={setSelectedChat} setShowCreateChat={setShowCreateChat}
+          setShowAddContact={setShowAddContact}
+          handleSelectChat={handleSelectChat} handlePin={handlePin}
+          handleMute={handleMute} handleDeleteChat={handleDeleteChat}
+          handleRemoveContact={handleRemoveContact} handleStartChat={handleStartChat}
+          handleAcceptInvite={handleAcceptInvite} handleDeclineInvite={handleDeclineInvite}
+        />
+        )}
+
         {/* Main */}
-        <div className="chat-main">
+        <div className="chat-main" role="main" id="main-content">
           {!selectedChat ? (
-            <div className="chat-placeholder">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+            <div className="chat-placeholder" role="status">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="1.5" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
               <h3>NurChat</h3>
               <p>{t("chat.placeholder")}</p>
             </div>
@@ -686,6 +927,11 @@ export default function ChatPage() {
             <div className="chat-window">
               {/* Header */}
               <div className="chat-header">
+                {isMobile && (
+                  <button className="ch-btn mobile-back" onClick={() => setSelectedChat(null)} aria-label={t("common.back", "Назад")}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
+                  </button>
+                )}
                 <div className="ch-avatar clickable"
                   onClick={() => { if (!isSelectedGroup) { const peer = selectedChat.participants.find(p => p.id !== currentUser.id); if (peer) handleViewProfile(peer) } }}>
                   {selectedChatAvatar}
@@ -695,7 +941,7 @@ export default function ChatPage() {
                     onClick={() => { if (!isSelectedGroup) { const peer = selectedChat.participants.find(p => p.id !== currentUser.id); if (peer) handleViewProfile(peer) } }}>
                     {selectedChatName}
                   </span>
-                  <span className="ch-status">
+                  <span className="ch-status" role="status" aria-live="polite">
                     {typingNames.length > 0
                       ? `${typingNames.length > 1 ? t("chat.typingPlural") : t("chat.typingSingular")} ${typingNames.join(", ")}...`
                       : isSelectedGroup
@@ -718,7 +964,28 @@ export default function ChatPage() {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   </button>
                   <button className="ch-btn" title={t("common.globalSearch")} onClick={() => setShowGlobalSearch(true)}>
+
+                        ? `${typingNames.length > 1 ? t("chat.typingPlural") : t("chat.typingSingular")} ${typingNames.join(", ")}...`
+                        : isSelectedGroup
+                          ? `${selectedChat.participants.length} ${t("chat.participants")}`
+                          : (() => {
+                              const peer = selectedChat.participants.find((p) => p.id !== currentUser.id)
+                              const peerId = peer?.id || ""
+                              const isOnline = onlineUsers[peerId]
+                              if (isOnline) return t("common.online")
+                              return t("common.offline")
+                            })()}
+                  </span>
+                </div>
+                <div className="ch-actions">
+                  <button className="ch-btn" title={t("chat.searchInChat")} aria-label={t("chat.searchInChat")} onClick={() => setSearchQuery("")}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                  </button>
+                  <button className="ch-btn" title={t("common.globalSearch")} aria-label={t("common.globalSearch")} onClick={() => setShowGlobalSearch(true)}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                  </button>
+                  <button className="ch-btn" title={t("chat.invite")} aria-label={t("chat.invite")} onClick={() => setShowInviteModal(true)}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
                   </button>
                   {isSelectedGroup && (
                     <button className="ch-btn" title={t("common.groupSettings")} onClick={() => setShowGroupSettings(true)}>
@@ -728,20 +995,38 @@ export default function ChatPage() {
                   {!isSelectedGroup && (
                     <>
                       <button className="ch-btn" title={t("call.audioCall")} onClick={() => {
+
+                    <>
+                      <button className="ch-btn" title={t("common.groupSettings")} aria-label={t("common.groupSettings")} onClick={() => setShowGroupSettings(true)}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                      </button>
+                    </>
+                  )}
+                  {!isSelectedGroup && (
+                    <>
+                      <button className="ch-btn" title={t("call.audioCall")} aria-label={t("call.audioCall")} onClick={() => {
                         const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
-                        if (peer) navigate(`/call/${peer.id}/audio`)
+                        if (peer) {
+                          navigate(`/call/${peer.id}/audio`)
+                        }
                       }}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
                       </button>
                       <button className="ch-btn" title={t("call.videoCall")} onClick={() => {
+
+                      <button className="ch-btn" title={t("call.videoCall")} aria-label={t("call.videoCall")} onClick={() => {
                         const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
-                        if (peer) navigate(`/call/${peer.id}/video`)
+                        if (peer) {
+                          navigate(`/call/${peer.id}/video`)
+                        }
                       }}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg>
                       </button>
                     </>
                   )}
                   <button className="ch-btn" title={t("chat.export")} onClick={handleExportChat}>
+
+                  <button className="ch-btn" title={t("chat.export")} aria-label={t("chat.export")} onClick={handleExportChat}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                   </button>
                 </div>
@@ -754,7 +1039,7 @@ export default function ChatPage() {
                     <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
                   </svg>
                   <span>{keyWarning}</span>
-                  <button onClick={() => setKeyWarning(null)} style={{ marginLeft: "auto", background: "none", border: "none", color: "#ff9800", cursor: "pointer", padding: 4 }}>×</button>
+                  <button onClick={() => setKeyWarning(null)} style={{ marginLeft: "auto", background: "none", border: "none", color: "#ff9800", cursor: "pointer", padding: 4 }}>Г—</button>
                 </div>
               )}
 
@@ -790,6 +1075,12 @@ export default function ChatPage() {
                     <input type="text" placeholder={t("chat.searchMessages")} value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearchMessages()} autoFocus />
                     <button className="search-btn" onClick={handleSearchMessages} disabled={searching}>{searching ? "..." : t("chat.find")}</button>
+
+                {searchQuery && (
+                  <div className="search-bar" role="search" aria-label={t("chat.searchMessages")}>
+                    <input type="text" placeholder={t("chat.searchMessages")} value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSearchMessages()} autoFocus aria-label={t("chat.searchMessages")} />
+                    <button className="search-btn" onClick={handleSearchMessages} disabled={searching} aria-label={t("chat.find")}>{searching ? "..." : t("chat.find")}</button>
                     <button className="search-close" onClick={() => { setSearchQuery(""); setSearchResults([]) }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     </button>
@@ -801,8 +1092,8 @@ export default function ChatPage() {
                     {searchResults.map((msg) => (
                       <MessageBubble key={msg.id} message={msg} currentUser={currentUser} isMyMessage={msg.user_id === currentUser.id}
                         reactions={msg.reactions} onReply={(id) => handleReply(id, messages)} onDelete={handleDeleteMessage}
-                        onForward={(id) => setShowForward(id)} onReaction={handleReaction} onEdit={handleEditMessage}
-                        onViewProfile={handleViewProfile} onBookmark={handleBookmark} isBookmarked={bookmarkedIds.has(msg.id)}
+                        onReaction={handleReaction} onEdit={handleEditMessage}
+                        onViewProfile={handleViewProfile}
                         highlightQuery={searchQuery} onShowInfo={setShowMessageInfo} />
                     ))}
                   </div>
@@ -812,6 +1103,11 @@ export default function ChatPage() {
 
                 {!searchQuery && loadingMore && (
                   <div className="messages-loading"><div className="messages-spinner" /><span>{t("chat.loading")}</span></div>
+
+                )}
+
+                {!searchQuery && initialLoading && messages.length === 0 && (
+                  <MessageListSkeleton />
                 )}
 
                 {!searchQuery && messages.length > 0 && (
@@ -819,15 +1115,11 @@ export default function ChatPage() {
                     messages={messages}
                     currentUser={currentUser}
                     reactions={messages.reduce((acc, m) => { if (m.reactions) acc[m.id] = m.reactions; return acc }, {} as Record<string, Record<string, string[]>>)}
-                    bookmarkedIds={bookmarkedIds}
                     onReply={(id) => handleReply(id, messages)}
                     onDelete={handleDeleteMessage}
-                    onForward={(id) => setShowForward(id)}
                     onReaction={handleReaction}
                     onEdit={handleEditMessage}
                     onViewProfile={handleViewProfile}
-                    onBookmark={handleBookmark}
-                    onPin={handlePinMessage}
                     onShowInfo={setShowMessageInfo}
                   />
                 )}
@@ -846,13 +1138,7 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {(() => {
-                const urlMatch = input.match(/https?:\/\/[^\s]+/)
-                if (urlMatch && !input.includes("\n")) return <div style={{ padding: "0 12px" }}><LinkPreview url={urlMatch[0]} /></div>
-                return null
-              })()}
-
-              <div className="chat-input-area" style={{ position: "relative" }}>
+              <div className="chat-input-area" style={{ position: "relative" }} role="form" aria-label={t("chat.messagePlaceholder")}>
                 {mentionCandidates.length > 0 && (
                   <div className="mention-dropdown">
                     {mentionCandidates.map((u) => (
@@ -869,9 +1155,61 @@ export default function ChatPage() {
                 <button className="input-btn" title={t("common.sticker")} onClick={() => setShowStickers(!showStickers)} disabled={recording || uploading}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="10" r="1.5" fill="currentColor" /><circle cx="15" cy="10" r="1.5" fill="currentColor" /><path d="M9 15c1 1 5 1 6 0" /></svg>
                 </button>
+
+                <button className="input-btn" title={t("common.emoji")} onClick={() => setShowEmoji(!showEmoji)} disabled={recording || uploading} aria-expanded={showEmoji}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
+                </button>
                 <button className="input-btn" title={t("common.file")} disabled={recording || uploading} onClick={handleFilePick}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
                 </button>
+                <div style={{ position: "relative" }}>
+                  <button className={`input-btn ${ephemeralSeconds ? "ephemeral-active" : ""}`}
+                    title={t("chat.ephemeral")}
+                    disabled={recording || uploading}
+                    onClick={() => setShowEphemeralMenu(!showEphemeralMenu)}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12 6 12 12 16 14" />
+                      {ephemeralSeconds && <circle cx="12" cy="12" r="10" stroke="var(--tg-blue)" strokeWidth="3" strokeDasharray="62.8" strokeDashoffset="0" style={{ animation: "ephemeral-pulse 2s ease-in-out infinite" }} />}
+                    </svg>
+                    {ephemeralSeconds && <span className="ephemeral-badge" style={{
+                      position: "absolute", top: -4, right: -4, width: 16, height: 16,
+                      borderRadius: "50%", background: "var(--tg-blue)", color: "#fff",
+                      fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700,
+                    }}>{ephemeralSeconds >= 60 ? `${ephemeralSeconds / 60}m` : `${ephemeralSeconds}s`}</span>}
+                  </button>
+                  {showEphemeralMenu && (
+                    <div className="ephemeral-menu" style={{
+                      position: "absolute", bottom: "100%", left: 0, marginBottom: 8,
+                      background: "var(--bg)", borderRadius: 12, boxShadow: "0 4px 24px rgba(0,0,0,.2)",
+                      padding: "8px 0", zIndex: 1000, minWidth: 160,
+                    }}>
+                      <div style={{ padding: "6px 16px", fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>{t("chat.ephemeralTitle")}</div>
+                      {[
+                        { label: t("chat.ephemeralOff"), value: null },
+                        { label: t("chat.ephemeral5s"), value: 5 },
+                        { label: t("chat.ephemeral10s"), value: 10 },
+                        { label: t("chat.ephemeral30s"), value: 30 },
+                        { label: t("chat.ephemeral1m"), value: 60 },
+                        { label: t("chat.ephemeral5m"), value: 300 },
+                        { label: t("chat.ephemeral1h"), value: 3600 },
+                      ].map((opt) => (
+                        <div key={String(opt.value)} className="ephemeral-option" onClick={() => { setEphemeralSeconds(opt.value); setShowEphemeralMenu(false) }}
+                          style={{
+                            padding: "8px 16px", cursor: "pointer", fontSize: 14,
+                            color: ephemeralSeconds === opt.value ? "var(--tg-blue)" : "var(--text)",
+                            background: ephemeralSeconds === opt.value ? "var(--hover-bg)" : "transparent",
+                            fontWeight: ephemeralSeconds === opt.value ? 600 : 400,
+                          }}
+                          onMouseEnter={(e) => { if (ephemeralSeconds !== opt.value) e.currentTarget.style.background = "var(--hover-bg)" }}
+                          onMouseLeave={(e) => { if (ephemeralSeconds !== opt.value) e.currentTarget.style.background = "transparent" }}
+                        >
+                          {opt.label}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 {uploading ? (
                   <div className="chat-input-uploading">
@@ -898,39 +1236,59 @@ export default function ChatPage() {
 
                 {!recording && !uploading && (
                   input.trim() ? (
-                    <button className="send-btn" onClick={handleSend}>
+                    <button className="send-btn" onClick={handleSend} aria-label={t("common.send")}>
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                     </button>
                   ) : (
                     <button className={`input-btn ${recording ? "record-active" : ""}`} title={t("common.voice")} onClick={startRecording}>
+
+                    <button className={`input-btn ${recording ? "record-active" : ""}`} title={t("common.voice")} aria-label={t("common.voice")} onClick={startRecording}>
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
                     </button>
                   )
                 )}
                 {showEmoji && <EmojiPicker onSelect={handleEmojiSelect} onClose={() => setShowEmoji(false)} />}
-                {showStickers && <StickerPicker onSelect={(sticker) => { setInput((prev) => prev + sticker); setShowStickers(false); inputRef.current?.focus() }} />}
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Modals */}
-      {showAddContact && <AddContactModal existingContactIds={contacts.map((c) => c.contact_user?.id).filter(Boolean)} currentUserId={currentUser.id} onAdd={handleAddContact} onAddRemote={handleAddRemoteContact} onClose={() => setShowAddContact(false)} />}
-      {showCreateChat && <CreateChatModal currentUserId={currentUser.id} onCreate={handleCreateChat} onClose={() => setShowCreateChat(false)} />}
-      {showForward && <ForwardModal messageId={showForward} sourceChatId={selectedChat?.id} onForward={handleForward} onClose={() => setShowForward(null)} />}
-      {profileUser && <UserProfileModal user={profileUser} onClose={() => setProfileUser(null)} />}
-      {showGroupSettings && selectedChat && selectedChat.is_group && (
-        <GroupSettings chat={selectedChat} currentUser={currentUser} onClose={() => setShowGroupSettings(false)} onUpdated={loadChats} />
+      {isMobile && (
+        <BottomTabs
+          activeTab={tab}
+          onTabChange={(newTab) => {
+            setTab(newTab as "chats" | "calls" | "contacts" | "settings")
+            if (newTab === "chats") navigate("/chat")
+            if (newTab === "settings") navigate("/settings")
+            if (newTab === "calls") navigate("/calls")
+            if (newTab === "contacts") navigate("/contacts")
+          }}
+          badges={{
+            chats: unreadCount,
+          }}
+        />
       )}
-      {showGlobalSearch && (
-        <GlobalSearch chats={chats} onSelect={(chatId: string) => {
+
+      <ChatModals
+        showAddContact={showAddContact} contacts={contacts} currentUser={currentUser}
+        onAddContact={handleAddContact} onCloseAddContact={() => setShowAddContact(false)}
+        showCreateChat={showCreateChat} onCreateChat={handleCreateChat}
+        onCloseCreateChat={() => setShowCreateChat(false)}
+        profileUser={profileUser} onCloseProfile={() => setProfileUser(null)}
+        showGroupSettings={showGroupSettings} selectedChat={selectedChat}
+        onCloseGroupSettings={() => setShowGroupSettings(false)} onGroupUpdated={loadChats}
+        showGlobalSearch={showGlobalSearch} chats={chats}
+        onSelectGlobalSearch={(chatId, messageId) => {
           const chat = chats.find(c => c.id === chatId)
           if (chat) { setSelectedChat(chat); setTab("chats") }
+          if (messageId) setScrollToMessageId(messageId)
           setShowGlobalSearch(false)
-        }} onClose={() => setShowGlobalSearch(false)} />
-      )}
-      {showMessageInfo && <MessageInfoModal messageId={showMessageInfo} onClose={() => setShowMessageInfo(null)} />}
+        }}
+        onCloseGlobalSearch={() => setShowGlobalSearch(false)}
+        showMessageInfo={showMessageInfo} onCloseMessageInfo={() => setShowMessageInfo(null)}
+        showInviteModal={showInviteModal} onCloseInviteModal={() => setShowInviteModal(false)}
+      />
     </div>
   )
 }

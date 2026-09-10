@@ -1,147 +1,78 @@
 import { useState, useEffect } from "react"
-import { generateSafetyNumber, verifySafetyNumber } from "../services/safetyNumber"
+import { generateSafetyNumber } from "../services/e2e"
 import { loadKeys } from "../services/e2e"
-import { markKeyVerified } from "../services/keyVerification"
+import api from "../services/api"
 
 interface Props {
-  theirPublicKey: string
-  theirUsername: string
+  userId: string
+  username: string
   onClose: () => void
 }
 
-export default function SafetyNumberModal({ theirPublicKey, theirUsername, onClose }: Props) {
+export default function SafetyNumberModal({ userId, username, onClose }: Props) {
   const [safetyNumber, setSafetyNumber] = useState<string | null>(null)
-  const [verifyInput, setVerifyInput] = useState("")
-  const [verified, setVerified] = useState<boolean | null>(null)
-  const [copied, setCopied] = useState(false)
-  const [showQR, setShowQR] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const keys = loadKeys()
-    if (keys) {
-      generateSafetyNumber(keys.publicKeyHex, theirPublicKey).then(setSafetyNumber)
-    }
-  }, [theirPublicKey])
+    const load = async () => {
+      try {
+        const myKeys = await loadKeys()
+        if (!myKeys) {
+          setError("Ключи не найдены")
+          return
+        }
 
-  const handleCopy = () => {
-    if (safetyNumber) {
-      navigator.clipboard.writeText(safetyNumber.replace(/\s/g, ""))
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
+        const remoteKeys = await api.getIdentityKeys(userId)
+        const myIdentityKey = myKeys.signingPublicHex
+        const theirIdentityKey = remoteKeys.identity_key
 
-  const handleVerify = async () => {
-    const keys = loadKeys()
-    if (!keys || !safetyNumber) return
-    const result = await verifySafetyNumber(keys.publicKeyHex, theirPublicKey, verifyInput)
-    setVerified(result)
-    if (result) {
-      // Mark key as verified
-      markKeyVerified(theirPublicKey)
-    }
-  }
+        if (!myIdentityKey || !theirIdentityKey) {
+          setError("Identity ключ не найден")
+          return
+        }
 
-  const qrUrl = safetyNumber
-    ? `https://api.qrserver.com/v1/create-qr-code/?data=nurchat-verify:${safetyNumber.replace(/\s/g, "")}&size=200x200&bgcolor=1a1a2e&color=ffffff`
-    : ""
+        const { digits } = generateSafetyNumber(myIdentityKey, theirIdentityKey)
+        setSafetyNumber(digits)
+      } catch (err) {
+        setError("Ошибка генерации Safety Number")
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [userId])
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420, padding: 24 }}>
-        <h3 style={{ marginTop: 0 }}>Проверка ключей</h3>
-        <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>
-          Сравните этот код с {theirUsername}. Если коды совпадают — E2E шифрование подтверждено.
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 24 }}>
+        <h3 style={{ margin: "0 0 8px" }}>Safety Number</h3>
+        <p style={{ margin: "0 0 16px", opacity: 0.7, fontSize: 14 }}>
+          Сравните этот код с {username} для проверки личности.
+          Если коды совпадают — шифрование работает правильно.
         </p>
 
-        {safetyNumber ? (
+        {loading && <div className="spinner" />}
+        {error && <p style={{ color: "#ef4444" }}>{error}</p>}
+        {safetyNumber && (
           <div style={{
-            background: "var(--input-bg)",
-            borderRadius: 8,
-            padding: 16,
             fontFamily: "monospace",
             fontSize: 18,
             letterSpacing: 2,
             textAlign: "center",
-            margin: "16px 0",
-            lineHeight: 1.6,
-            userSelect: "all",
-            cursor: "pointer",
-          }} onClick={handleCopy}>
+            padding: 16,
+            background: "var(--bg-secondary)",
+            borderRadius: 8,
+            marginBottom: 16,
+            lineHeight: 1.8,
+          }}>
             {safetyNumber}
           </div>
-        ) : (
-          <p style={{ textAlign: "center", color: "#888" }}>Загрузка...</p>
         )}
 
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            className="settings-save-btn"
-            onClick={handleCopy}
-            style={{ flex: 1 }}
-          >
-            {copied ? "Скопировано!" : "Копировать"}
-          </button>
-          <button
-            className="settings-save-btn"
-            onClick={() => setShowQR(!showQR)}
-            style={{ flex: 1, background: showQR ? "var(--tg-blue)" : undefined }}
-          >
-            {showQR ? "Скрыть QR" : "Показать QR"}
-          </button>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button className="btn-secondary" onClick={onClose}>Закрыть</button>
         </div>
-
-        {showQR && qrUrl && (
-          <div style={{ textAlign: "center", margin: "16px 0" }}>
-            <img
-              src={qrUrl}
-              alt="Safety Number QR"
-              style={{
-                width: 200,
-                height: 200,
-                borderRadius: 8,
-                border: "2px solid var(--border)",
-              }}
-            />
-            <p style={{ fontSize: 11, color: "#888", marginTop: 8 }}>
-              Отсканируйте QR-код друг у друга
-            </p>
-          </div>
-        )}
-
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, marginTop: 16 }}>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "0 0 8px" }}>
-            Введите код от {theirUsername} для проверки:
-          </p>
-          <input
-            className="settings-input"
-            placeholder="Вставьте код собеседника..."
-            value={verifyInput}
-            onChange={(e) => { setVerifyInput(e.target.value); setVerified(null) }}
-          />
-          <button
-            className="settings-save-btn"
-            onClick={handleVerify}
-            disabled={!verifyInput}
-            style={{ marginTop: 8, width: "100%" }}
-          >
-            Проверить
-          </button>
-          {verified === true && (
-            <p style={{ color: "#4CAF50", fontSize: 13, marginTop: 8, textAlign: "center" }}>
-              ✓ Коды совпадают — ключи подтверждены
-            </p>
-          )}
-          {verified === false && (
-            <p style={{ color: "#f44336", fontSize: 13, marginTop: 8, textAlign: "center" }}>
-              ✗ Коды не совпадают — возможно, ключи были изменены
-            </p>
-          )}
-        </div>
-
-        <button className="avatar-btn" onClick={onClose} style={{ marginTop: 16, width: "100%" }}>
-          Закрыть
-        </button>
       </div>
     </div>
   )

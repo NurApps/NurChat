@@ -6,12 +6,21 @@ Tests forward secrecy, replay protection, X3DH key agreement, and automatic key 
 import sys
 import os
 
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 from nacl.public import PrivateKey, PublicKey
 from nacl.encoding import HexEncoder
 from shared.double_ratchet import DoubleRatchetSession, PreKeyBundle, hkdf, KDFChain
+
+from nacl.encoding import HexEncoder
+from nacl.public import PrivateKey
+from nacl.signing import SigningKey, VerifyKey
+
+from shared.double_ratchet import DoubleRatchetSession, KDFChain, PreKeyBundle, hkdf
 
 
 class TestKDFChain:
@@ -20,6 +29,9 @@ class TestKDFChain:
         chain = KDFChain(key)
         msg_key1, chain2 = chain.next_message_key()
         msg_key2, chain3 = chain2.next_message_key()
+
+        msg_key1, chain2 = chain.next_message_key(b"")
+        msg_key2, chain3 = chain2.next_message_key(b"")
         assert msg_key1 != msg_key2
         assert chain2.step == 1
         assert chain3.step == 2
@@ -30,6 +42,9 @@ class TestKDFChain:
         chain2 = KDFChain(key)
         mk1a, _ = chain1.next_message_key()
         mk1b, _ = chain2.next_message_key()
+
+        mk1a, _ = chain1.next_message_key(b"")
+        mk1b, _ = chain2.next_message_key(b"")
         assert mk1a == mk1b
 
 
@@ -324,3 +339,22 @@ class TestPreKeyBundle:
         d = bundle.to_dict()
         assert d["identity_key"] == ik.public_key.encode(encoder=HexEncoder).decode()
         assert len(d["one_time_prekeys"]) == 5
+
+
+    def test_bundle_signature_uses_independent_signing_key(self):
+        ik = PrivateKey.generate()
+        spk = PrivateKey.generate()
+        signing_private = SigningKey.generate()
+        bundle = PreKeyBundle.generate(ik, spk, num_one_time=5, signing_private=signing_private)
+        # SPK подпись должна верифицироваться независимым Ed25519 ключом
+        # (тот же, что сервер хранит в User.signing_public_key)
+        signing_private.verify_key.verify(
+            spk.public_key.encode(),
+            bundle.signed_prekey_signature,
+        )
+        # А identity-ключом (X25519 → Ed25519 seed) — НЕ должна
+        with pytest.raises(Exception):
+            VerifyKey(ik.encode()).verify(
+                spk.public_key.encode(),
+                bundle.signed_prekey_signature,
+            )

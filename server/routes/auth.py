@@ -5,8 +5,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
 from server.core import models, schemas
+from server.core.audit import client_ip, log_audit
 from server.core.database import get_db
 from server.core.security import encryption, security, verify_token_dependency
 from shared.exceptions import AuthenticationError
@@ -24,7 +27,28 @@ from server.utils.security import (
     hash_backup_codes,
     verify_backup_code,
 )
+
+from server.core.security import security, verify_pending_2fa_dependency, verify_token_dependency
+from server.utils.captcha import generate_captcha, validate_captcha
 from server.utils.logger import logger
+from server.utils.security import (
+    decrypt_totp_secret,
+    encrypt_totp_secret,
+    generate_backup_codes,
+    generate_qr_code_base64,
+    generate_totp_secret,
+    generate_totp_uri,
+    hash_backup_codes,
+    verify_backup_code,
+    verify_totp,
+)
+from server.utils.security import (
+    hash_password as hash_password_argon2,
+)
+from server.utils.security import (
+    verify_password as verify_password_argon2,
+)
+from shared.exceptions import AuthenticationError
 from shared.rate_limiter import limiter
 
 router = APIRouter()
@@ -58,9 +82,64 @@ async def register(
     last_name: str = Body(default=""),
     captcha_id: str = Body(...),
     captcha_code: str = Body(...),
+
+    public_key: str = Body(default=""),
+    signing_public_key: str = Body(default=""),
     db: Session = Depends(get_db)
 ):
     """Регистрация пользователя с именем и фамилией"""
+    # Validate CAPTCHA first
+    if not validate_captcha(captcha_id, captcha_code):
+        logger.warning(f"Registration: invalid CAPTCHA from {client_ip(request)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверная CAPTCHA"
+        )
+
+    if not first_name or len(first_name.strip()) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Имя должно содержать минимум 2 символа"
+        )
+
+    existing_user = db.query(models.User).filter(
+        models.User.username == username
+    ).first()
+    if existing_user:
+        logger.warning(f"Registration: username already taken: {username}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username уже занят"
+        )
+
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пароль должен содержать минимум 8 символов"
+        )
+    if not re.search(r"[A-Z]", password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пароль должен содержать заглавную латинскую букву"
+        )
+    if not re.search(r"[a-z]", password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пароль должен содержать строчную латинскую букву"
+        )
+    if not re.search(r"\d", password) and not any(not c.isascii() for c in password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пароль должен содержать хотя бы одну цифру"
+        )
+
+    if not public_key or not signing_public_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="public_key и signing_public_key обязательны (генерируются на клиенте)"
+        )
+
+    # All validation passed — create user
     try:
         # Validate CAPTCHA first
         if not validate_captcha(captcha_id, captcha_code):
@@ -115,6 +194,8 @@ async def register(
         from shared.p2p_encryption import P2PEncryption
         signing_private_hex, signing_public_hex = P2PEncryption.generate_signing_keys()
 
+
+        hashed_password = hash_password_argon2(password)
         user_id = security.generate_user_id()
         now = datetime.now(timezone.utc)
 
@@ -124,8 +205,8 @@ async def register(
             first_name=first_name.strip(),
             last_name=last_name.strip() if last_name else None,
             hashed_password=hashed_password,
-            public_key=keypair['public_key'],
-            signing_public_key=signing_public_hex,
+            public_key=public_key,
+            signing_public_key=signing_public_key,
             created_at=now,
             last_seen=now,
             is_online=False,
@@ -135,41 +216,43 @@ async def register(
         db.commit()
         db.refresh(user)
 
-        logger.info(f"New user registered: {user.username} ({user.first_name} {user.last_name or ''}) (ID: {user.id})")
+        logger.info(f"Registration: new user {user.username} (ID: {user.id}) from {client_ip(request)}")
+        log_audit(user.id, "user_register", {"username": user.username}, ip_address=client_ip(request))
 
         access_token = security.create_access_token(
             data={"sub": user.id, "username": user.username}
         )
-
-        response = schemas.UserResponse(
-            id=user.id,
-            username=user.username,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            created_at=now,
-            last_seen=now,
-            is_online=False,
-            public_key=keypair['public_key'],
-            signing_public_key=signing_public_hex,
-            avatar_path=None,
-            status=None,
-            bio=None,
+        refresh_token = security.create_refresh_token(
+            data={"sub": user.id, "username": user.username}
         )
         refresh_token = security.create_refresh_token(
             data={"sub": user.id, "username": user.username}
         )
+
+
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
-            "user": response,
-            "private_key": keypair['private_key'],
-            "signing_private_key": signing_private_hex,
+            "user": schemas.UserResponse(
+                id=user.id,
+                username=user.username,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                created_at=now,
+                last_seen=now,
+                is_online=False,
+                public_key=public_key,
+                signing_public_key=signing_public_key,
+                avatar_path=None,
+                status=None,
+                bio=None,
+            ),
         }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Registration error: {e}")
+        logger.error(f"Registration failed for {username}: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -178,7 +261,7 @@ async def register(
 
 
 @router.post("/login", response_model=schemas.Token)
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def login(
     request: Request,
     user_data: schemas.UserCreate,
@@ -224,6 +307,8 @@ async def login(
             )
             refresh_token = security.create_refresh_token(
                 data={"sub": user.id, "username": user.username}
+
+                data={"sub": user.id, "username": user.username, "2fa_pending": True}
             )
             return {
                 "access_token": access_token,
@@ -237,6 +322,7 @@ async def login(
         db.commit()
 
         logger.info(f"User logged in: {user.username} (ID: {user.id})")
+        log_audit(user.id, "user_login", ip_address=client_ip(request))
 
         access_token = security.create_access_token(
             data={"sub": user.id, "username": user.username}
@@ -276,7 +362,9 @@ async def login(
 
 
 @router.get("/me", response_model=schemas.UserResponse)
+@limiter.limit("30/minute")
 async def get_current_user(
+    request: Request,
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db)
 ):
@@ -301,8 +389,49 @@ async def get_current_user(
         )
 
 
+@router.delete("/account")
+async def delete_account(
+    token: dict = Depends(verify_token_dependency),
+    db: Session = Depends(get_db)
+):
+    """Удаление аккаунта пользователя и всех связанных данных (каскадно)."""
+    user_id = token["sub"]
+    try:
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Пользователь не найден"
+            )
+
+        files = db.query(models.File).filter(models.File.user_id == user_id).all()
+        try:
+            from server.core.storage import file_storage
+            for f in files:
+                await file_storage.delete_file(f.id, user_id, f.file_path)
+        except Exception as e:
+            logger.warning(f"Failed to delete files for {user_id}: {e}")
+
+        logger.info(f"Deleting account {user_id} ({user.username})")
+        db.delete(user)
+        db.commit()
+        return {"message": "Аккаунт удален"}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"Delete account error: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось удалить аккаунт"
+        )
+
+
 @router.get("/users", response_model=list[schemas.UserResponse])
+@limiter.limit("10/minute")
 async def get_all_users(
+    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
     q: str = "",
@@ -328,16 +457,62 @@ async def get_all_users(
         )
 
 
+@router.get("/user/{user_id}", response_model=schemas.UserResponse)
+@limiter.limit("30/minute")
+async def get_user(
+    request: Request,
+    user_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """Получение пользователя по ID"""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return schemas.UserResponse.model_validate(user)
+
+
+@router.get("/user/{user_id}/identity-keys")
+@limiter.limit("10/minute")
+async def get_identity_keys(
+    request: Request,
+    user_id: str,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency)
+):
+    """Получение публичных identity ключей для Safety Number verification"""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return {
+        "user_id": user.id,
+        "identity_key": user.signing_public_key or user.public_key,
+        "public_key": user.public_key,
+    }
+
+
 @router.post("/logout")
+@limiter.limit("10/minute")
 async def logout(
+    request: Request,
+    refresh_token_str: str = Body(None, embed=True),
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db)
 ):
-    """Выход пользователя"""
-    user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+    """Выход пользователя с отзывом access и refresh токенов"""
+    user_id = token["sub"]
+    user = db.query(models.User).filter(models.User.id == user_id).first()
     if user:
         user.is_online = False
         db.commit()
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        security.revoke(auth_header[7:])
+    if refresh_token_str:
+        security.revoke(refresh_token_str)
+
+    log_audit(user_id, "user_logout", ip_address=client_ip(request))
     return {"message": "Успешный выход"}
 
 
@@ -479,7 +654,7 @@ async def rotate_key(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
-    """Ротация E2E ключа — сохраняет старый ключ в лог и обновляет на новый"""
+    """Ротация E2E ключа — сохраняет старый ключ в лог, обновляет на новый, уведомляет контакты"""
     user = db.query(models.User).filter(models.User.id == token["sub"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -496,6 +671,31 @@ async def rotate_key(
 
     user.public_key = new_public_key
     db.commit()
+
+    # Notify all contacts about key change via WebSocket
+    try:
+        from server.ws.chat_manager import connection_manager
+        contacts = db.query(models.Contact).filter(
+            or_(
+                models.Contact.user_id == user.id,
+                models.Contact.contact_user_id == user.id,
+            )
+        ).all()
+
+        notified = set()
+        for c in contacts:
+            peer_id = c.contact_user_id if c.user_id == user.id else c.user_id
+            if peer_id not in notified:
+                notified.add(peer_id)
+                await connection_manager.send_personal_message({
+                    "event": "key_changed",
+                    "data": {
+                        "user_id": user.id,
+                        "new_public_key": new_public_key,
+                    },
+                }, peer_id)
+    except Exception:
+        pass  # best-effort notification
 
     return {"status": "ok", "old_key": old_key}
 
@@ -520,6 +720,8 @@ async def setup_2fa(
         raise HTTPException(status_code=400, detail="2FA уже включена. Сначала отключите.")
 
     # Generate TOTP secret, encrypted with user's password
+
+    # Generate TOTP secret, encrypted with master key (not password-dependent)
     secret = generate_totp_secret()
     uri = generate_totp_uri(secret, user.username)
     qr_code = generate_qr_code_base64(uri)
@@ -529,6 +731,10 @@ async def setup_2fa(
 
     # Store encrypted secret and hashed backup codes temporarily (not enabled yet)
     user.totp_secret = encrypt_secret(secret, body.password)
+
+    codes = generate_backup_codes()
+
+    user.totp_secret = encrypt_totp_secret(secret)
     user.backup_codes = hash_backup_codes(codes)
     db.commit()
 
@@ -562,6 +768,8 @@ async def enable_2fa(
 
     # Decrypt secret and verify the code
     secret = decrypt_secret(user.totp_secret, body.password)
+
+    secret = decrypt_totp_secret(user.totp_secret)
     if not secret or not verify_totp(secret, body.code):
         raise HTTPException(status_code=400, detail="Неверный TOTP-код")
 
@@ -577,6 +785,13 @@ async def verify_2fa_login_with_token(
     body: schemas.TwoFALoginRequest,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
+
+@limiter.limit("5/minute")
+async def verify_2fa_login_with_token(
+    request: Request,
+    body: schemas.TwoFALoginRequest,
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_pending_2fa_dependency),
 ):
     """Верифицировать 2FA-код при входе (TOTP или backup-код)."""
     if not token.get("2fa_pending"):
@@ -588,6 +803,8 @@ async def verify_2fa_login_with_token(
 
     # Decrypt TOTP secret with password from request
     secret = decrypt_secret(user.totp_secret, body.password) if user.totp_secret else None
+
+    secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
     totp_valid = secret and verify_totp(secret, body.code)
 
     # Try backup code
@@ -641,6 +858,8 @@ async def disable_2fa(
 
     # Verify code (TOTP or backup)
     secret = decrypt_secret(user.totp_secret, body.password)
+
+    secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
     totp_valid = secret and verify_totp(secret, body.code)
 
     backup_valid = False
@@ -676,6 +895,9 @@ async def get_2fa_status(
         except Exception:
             pass
 
+        except Exception as e:
+            logger.debug(f"Failed to parse backup codes: {e}")
+
     return schemas.TwoFAResponse(
         enabled=user.is_2fa_enabled,
         backup_codes_remaining=remaining,
@@ -692,6 +914,13 @@ async def refresh_token(
     """Обновить access токен по refresh токену."""
     try:
         payload = security.verify_refresh_token(refresh_token_str)
+
+        # 2FA not yet completed — do not issue a full access token
+        if payload.get("2fa_pending"):
+            raise HTTPException(
+                status_code=401,
+                detail="Требуется завершить двухфакторную аутентификацию",
+            )
         user = db.query(models.User).filter(models.User.id == payload["sub"]).first()
         if not user:
             raise HTTPException(status_code=401, detail="Пользователь не найден")
@@ -700,6 +929,15 @@ async def refresh_token(
         )
         return {
             "access_token": new_access,
+
+        new_refresh = security.create_refresh_token(
+            data={"sub": user.id, "username": user.username}
+        )
+        # Rotate refresh token: revoke the old one
+        security.revoke(refresh_token_str)
+        return {
+            "access_token": new_access,
+            "refresh_token": new_refresh,
             "token_type": "bearer",
         }
     except AuthenticationError:

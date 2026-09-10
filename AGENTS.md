@@ -12,6 +12,16 @@ start.bat
 
 # Manual:
 # Terminal 1 — server
+
+NurChat — анонимный мессенджер по модели «общий глухой relay». Tauri v2 desktop app (React + Rust frontend, FastAPI + SQLite backend). AGPL-3.0.
+
+Пользователи НЕ запускают свой сервер: один публичный relay (FastAPI) обслуживает всех, а идентичность определяется локальной парой ключей (анонимный вход без пароля). Privat keys хранятся только на устройстве.
+
+## Quick Start
+
+```bash
+# Relay (нужен ОДИН экземпляр для всех; для разработки можно локально):
+# Terminal 1 — relay
 .venv\Scripts\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 2 — Tauri (handles Vite + Rust build automatically)
@@ -20,12 +30,17 @@ npx tauri dev
 
 **Critical:** `npx tauri dev` does NOT start the FastAPI server. Server on `:8000` must be running separately. Without it, frontend shows "Сервер недоступен".
 
+**Critical:** `npx tauri dev` does NOT start the FastAPI relay. A relay must be running separately (or the app must point to a remote one via `VITE_API_HOST`). Without it, frontend shows "Сервер недоступен".
+
 ## Commands
 
 | Action | Command |
 |--------|---------|
 | Start everything | `start.bat` |
 | Server only | `.venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload` |
+
+| Relay only | `.venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload` |
+| Relay via Docker | `docker-compose up -d` |
 | Tauri dev | `npx tauri dev` |
 | Frontend build | `cd frontend && npm run build` |
 | Frontend dev server | `cd frontend && npm run dev` (port 5173) |
@@ -51,6 +66,10 @@ npx tauri dev
 Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI server ──> SQLite
                               │                              │
                               └── IPC commands ──────────────┘
+
+Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI relay ──> SQLite
+                               │                              │
+                               └── IPC commands ──────────────┘
 ```
 
 - **Frontend:** React 19 + Vite 8 + TypeScript 6 + CSS modules (custom properties)
@@ -87,6 +106,20 @@ Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI 
 
 13. **ErrorBoundary.** Catches React render errors, shows friendly error page with reload button.
 
+9. **Identity via keypair.** Auth currently uses register/login with captcha (anonymous key-based login is planned, not yet implemented). The user's private key never leaves the device.
+
+10. **Tray icon.** App minimizes to system tray on close. Click tray icon to show, click "Выйти" in tray menu to quit. Frontend `invoke("minimize_to_tray")` hides the window.
+
+11. **E2E storage key is `device_secret`, not token.** `deriveStorageKey()` in `e2e.ts` uses a stable `device_secret` (IndexedDB) because the token changes on every login — using it would break decryption across restarts. NOTE: device_secret itself is plaintext in IndexedDB (no OS keystore in browser) — see secureStorage.ts header.
+
+12. **P2P REMOVED (2026-09).** P2P networking, LAN discovery, `nurchat://` URIs, `USE_P2P` — all deleted. Calls use WebSocket signaling at `/ws/signaling/{user_id}` + `/ws/calls/{user_id}`. Do not reintroduce P2P references.
+
+13. **X3DH uses 3 DHs, no OPK.** The wire protocol carries no one-time-prekey id, so the client intentionally ignores `bundle.one_time_prekey` (dh4 mismatch → undecryptable first message). Server still claims+marks OPKs used on bundle fetch (harmless waste, refilled at <20).
+
+14. **Onboarding wizard.** Shown on first launch (4 steps). Dismissed with `localStorage.onboarding_seen`.
+
+15. **ErrorBoundary.** Catches React render errors, shows friendly error page with reload button.
+
 ## Env Variables
 
 Required in `.env`:
@@ -104,6 +137,24 @@ USE_P2P=true
 ```
 
 Full reference: `.env.example` and `shared/config.py`.
+
+
+Full reference: `.env.example` and `shared/config.py`.
+
+## Auto-Update (Tauri Updater)
+
+- Uses `tauri-plugin-updater` + `tauri-plugin-process` (Rust) and `@tauri-apps/plugin-updater` + `@tauri-apps/plugin-process` (frontend).
+- Checks GitHub releases via `latest.json` manifest published by `tauri-action@v0` in `.github/workflows/release.yml`.
+- `UpdateBanner.tsx` polls every launch (10s delay), shows version, downloads with progress, installs, relaunches.
+
+**Signing (required for release builds):**
+- Public key is embedded in `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`.
+- Private key lives in `update_key_private.key` (gitignored, minisign format).
+- GitHub Secrets (must be set for the release workflow to build):
+  - `TAURI_SIGNING_PRIVATE_KEY` — contents of `update_key_private.key`
+  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — empty (key has no password)
+- `tauri build` fails without the private key env var; that's expected. `tauri dev` doesn't need it.
+- To regenerate a key if lost: `npx tauri signer generate --ci -w update_key_private.key` then copy `.pub` value into `tauri.conf.json`.
 
 ## Testing
 
@@ -143,6 +194,8 @@ server/routes/keys.py                  ← PreKey API endpoints
 **Config:** `shared/config.py` — Pydantic Settings, reads `.env`
 **Models:** `server/core/models.py` — All SQLAlchemy models (includes `SignedPreKey`, `OneTimePreKey`)
 **Auth:** `server/routes/auth.py` — Register, login, profile, avatar
+
+**Auth:** `server/routes/auth.py` — register/login (with captcha), 2FA, profile, avatar
 **Chat:** `server/routes/chat.py` — CRUD, search, reactions, block, export
 **Keys:** `server/routes/keys.py` — PreKey bundle, signed/one-time pre-key API
 **Files:** `server/routes/files.py` — Upload/download (with `?token=`), delete

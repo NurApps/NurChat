@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import { isPinEnabled } from "../services/pinLock"
+import { useChatStore } from "../store/chatStore"
 import PinLock from "./PinLock"
 
 interface Props {
@@ -22,14 +23,29 @@ export default function AuthGuard({ children }: Props) {
     api.getCurrentUser()
       .then((user) => {
         localStorage.setItem("user", JSON.stringify(user))
+        useChatStore.getState().refreshCurrentUser()
         if (isPinEnabled()) {
           setLocked(true)
         }
         setChecking(false)
       })
-      .catch(() => {
-        api.clearToken()
-        navigate("/login", { replace: true })
+      .catch((err) => {
+        // Distinguish network errors from auth errors
+        const isNetworkError = err instanceof TypeError
+          || err?.message?.includes("Failed to fetch")
+          || err?.message?.includes("NetworkError")
+          || err?.status === 0
+          || !navigator.onLine
+
+        if (isNetworkError) {
+          // Network error — don't destroy token, just show error and let user retry
+          console.warn("[AuthGuard] Network error, keeping token:", err)
+          setChecking(false)
+        } else {
+          // Auth error (401, 403, etc.) — token is invalid
+          api.clearToken()
+          navigate("/login", { replace: true })
+        }
       })
   }, [navigate])
 

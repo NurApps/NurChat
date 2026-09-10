@@ -3,9 +3,12 @@ Audit logging helper — logs security-relevant events without message content
 """
 import json
 import logging
-from datetime import datetime, timezone
-from server.core.database import get_db
+import secrets
+
+from fastapi import Request
+
 from server.core import models
+from server.core.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +30,33 @@ AUDIT_ACTIONS = {
 }
 
 
+def client_ip(request: Request) -> str | None:
+    """Extract real client IP from request, respecting X-Forwarded-For.
+
+    Returns None when settings.LOG_IPS is False (deaf relay mode) —
+    callers store it directly into AuditLog.ip_address (nullable).
+    """
+    from shared.config import settings
+    if not settings.LOG_IPS:
+        return None
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 def log_audit(
     user_id: str,
     action: str,
     details: dict | None = None,
     ip_address: str | None = None,
 ):
-    """Log an audit event (non-blocking, best-effort)"""
+    """Log an audit event (non-blocking, best-effort). Uses direct Session."""
+    db = None
     try:
-        db = next(get_db())
+        db = SessionLocal()
         audit_log = models.AuditLog(
+            id=f"audit_{secrets.token_hex(16)}",
             user_id=user_id,
             action=action,
             details=json.dumps(details) if details else None,
@@ -46,6 +66,17 @@ def log_audit(
         db.commit()
     except Exception as e:
         logger.error(f"Audit log failed: {e}")
+        if db:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+    finally:
+        if db:
+            try:
+                db.close()
+            except Exception:
+                pass
 
 
 def get_audit_logs(
@@ -54,8 +85,9 @@ def get_audit_logs(
     limit: int = 100,
 ) -> list[dict]:
     """Get audit logs for a user"""
+    db = None
     try:
-        db = next(get_db())
+        db = SessionLocal()
         logs = (
             db.query(models.AuditLog)
             .filter(models.AuditLog.user_id == user_id)
@@ -78,3 +110,9 @@ def get_audit_logs(
     except Exception as e:
         logger.error(f"Get audit logs failed: {e}")
         return []
+    finally:
+        if db:
+            try:
+                db.close()
+            except Exception:
+                pass

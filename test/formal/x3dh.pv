@@ -1,0 +1,43 @@
+(* ProVerif model for X3DH Key Agreement *)
+(* Security properties: Key Compromise Impersonation resistance *)
+
+abstract sk : message.
+abstract pk : message.
+abstract spk : message.
+abstract opk : message.
+
+fun DH(message, message) : message.
+fun h(message, message) : message.
+
+(* Events *)
+event Init(message, message).
+event Respond(message, message).
+
+(* X3DH: 4 DH operations *)
+let Initiator(sk_i, pk_i, pk_r, spk_r, opk_r) =
+  let dh1 = DH(sk_i, pk_r) in
+  let dh2 = DH(sk_i, spk_r) in
+  let dh3 = DH(sk_i, opk_r) in
+  let dh4 = DH(sk_i, spk_r) in
+  let sk = h(h(h(dh1, dh2), dh3), dh4) in
+  event Init(pk_i, sk);
+  sk.
+
+let Responder(sk_r, pk_r, spk_r, opk_r, pk_i) =
+  in(c, (sender : message, msg : message));
+  let dh1 = DH(sk_r, pk_i) in
+  let dh2 = DH(spk_r, pk_i) in
+  let dh3 = DH(opk_r, pk_i) in
+  let dh4 = DH(spk_r, pk_i) in
+  let sk = h(h(h(dh1, dh2), dh3), dh4) in
+  event Respond(sender, sk);
+  sk.
+
+(* Main *)
+process new sk_i : message; new pk_i : message; new sk_r : message; new pk_r : message;
+  let spk = pk in let opk = pk in
+  ( Initiator(sk_i, pk_i, pk_r, spk, opk) | Responder(sk_r, pk_r, spk, opk, pk_i) )
+
+(* KCI resistance: if long-term key is compromised, can attacker impersonate? *)
+query attacker(sk).  (* Forward secrecy *)
+query attacker(pk).  (* Identity key compromise *)

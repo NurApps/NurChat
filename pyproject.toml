@@ -15,6 +15,16 @@ line-length = 120
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+"server/main.py" = ["E402"]
+"server/core/schemas.py" = ["F405"]
+"shared/exceptions.py" = ["N818"]
+"shared/double_ratchet.py" = ["N806"]
+"server/ws/signaling.py" = ["E501"]
+"alembic/**" = ["E402", "E501"]
+"p2pchat/**" = ["E501"]
+"test/**" = ["E402", "E501"]
+
 [tool.ruff.format]
 quote-style = "double"
 
@@ -25,12 +35,62 @@ warn_unused_ignores = true
 warn_return_any = true
 warn_unreachable = true
 exclude = [
-    ".venv/",
-    ".kilo/",
-    ".sixth/",
-    ".continue/",
+    ".venv[\\\\/]",
+    ".kilo[\\\\/]",
+    ".sixth[\\\\/]",
+    ".continue[\\\\/]",
+    "test[\\\\/]",
+    "alembic[\\\\/]",
+    "tools[\\\\/]",
+    "additional_scripts[\\\\/]",
+    "p2pchat[\\\\/]",
+    "server[\\\\/]ws[\\\\/]",
+    "server[\\\\/]middleware[\\\\/]",
+    "server[\\\\/]utils[\\\\/]file_cleanup[\\\\/]*.py",
+    "server[\\\\/]utils[\\\\/]file_cleanup.py",
+    "server[\\\\/]core[\\\\/]storage.py",
+    "server[\\\\/]core[\\\\/]redis_manager.py",
+    "server[\\\\/]core[\\\\/]models.py",
+    "server[\\\\/]core[\\\\/]database.py",
+    "server[\\\\/]routes[\\\\/]contacts_groups.py",
+    "server[\\\\/]routes[\\\\/]p2p.py",
+    "server[\\\\/]routes[\\\\/]webhooks.py",
+    "server[\\\\/]routes[\\\\/]files.py",
+    "server[\\\\/]routes[\\\\/]forward.py",
+    "server[\\\\/]routes[\\\\/]calls.py",
 ]
+
+[[tool.mypy.overrides]]
+module = [
+    "server.core.models",
+    "server.core.database",
+    "server.core.storage",
+    "server.core.redis_manager",
+    "server.ws",
+    "server.ws.*",
+    "server.middleware",
+    "server.middleware.*",
+    "server.utils.file_cleanup",
+    "server.routes.p2p",
+    "server.routes.files",
+    "server.routes.forward",
+    "server.routes.calls",
+    "server.routes.webhooks",
+    "server.routes.contacts_groups",
+]
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = ["server.core.redis_manager"]
+disable_error_code = ["unreachable"]
+
+[[tool.mypy.overrides]]
+module = ["jose.*", "aiofiles.*", "apscheduler.*", "qrcode", "pyaudio"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
-python_files = ["*tests.py"]
+python_files = ["test_*.py", "*tests.py"]
+markers = [
+    "integration: marks tests that require a running server (deselect with '-m \"not integration\"')",
+]

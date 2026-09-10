@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { verifyPin, isPinEnabled, resetAttempts, recordFailedAttempt, getLockoutTimeRemaining, isLockedOut } from "../services/pinLock"
 
 interface Props {
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export default function PinLock({ onUnlock }: Props) {
+  const { t } = useTranslation()
   const [pin, setPin] = useState("")
   const [error, setError] = useState("")
   const [locked, setLocked] = useState(isLockedOut())
@@ -48,9 +50,9 @@ export default function PinLock({ onUnlock }: Props) {
             if (rem <= 0) {
               setLocked(true)
               setLockoutRemaining(getLockoutTimeRemaining())
-              setError("Слишком много попыток. Подождите.")
+              setError(t("chat.tooManyAttempts"))
             } else {
-              setError(`Неверный PIN. Осталось попыток: ${rem}`)
+              setError(t("pinLock.wrongPin", { count: rem }))
             }
           }
         })
@@ -81,7 +83,7 @@ export default function PinLock({ onUnlock }: Props) {
           </svg>
         </div>
         <h2 className="pinlock-title">NurChat</h2>
-        <p className="pinlock-subtitle">Введите PIN-код</p>
+        <p className="pinlock-subtitle">{t("pinLock.enterPin")}</p>
 
         <div className="pinlock-dots">
           {[0, 1, 2, 3].map((i) => (
@@ -93,7 +95,7 @@ export default function PinLock({ onUnlock }: Props) {
 
         {locked && (
           <p className="pinlock-locked">
-            Блокировка {formatLockout(lockoutRemaining)}
+            {t("pinLock.locked", { time: formatLockout(lockoutRemaining) })}
           </p>
         )}
 

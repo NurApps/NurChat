@@ -1,6 +1,11 @@
 """
 CSRF Protection Middleware for NurChat
 Generates and validates CSRF tokens for state-changing requests
+
+
+Pure ASGI middleware (NOT BaseHTTPMiddleware) so WebSocket connections
+pass through untouched — BaseHTTPMiddleware is incompatible with WebSocket
+upgrades and would break /ws/* handshakes with HTTP 403.
 """
 import hashlib
 import hmac
@@ -12,6 +17,11 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
+
+
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from shared.config import settings
 
@@ -35,6 +45,27 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         exempt_paths: Optional[list[str]] = None,
     ):
         super().__init__(app)
+
+class CSRFMiddleware:
+    """
+    CSRF Protection Middleware (pure ASGI).
+
+    - Generates CSRF tokens stored in HttpOnly cookies
+    - Validates X-CSRF-Token header for POST, PUT, PATCH, DELETE requests
+    - WebSocket connections (scope type "websocket") are passed through untouched
+    - Excludes paths: /health, /docs, /captcha, /auth/login, /auth/register
+    """
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        secret_key: str | None = None,
+        cookie_name: str = "csrf_token",
+        header_name: str = "X-CSRF-Token",
+        token_lifetime_hours: int = 24,
+        exempt_paths: list[str] | None = None,
+    ):
+        self.app = app
         self.secret_key = secret_key or settings.JWT_SECRET_KEY or secrets.token_hex(32)
         self.cookie_name = cookie_name
         self.header_name = header_name
@@ -49,6 +80,67 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             "/api/auth/register",
         ]
     
+
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            # WebSocket (and lifespan) — pass through untouched.
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
+        # Reuse existing valid CSRF token, or generate new one
+        existing_token = request.cookies.get(self.cookie_name)
+        if existing_token and self._validate_token(existing_token):
+            new_token = existing_token
+        else:
+            new_token = self._generate_token()
+
+        async def csrf_send(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                message.setdefault("headers", [])
+                headers = list(message["headers"])
+                # Set CSRF token in cookie (non-HttpOnly so JS can read it for X-CSRF-Token header)
+                set_cookie = (
+                    f"{self.cookie_name}={new_token};"
+                    f" Max-Age={int(self.token_lifetime.total_seconds())};"
+                    " Path=/; SameSite=lax"
+                )
+                if not settings.DEBUG:
+                    set_cookie += "; Secure"
+                headers.append((b"set-cookie", set_cookie.encode("latin-1")))
+                # Expose the token in a header too, so cross-origin clients
+                # (frontend on localhost:5173, Tauri webview on tauri://localhost)
+                # can read it even though document.cookie only exposes cookies
+                # for the page's own host.
+                if not any(k.lower() == b"x-csrf-token" for k, _ in headers):
+                    headers.append((b"x-csrf-token", new_token.encode("latin-1")))
+                message["headers"] = headers
+            await send(message)
+
+        # Only validate state-changing methods
+        if request.method in ["POST", "PUT", "PATCH", "DELETE"]:
+            if not self._is_exempt_path(request.url.path):
+                csrf_token = request.headers.get(self.header_name)
+
+                if not csrf_token:
+                    response = JSONResponse(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        content={"detail": "CSRF token missing"},
+                    )
+                    await response(scope, receive, send)
+                    return
+
+                if not self._validate_token(csrf_token):
+                    response = JSONResponse(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        content={"detail": "CSRF token missing or invalid"},
+                    )
+                    await response(scope, receive, send)
+                    return
+
+        await self.app(scope, receive, csrf_send)
+
     def _generate_token(self) -> str:
         """Generate a new CSRF token with timestamp"""
         ts_int = int(datetime.now(timezone.utc).timestamp())
@@ -62,6 +154,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         ).hexdigest()
         return f"{message}:{signature}"
     
+
+
     def _validate_token(self, token: str) -> bool:
         """Validate CSRF token"""
         try:
@@ -69,6 +163,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             if len(parts) != 3:
                 return False
             
+
+
             timestamp_str, random_part, signature = parts
             message = f"{timestamp_str}:{random_part}"
             expected_signature = hmac.new(
@@ -80,6 +176,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             if not hmac.compare_digest(signature, expected_signature):
                 return False
             
+
+
+            if not hmac.compare_digest(signature, expected_signature):
+                return False
+
             # Check token expiration
             try:
                 timestamp = datetime.fromisoformat(timestamp_str)
@@ -92,6 +193,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         except Exception:
             return False
     
+
+
+            return True
+        except Exception:
+            return False
+
     def _is_exempt_path(self, path: str) -> bool:
         """Check if path is exempt from CSRF protection"""
         for exempt in self.exempt_paths:
@@ -138,6 +245,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                     )
         
         return response
+
 
 
 def generate_csrf_token() -> str:

@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next"
 import { WS_BASE, BASE_URL } from "../config"
 import { api } from "../services/api"
 
+import { api, csrfHeader } from "../services/api"
+
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
@@ -26,7 +28,11 @@ async function registerCallDB(targetUserId: string, callType: string): Promise<s
   try {
     const res = await fetch(`${BASE_URL}/api/calls/start-call`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
+      },
       body: JSON.stringify({ target_user_id: targetUserId, call_type: callType }),
     })
     if (!res.ok) return null
@@ -69,6 +75,8 @@ export default function CallPage() {
   const remoteAudioRef = useRef<HTMLAudioElement>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const ringingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Original camera track saved while screen sharing (restored on stop)
+  const cameraTrackRef = useRef<MediaStreamTrack | null>(null)
   const statusRef = useRef<CallStatus>("connecting")
   const connectedRef = useRef(false)
   const pendingSignalsRef = useRef<{ type: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }[]>([])
@@ -85,8 +93,14 @@ export default function CallPage() {
     if (timerRef.current) clearInterval(timerRef.current)
     if (ringingTimerRef.current) clearTimeout(ringingTimerRef.current)
     if (wsReconnectRef.current.timer) clearTimeout(wsReconnectRef.current.timer)
+
+    if (wsReconnectRef.current.timer) {
+      clearTimeout(wsReconnectRef.current.timer)
+      wsReconnectRef.current.timer = null
+    }
     wsReconnectRef.current.attempt = 0
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
+    cameraTrackRef.current = null
     pcRef.current?.close()
     wsRef.current?.close()
     localStreamRef.current = null
@@ -270,6 +284,9 @@ export default function CallPage() {
         api.getAllUsers().then((users: { id: string; username?: string; first_name?: string }[]) => {
           const target = users.find((u) => u.id === targetUserId)
           if (target) setTargetName(target.username || target.first_name || t("call.audioCall"))
+
+        api.getUser(targetUserId).then((user) => {
+          setTargetName(user.username || user.first_name || t("call.audioCall"))
         }).catch(() => {})
       })
     }
@@ -303,7 +320,9 @@ export default function CallPage() {
     }
 
     if (!isIncoming) {
-      registerCallDB(targetUserId, callType)
+      registerCallDB(targetUserId, callType).then((serverCallId) => {
+        if (serverCallId) callIdRef.current = serverCallId
+      })
     }
 
     let reconnectAttempts = 0
@@ -347,6 +366,40 @@ export default function CallPage() {
         } else {
           const generatedCallId = `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
           callIdRef.current = generatedCallId
+
+          ws.send(JSON.stringify({
+            type: "call-request",
+            call_id: generatedCallId,
+            target_user_id: targetUserId,
+            call_type: callType,
+          }))
+          setStatus("ringing")
+          statusRef.current = "ringing"
+
+          ringingTimerRef.current = setTimeout(() => {
+            if (statusRef.current === "ringing") {
+
+
+          startMedia().then((stream) => {
+            if (stream) {
+              createPeerConnection(false)
+            }
+          })
+
+          ringingTimerRef.current = setTimeout(() => {
+            if (statusRef.current === "ringing") {
+              console.log("[CALL] Incoming call timeout")
+              setStatus("missed")
+              statusRef.current = "missed"
+              cleanup()
+              setTimeout(() => navigate("/chat"), 1500)
+            }
+          }, 30000)
+        } else {
+          if (!callIdRef.current) {
+            callIdRef.current = `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
+          }
+          const generatedCallId = callIdRef.current
 
           ws.send(JSON.stringify({
             type: "call-request",
@@ -473,6 +526,88 @@ export default function CallPage() {
               }
               break
             }
+
+            }
+
+            case "call-accepted": {
+              clearTimeout(ringingTimerRef.current!)
+              ringingTimerRef.current = null
+              const stream = await startMedia()
+              if (!stream) return
+              createPeerConnection(true)
+              break
+            }
+
+            case "call-rejected":
+              setStatus("rejected")
+              statusRef.current = "rejected"
+              if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(1000) }
+              cleanup()
+              setTimeout(() => navigate("/chat"), 1500)
+              break
+
+            case "call-ended":
+              setStatus("ended")
+              statusRef.current = "ended"
+              if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(1000) }
+              cleanup()
+              setTimeout(() => navigate("/chat"), 500)
+              break
+
+            case "call-failed":
+              setStatus("failed")
+              statusRef.current = "failed"
+              setMediaError(msg.message || msg.reason || t("call.peerUnavailable"))
+              // Prevent onclose from reconnecting: close WS with normal code
+              if (wsRef.current) {
+                wsRef.current.onclose = null
+                wsRef.current.close(1000)
+              }
+              cleanup()
+              setTimeout(() => navigate("/chat"), 1500)
+              break
+
+            case "call-timeout":
+              setStatus("missed")
+              statusRef.current = "missed"
+              if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(1000) }
+              cleanup()
+              setTimeout(() => navigate("/chat"), 1500)
+              break
+
+            case "offer": {
+              const pc = pcRef.current
+              if (pc) {
+                await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
+                const answer = await pc.createAnswer()
+                await pc.setLocalDescription(answer)
+                ws.send(JSON.stringify({ type: "answer", sdp: answer }))
+              } else {
+                console.log("[CALL] Offer received before PC ready, queuing")
+                pendingSignalsRef.current.push(msg)
+              }
+              break
+            }
+
+            case "answer": {
+              const pc = pcRef.current
+              if (pc) {
+                await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
+              } else {
+                pendingSignalsRef.current.push(msg)
+              }
+              break
+            }
+
+            case "ice-candidate": {
+              const pc = pcRef.current
+              if (pc && msg.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(msg.candidate))
+              } else if (msg.candidate) {
+                pendingSignalsRef.current.push(msg)
+              }
+              break
+            }
           }
         } catch (err) {
           console.error("[CALL] Signaling message error:", err)
@@ -481,6 +616,39 @@ export default function CallPage() {
 
       ws.onerror = (ev: Event) => {
         console.error("[CALL] WS error:", ev)
+      }
+
+      ws.onclose = (ev: CloseEvent) => {
+        console.log("[CALL] WS closed:", ev.code, ev.reason)
+        const currentStatus = statusRef.current
+
+        const isAbnormal = ev.code === 1006 || ev.code === 1001 || ev.code === 1005
+        const isActive = currentStatus === "active" || currentStatus === "ringing" || currentStatus === "connecting"
+
+        if (isAbnormal || isActive) {
+          if (reconnectAttempts < MAX_RECONNECT) {
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000)
+            reconnectAttempts++
+            console.log(`[CALL] WS reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT} in ${delay}ms`)
+            wsReconnectRef.current.timer = setTimeout(connectWs, delay)
+            return
+          }
+        } catch (err) {
+          console.error("[CALL] Signaling message error:", err)
+        }
+      }
+
+      ws.onerror = (ev: Event) => {
+        console.error("[CALL] WS error:", ev)
+
+
+        if (ev.code === 4001) {
+          setMediaError(t("call.authError"))
+        } else if (ev.code === 1006) {
+          setMediaError(t("call.connLost"))
+        } else if (ev.code !== 1000) {
+          setMediaError(t("call.connClosed"))
+        }
         setStatus("failed")
         statusRef.current = "failed"
         setMediaError(t("call.wsError"))
@@ -589,6 +757,35 @@ export default function CallPage() {
           cameraTrack.enabled = true
         }
         
+
+
+    // Use replaceTrack() on the existing video sender — this avoids
+    // renegotiation entirely, unlike addTrack()/removeTrack().
+    const videoSender = pcRef.current.getSenders().find((s) => s.track?.kind === "video")
+      ?? pcRef.current.getSenders().find((s) => !s.track)
+
+    try {
+      if (screenSharing) {
+        // Stop screen sharing - restore camera
+        const cam = cameraTrackRef.current
+        const screenTrack = localStreamRef.current?.getVideoTracks().find((t) => t !== cam)
+        if (screenTrack) {
+          screenTrack.stop()
+          localStreamRef.current?.removeTrack(screenTrack)
+        }
+
+        const cameraTrack = cameraTrackRef.current
+        if (videoSender && cameraTrack && cameraTrack.readyState === "live") {
+          await videoSender.replaceTrack(cameraTrack)
+          localStreamRef.current?.addTrack(cameraTrack)
+        } else if (videoSender) {
+          await videoSender.replaceTrack(null)
+        }
+
+        if (localVideoRef.current && localStreamRef.current) {
+          localVideoRef.current.srcObject = new MediaStream(localStreamRef.current.getTracks())
+        }
+
         setScreenSharing(false)
         setCamOn(true)
       } else {
@@ -621,6 +818,43 @@ export default function CallPage() {
           
           setScreenSharing(true)
           setCamOn(false)
+
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: "always" } as MediaTrackConstraints,
+          audio: false,
+        })
+
+        const screenTrack = screenStream.getVideoTracks()[0]
+        if (screenTrack && pcRef.current) {
+          // Remember the original camera track so we can restore it later
+          const cameraTrack = localStreamRef.current?.getVideoTracks().find((t) => !t.label.includes("screen")) || null
+          cameraTrackRef.current = cameraTrack
+          if (cameraTrack) {
+            cameraTrack.enabled = false
+            localStreamRef.current?.removeTrack(cameraTrack)
+          }
+
+          // Swap the outgoing video to the screen without renegotiation
+          if (videoSender) {
+            await videoSender.replaceTrack(screenTrack)
+          } else {
+            pcRef.current.addTrack(screenTrack, screenStream)
+          }
+
+          // Local preview shows the screen
+          localStreamRef.current?.addTrack(screenTrack)
+          if (localVideoRef.current && localStreamRef.current) {
+            localVideoRef.current.srcObject = new MediaStream(localStreamRef.current.getTracks())
+          }
+
+          screenTrack.onended = () => {
+            toggleScreenShare()
+          }
+
+          setScreenSharing(true)
+          setCamOn(false)
+        } else {
+          screenStream.getTracks().forEach((tr) => tr.stop())
         }
       }
     } catch (err) {
@@ -695,7 +929,7 @@ export default function CallPage() {
   return (
     <div className="call-page">
       <div className="call-header">
-        <button className="call-back" onClick={() => { cleanup(); navigate("/chat") }}>
+        <button className="call-back" onClick={() => { statusRef.current = "ended"; cleanup(); navigate("/chat") }}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
         </button>
         <span className="call-title">{callType === "audio" ? t("call.audioCall") : t("call.videoCall")}</span>

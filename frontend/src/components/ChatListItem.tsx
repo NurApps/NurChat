@@ -1,46 +1,45 @@
 import { useState, useEffect, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import type { ChatResponse, UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
 import { getDraftForChat } from "../utils/drafts"
+
+import { formatFull, formatRelativeTime } from "../utils/format"
 
 interface Props {
   chat: ChatResponse
   currentUser: UserResponse
   onClick: (chatId: string) => void
-  onPin?: (chatId: string) => void
-  onMute?: (chatId: string) => void
+  onPin?: (chatId: string, isPinned: boolean) => void
+  onMute?: (chatId: string, isMuted: boolean) => void
   onDelete?: (chatId: string) => void
 }
 
-function getDisplayName(chat: ChatResponse, currentUser: UserResponse): string {
-  if (chat.is_group) return chat.name || "Группа"
+function getDisplayName(chat: ChatResponse, currentUser: UserResponse, t: (key: string) => string): string {
+  if (chat.is_group) return chat.name || t("chat.group")
   const other = chat.participants.find((p) => p.id !== currentUser.id)
-  return other?.username || chat.name || "Чат"
+  return other?.username || chat.name || t("chat.chat")
 }
 
 function getLastMessageTime(chat: ChatResponse): string {
   if (!chat.last_message?.created_at) return ""
-  try {
-    const d = new Date(chat.last_message.created_at)
-    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-  } catch {
-    return ""
-  }
+  return formatRelativeTime(chat.last_message.created_at)
 }
 
-function getLastMessagePreview(chat: ChatResponse): string {
-  if (!chat.last_message?.content) return "Нет сообщений"
+function getLastMessagePreview(chat: ChatResponse, t: (key: string) => string): string {
+  if (!chat.last_message?.content) return t("chat.noMessages")
   const c = chat.last_message.content
   return c.length > 35 ? c.slice(0, 35) + "..." : c
 }
 
 export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute, onDelete }: Props) {
-  const displayName = getDisplayName(chat, currentUser)
+  const { t } = useTranslation()
+  const displayName = getDisplayName(chat, currentUser, t)
   const avatarChar = displayName[0]?.toUpperCase() || "?"
   const avatarColor = getAvatarColor(displayName)
   const lastTime = getLastMessageTime(chat)
   const [draft] = useState(() => getDraftForChat(chat.id))
-  const lastPreview = draft || getLastMessagePreview(chat)
+  const lastPreview = draft || getLastMessagePreview(chat, t)
 
   const other = chat.participants.find((p) => p.id !== currentUser.id)
   const isOnline = !chat.is_group && (other?.is_online ?? false)
@@ -89,9 +88,14 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
             )}
+            {chat.is_secret && (
+              <svg className="cli-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            )}
             <span className="cli-name">{displayName}</span>
           </div>
-          <span className="cli-time">{lastTime}</span>
+          <span className="cli-time" title={chat.last_message?.created_at ? formatFull(chat.last_message.created_at) : ""}>{lastTime}</span>
           <div className="cli-menu-wrapper" ref={menuRef}>
             <button
               className="cli-menu-btn"
@@ -102,18 +106,18 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
             {menuOpen && (
               <div className="cli-dropdown">
                 {onPin && (
-                  <button onClick={(e) => { e.stopPropagation(); onPin(chat.id); setMenuOpen(false) }}>
-                    {isPinned ? "Открепить" : "Закрепить"}
+                  <button onClick={(e) => { e.stopPropagation(); onPin(chat.id, isPinned); setMenuOpen(false) }}>
+                    {isPinned ? t("chat.unpin") : t("chat.pin")}
                   </button>
                 )}
                 {onMute && (
-                  <button onClick={(e) => { e.stopPropagation(); onMute(chat.id); setMenuOpen(false) }}>
-                    {isMuted ? "Включить уведомления" : "Отключить уведомления"}
+                  <button onClick={(e) => { e.stopPropagation(); onMute(chat.id, isMuted); setMenuOpen(false) }}>
+                    {isMuted ? t("chat.unmuteNotifications") : t("chat.muteNotifications")}
                   </button>
                 )}
                 {onDelete && (
                   <button className="cli-danger" onClick={(e) => { e.stopPropagation(); onDelete(chat.id); setMenuOpen(false) }}>
-                    Удалить чат
+                    {t("common.delete")} {t("chat.chats")}
                   </button>
                 )}
               </div>

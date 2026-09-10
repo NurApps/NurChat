@@ -26,6 +26,29 @@ from server.utils.security import (
 )
 
 
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+import pyotp
+
+from server.utils.security import (
+    decrypt_secret,
+    encrypt_secret,
+    generate_backup_codes,
+    generate_qr_code_base64,
+    generate_totp_secret,
+    generate_totp_uri,
+    hash_backup_codes,
+    hash_password,
+    needs_rehash,
+    verify_backup_code,
+    verify_password,
+    verify_totp,
+)
+
 # ── Argon2id Hashing ──
 
 class TestArgon2idHashing:

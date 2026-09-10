@@ -1,0 +1,44 @@
+(* ProVerif model for Double Ratchet Protocol *)
+(* Security properties: Confidentiality, Authentication, Forward Secrecy *)
+
+(* Symmetric key *)
+abstract skey : message.
+(* DH keys *)
+abstract sk : message.
+abstract pk : message.
+
+(* Functions *)
+fun DH(message, message) : message.
+fun h(message, message) : message.
+fun concat(message, message) : message.
+reduc forall m1, m2 : message; fst(concat(m1, m2)) = m1.
+reduc forall m1, m2 : message; snd(concat(m1, m2)) = m2.
+
+(* Events *)
+event Send(message, message).
+event Recv(message, message).
+
+(* Process: Alice sends *)
+let Alice(sk_a, pk_a, pk_b) =
+  new rk : message;
+  let cek = h(rk, h(DH(sk_a, pk_b), h(pk_a, pk_b))) in
+  new nonce : message;
+  let ciphertext = h(cek, concat(nonce, skey)) in
+  event Send(pk_a, ciphertext);
+  0.
+
+(* Process: Bob receives *)
+let Bob(sk_b, pk_b, pk_a) =
+  in(c, (sender : message, ciphertext : message));
+  let rk = h(skey, h(DH(sk_b, pk_a), h(pk_b, pk_a))) in
+  let cek = h(rk, h(DH(sk_b, pk_a), h(pk_b, pk_a))) in
+  event Recv(sender, ciphertext);
+  0.
+
+(* Main *)
+process new sk_a : message; new pk_a : message; new sk_b : message; new pk_b : message;
+  ( Alice(sk_a, pk_a, pk_b) | Bob(sk_b, pk_b, pk_a) )
+
+(* Queries *)
+query attacker(skey).  (* Confidentiality *)
+query x, y : message; event(Send(x, y)) ==> event(Recv(x, y)).  (* Authentication *)

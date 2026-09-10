@@ -1,6 +1,8 @@
 @echo off
 title NurChat
 
+set PYTHONUTF8=1
+
 echo === NurChat Dev Launcher ===
 echo.
 
@@ -22,6 +24,8 @@ if %errorlevel% equ 0 (
 )
 
 :: 3. Start Tauri dev (handles Rust + Vite, won't spawn another server since :8000 is up)
+
+:: 2. Start Tauri dev (handles Rust + Vite, won't spawn another server since :8000 is up)
 echo [..] Starting Tauri dev...
 echo.
 npx tauri dev

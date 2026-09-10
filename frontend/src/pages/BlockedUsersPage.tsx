@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
+import { formatDateShort } from "../utils/format"
 
 interface BlockedUser {
   id: number
@@ -13,6 +15,7 @@ interface BlockedUser {
 
 export default function BlockedUsersPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [blocked, setBlocked] = useState<BlockedUser[]>([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState("")
@@ -34,9 +37,9 @@ export default function BlockedUsersPage() {
     try {
       await api.unblockUser(userId)
       setBlocked((prev) => prev.filter((b) => b.blocked_user_id !== userId))
-      setMsg("Пользователь разблокирован")
+      setMsg(t("blocked.unblocked"))
     } catch (e) {
-      setMsg("Ошибка разблокировки")
+      setMsg(t("blocked.unblockError"))
     }
   }, [])
 
@@ -48,7 +51,7 @@ export default function BlockedUsersPage() {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h1>Заблокированные</h1>
+        <h1>{t("blocked.title")}</h1>
       </div>
 
       <div className="settings-content">
@@ -66,14 +69,14 @@ export default function BlockedUsersPage() {
         )}
 
         {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "#888" }}>Загрузка...</div>
+          <div style={{ padding: 40, textAlign: "center", color: "#888" }}>{t("blocked.loading")}</div>
         ) : blocked.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: "#888" }}>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.5" style={{ margin: "0 auto 16px" }}>
               <circle cx="12" cy="12" r="10" />
               <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
             </svg>
-            <p>Нет заблокированных пользователей</p>
+            <p>{t("blocked.empty")}</p>
           </div>
         ) : (
           <div className="settings-fields">
@@ -108,7 +111,7 @@ export default function BlockedUsersPage() {
                       @{entry.blocked_user_id.slice(0, 8)}...
                     </div>
                     <div style={{ fontSize: 11, color: "#888" }}>
-                      Заблокирован {new Date(entry.created_at).toLocaleDateString("ru-RU")}
+                      {t("blocked.blockedOn", { date: formatDateShort(entry.created_at) })}
                     </div>
                   </div>
                 </div>
@@ -117,7 +120,7 @@ export default function BlockedUsersPage() {
                   onClick={() => handleUnblock(entry.blocked_user_id)}
                   style={{ fontSize: 12, padding: "4px 8px", background: "var(--tg-blue)", color: "#fff" }}
                 >
-                  Разблокировать
+                  {t("blocked.unblock")}
                 </button>
               </div>
             ))}

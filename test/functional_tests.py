@@ -9,6 +9,7 @@ import sys
 import time
 from datetime import datetime
 
+import pytest
 import requests
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -21,6 +22,36 @@ def random_username():
 BASE_URL = "http://127.0.0.1:8000"
 
 class TestResults:
+
+
+# Эти тесты требуют запущенного relay на 127.0.0.1:8000.
+# Если сервер недоступен — пропускаем весь модуль вместо ошибок соединения.
+try:
+    requests.get(f"{BASE_URL}/health", timeout=2)
+except requests.exceptions.RequestException:
+    pytest.skip("Relay не запущен на 127.0.0.1:8000 — functional tests пропущены", allow_module_level=True)
+
+_IP_COUNTER = [0]
+
+
+def fake_client_ip() -> str:
+    """Уникальный IP для обхода rate limit регистраций (5/мин на реальный IP)."""
+    _IP_COUNTER[0] += 1
+    return f"10.{(_IP_COUNTER[0] >> 16) & 0xFF}.{(_IP_COUNTER[0] >> 8) & 0xFF}.{_IP_COUNTER[0] & 0xFF}"
+
+
+def client_headers() -> dict:
+    return {"X-Forwarded-For": fake_client_ip()}
+
+
+def auth_headers(token: str, csrf_token: str = "") -> dict:
+    headers = {"Authorization": f"Bearer {token}", "X-Forwarded-For": fake_client_ip()}
+    if csrf_token:
+        headers["X-CSRF-Token"] = csrf_token
+    return headers
+
+class TestResults:
+    __test__ = False
     def __init__(self):
         self.passed = 0
         self.failed = 0
@@ -74,6 +105,23 @@ def solve_captcha(question: str) -> str:
     return "0"
 
 
+
+    """Решить математическую CAPTCHA (поддерживает +, -, ×)."""
+    import re
+    if not question:
+        return "0"
+    m = re.search(r"(\d+)\s*([+\-×x*])\s*(\d+)", question)
+    if not m:
+        return "0"
+    num1, op, num2 = int(m.group(1)), m.group(2), int(m.group(3))
+    if op in ("-", "−"):
+        return str(num1 - num2)
+    if op in ("×", "x", "*"):
+        return str(num1 * num2)
+    return str(num1 + num2)
+
+
+@pytest.mark.integration
 def test_health_check(results):
     """Тест 1: Проверка доступности сервера"""
     try:
@@ -87,6 +135,7 @@ def test_health_check(results):
         results.add_fail("Health Check", str(e))
 
 
+@pytest.mark.integration
 def test_registration(results):
     """Тест 2: Регистрация нового пользователя"""
     try:
@@ -108,6 +157,8 @@ def test_registration(results):
             "captcha_code": captcha_code,
         }, timeout=10)
 
+        }, headers=client_headers(), timeout=10)
+
         assert r.status_code == 200, f"Status: {r.status_code}, Response: {r.text}"
         data = r.json()
 
@@ -125,6 +176,7 @@ def test_registration(results):
         return None
 
 
+@pytest.mark.integration
 def test_login(results, username, password):
     """Тест 3: Вход пользователя"""
     try:
@@ -147,10 +199,11 @@ def test_login(results, username, password):
         return None
 
 
+@pytest.mark.integration
 def test_get_current_user(results, token):
     """Тест 4: Получение информации о текущем пользователе"""
     try:
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token)
         r = requests.get(f"{BASE_URL}/api/auth/me", headers=headers, timeout=10)
 
         assert r.status_code == 200
@@ -167,10 +220,11 @@ def test_get_current_user(results, token):
         return None
 
 
-def test_create_chat(results, token, user_id, user2_id):
+@pytest.mark.integration
+def test_create_chat(results, token, user_id, user2_id, csrf_token):
     """Тест 5: Создание чата"""
     try:
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token, csrf_token)
 
         r = requests.post(f"{BASE_URL}/api/chat/chats", json={
             "name": "Test Chat",
@@ -191,10 +245,11 @@ def test_create_chat(results, token, user_id, user2_id):
         return None
 
 
+@pytest.mark.integration
 def test_get_chats(results, token):
     """Тест 6: Получение списка чатов"""
     try:
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token)
         r = requests.get(f"{BASE_URL}/api/chat/chats", headers=headers, timeout=10)
 
         assert r.status_code == 200
@@ -210,10 +265,11 @@ def test_get_chats(results, token):
         return []
 
 
-def test_send_message(results, token, chat_id):
+@pytest.mark.integration
+def test_send_message(results, token, chat_id, csrf_token):
     """Тест 7: Отправка сообщения"""
     try:
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token, csrf_token)
 
         # Создаем тестовое сообщение (имитация шифрования)
         test_content = f"enc:test_encrypted_message_{int(time.time())}"
@@ -238,10 +294,11 @@ def test_send_message(results, token, chat_id):
         return None
 
 
+@pytest.mark.integration
 def test_get_messages(results, token, chat_id):
     """Тест 8: Получение сообщений чата"""
     try:
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token)
         r = requests.get(
             f"{BASE_URL}/api/chat/chats/{chat_id}/messages",
             headers=headers,
@@ -262,10 +319,11 @@ def test_get_messages(results, token, chat_id):
         return []
 
 
-def test_mark_as_read(results, token, message_id):
+@pytest.mark.integration
+def test_mark_as_read(results, token, message_id, csrf_token):
     """Тест 9: Отметка сообщения как прочитанного"""
     try:
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token, csrf_token)
         r = requests.post(
             f"{BASE_URL}/api/chat/messages/{message_id}/mark-as-read",
             headers=headers,
@@ -280,10 +338,11 @@ def test_mark_as_read(results, token, message_id):
         return False
 
 
-def test_delete_message(results, token, message_id):
+@pytest.mark.integration
+def test_delete_message(results, token, message_id, csrf_token):
     """Тест 10: Удаление сообщения"""
     try:
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token, csrf_token)
         r = requests.delete(
             f"{BASE_URL}/api/chat/messages/{message_id}",
             headers=headers,
@@ -298,6 +357,7 @@ def test_delete_message(results, token, message_id):
         return False
 
 
+@pytest.mark.integration
 def test_invalid_login(results):
     """Тест 11: Вход с неверным паролем"""
     try:
@@ -328,11 +388,88 @@ def _register_with_captcha(username: str, password: str, first_name: str, last_n
     if last_name:
         payload["last_name"] = last_name
     r = requests.post(f"{BASE_URL}/api/auth/register", json=payload, timeout=10)
+
+    r = requests.post(f"{BASE_URL}/api/auth/register", json=payload, headers=client_headers(), timeout=10)
     if expect_fail:
         return r.status_code in [400, 422], r
     return r.status_code == 200, r
 
 
+
+@pytest.fixture(scope="module")
+def registered_user():
+    """Регистрирует свежего пользователя для всей цепочки тестов."""
+    username = random_username()
+    ok, r = _register_with_captcha(username, "TestPass123", "Тестовый")
+    if not ok:
+        pytest.skip(f"Не удалось зарегистрировать тестового пользователя: {r.status_code} {r.text}")
+    return r.json()
+
+
+@pytest.fixture(scope="module")
+def username(registered_user):
+    return registered_user["user"]["username"]
+
+
+@pytest.fixture(scope="module")
+def password():
+    return "TestPass123"
+
+
+@pytest.fixture(scope="module")
+def token(registered_user):
+    return registered_user["access_token"]
+
+
+@pytest.fixture(scope="module")
+def user_id(registered_user):
+    return registered_user["user"]["id"]
+
+
+@pytest.fixture(scope="module")
+def user2_id():
+    """Второй участник чата."""
+    ok, r = _register_with_captcha(random_username(), "TestPass123", "Тестовый2")
+    if not ok:
+        pytest.skip(f"Не удалось зарегистрировать второго пользователя: {r.status_code} {r.text}")
+    return r.json()["user"]["id"]
+
+
+@pytest.fixture(scope="module")
+def csrf_token():
+    """Валидный CSRF-токен (подписан тем же JWT_SECRET_KEY, что и middleware)."""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    from server.middleware.csrf import generate_csrf_token
+    return generate_csrf_token()
+
+
+@pytest.fixture(scope="module")
+def chat_id(token, user_id, user2_id, csrf_token):
+    headers = auth_headers(token, csrf_token)
+    r = requests.post(f"{BASE_URL}/api/chat/chats", json={
+        "name": "Test Chat",
+        "participant_ids": [user_id, user2_id],
+        "is_group": False,
+    }, headers=headers, timeout=10)
+    if r.status_code != 200:
+        pytest.skip(f"Не удалось создать чат: {r.status_code} {r.text}")
+    return r.json()["id"]
+
+
+@pytest.fixture(scope="module")
+def message_id(token, chat_id, csrf_token):
+    headers = auth_headers(token, csrf_token)
+    r = requests.post(f"{BASE_URL}/api/chat/chats/{chat_id}/messages", json={
+        "chat_id": chat_id,
+        "content": f"enc:test_encrypted_message_{int(time.time())}",
+        "message_type": "text",
+    }, headers=headers, timeout=10)
+    if r.status_code != 200:
+        pytest.skip(f"Не удалось отправить сообщение: {r.status_code} {r.text}")
+    return r.json()["id"]
+
+
+@pytest.mark.integration
 def test_duplicate_registration(results, username):
     """Тест 12: Регистрация с занятым username"""
     try:
@@ -347,6 +484,7 @@ def test_duplicate_registration(results, username):
         return False
 
 
+@pytest.mark.integration
 def test_validation_username(results, token):
     """Тест 13: Валидация username (спецсимволы)"""
     try:
@@ -361,6 +499,7 @@ def test_validation_username(results, token):
         return False
 
 
+@pytest.mark.integration
 def test_username_only_letters(results):
     """Тест 14: Username только английские буквы"""
     passed = True
@@ -384,6 +523,7 @@ def test_username_only_letters(results):
     return passed
 
 
+@pytest.mark.integration
 def test_password_min_length(results):
     """Тест 15: Пароль минимум 3 символа"""
     passed = True
@@ -400,6 +540,7 @@ def test_password_min_length(results):
     return passed
 
 
+@pytest.mark.integration
 def test_name_any_letters(results):
     """Тест 16: Имя/фамилия любые буквы"""
     username = random_username()
@@ -411,10 +552,11 @@ def test_name_any_letters(results):
     return False
 
 
-def test_logout(results, token):
+@pytest.mark.integration
+def test_logout(results, token, csrf_token):
     """Тест 18: Выход пользователя"""
     try:
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = auth_headers(token, csrf_token)
         r = requests.post(f"{BASE_URL}/api/auth/logout", headers=headers, timeout=10)
 
         assert r.status_code == 200
@@ -434,6 +576,11 @@ def run_functional_tests():
     print(f"Server: {BASE_URL}\n")
 
     results = TestResults()
+
+    # Генерация CSRF-токена (тот же секрет, что у middleware)
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    from server.middleware.csrf import generate_csrf_token
+    csrf_token = generate_csrf_token()
 
     # Тест 1: Health check
     test_health_check(results)
@@ -466,7 +613,7 @@ def run_functional_tests():
     test_get_current_user(results, token)
 
     # Тест 6: Создание чата
-    chat_data = test_create_chat(results, token, user_id, user2_id)
+    chat_data = test_create_chat(results, token, user_id, user2_id, csrf_token)
     chat_id = chat_data["id"] if chat_data else None
 
     # Тест 7: Получение списка чатов
@@ -474,7 +621,7 @@ def run_functional_tests():
 
     # Тест 8: Отправка сообщения
     if chat_id:
-        message_data = test_send_message(results, token, chat_id)
+        message_data = test_send_message(results, token, chat_id, csrf_token)
         message_id = message_data["id"] if message_data else None
 
         # Тест 9: Получение сообщений
@@ -482,11 +629,11 @@ def run_functional_tests():
 
         # Тест 10: Отметка как прочитанное
         if message_id:
-            test_mark_as_read(results, token, message_id)
+            test_mark_as_read(results, token, message_id, csrf_token)
 
         # Тест 11: Удаление сообщения
         if message_id:
-            test_delete_message(results, token, message_id)
+            test_delete_message(results, token, message_id, csrf_token)
 
     # Тест 12: Неверный логин
     test_invalid_login(results)
@@ -507,7 +654,7 @@ def run_functional_tests():
     test_name_any_letters(results)
 
     # Тест 18: Выход
-    test_logout(results, token)
+    test_logout(results, token, csrf_token)
 
     return results
 

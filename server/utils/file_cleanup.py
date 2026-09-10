@@ -40,7 +40,7 @@ class FileCleanupService:
             for file in expired_files:
                 try:
                     # Удаляем физический файл
-                    success = await file_storage.delete_file(file.id, file.user_id)
+                    success = await file_storage.delete_file(file.id, file.user_id, file.file_path)
 
                     if success:
                         # Удаляем запись из БД
@@ -83,7 +83,7 @@ class FileCleanupService:
 
             for file in orphaned_files:
                 try:
-                    success = await file_storage.delete_file(file.id, file.user_id)
+                    success = await file_storage.delete_file(file.id, file.user_id, file.file_path)
                     if success:
                         db.delete(file)
                         deleted_count += 1
@@ -95,6 +95,35 @@ class FileCleanupService:
 
         except Exception as e:
             logger.error(f"Error in orphaned files cleanup: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
+    async def cleanup_expired_ephemeral_messages(self):
+        """Очистка просроченных эфемерных сообщений"""
+        logger.info("Starting ephemeral messages cleanup...")
+
+        db: Session = SessionLocal()
+        try:
+            now = datetime.now(timezone.utc)
+            expired_messages = db.query(models.Message).filter(
+                models.Message.expires_at.isnot(None),
+                models.Message.expires_at < now,
+                models.Message.is_deleted.is_(False)
+            ).all()
+
+            deleted_count = 0
+            for msg in expired_messages:
+                msg.is_deleted = True
+                msg.deleted_for_all = True
+                msg.content = "[удалено]"
+                deleted_count += 1
+
+            db.commit()
+            logger.info(f"Ephemeral messages expired: {deleted_count}")
+
+        except Exception as e:
+            logger.error(f"Error in ephemeral messages cleanup: {e}")
             db.rollback()
         finally:
             db.close()
@@ -117,6 +146,13 @@ class FileCleanupService:
             self.cleanup_orphaned_files,
             trigger=IntervalTrigger(hours=12),
             id="orphaned_files_cleanup"
+        )
+
+        # Очистка эфемерных сообщений каждые 60 секунд
+        self.scheduler.add_job(
+            self.cleanup_expired_ephemeral_messages,
+            trigger=IntervalTrigger(seconds=60),
+            id="ephemeral_messages_cleanup"
         )
 
         self.scheduler.start()

@@ -1,8 +1,10 @@
 import { useCallback, useRef, useEffect } from "react"
 import { WS_BASE } from "../config"
+import { showNotification, playMessageSound } from "../services/notifications"
 import type { MessageResponse, UserResponse, ChatResponse } from "../types"
 
 type TypingUsers = Record<string, Record<string, boolean>>
+const typingTimers = new Map<string, ReturnType<typeof setTimeout>>()
 type OnlineUsers = Record<string, boolean>
 type Reactions = Record<string, Record<string, string[]>>
 type Toast = { id: string; title: string; body: string; chatId?: string } | null
@@ -11,6 +13,7 @@ type IncomingCall = { callId: string; callerId: string; callerName: string; call
 interface UseChatSocketOptions {
   currentUser: UserResponse
   selectedChat: ChatResponse | null
+  mutedChatIds?: Set<string>
   onMessage: (msg: MessageResponse) => void
   onChatUpdate: () => void
   onToast: (toast: Toast) => void
@@ -18,14 +21,23 @@ interface UseChatSocketOptions {
   onTypingUsers: (fn: (prev: TypingUsers) => TypingUsers) => void
   onOnlineUsers: (fn: (prev: OnlineUsers) => OnlineUsers) => void
   onReactions: (fn: (prev: Reactions) => Reactions) => void
+  onMention: (data: { chat_id: string; message_id: string; mentioned_by: string; mentioned_by_username: string; content_preview: string }) => void
   onNavigate: (path: string) => void
 }
 
 export function useChatSocket({
-  currentUser, selectedChat, onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onNavigate,
+  currentUser, selectedChat, mutedChatIds, onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate,
 }: UseChatSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null)
   const chatIdRef = useRef<string | null>(null)
+  const mutedRef = useRef(mutedChatIds)
+  mutedRef.current = mutedChatIds
+
+  // Stable refs so callbacks don't force WS reconnection on every render
+  const handlersRef = useRef({ onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, currentUserId: currentUser.id })
+  useEffect(() => {
+    handlersRef.current = { onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, currentUserId: currentUser.id }
+  })
 
   useEffect(() => {
     chatIdRef.current = selectedChat?.id || null
@@ -34,22 +46,32 @@ export function useChatSocket({
   const handleWsEvent = useCallback(async (msg: any) => {
     const event = msg.event
     let data = msg.data || {}
+    const {
+      onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, currentUserId,
+    } = handlersRef.current
 
     switch (event) {
       case "typing": {
-        if (data.chat_id && data.user_id !== currentUser.id) {
+        if (data.chat_id && data.user_id !== currentUserId) {
           onTypingUsers((prev) => ({
             ...prev,
             [data.chat_id]: { ...prev[data.chat_id], [data.user_id]: data.is_typing }
           }))
           if (data.is_typing) {
-            setTimeout(() => {
+            const key = `${data.chat_id}:${data.user_id}`
+            // Reset the expiry timer on every typing event so rapid
+            // typing doesn't get cleared by a stale timeout.
+            const existing = typingTimers.get(key)
+            if (existing) clearTimeout(existing)
+            const timer = setTimeout(() => {
+              typingTimers.delete(key)
               onTypingUsers((prev) => {
                 const chatTyping = { ...prev[data.chat_id] }
                 delete chatTyping[data.user_id]
                 return { ...prev, [data.chat_id]: chatTyping }
               })
             }, 4000)
+            typingTimers.set(key, timer)
           }
         }
         break
@@ -63,15 +85,41 @@ export function useChatSocket({
         break
       }
       case "message": {
-        if (data.chat_id === chatIdRef.current && data.user_id !== currentUser.id) {
+        if (data.chat_id === chatIdRef.current && data.user_id !== currentUserId) {
           onMessage(data)
         }
         onChatUpdate()
-        if (data.chat_id !== chatIdRef.current) {
+        if (data.chat_id !== chatIdRef.current && !(mutedRef.current?.has(data.chat_id))) {
           const sender = data.username || "Пользователь"
           const preview = (data.content || "").slice(0, 50)
           onToast({ id: data.id, title: sender, body: preview, chatId: data.chat_id })
+          showNotification(sender, preview)
+          playMessageSound()
         }
+        break
+      }
+      case "new_message": {
+        if (data.chat_id === chatIdRef.current && data.user_id !== currentUserId) {
+          onMessage(data)
+        }
+        onChatUpdate()
+        // Track last message timestamp for offline sync
+        if (data.created_at) {
+          lastMessageAt = data.created_at
+          localStorage.setItem("ws_last_message_at", lastMessageAt)
+        }
+        break
+      }
+      case "call_incoming": {
+        const { playMessageSound: playCallSound } = await import("../services/notifications")
+        const callSettings = (await import("../services/userSettings")).getSettings()
+        if (callSettings.callSound) playCallSound()
+        onIncomingCall({
+          callId: data.call_id,
+          callerId: data.caller_id,
+          callerName: data.caller_name || "Пользователь",
+          callType: data.call_type || "audio",
+        })
         break
       }
       case "message_delivered": {
@@ -88,7 +136,7 @@ export function useChatSocket({
       }
       case "edit_message": {
         if (data.message_id && data.new_content) {
-          onMessage({ ...data, _edit: true, content: data.new_content })
+          onMessage({ ...data, _edit: true, content: data.new_content, edited_at: data.edited_at })
         }
         break
       }
@@ -103,13 +151,29 @@ export function useChatSocket({
         }
         break
       }
-      case "call_incoming": {
-        onIncomingCall({
-          callId: data.call_id,
-          callerId: data.caller_id,
-          callerName: data.caller_name || "Пользователь",
-          callType: data.call_type || "audio",
-        })
+      case "notification": {
+        // Server-side notification (distinct from chat messages)
+        if (data.type === "new_message" && data.data?.chat_id !== chatIdRef.current) {
+          const sender = data.data?.sender_id || "NurChat"
+          showNotification(data.title || sender, data.body || "")
+          playMessageSound()
+        }
+        break
+      }
+      case "ping": {
+        // Server liveness probe — reply immediately to stay alive
+        wsRef.current?.send(JSON.stringify({ event: "pong", data: {} }))
+        break
+      }
+      case "key_changed": {
+        // Contact rotated their E2E key — invalidate cached sessions for them
+        if (data.user_id) {
+          import("../services/e2e").then(m => m.invalidateSessionsForUser(data.user_id)).catch(() => {})
+          import("../services/notifications").then(n => n.showNotification(
+            "Ключ собеседника изменён",
+            `${data.user_id.slice(0, 8)}... обновил ключ шифрования. Переподключение к сессии.`
+          )).catch(() => {})
+        }
         break
       }
       case "call_accept_response": {
@@ -122,33 +186,88 @@ export function useChatSocket({
         onIncomingCall(null)
         break
       }
+      case "mention": {
+        onMention(data)
+        break
+      }
     }
-  }, [currentUser.id, onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onNavigate])
+  }, [])
+
+  // Sync messages received while offline
+  const syncMissedMessages = useCallback(async (since: string) => {
+    try {
+      const { default: api } = await import("../services/api")
+      const chats = await api.getChats()
+      for (const chat of chats.slice(0, 10)) { // limit to 10 most recent chats
+        const messages = await api.getChatMessages(chat.id, 0, 20)
+        for (const msg of messages) {
+          if (msg.created_at > since) {
+            handleWsEvent({ event: "new_message", data: msg }).catch(() => {})
+          }
+        }
+      }
+    } catch {
+      // Silent — chatStore refresh will catch up
+    }
+  }, [handleWsEvent])
 
   useEffect(() => {
     const userId = currentUser.id
-    const token = localStorage.getItem("token")
-    if (!token || userId === "self") return
+    let stopped = false
+    if (userId === "self") return
+    if (!localStorage.getItem("token")) return
 
     let reconnectTimer: ReturnType<typeof setTimeout>
+    let reconnectAttempts = 0
+    const MAX_RECONNECT = 10
+    let lastMessageAt: string | null = localStorage.getItem("ws_last_message_at")
 
     function connect() {
-      const ws = new WebSocket(`${WS_BASE}/chat/${userId}?token=${encodeURIComponent(token!)}`)
+      const token = localStorage.getItem("token")
+      if (!token || stopped) return
+      const ws = new WebSocket(`${WS_BASE}/chat/${userId}?token=${encodeURIComponent(token)}`)
       wsRef.current = ws
-      ws.onopen = () => console.log("WS connected")
-      ws.onclose = () => { reconnectTimer = setTimeout(connect, 3000) }
+      ws.onopen = () => {
+        const hadGap = reconnectAttempts > 0
+        reconnectAttempts = 0
+        console.log("WS connected")
+        // Refetch missed data after a reconnect gap
+        handlersRef.current.onChatUpdate()
+        // Sync messages received while offline
+        if (hadGap && lastMessageAt) {
+          syncMissedMessages(lastMessageAt).catch(() => {})
+        }
+      }
+      ws.onclose = (event) => {
+        if (stopped) return
+        // Auth rejection — retrying with the same token is futile
+        if (event.code === 4001) {
+          console.warn("WS rejected: token invalid/expired")
+          return
+        }
+        if (reconnectAttempts >= MAX_RECONNECT) { console.warn("WS max reconnect attempts reached"); return }
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000)
+        reconnectAttempts++
+        reconnectTimer = setTimeout(connect, delay)
+      }
       ws.onerror = () => ws.close()
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data)
-          handleWsEvent(msg)
+          handleWsEvent(msg).catch((e) => console.error("WS handler error:", e))
         } catch (e) { console.error("WS parse error:", e) }
       }
     }
 
+    // Network recovery: reset backoff and reconnect immediately
+    const handleOnline = () => { reconnectAttempts = 0; connect() }
+    window.addEventListener("online", handleOnline)
+
     connect()
     return () => {
+      stopped = true
       clearTimeout(reconnectTimer)
+      window.removeEventListener("online", handleOnline)
       wsRef.current?.close()
     }
   }, [currentUser.id, handleWsEvent])

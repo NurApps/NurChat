@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
 
+      - "v*"
+
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: windows-latest
@@ -15,6 +20,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install root deps
+        run: npm ci
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -71,3 +86,17 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi
             dist/server.exe
           fail_on_unmatched_files: true
+
+      - name: Build & Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "NurChat ${{ github.ref_name }}"
+          releaseBody: "См. вложения для скачивания."
+          releaseDraft: false
+          prerelease: false
+          args: "--config src-tauri/tauri.conf.json"

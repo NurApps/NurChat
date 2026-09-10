@@ -196,15 +196,6 @@ export const api = {
   globalSearch: (query: string) =>
     request<MessageResponse[]>("GET", `/api/chat/search-global?q=${encodeURIComponent(query)}`),
 
-  getPinnedMessages: (chatId: string) =>
-    request<MessageResponse[]>("GET", `/api/chat/chats/${chatId}/pinned`),
-
-  pinMessage: (messageId: string) =>
-    request<{ message: string }>("POST", `/api/chat/messages/${messageId}/pin`),
-
-  unpinMessage: (messageId: string) =>
-    request<{ message: string }>("DELETE", `/api/chat/messages/${messageId}/pin`),
-
   uploadFile: async (file: File, fileType: string, onProgress?: (percent: number) => void): Promise<FileUploadResponse> => {
     const token = getToken()
     const csrf = getCsrfToken()

@@ -13,7 +13,6 @@ interface RowProps {
   onReaction: (id: string, emoji: string, add: boolean) => void
   onEdit: (id: string, content: string) => void
   onViewProfile: (user: UserResponse) => void
-  onPin: (id: string) => void
   onShowInfo: (id: string) => void
 }
 
@@ -25,7 +24,7 @@ const DEFAULT_ROW_HEIGHT = 80
 
 const Row = ({
   index, style, messages, currentUser, reactions = {}, searchQuery,
-  onReply, onDelete, onReaction, onEdit, onViewProfile, onPin, onShowInfo,
+  onReply, onDelete, onReaction, onEdit, onViewProfile, onShowInfo,
 }: RowProps & { index: number; style: React.CSSProperties }) => {
   const msg = messages[index]
   if (!msg) return null
@@ -42,7 +41,6 @@ const Row = ({
         onReaction={onReaction}
         onEdit={onEdit}
         onViewProfile={onViewProfile}
-        onPin={onPin}
         highlightQuery={searchQuery}
         onShowInfo={onShowInfo}
       />

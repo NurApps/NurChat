@@ -21,7 +21,6 @@ interface Props {
   onReaction?: (msgId: string, emoji: string, add: boolean) => void
   onViewProfile?: (user: UserResponse) => void
   onShowInfo?: (id: string) => void
-  onPin?: (messageId: string) => void
   highlightQuery?: string
 }
 
@@ -40,7 +39,7 @@ function renderHighlightedMarkdown(text: string, query: string): React.ReactNode
 export default function MessageBubble({
   message, currentUser, isMyMessage, isRead = false, status,
   reactions = {}, onDelete, onReply, onEdit, onReaction, onViewProfile,
-  onPin, highlightQuery, onShowInfo,
+  highlightQuery, onShowInfo,
 }: Props) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -383,14 +382,12 @@ export default function MessageBubble({
         { label: t("chat.copy"), action: () => navigator.clipboard.writeText(content) },
         { label: t("common.edit"), action: () => { setEditText(message.content); setEditing(true); setMenuOpen(false) } },
         { label: t("chat.reply"), action: () => onReply?.(message.id) },
-        { label: t("chat.pin"), action: () => onPin?.(message.id) },
         { label: t("chat.info"), action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
         { label: t("common.delete"), action: () => setShowDeleteOptions(true) },
       ]
     : [
         { label: t("chat.copy"), action: () => navigator.clipboard.writeText(content) },
         { label: t("chat.reply"), action: () => onReply?.(message.id) },
-        { label: t("chat.pin"), action: () => onPin?.(message.id) },
         { label: t("chat.info"), action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
       ]
 

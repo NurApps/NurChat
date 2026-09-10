@@ -59,8 +59,8 @@ GitHub Actions автоматически создаст релиз с exe и la
 ```
 NurChat/
 ├── frontend/          # React + Vite
-├── src-tauri/         # Tauri + Rust (обёртка, P2P)
-├── server/            # FastAPI + SQLite (relay)
-├── shared/            # Общие схемы
+├── src-tauri/         # Tauri + Rust (обёртка окна, трей, автообновления)
+├── server/            # FastAPI + SQLite/PostgreSQL (relay)
+├── shared/            # Общие схемы и конфиг
 └── .github/workflows/ # CI/CD
 ```

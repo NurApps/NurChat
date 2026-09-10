@@ -5,7 +5,6 @@ import GroupSettings from "./GroupSettings"
 import GlobalSearch from "./GlobalSearch"
 import MessageInfoModal from "./MessageInfoModal"
 import InviteModal from "./InviteModal"
-import { PinnedMessagesModal } from "./PinnedMessagesModal"
 import type { UserResponse, ChatResponse, ContactResponse } from "../types"
 
 interface Props {
@@ -31,9 +30,6 @@ interface Props {
   onCloseMessageInfo: () => void
   showInviteModal: boolean
   onCloseInviteModal: () => void
-  showPinnedModal: boolean
-  onClosePinnedModal: () => void
-  onPinnedMessageClick: (msgId: string) => void
 }
 
 export default function ChatModals({
@@ -44,7 +40,6 @@ export default function ChatModals({
   showGlobalSearch, chats, onSelectGlobalSearch, onCloseGlobalSearch,
   showMessageInfo, onCloseMessageInfo,
   showInviteModal, onCloseInviteModal,
-  showPinnedModal, onClosePinnedModal, onPinnedMessageClick,
 }: Props) {
   return (
     <>
@@ -77,14 +72,6 @@ export default function ChatModals({
       )}
       {showInviteModal && (
         <InviteModal isOpen={showInviteModal} onClose={onCloseInviteModal} />
-      )}
-      {showPinnedModal && selectedChat && (
-        <PinnedMessagesModal
-          chatId={selectedChat.id}
-          isOpen={showPinnedModal}
-          onClose={onClosePinnedModal}
-          onMessageClick={onPinnedMessageClick}
-        />
       )}
     </>
   )

@@ -29,7 +29,6 @@ export function useChatActions({
 }: UseChatActionsOptions) {
   const { t } = useTranslation()
   const [replyTo, setReplyTo] = useState<MessageResponse | null>(null)
-  const [pinnedMessage, setPinnedMessage] = useState<MessageResponse | null>(null)
 
   const handleSend = useCallback(async (input: string, expiresAt?: string) => {
     const text = input.trim()
@@ -168,21 +167,6 @@ export function useChatActions({
     }
   }, [setErrorToast, setMessages, t])
 
-  const handlePinMessage = useCallback(async (messageId: string) => {
-    if (!selectedChat) return
-    try {
-      const pins = await api.getPinnedMessages(selectedChat.id)
-      const isPinned = pins.some(p => p.message_id === messageId)
-      if (isPinned) await api.unpinMessage(selectedChat.id, messageId)
-      else await api.pinMessage(selectedChat.id, messageId)
-      const updated = await api.getPinnedMessages(selectedChat.id)
-      setPinnedMessage(updated.length > 0 ? updated[0].message : null)
-    } catch (e) {
-      setErrorToast(t("errors.pinFailed"))
-      console.error("Pin failed:", e)
-    }
-  }, [selectedChat, setErrorToast, t])
-
   const handlePin = useCallback(async (chatId: string, isPinned: boolean) => {
     try { await api.pinChat(chatId, isPinned); loadChats() } catch (e) {
       setErrorToast(t("errors.pinChatFailed"))
@@ -209,8 +193,8 @@ export function useChatActions({
   }, [loadChats, setErrorToast, t])
 
   return {
-    replyTo, setReplyTo, pinnedMessage, setPinnedMessage,
+    replyTo, setReplyTo,
     handleSend, handleReply, handleReaction, handleEditMessage, handleDeleteMessage,
-    handlePinMessage, handlePin, handleMute, handleDeleteChat,
+    handlePin, handleMute, handleDeleteChat,
   }
 }

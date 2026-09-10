@@ -1,0 +1,19 @@
+# NurChat public relay — Caddy with automatic HTTPS.
+# Set DOMAIN env (or replace {$DOMAIN}) pointing to this host.
+{
+	admin off
+}
+
+{$DOMAIN:relay.nurchat.app} {
+	reverse_proxy nurchat:8000
+
+	# Long-lived WebSocket connections
+	@ws {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @ws nurchat:8000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote}
+	}
+}

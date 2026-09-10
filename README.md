@@ -6,7 +6,7 @@
 
 <p align="center">
   Анонимный мессенджер со сквозным шифрованием.<br>
-  Без телефона, без email, без имени.
+  Без телефона, без email — только username и пароль.
 </p>
 
 <p align="center">
@@ -21,15 +21,16 @@
 
 ## Возможности
 
-- **Сквозное шифрование (E2E)** — Double Ratchet (Signal Protocol): X3DH,
-  Signed Pre-Keys, One-Time Pre-Keys, forward secrecy на каждом сообщении
-- **Анонимность** — вход по криптографическому ключу: ни телефона, ни почты
-- **Группы, реакции, ответы, пересылка, закрепления** — привычный набор
-- **Опросы, view-once медиа, голосовые, файлы**
-- **Аудио/видеозвонки и групповые звонки** (WebRTC)
+- **Сквозное шифрование (E2E)** — X3DH (3 DH, без one-time prekey) + Double Ratchet,
+  Ed25519-подписи обязательны, safety numbers, ротация ключей с уведомлениями
+- **Личные и групповые чаты** — групповой E2E через обёрнутые симметричные ключи
+- **Сообщения** — ответы, реакции, редактирование, удаление, эфемерные (TTL),
+  view-once, отложенные, экспорт, глобальный поиск
+- **Файлы и голосовые** — загрузка с MIME-проверкой, опциональный ClamAV-скан
+- **Аудио/видеозвонки 1:1** — WebRTC через WebSocket-сигналинг, STUN/TURN, история звонков
+- **Контакты** — заявки в контакты, блокировка, приглашения в группы
 - **2FA (TOTP)** с backup-кодами
-- **P2P-режим** — прямые зашифрованные соединения между устройствами
-  (`nurchat://` ссылки), WebRTC fallback
+- **PIN-блокировка** приложения, push-уведомления (Web Push/VAPID), автообновления
 
 ## Безопасность
 
@@ -37,12 +38,13 @@
 
 | Компонент | Реализация |
 |---|---|
-| Протокол | X3DH + Double Ratchet (как в Signal) |
-| Шифры | XChaCha20-Poly1305 / AES-256-GCM, Ed25519 подписи |
+| Протокол | X3DH (3 DH) + Double Ratchet, Ed25519-подписи обязательны |
+| Шифры | XSalsa20-Poly1305 / AES-256-GCM, X25519 ECDH |
+| Примитивы | @noble (аудит cure53), WebCrypto для KDF |
 | Post-compromise security | DH-ratchet самовосстанавливает сессию после компрометации ключа |
 | Replay protection | Отслеживание message ID per session |
-| P2P транспорт | X25519 ECDH + ChaCha20-Poly1305, ключи привязаны к идентичности |
-| Аутентификация сервера | Argon2id, JWT c отзывом, TOTP 2FA |
+| Аутентификация сервера | Argon2id, JWT c отзывом и ротацией, TOTP 2FA |
+| Хранение ключей | IndexedDB + AES-256-GCM, zeroize, автоочистка через 10 мин |
 
 Чего у нас **нет** — говорим честно:
 
@@ -50,10 +52,16 @@
   протокола своя: схема проверена годами в Signal, но в нашей реализации
   возможны ошибки.
 - **Формальной верификации** протокола (Tamarin/ProVerif).
+- **One-time prekeys в X3DH.** Клиент намеренно использует только 3 DH
+  (в протоколе нет OPK id) — стандартный Signal-fallback, чуть слабее forward
+  secrecy первого сообщения.
 - **Защиты метаданных.** Релей видит, кто с кем и когда общается. В режиме
   `RELAY_DEAF` содержимое стирается после доставки, но граф общения остаётся.
-- **Аппаратной защиты ключей** — приватные ключи хранятся на устройстве
-  под шифрованием, но не в secure enclave.
+- **Аппаратной защиты ключей** — `device_secret` лежит открытым в IndexedDB
+  (в браузере нет OS keystore). Поднимает планку против кражи localStorage,
+  но дамп IndexedDB всё вскрывает.
+- **Групповой ratchet — свой велосипед** (hash-chain, не Sender Keys):
+  работает, но не рецензирован криптографами.
 
 Если найдёте уязвимость — [сообщите](https://github.com/NurApps/NurChat/security/advisories/new),
 мы исправимся быстро.
@@ -67,7 +75,7 @@
 
 1. Скачайте `NurChat_*_x64-setup.exe` с [Releases](https://github.com/NurApps/NurChat/releases)
 2. Запустите установщик
-3. Приложение автоматически запустит сервер (SQLite, zero-config)
+3. Укажите адрес релея (свой или публичный) — приложение подключится к нему
 
 **Системные требования:**
 - Windows 10+ (WebView2 встроен)
@@ -79,7 +87,7 @@
 git clone https://github.com/NurApps/NurChat.git
 cd NurChat
 cp .env.example .env
-# Отредактируйте .env (DATABASE_URL, REDIS_URL, ключи)
+# Отредактируйте .env (POSTGRES_PASSWORD, REDIS_PASSWORD, ключи)
 docker-compose up -d
 # Сервер на http://localhost:8000
 ```
@@ -87,11 +95,11 @@ docker-compose up -d
 Для публичного инстанса с HTTPS:
 
 ```bash
-cp infra/Caddyfile infra/Caddyfile  # укажите свой домен
+# DOMAIN=relay.example.com в .env, затем:
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-Режим глухого релея (хранить содержимое только до доставки):
+Режим глухого релея (стирать содержимое после доставки):
 
 ```bash
 # в .env:
@@ -99,7 +107,7 @@ RELAY_DEAF=true
 MESSAGE_RETENTION_HOURS=48
 ```
 
-### Разработка (macOS / Linux)
+### Разработка
 
 ```bash
 git clone https://github.com/NurApps/NurChat.git
@@ -107,18 +115,26 @@ cd NurChat
 
 # Python
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+.venv\Scripts\activate  # Windows; macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 
 # Frontend
 cd frontend && npm install && cd ..
 
-# Запуск
-python -m uvicorn server.main:app --port 8000 &
+# Миграции
+.venv\Scripts\python -m alembic upgrade head
+
+# Запуск релея (терминал 1)
+.venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload
+
+# Запуск Tauri (терминал 2)
 npx tauri dev
 ```
 
-**Требования для разработки:** Python 3.10+, Node.js 22+, Rust, WebView2
+**Требования для разработки:** Python 3.12, Node.js 22+, Rust, WebView2
+
+Без запущенного релея фронтенд покажет «Сервер недоступен» — `npx tauri dev`
+релей не стартует, укажите `VITE_API_HOST` для удалённого.
 
 ---
 
@@ -126,10 +142,6 @@ npx tauri dev
 
 ```
 Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI relay ──> SQLite/PostgreSQL
-                              │                              │
-                              └── IPC commands ──────────────┘
-                              │
-                              └── P2P TCP/WebRTC (напрямую между устройствами)
 ```
 
 Релей — слепой курьер: передаёт зашифрованные сообщения, но не может их
@@ -137,9 +149,10 @@ Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI 
 
 - **Десктоп:** SQLite (встроенный, без настройки)
 - **Docker/Production:** PostgreSQL + Redis (через docker-compose)
-- **База:** SQLAlchemy ORM, миграции через Alembic
-- **Real-time:** WebSocket для доставки и статусов
-- **Файлы:** локальное хранилище в `media/`
+- **База:** SQLAlchemy ORM, миграции через Alembic (`alembic upgrade head`)
+- **Real-time:** WebSocket — `/ws/chat`, `/ws/calls`, `/ws/signaling`, `/ws/notifications`
+- **Звонки:** WebRTC, сигналинг через WebSocket, NAT — STUN/TURN (coturn в compose)
+- **Файлы:** локальное хранилище в `media/`, TTL-очистка по расписанию
 
 ---
 

@@ -102,7 +102,6 @@ export default function ChatPage() {
   const [searchResults, setSearchResults] = useState<MessageResponse[]>([])
   const [searching, setSearching] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
-  const [showPinnedModal, setShowPinnedModal] = useState(false)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [ephemeralSeconds, setEphemeralSeconds] = useState<number | null>(null)
   const [showEphemeralMenu, setShowEphemeralMenu] = useState(false)
@@ -174,9 +173,9 @@ export default function ChatPage() {
   }, [sendTypingRaw])
 
   const {
-    replyTo, setReplyTo, pinnedMessage, setPinnedMessage,
+    replyTo, setReplyTo,
     handleSend: handleSendAction, handleReply, handleReaction, handleEditMessage, handleDeleteMessage,
-    handlePinMessage, handlePin, handleMute, handleDeleteChat,
+    handlePin, handleMute, handleDeleteChat,
   } = useChatActions({
     currentUser, selectedChat, addMessage, setMessages, loadChats,
     sendTyping,
@@ -268,11 +267,7 @@ export default function ChatPage() {
     api.markAsRead(chatId).catch(() => {})
     loadChats()
     loadMessages(chat)
-
-    api.getPinnedMessages(chatId)
-      .then((pins) => setPinnedMessage(pins.length > 0 ? pins[0].message : null))
-      .catch(() => setPinnedMessage(null))
-  }, [currentUser, loadChats, loadMessages, setPinnedMessage, setMessages, setReplyTo, setHasMore, setSelectedChat, setShowEmoji, setInput, t, filteredChats])
+  }, [currentUser, loadChats, loadMessages, setMessages, setReplyTo, setHasMore, setSelectedChat, setShowEmoji, setInput, t, filteredChats])
 
   useEffect(() => {
     const container = messagesContainerRef.current
@@ -760,21 +755,6 @@ export default function ChatPage() {
 
               {/* Messages */}
               <div className="chat-messages" ref={messagesContainerRef}>
-                {pinnedMessage && (
-                  <div className="pinned-banner" onClick={() => setShowPinnedModal(true)}>
-                    <span className="pinned-banner-icon">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L12 22" /><path d="M17 7L12 2L7 7" /></svg>
-                    </span>
-                    <div className="pinned-banner-text">
-                      <div className="pinned-banner-title">{t("chat.pinnedMessage")}</div>
-                      <div className="pinned-banner-preview">{pinnedMessage.content || t("chat.media")}</div>
-                    </div>
-                    <button className="pinned-banner-close" onClick={(e) => { e.stopPropagation(); setPinnedMessage(null) }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                    </button>
-                  </div>
-                )}
-
                 {searchQuery && (
                   <div className="search-bar" role="search" aria-label={t("chat.searchMessages")}>
                     <input type="text" placeholder={t("chat.searchMessages")} value={searchQuery}
@@ -818,7 +798,6 @@ export default function ChatPage() {
                     onReaction={handleReaction}
                     onEdit={handleEditMessage}
                     onViewProfile={handleViewProfile}
-                    onPin={handlePinMessage}
                     onShowInfo={setShowMessageInfo}
                   />
                 )}
@@ -978,11 +957,6 @@ export default function ChatPage() {
         onCloseGlobalSearch={() => setShowGlobalSearch(false)}
         showMessageInfo={showMessageInfo} onCloseMessageInfo={() => setShowMessageInfo(null)}
         showInviteModal={showInviteModal} onCloseInviteModal={() => setShowInviteModal(false)}
-        showPinnedModal={showPinnedModal} onClosePinnedModal={() => setShowPinnedModal(false)}
-        onPinnedMessageClick={(msgId) => {
-          const el = document.getElementById(`msg-${msgId}`)
-          if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
-        }}
       />
     </div>
   )

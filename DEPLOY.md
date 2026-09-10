@@ -19,6 +19,62 @@
 План развития: **дом + Cloudflare Tunnel → Alibaba/Termux → VPS**.
 Ниже — все три ступени.
 
+## 0.1. Домашний always-on 24/7 (ступень 1, прямо сейчас)
+
+Чтобы друг писал в любое время, релей должен жить круглосуточно.
+Домашний ПК потянет десятки пользователей на SQLite.
+
+**1. Запрет сна (Windows, от админа):**
+
+```powershell
+powercfg /change standby-timeout-ac 0
+powercfg /change hibernate-timeout-ac 0
+powercfg /change disk-timeout-ac 0
+# Ноутбук: при закрытии крышки — ничего не делать
+powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
+powercfg /setactive SCHEME_CURRENT
+```
+
+**2. Автозапуск при включении.** Планировщик заданий →
+«При входе пользователя» → действие: `D:\projects\NurChat\scripts\relay-home.bat`
+(аргументы не нужны; туннель поднимается отдельно, см. ниже).
+Либо просто кинь ярлык в `shell:startup`.
+
+**3. Запуск:**
+
+```powershell
+scripts\relay-home.bat tunnel
+```
+
+Релей — в свернутом окне `nurchat-relay`, туннель — в текущем.
+Логи сервера: `logs/nurchat.log` (ротация уже настроена).
+
+**4. Бэкап по расписанию** (Планировщик → ежедневно):
+
+- действие: `D:\projects\NurChat\.venv\Scripts\python.exe`
+- аргументы: `scripts\backup-sqlite.py`
+- рабочая папка: `D:\projects\NurChat`
+
+Хранит последние 7 копий в `backup/` (в git не попадает).
+
+**5. Конфиг для дома** (`.env`):
+
+```bash
+DATABASE_URL=sqlite:///./nurchat.db
+USE_REDIS=false
+DEBUG=False
+RELAY_DEAF=true
+```
+
+**Честные ограничения ступени 1:**
+- Quick-туннель меняет URL при каждом рестарте `cloudflared` → друг
+  вводит новый адрес вручную (минута делов, но надо знать).
+  Лечится именованным туннелем + своим доменом (инструкция выше в
+  варианте B) — сделай это следующим шагом, и адрес станет вечным.
+- ПК должен быть включён. Пока релей лежит — отправить нельзя
+  (очередь офлайн-сообщений на клиенте не хранится), прочитать
+  старое — тоже (история на реле). Планируй аптайм.
+
 ## 0. Бесплатные варианты (без VPS за деньги)
 
 **Вариант A — Oracle Cloud Always Free (рекомендуется).**

@@ -34,6 +34,7 @@ nurchat.db
 *.db
 *.db-shm
 *.db-wal
+backup/
 
 # Windows system files
 desktop.ini

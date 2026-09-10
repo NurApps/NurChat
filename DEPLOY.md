@@ -1,5 +1,49 @@
 # DEPLOY.md — запуск публичного релея NurChat
 
+## 0. Постоянный релей дёшево (рекомендуемый путь)
+
+Полный compose (Postgres+Redis) нужен от ~2 GB RAM. Для старта десяткам
+пользователей хватает **микро-варианта: один uvicorn + SQLite** —
+влезает в самый дешёвый VPS:
+
+| Провайдер (RU, оплата МИР, верификация — телефон/email) | Тариф | Цена |
+|---|---|---|
+| JustHost | 1 CPU / 0.5 GB / 5 GB | ~70 ₽/мес |
+| VDSina | 1 CPU / 1 GB / 10 GB | ~69 ₽/мес |
+| RuVDS | 1 CPU / 0.5 GB / 10 GB | ~139 ₽/мес |
+| AdminVPS | 1 CPU / 1 GB / 15 GB | ~179 ₽/мес |
+| Timeweb Cloud | 1 CPU / 1 GB / 15 GB | ~300 ₽/мес |
+
+Цены на сентябрь 2026, проверяйте на сайте — меняются. Паспорт нужен
+только для `.ru`-доменов, для самого VPS достаточно почты/телефона.
+
+Деплой микро-варианта (Ubuntu 22.04/24.04):
+
+```bash
+# 1. Система и код
+apt update && apt install -y python3.12-venv git curl
+useradd -m -s /bin/bash nurchat
+git clone https://github.com/NurApps/NurChat.git /opt/NurChat
+cd /opt/NurChat && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env && nano .env   # см. раздел 2; DATABASE_URL=sqlite, USE_REDIS=false
+
+# 2. Systemd (автозапуск + рестарт при падении)
+cp infra/nurchat-relay.service /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now nurchat-relay
+
+# 3. HTTPS: Caddy одной командой (нужен домен, см. ниже)
+apt install -y caddy
+caddy reverse-proxy --from relay.example.com --to 127.0.0.1:8000
+# для постоянства — оформите как сервис, либо полный compose (раздел 1)
+curl -f https://relay.example.com/health
+```
+
+Домен: дешевле всего цифровой `.xyz` (~$1/год) или `.ru` (~250 ₽/год,
+но нужен паспорт). Бесплатно и без паспорта — `eu.org` (заявка
+рассматривается неделями) либо поддомен у знакомых. Без домена первое
+время сойдёт и `http://IP:8000` — приложение умеет ходить по IP,
+TLS появится вместе с доменом.
+
 Минимальный VPS: 1 CPU / 1 GB RAM / 10 GB SSD (до ~500 активных пользователей).
 Для роста: 2 CPU / 4 GB RAM, PostgreSQL на отдельном volume.
 

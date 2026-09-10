@@ -1,0 +1,28 @@
+# NurChat relay — systemd unit for a micro-VPS (SQLite, no Docker).
+# Install: copy to /etc/systemd/system/nurchat-relay.service, then:
+#   systemctl daemon-reload
+#   systemctl enable --now nurchat-relay
+# Env file /opt/NurChat/.env holds secrets (see .env.example).
+[Unit]
+Description=NurChat relay (FastAPI + SQLite)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nurchat
+Group=nurchat
+WorkingDirectory=/opt/NurChat
+EnvironmentFile=/opt/NurChat/.env
+ExecStart=/opt/NurChat/.venv/bin/python -m uvicorn server.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+# Wait for DB/alembic on boot is handled by create_all fallback; for
+# PostgreSQL deployments run `alembic upgrade head` manually after deploy.
+Restart=always
+RestartSec=5
+# SQLite + 1 worker fit in 512 MB RAM
+MemoryMax=450M
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -30,8 +30,15 @@ AUDIT_ACTIONS = {
 }
 
 
-def client_ip(request: Request) -> str:
-    """Extract real client IP from request, respecting X-Forwarded-For."""
+def client_ip(request: Request) -> str | None:
+    """Extract real client IP from request, respecting X-Forwarded-For.
+
+    Returns None when settings.LOG_IPS is False (deaf relay mode) —
+    callers store it directly into AuditLog.ip_address (nullable).
+    """
+    from shared.config import settings
+    if not settings.LOG_IPS:
+        return None
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()

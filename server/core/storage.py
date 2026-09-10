@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -10,6 +11,8 @@ from shared.exceptions import FileTooLargeError
 
 from .security import SecurityManager
 
+logger = logging.getLogger("nurchat")
+
 
 def _safe_path(base: Path, *parts: str) -> Path:
     """Resolve path and ensure it stays inside base directory."""
@@ -17,6 +20,39 @@ def _safe_path(base: Path, *parts: str) -> Path:
     if not resolved.is_relative_to(base.resolve()):
         raise ValueError("Path traversal detected")
     return resolved
+
+
+def _strip_image_metadata(path: Path) -> None:
+    """Remove EXIF/XMP metadata (GPS coords, device model, timestamps).
+
+    - Animated images (GIF/WebP) are left untouched (re-save would kill frames).
+    - Images without EXIF are left byte-identical (no recompression loss).
+    - Orientation is baked into pixels first, so photos don't rotate.
+    Never raises — upload must not fail because of metadata cleaning.
+    """
+    try:
+        from PIL import Image, ImageOps
+
+        with Image.open(path) as img:
+            if getattr(img, "is_animated", False):
+                return
+            try:
+                exif = img.getexif()
+            except Exception:
+                return
+            if not exif:
+                return
+            img = ImageOps.exif_transpose(img)
+            fmt = (img.format or path.suffix.lstrip(".") or "JPEG").upper()
+            if fmt == "JPG":
+                fmt = "JPEG"
+            if fmt not in ("JPEG", "PNG", "WEBP", "BMP"):
+                return
+            kwargs = {"quality": 92} if fmt == "JPEG" else {}
+            img.save(path, format=fmt, **kwargs)
+            logger.debug("Stripped EXIF from %s", path.name)
+    except Exception as e:
+        logger.warning("EXIF strip failed for %s: %s", path.name, e)
 
 
 class FileStorage:
@@ -80,6 +116,11 @@ class FileStorage:
                     file_path.unlink(missing_ok=True)
                     raise FileTooLargeError(f"Файл слишком большой. Максимум: {self.max_file_size} байт")
                 await f.write(chunk)
+
+        # Privacy: strip EXIF/XMP metadata (GPS, device info) from photos.
+        # Relay must see pixels, not where/when/with-what they were taken.
+        if file_type == "image":
+            _strip_image_metadata(file_path)
 
         return {
             "file_id": file_id,

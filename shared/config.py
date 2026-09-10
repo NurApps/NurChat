@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     WS_CONNECTIONS_WARN: int = 100
     ERROR_RATE_WARN: float = 5.0
 
+    # Privacy: store client IPs in audit log / security logs.
+    # False = deaf relay sees minimum (no IP column filled).
+    # IP rate-limiting still works in-memory regardless of this flag.
+    LOG_IPS: bool = False
+
     VAPID_PRIVATE_KEY: str = ""
     VAPID_CLAIM_EMAIL: str = "admin@nurchat.app"
 

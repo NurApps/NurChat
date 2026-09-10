@@ -1,0 +1,50 @@
+# Render Blueprint — NurChat relay on the free tier ($0).
+# Deploy: dashboard.render.com → New → Blueprint → connect repo.
+# Then set env vars below in the dashboard (or render.yaml `envVars`).
+#
+# HONEST CAVEATS (read DEPLOY.md section "Ступень $0: Render"):
+# - Free webservice SLEEPS after 15 min idle (30-50s cold start).
+#   Keep awake with cron-job.org pinging https://<xxx>.onrender.com/health
+#   every 10 minutes (free tier of cron-job.org is enough).
+# - Free PostgreSQL EXPIRES AFTER 90 DAYS (data deleted!). Migrate off
+#   before expiry (pg_dump → new DB) or accept quarterly account wipes.
+# - Disk is EPHEMERAL: media/ uploads vanish on every restart/redeploy.
+#   Files/avatars are best-effort here, not storage.
+# - No TURN here (UDP ranges unavailable) — calls work via STUN only.
+services:
+  - type: web
+    name: nurchat-relay
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    preDeployCommand: alembic upgrade head
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nurchat-db
+          property: connectionString
+      - key: USE_REDIS
+        value: "false"
+      - key: DEBUG
+        value: "False"
+      - key: RELAY_DEAF
+        value: "true"
+      - key: MESSAGE_RETENTION_HOURS
+        value: "48"
+      - key: LOG_IPS
+        value: "false"
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      # Generate once and paste as secret env vars in dashboard:
+      #   python -c "import secrets; print(secrets.token_hex(32))"  ×2
+      #   python -c "import secrets; print(secrets.token_urlsafe(32))" ×1
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: TOTP_MASTER_KEY
+        sync: false
+
+databases:
+  - name: nurchat-db
+    plan: free

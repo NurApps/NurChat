@@ -59,8 +59,8 @@ export default function LoginPage() {
     // No token — check if server is reachable before showing register/login
     fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(5000) })
       .then((r) => {
-        if (r.ok) setChecking(false)
-        else setServerUnavailable(true), setChecking(false)
+        if (!r.ok) setServerUnavailable(true)
+        setChecking(false)
       })
       .catch(() => {
         setServerUnavailable(true)

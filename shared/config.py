@@ -1,3 +1,4 @@
+import secrets
 import sys
 from pathlib import Path
 from typing import Any
@@ -114,7 +115,6 @@ def _ensure_key(name: str, value: str, generator) -> str:
         print(f"[NurChat] Warning: could not persist {name} to .env: {e}")
     return generated
 
-import secrets
 settings.ENCRYPTION_KEY = _ensure_key("ENCRYPTION_KEY", settings.ENCRYPTION_KEY, lambda: secrets.token_hex(32))
 settings.JWT_SECRET_KEY = _ensure_key("JWT_SECRET_KEY", settings.JWT_SECRET_KEY, lambda: secrets.token_hex(32))
 

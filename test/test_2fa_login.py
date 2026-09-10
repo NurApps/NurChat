@@ -6,8 +6,6 @@ from fastapi.testclient import TestClient
 
 from server.main import app
 from shared.rate_limiter import limiter
-from server.utils import security as sec_utils
-
 
 client = TestClient(app)
 

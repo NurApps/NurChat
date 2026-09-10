@@ -1,15 +1,15 @@
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+import asyncio
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from contextlib import asynccontextmanager
-import asyncio
 
 from server.core.database import create_tables
 from server.middleware.csrf import CSRFMiddleware
-
 from server.routes import (
     auth,
     calls,
@@ -326,6 +326,7 @@ async def health_check():
     redis_ok = False
     try:
         from sqlalchemy import text
+
         from server.core.database import SessionLocal
         db = SessionLocal()
         try:
@@ -357,7 +358,7 @@ async def health_check():
     )
 
 if settings.ENABLE_METRICS:
-    from prometheus_client import REGISTRY, Counter, Gauge, Histogram, generate_latest
+    from prometheus_client import Counter, Gauge, Histogram
 
     http_requests = Counter("nurchat_http_requests_total", "Total HTTP requests", ["method", "endpoint"])
     http_duration = Histogram("nurchat_http_request_duration_seconds", "HTTP request duration", ["endpoint"])

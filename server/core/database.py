@@ -1,6 +1,5 @@
-from sqlalchemy import create_engine, event, text
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from sqlalchemy.pool import NullPool
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from shared.config import settings
 
@@ -59,6 +58,7 @@ def create_tables():
 
     try:
         from alembic.config import Config
+
         from alembic import command
         alembic_cfg = Config("alembic.ini")
         command.upgrade(alembic_cfg, "head")

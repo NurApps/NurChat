@@ -569,11 +569,10 @@ async def handle_websocket_connection(websocket: WebSocket, user_id: str, token:
     await connection_manager.connect(websocket, user_id)
 
     last_alive = time.monotonic()
-    connected_at = last_alive
     idle_timeout = 120       # probe after 2 min of silence
     dead_after = 300         # drop if silent for 5 min total
     last_token_check = 0.0
-    TOKEN_CHECK_INTERVAL = 10  # verify JWT every 10 seconds (on active messages)
+    token_check_interval = 10  # verify JWT every 10 seconds (on active messages)
 
     try:
         while True:
@@ -604,7 +603,7 @@ async def handle_websocket_connection(websocket: WebSocket, user_id: str, token:
             # Token re-verification: check periodically, not on every message
             # to keep overhead minimal while catching revoked/expired tokens quickly.
             now = time.monotonic()
-            if token and now - last_token_check > TOKEN_CHECK_INTERVAL:
+            if token and now - last_token_check > token_check_interval:
                 last_token_check = now
                 from server.core.security import AuthenticationError
                 from server.core.security import security as sec

@@ -28,12 +28,31 @@
 `cloudflared tunnel --url http://localhost:8000` + ручной ввод
 `xxx.trycloudflare.com` с protocol `https` (адрес живёт до рестарта).
 
-Сборка установщика для друга:
+Сборка установщика для друга (вариант А — десктоп):
 
 ```powershell
 npx tauri build
 # exe: src-tauri\target\release\bundle\nsis\NurChat_*_x64-setup.exe
 ```
+
+Перед сборкой обязательно:
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content update_key_private.key -Raw
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+npx tauri build
+```
+
+(Без ключа сборка упадёт — так задумано, ключ лежит в корне, в git не коммитится.
+Другу также понадобится WebView2 — на Win10/11 обычно уже стоит, установщик
+доставит сам.)
+
+Вариант Б — другу вообще без установки (браузер):
+у тебя в `.env` `SERVE_FRONTEND=true` + собранный фронт
+(`cd frontend && npm run build`), рестарт релея — и друг просто открывает
+адрес релея в Chrome/Edge. Ноль установок, E2E и звонки работают
+(криптография — чистый JS/WebCrypto). Не работает: трей, автообновления,
+автостарт — это только в exe.
 
 Отправь другу exe + адрес релея: либо `100.x.y.z:8000` с protocol `http`
 (Tailscale), либо `xxx.trycloudflare.com` с protocol `https` (туннель, БЕЗ `https://`).

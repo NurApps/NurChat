@@ -115,13 +115,29 @@ export function getApiProtocol(): "http" | "https" { return apiProtocol }
 // Top-level await: relay probing completes BEFORE any consumer computes
 // BASE_URL, so the whole app uses the resolved relay from the first render.
 // Skipped entirely when the host is set explicitly (env / user override).
+// Web mode: page itself was served by the relay over http(s) outside Tauri —
+// same origin is always correct, no probing needed.
 if (!import.meta.env.VITE_API_HOST) {
   const hasOverride = (() => {
     try { return !!localStorage.getItem(RELAY_HOST_KEY) } catch { return false }
   })()
   if (!hasOverride) {
-    const resolved = await probePublicRelays()
-    if (resolved) apply(resolved)
+    const win = typeof window !== "undefined"
+      ? (window as unknown as Record<string, unknown>)
+      : null
+    const isBrowserPage = !!win
+      && (window.location.protocol === "http:" || window.location.protocol === "https:")
+      && !win.__TAURI_INTERNALS__
+      && !win.Capacitor
+    if (isBrowserPage) {
+      apply({
+        host: window.location.host,
+        protocol: window.location.protocol === "https:" ? "https" : "http",
+      })
+    } else {
+      const resolved = await probePublicRelays()
+      if (resolved) apply(resolved)
+    }
   }
 }
 

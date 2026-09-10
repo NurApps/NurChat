@@ -374,3 +374,38 @@ if settings.ENABLE_METRICS:
     @app.get("/metrics")
     async def metrics():
         return JSONResponse(content={"metrics": "prometheus"})
+
+
+# Web client (browser, zero install): serve the built SPA from the relay.
+# Enable with SERVE_FRONTEND=true (+ `npm run build` in frontend/).
+# Same-origin: cookies/CSRF just work, no CORS involved.
+# API/WS/health paths are never shadowed (checked first, in order).
+if settings.SERVE_FRONTEND:
+    from pathlib import Path as _Path
+
+    from fastapi.responses import FileResponse as _FileResponse
+
+    _dist = _Path(settings.FRONTEND_DIST)
+    if _dist.is_dir() and (_dist / "index.html").exists():
+        _dist_resolved = _dist.resolve()
+
+        @app.get("/{full_path:path}")
+        async def _spa_fallback(full_path: str):
+            if full_path.startswith(
+                ("api/", "ws/", "health", "metrics", "docs", "redoc", "openapi.json")
+            ):
+                return JSONResponse(status_code=404, content={"detail": "Not found"})
+            try:
+                candidate = (_dist_resolved / full_path).resolve()
+                if candidate.is_file() and candidate.is_relative_to(_dist_resolved):
+                    return _FileResponse(candidate)
+            except Exception:
+                pass
+            return _FileResponse(_dist_resolved / "index.html")
+
+        logger.info("Web client enabled from %s", _dist)
+    else:
+        logger.warning(
+            "SERVE_FRONTEND=true but %s/index.html missing — run `npm run build` in frontend/",
+            _dist,
+        )

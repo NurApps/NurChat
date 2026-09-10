@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     MEDIA_ROOT: str = "media"
     MAX_FILE_SIZE: int = 50 * 1024 * 1024
     FILE_TTL_DAYS: int = 30
+    # Web client: serve the built SPA (frontend/dist) from the relay itself,
+    # so a friend can use NurChat from a plain browser with zero install.
+    # Build it first: cd frontend && npm run build
+    SERVE_FRONTEND: bool = False
+    FRONTEND_DIST: str = "frontend/dist"
     ENCRYPTION_KEY: str = ""
     JWT_SECRET_KEY: str = ""
     WS_RECONNECT_TIMEOUT: int = 5

@@ -11,7 +11,12 @@
  * Security model:
  * - Private keys stored as hex strings, encrypted at rest with AES-256-GCM
  * - Encryption key derived from device_secret via PBKDF2 → non-extractable CryptoKey
- * - On disk: only ciphertext (even if IndexedDB is dumped)
+ * - Key material on disk: only ciphertext.
+ * - LIMITATION (browser): device_secret itself is stored in plaintext in
+ *   IndexedDB (no OS keystore in a web app). It raises the bar vs
+ *   localStorage (origin-isolated, not exfiltrated by simple XSS string
+ *   theft of localStorage), but a full IndexedDB dump still defeats it.
+ *   Documented honestly — do not claim otherwise.
  */
 
 import { openDB, type IDBPDatabase } from "idb"

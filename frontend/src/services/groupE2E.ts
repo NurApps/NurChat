@@ -5,7 +5,7 @@
  * The key is wrapped for each participant using X25519 ECDH + XSalsa20-Poly1305.
  * Server stores encrypted copies per user.
  *
- * Group ratchet: each message derives a unique message key via HKDF chain.
+ * Group ratchet: each message derives a unique message key via a hash chain.
  * Forward secrecy: compromising the current chain key only exposes future messages.
  *
  * Uses @noble/curves + @noble/ciphers (audited by cure53, Sep 2024).
@@ -24,7 +24,6 @@ import { api } from "./api"
 import { storeSecureValue, loadSecureValue } from "./secureStorage"
 
 const GROUP_RATCHET_KEY = "group_ratchet_states"
-const GROUP_KEY_ROTATION_INTERVAL = 50
 const MAX_GROUP_SKIP = 500
 
 function hexToBytes(hex: string): Uint8Array {
@@ -218,7 +217,8 @@ async function _groupChainNext(chainKey: Uint8Array, step: number): Promise<{ ms
 }
 
 async function _hmacDerive(key: Uint8Array, info: Uint8Array): Promise<Uint8Array> {
-  // Simple HKDF-like: extract-and-expand using SHA-512
+  // Hash-based KDF with domain separation via info (NOT HMAC — construction
+  // kept stable for compat with existing ratchet states).
   const combined = new Uint8Array(key.length + info.length)
   combined.set(key)
   combined.set(info, key.length)
@@ -275,12 +275,6 @@ export async function encryptGroupMessageRatcheted(
     // Advance chain
     state.chainKey = base64Encode(nextChain.buffer as ArrayBuffer)
     state.step += 1
-
-    // Periodically re-derive chain key from root key to prevent infinite growth
-    if (state.step % GROUP_KEY_ROTATION_INTERVAL === 0) {
-      const reDerived = await _hmacDerive(groupKey, new TextEncoder().encode(`group_ratchet_${state.step}`))
-      state.chainKey = base64Encode(reDerived.buffer as ArrayBuffer)
-    }
 
     states[chatId] = state
     await _saveRatchetStates(states)

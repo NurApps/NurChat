@@ -80,11 +80,11 @@ Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI 
 
 10. **Tray icon.** App minimizes to system tray on close. Click tray icon to show, click "Выйти" in tray menu to quit. Frontend `invoke("minimize_to_tray")` hides the window.
 
-11. **E2E storage key is `device_secret`, not token.** `_deriveStorageKey()` in `e2e.ts` uses a stable `device_secret` in localStorage because the anonymous token changes on every login — using it would break decryption across restarts.
+11. **E2E storage key is `device_secret`, not token.** `deriveStorageKey()` in `e2e.ts` uses a stable `device_secret` (IndexedDB) because the token changes on every login — using it would break decryption across restarts. NOTE: device_secret itself is plaintext in IndexedDB (no OS keystore in browser) — see secureStorage.ts header.
 
-12. **P2P Sharing via `nurchat://`.** Invite URIs: `nurchat://IP:PORT/USER_ID#HASH`. Direct WebSocket connection server-to-server. NAT relay fallback if direct connection fails.
+12. **P2P REMOVED (2026-09).** P2P networking, LAN discovery, `nurchat://` URIs, `USE_P2P` — all deleted. Calls use WebSocket signaling at `/ws/signaling/{user_id}` + `/ws/calls/{user_id}`. Do not reintroduce P2P references.
 
-13. **LAN discovery via UDP multicast.** `239.255.43.21:8002` — `/api/discover/lan` scans local network. "Найти в локальной сети" button in P2P page.
+13. **X3DH uses 3 DHs, no OPK.** The wire protocol carries no one-time-prekey id, so the client intentionally ignores `bundle.one_time_prekey` (dh4 mismatch → undecryptable first message). Server still claims+marks OPKs used on bundle fetch (harmless waste, refilled at <20).
 
 14. **Onboarding wizard.** Shown on first launch (4 steps). Dismissed with `localStorage.onboarding_seen`.
 
@@ -96,11 +96,6 @@ Required in `.env`:
 ```
 ENCRYPTION_KEY=<stable hex key>
 JWT_SECRET_KEY=<stable hex key>
-```
-
-Optional:
-```
-USE_P2P=true
 ```
 
 Full reference: `.env.example` and `shared/config.py`.

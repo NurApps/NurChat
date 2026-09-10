@@ -431,7 +431,10 @@ export class DoubleRatchetSession {
         this.skippedKeys.set(skipId, res.msgKey)
         if (this.skippedKeys.size > MAX_SKIPPED) {
           const oldest = this.skippedKeys.keys().next().value as string
+          const oldestKey = this.skippedKeys.get(oldest)
           this.skippedKeys.delete(oldest)
+          // Zeroize evicted key material instead of leaving it for GC
+          if (oldestKey) this.zeroizeBytes(oldestKey)
         }
       }
     }

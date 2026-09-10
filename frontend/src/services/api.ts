@@ -337,6 +337,10 @@ export const api = {
     localStorage.setItem("token", token)
   },
 
+  isAuthenticated: () => {
+    return !!getToken()
+  },
+
   clearToken: () => {
     const token = getToken()
     if (token) {

@@ -75,7 +75,7 @@ import { sha256 } from "@noble/hashes/sha2.js"
  * Generate Safety Number for verifying contact identity.
  * Both parties compute this independently — if they match, keys are authentic.
  *
- * Algorithm: SHA-256(sorted(identity_key_A, identity_key_B)) → 12 groups of 5 digits
+ * Algorithm: SHA-256(sorted(identity_key_A, identity_key_B)) → 12 groups of 3 digits
  */
 export function generateSafetyNumber(
   myIdentityKeyHex: string,
@@ -115,7 +115,7 @@ export function verifySafetyNumber(
   observedDigits: string,
 ): boolean {
   const expected = generateSafetyNumber(myIdentityKeyHex, theirIdentityKeyHex)
-  return expected.digits === observedDigits.replace(/\s/g, ' ').trim()
+  return expected.digits === observedDigits.replace(/\s+/g, " ").trim()
 }
 
 // ─── Encryption helpers (for session data at rest) ───
@@ -367,6 +367,8 @@ export async function fetchAndVerifyBundle(
 // ─── Session Manager (Double Ratchet) ───
 
 const sessionCache = new Map<string, DoubleRatchetSession>()
+// chatId → peer userId (populated on initiator path; persisted with session)
+const sessionPeers = new Map<string, string>()
 
 export async function getOrCreateSession(
   chatId: string,
@@ -375,7 +377,6 @@ export async function getOrCreateSession(
   isInitiator: boolean,
   theirUserId?: string,
   theirSignedPrekeyHex?: string,
-  theirOneTimePrekeyHex?: string,
 ): Promise<DoubleRatchetSession> {
   resetAutoClearTimer()
 
@@ -386,13 +387,16 @@ export async function getOrCreateSession(
 
   if (isInitiator) {
     let spkHex = theirSignedPrekeyHex
-    let otpkHex = theirOneTimePrekeyHex
 
     if (!spkHex) {
       const bundle = await fetchAndVerifyBundle(theirUserId || theirPublicKeyHex)
       if (bundle) {
         spkHex = bundle.signedPrekeyHex
-        otpkHex = bundle.oneTimePrekeyHex
+        // NOTE: bundle.oneTimePrekeyHex is intentionally IGNORED.
+        // The wire protocol carries no OPK id, so Bob could never select
+        // the matching OPK secret — including dh4 on Alice's side only
+        // produces an SK Bob can't reproduce (undecryptable first message).
+        // X3DH with 3 DHs is the safe, spec-compliant fallback.
       } else {
         spkHex = theirPublicKeyHex
       }
@@ -401,19 +405,16 @@ export async function getOrCreateSession(
     const ourIdentitySecret = hexToBytesSecure(myKeys.privateKeyHex)
     const theirIdentityPublic = hexToBytesSecure(theirPublicKeyHex)
     const theirSignedPrekeyPublic = hexToBytesSecure(spkHex)
-    const theirOneTimePrekeyPublic = otpkHex ? hexToBytesSecure(otpkHex) : undefined
 
     session = new DoubleRatchetSession()
     await session.initializeAsAlice({
       ourIdentitySecret,
       theirIdentityPublic,
       theirSignedPrekeyPublic,
-      theirOneTimePrekeyPublic,
     })
 
     // Zeroize sensitive buffers
     zeroize(ourIdentitySecret)
-    if (theirOneTimePrekeyPublic) zeroize(theirOneTimePrekeyPublic)
   } else {
     const spk = await loadSPKFromStorage()
     const spkSecret = spk
@@ -439,6 +440,10 @@ export async function getOrCreateSession(
   }
 
   sessionCache.set(chatId, session)
+  // Remember peer for key-change invalidation (only real user ids)
+  if (theirUserId && theirUserId.startsWith("user_")) {
+    sessionPeers.set(chatId, theirUserId)
+  }
   await persistSessions()
   return session
 }
@@ -449,21 +454,28 @@ export function getSession(chatId: string): DoubleRatchetSession | undefined {
 
 export function removeSession(chatId: string): void {
   sessionCache.delete(chatId)
+  sessionPeers.delete(chatId)
   persistSessions().catch(console.error)
 }
 
 export function invalidateSessionsForUser(userId: string): void {
-  // Remove all sessions involving this user (by chat ID containing userId)
-  for (const [chatId] of sessionCache) {
-    if (chatId.includes(userId)) {
+  // Drop cached sessions whose known peer is this user, so the next
+  // message re-handshakes against their fresh pre-key bundle.
+  let dropped = 0
+  for (const [chatId, peerId] of sessionPeers) {
+    if (peerId === userId) {
       sessionCache.delete(chatId)
+      sessionPeers.delete(chatId)
+      dropped++
     }
   }
+  if (dropped > 0) console.log(`[E2E] Invalidated ${dropped} session(s) for ${userId}`)
   persistSessions().catch(console.error)
 }
 
 export async function clearSessions(): Promise<void> {
   sessionCache.clear()
+  sessionPeers.clear()
   await clearSessionsSecure()
 }
 
@@ -472,7 +484,7 @@ async function persistSessions(): Promise<void> {
   for (const [chatId, session] of sessionCache) {
     data[chatId] = session.serialize()
   }
-  const plain = JSON.stringify(data)
+  const plain = JSON.stringify({ sessions: data, peers: Object.fromEntries(sessionPeers) })
   const encrypted = await encryptPayload(plain)
   await storeSessions(encrypted)
 }
@@ -483,9 +495,22 @@ async function loadSessionsFromStorage(): Promise<void> {
     if (!encrypted || typeof encrypted !== "string") return
     const decrypted = await decryptPayload(encrypted)
     if (!decrypted) return
-    const data: Record<string, SerializedSession> = JSON.parse(decrypted)
+    const parsed = JSON.parse(decrypted)
+    // Backward compat: old format was a bare {chatId: session} map
+    const data: Record<string, SerializedSession> = parsed.sessions ?? parsed
     for (const [chatId, serialized] of Object.entries(data)) {
-      sessionCache.set(chatId, DoubleRatchetSession.deserialize(serialized))
+      try {
+        sessionCache.set(chatId, DoubleRatchetSession.deserialize(serialized))
+      } catch {
+        /* skip corrupt session */
+      }
+    }
+    if (parsed.peers && typeof parsed.peers === "object") {
+      for (const [chatId, peerId] of Object.entries(parsed.peers)) {
+        if (typeof peerId === "string" && sessionCache.has(chatId)) {
+          sessionPeers.set(chatId, peerId)
+        }
+      }
     }
   } catch {
     // ignore corrupt data
@@ -723,5 +748,6 @@ export async function initSecureStorage(): Promise<{
 export async function logout(): Promise<void> {
   cancelAutoClear()
   sessionCache.clear()
+  sessionPeers.clear()
   await clearSessionsSecure()
 }

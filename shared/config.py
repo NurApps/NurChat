@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     SERVER_HOST: str = "127.0.0.1"
     SERVER_PORT: int = 8000
     DEBUG: bool = False
-    RELAY_DEAF: bool = False
+    # Deaf relay = conductor, not storage: delete message rows after
+    # delivery to all recipients (history lives on devices only).
+    # True by default — storing other people's plaintext is not our job.
+    RELAY_DEAF: bool = True
     MESSAGE_RETENTION_HOURS: int = 48
     CLIENT_HOST: str = "localhost"
     CLIENT_PORT: int = 8001

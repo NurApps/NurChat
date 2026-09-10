@@ -280,6 +280,8 @@ class TestViewOnce:
                 "content": "[encrypted]",
                 "message_type": "image",
                 "is_view_once": True,
+                "encrypted_content": "dGVzdA==",
+                "signature": "c2ln",
             },
             headers=auth(user_a["token"]),
         )
@@ -296,6 +298,8 @@ class TestViewOnce:
                 "content": "[encrypted]",
                 "message_type": "image",
                 "is_view_once": True,
+                "encrypted_content": "dGVzdA==",
+                "signature": "c2ln",
             },
             headers=auth(user_a["token"]),
         )
@@ -316,6 +320,8 @@ class TestViewOnce:
                 "content": "[encrypted]",
                 "message_type": "image",
                 "is_view_once": True,
+                "encrypted_content": "dGVzdA==",
+                "signature": "c2ln",
             },
             headers=auth(user_a["token"]),
         )

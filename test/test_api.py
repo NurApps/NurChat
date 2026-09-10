@@ -193,7 +193,8 @@ class TestChat:
         chat_id = r.json()["id"]
 
         r = client.post(f"/api/chat/chats/{chat_id}/messages", json={
-            "chat_id": chat_id, "content": "Hello!", "message_type": "text",
+            "chat_id": chat_id, "content": "[encrypted]", "message_type": "text",
+            "encrypted_content": "dGVzdA==", "signature": "c2ln",
         }, headers=h)
         assert r.status_code == 200
         msg_id = r.json()["id"]

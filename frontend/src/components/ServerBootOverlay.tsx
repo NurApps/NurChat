@@ -17,29 +17,33 @@ export default function ServerBootOverlay({ onReady }: Props) {
   const [relayHost, setRelayHost] = useState("")
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("https")
 
-  const checkHealth = useCallback(async (url?: string) => {
+  const checkHealth = useCallback(async (url?: string): Promise<boolean> => {
     const target = url || BASE_URL
     try {
       const res = await fetch(`${target}/health`, { signal: AbortSignal.timeout(5000) })
       if (res.ok) {
         setPhase("ready")
-        onReady()
+        return true
       } else {
         setPhase("failed")
         setErrorMsg(`Relay responded with status ${res.status}`)
+        return false
       }
     } catch {
       setPhase("failed")
       setErrorMsg("Could not connect to relay server")
+      return false
     }
-  }, [onReady])
+  }, [])
 
   // Poll relay health until reachable
   useEffect(() => {
-    checkHealth()
-    const interval = setInterval(checkHealth, 5000)
+    checkHealth().then((ok) => { if (ok) onReady() })
+    const interval = setInterval(() => {
+      checkHealth().then((ok) => { if (ok) onReady() })
+    }, 5000)
     return () => clearInterval(interval)
-  }, [checkHealth])
+  }, [checkHealth, onReady])
 
   // Animate dots
   useEffect(() => {
@@ -63,15 +67,18 @@ export default function ServerBootOverlay({ onReady }: Props) {
     setPhase("checking")
     setErrorMsg("")
     setElapsed(0)
-    checkHealth()
+    checkHealth().then((ok) => { if (ok) onReady() })
   }
 
+  // NOTE: BASE_URL/WS_BASE are frozen at module load, so after switching
+  // relay we must reload — otherwise api.* keeps hitting the old host.
   const handleTryPublic = async (host: string, protocol: "http" | "https") => {
     setPhase("checking")
     setErrorMsg("")
     setElapsed(0)
     setRelayConfig({ host, protocol })
-    await checkHealth(`${protocol}://${host}`)
+    const ok = await checkHealth(`${protocol}://${host}`)
+    if (ok) window.location.reload()
   }
 
   const handleTryCustom = async () => {
@@ -81,7 +88,8 @@ export default function ServerBootOverlay({ onReady }: Props) {
     setElapsed(0)
     const host = relayHost.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
     setRelayConfig({ host, protocol: relayProtocol })
-    await checkHealth(`${relayProtocol}://${host}`)
+    const ok = await checkHealth(`${relayProtocol}://${host}`)
+    if (ok) window.location.reload()
   }
 
   const handleStartLocal = () => {

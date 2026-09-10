@@ -26,7 +26,6 @@ class User(Base):
     last_seen = Column(DateTime(timezone=True), server_default=func.now())
     is_online = Column(Boolean, default=False)
     is_2fa_enabled = Column(Boolean, default=False)
-    is_superuser = Column(Boolean, default=False)
 
     messages = relationship("Message", back_populates="user")
     files = relationship("File", back_populates="user")

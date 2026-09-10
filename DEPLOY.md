@@ -3,6 +3,22 @@
 Минимальный VPS: 1 CPU / 1 GB RAM / 10 GB SSD (до ~500 активных пользователей).
 Для роста: 2 CPU / 4 GB RAM, PostgreSQL на отдельном volume.
 
+## 0. Главное правило переездов: сначала домен
+
+Аккаунты живут НА конкретном реле (таблица `users` локальна).
+Переезд «дом → Alibaba → VPS» без потерь возможен только если клиенты
+ходят по **доменному имени, а не по IP/временному URL**:
+подняли новый релей → перенесли БД (`scripts/backup-postgres.sh` туда-обратно
+или файл `nurchat.db`) → переключили DNS → пользователи ничего не заметили.
+
+Поэтому шаг ноль: заведите домен (свой или бесплатный) на Cloudflare
+и дальше везде используйте только его. `trycloudflare.com`-URL меняются
+при каждом рестарте туннеля — для публичного релея не годятся,
+только для теста.
+
+План развития: **дом + Cloudflare Tunnel → Alibaba/Termux → VPS**.
+Ниже — все три ступени.
+
 ## 0. Бесплатные варианты (без VPS за деньги)
 
 **Вариант A — Oracle Cloud Always Free (рекомендуется).**
@@ -15,16 +31,33 @@
 
 **Вариант B — домашний ПК + Cloudflare Tunnel (0 ₽, без карты).**
 Релей крутится дома (хоть на старом ноутбуке), наружу торчит через
-`cloudflared` — белый IP и проброс портов не нужны, HTTPS-домен бесплатно:
+`cloudflared` — белый IP и проброс портов не нужны, HTTPS-домен бесплатно.
 
-```bash
-# На домашней машине: релей как обычно
-docker compose up -d --build
-# Туннель (ставится отдельно: https://developers.cloudflare.com/cloudflare-one/)
-cloudflared tunnel --url http://localhost:8000
-# cloudflared выдаст https://xxx.trycloudflare.com → раздайте его пользователям
-# Для постоянного домена: свой домен на Cloudflare + named tunnel (тоже бесплатно)
+Windows (твоя машина):
+
+```powershell
+winget install --id Cloudflare.cloudflared
+cloudflared tunnel login            # один раз: привяжет твой домен
+cloudflared tunnel create nurchat   # один раз: lava id + credentials
+# в дашборде Cloudflare: DNS relay.example.com → CNAME <tunnel-id>.cfargotunnel.com
+cloudflared tunnel route dns nurchat relay.example.com
+cloudflared tunnel run --url http://localhost:8000 nurchat
+# как служба (чтобы жил после перезагрузки):
+cloudflared service install; Start-Service cloudflared
 ```
+
+Файл туннеля (`~/.cloudflared/config.yml`):
+
+```yaml
+tunnel: nurchat
+credentials-file: C:\Users\<ты>\.cloudflared\<tunnel-id>.json
+ingress:
+  - hostname: relay.example.com
+    service: http://localhost:8000
+  - service: http_status:404
+```
+
+Переезд дальше = раздел 1 на новой машине + смена DNS. Клиенты не тронуты.
 
 Нюансы: звонки за NAT без TURN могут деградировать (туннель плохо
 дружит с UDP-диапазонами coturn — STUN остаётся, прямого P2P WebRTC

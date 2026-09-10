@@ -7,12 +7,17 @@ from shared.config import settings
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 connect_args = {"check_same_thread": False} if _is_sqlite else {}
 
+# Pool: explicit env wins, otherwise safe defaults.
+# (Supabase free caps direct connections — never default high.)
+_pool_size = settings.DATABASE_POOL_SIZE or (5 if _is_sqlite else 10)
+_max_overflow = settings.DATABASE_MAX_OVERFLOW or (10 if _is_sqlite else 20)
+
 engine = create_engine(
     settings.DATABASE_URL,
     connect_args=connect_args,
     pool_pre_ping=True,
-    pool_size=5 if _is_sqlite else 20,
-    max_overflow=10 if _is_sqlite else 40,
+    pool_size=_pool_size,
+    max_overflow=_max_overflow,
 )
 
 if _is_sqlite:

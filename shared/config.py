@@ -14,6 +14,10 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./nurchat.db"
+    # Connection pool (0 = sensible default per dialect).
+    # Supabase free allows ~60 direct connections — keep pool small.
+    DATABASE_POOL_SIZE: int = 0
+    DATABASE_MAX_OVERFLOW: int = 0
     SERVER_HOST: str = "127.0.0.1"
     SERVER_PORT: int = 8000
     DEBUG: bool = False

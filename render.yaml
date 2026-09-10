@@ -1,16 +1,19 @@
-# Render Blueprint — NurChat relay on the free tier ($0).
+# Render Blueprint — NurChat relay on the free tier ($0) + Supabase Postgres.
 # Deploy: dashboard.render.com → New → Blueprint → connect repo.
-# Then set env vars below in the dashboard (or render.yaml `envVars`).
 #
-# HONEST CAVEATS (read DEPLOY.md section "Ступень $0: Render"):
-# - Free webservice SLEEPS after 15 min idle (30-50s cold start).
-#   Keep awake with cron-job.org pinging https://<xxx>.onrender.com/health
-#   every 10 minutes (free tier of cron-job.org is enough).
-# - Free PostgreSQL EXPIRES AFTER 90 DAYS (data deleted!). Migrate off
-#   before expiry (pg_dump → new DB) or accept quarterly account wipes.
-# - Disk is EPHEMERAL: media/ uploads vanish on every restart/redeploy.
-#   Files/avatars are best-effort here, not storage.
-# - No TURN here (UDP ranges unavailable) — calls work via STUN only.
+# DATABASE: Render's free Postgres EXPIRES AFTER 90 DAYS (data deleted!),
+# so this blueprint expects an EXTERNAL database — Supabase free tier
+# (500 MB, no expiry, pauses after 7d idle but our /health pings every
+# 10 min via cron-job.org keep it awake). See DEPLOY.md section $0.
+#
+# Supabase setup (5 min, no card):
+#   1. supabase.com → New project (free) → wait for provisioning.
+#   2. Project Settings → Database → Connection string (URI):
+#      postgresql://postgres:[PASSWORD]@db.[REF].supabase.co:5432/postgres
+#      (URL-encode special chars in password: @ → %40, # → %23, etc.)
+#   3. Paste as DATABASE_URL secret env in Render dashboard (see below).
+#   4. Tables are created automatically on first boot (alembic upgrade head
+#      runs as preDeployCommand AND as create_all fallback in lifespan).
 services:
   - type: web
     name: nurchat-relay
@@ -19,10 +22,9 @@ services:
     preDeployCommand: alembic upgrade head
     healthCheckPath: /health
     envVars:
+      # Paste your Supabase URI in the Render dashboard (sync: false).
       - key: DATABASE_URL
-        fromDatabase:
-          name: nurchat-db
-          property: connectionString
+        sync: false
       - key: USE_REDIS
         value: "false"
       - key: DEBUG
@@ -38,13 +40,11 @@ services:
       # Generate once and paste as secret env vars in dashboard:
       #   python -c "import secrets; print(secrets.token_hex(32))"  ×2
       #   python -c "import secrets; print(secrets.token_urlsafe(32))" ×1
+      # Reuse the SAME values if you ever recreate the service,
+      # otherwise sessions and 2FA secrets become undecryptable.
       - key: ENCRYPTION_KEY
         sync: false
       - key: JWT_SECRET_KEY
         sync: false
       - key: TOTP_MASTER_KEY
         sync: false
-
-databases:
-  - name: nurchat-db
-    plan: free

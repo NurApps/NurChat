@@ -78,6 +78,13 @@ def main() -> int:
     if not parsed.password:
         return fail("No password in DATABASE_URL — copy the full URI from Supabase → Settings → Database")
     print(f"Host: {parsed.hostname}:{parsed.port or 5432}, db: {parsed.path.lstrip('/') or '(default)'}")
+    lowered = (parsed.hostname or "").lower()
+    if "xxx" in lowered or "example" in lowered or "your-" in lowered or "<" in (parsed.hostname or ""):
+        return fail(
+            "Hostname looks like a TEMPLATE (xxx/example). Copy the real URI: "
+            "Supabase dashboard → your project → Settings (gear icon) → Database → "
+            "Connection string → URI. Host looks like db.abcdefghijklm.supabase.co"
+        )
 
     try:
         import psycopg2
@@ -86,6 +93,15 @@ def main() -> int:
 
     try:
         conn = psycopg2.connect(url, connect_timeout=10)
+    except UnicodeDecodeError:
+        # Windows + Russian locale: libpq returns the OS error (e.g. DNS
+        # failure) in cp1251, psycopg2 tries utf-8 and crashes, hiding the
+        # real reason. 99% of the time here: hostname doesn't resolve.
+        return fail(
+            "Hostname does not resolve (Windows hid the real error behind "
+            "an encoding crash). Check the host part of DATABASE_URL letter "
+            "by letter against Supabase → Settings → Database."
+        )
     except Exception as e:
         hint = str(e).split("\n")[0][:200]
         msg = "Cannot connect/login: " + hint

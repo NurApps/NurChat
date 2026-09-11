@@ -11,23 +11,6 @@ from sqlalchemy.orm import Session
 from server.core import models, schemas
 from server.core.audit import client_ip, log_audit
 from server.core.database import get_db
-from server.core.security import encryption, security, verify_token_dependency
-from shared.exceptions import AuthenticationError
-from server.utils.captcha import validate_captcha, generate_captcha
-from server.utils.security import (
-    hash_password as hash_password_argon2,
-    verify_password as verify_password_argon2,
-    encrypt_secret,
-    decrypt_secret,
-    generate_totp_secret,
-    generate_totp_uri,
-    generate_qr_code_base64,
-    verify_totp,
-    generate_backup_codes,
-    hash_backup_codes,
-    verify_backup_code,
-)
-
 from server.core.security import security, verify_pending_2fa_dependency, verify_token_dependency
 from server.utils.captcha import generate_captcha, validate_captcha
 from server.utils.logger import logger
@@ -82,7 +65,6 @@ async def register(
     last_name: str = Body(default=""),
     captcha_id: str = Body(...),
     captcha_code: str = Body(...),
-
     public_key: str = Body(default=""),
     signing_public_key: str = Body(default=""),
     db: Session = Depends(get_db)
@@ -141,60 +123,6 @@ async def register(
 
     # All validation passed — create user
     try:
-        # Validate CAPTCHA first
-        if not validate_captcha(captcha_id, captcha_code):
-            logger.warning(f"Registration attempt with invalid CAPTCHA: {captcha_id}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Неверная CAPTCHA"
-            )
-        
-        if not first_name or len(first_name.strip()) < 2:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Имя должно содержать минимум 2 символа"
-            )
-
-        existing_user = db.query(models.User).filter(
-            models.User.username == username
-        ).first()
-        if existing_user:
-            logger.warning(f"Registration attempt with existing username: {username}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username уже занят"
-            )
-
-        if len(password) < 8:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пароль должен содержать минимум 8 символов"
-            )
-        if not re.search(r"[A-Z]", password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пароль должен содержать заглавную латинскую букву"
-            )
-        if not re.search(r"[a-z]", password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пароль должен содержать строчную латинскую букву"
-            )
-        if not re.search(r"\d", password) and not any(not c.isascii() for c in password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пароль должен содержать хотя бы одну цифру"
-            )
-
-        hashed_password = hash_password_argon2(password)
-
-        keypair = encryption.generate_keypair()
-
-        # Generate Ed25519 signing keys for E2E message verification
-        from shared.p2p_encryption import P2PEncryption
-        signing_private_hex, signing_public_hex = P2PEncryption.generate_signing_keys()
-
-
         hashed_password = hash_password_argon2(password)
         user_id = security.generate_user_id()
         now = datetime.now(timezone.utc)
@@ -225,10 +153,6 @@ async def register(
         refresh_token = security.create_refresh_token(
             data={"sub": user.id, "username": user.username}
         )
-        refresh_token = security.create_refresh_token(
-            data={"sub": user.id, "username": user.username}
-        )
-
 
         return {
             "access_token": access_token,
@@ -306,8 +230,6 @@ async def login(
                 bio=getattr(user, "bio", None),
             )
             refresh_token = security.create_refresh_token(
-                data={"sub": user.id, "username": user.username}
-
                 data={"sub": user.id, "username": user.username, "2fa_pending": True}
             )
             return {
@@ -719,18 +641,10 @@ async def setup_2fa(
     if user.is_2fa_enabled:
         raise HTTPException(status_code=400, detail="2FA уже включена. Сначала отключите.")
 
-    # Generate TOTP secret, encrypted with user's password
-
     # Generate TOTP secret, encrypted with master key (not password-dependent)
     secret = generate_totp_secret()
     uri = generate_totp_uri(secret, user.username)
     qr_code = generate_qr_code_base64(uri)
-
-    # Generate backup codes
-    codes = generate_backup_codes()
-
-    # Store encrypted secret and hashed backup codes temporarily (not enabled yet)
-    user.totp_secret = encrypt_secret(secret, body.password)
 
     codes = generate_backup_codes()
 
@@ -766,9 +680,6 @@ async def enable_2fa(
     if not verify_password_argon2(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Неверный пароль")
 
-    # Decrypt secret and verify the code
-    secret = decrypt_secret(user.totp_secret, body.password)
-
     secret = decrypt_totp_secret(user.totp_secret)
     if not secret or not verify_totp(secret, body.code):
         raise HTTPException(status_code=400, detail="Неверный TOTP-код")
@@ -781,11 +692,6 @@ async def enable_2fa(
 
 
 @router.post("/2fa/verify-login")
-async def verify_2fa_login_with_token(
-    body: schemas.TwoFALoginRequest,
-    db: Session = Depends(get_db),
-    token: dict = Depends(verify_token_dependency),
-
 @limiter.limit("5/minute")
 async def verify_2fa_login_with_token(
     request: Request,
@@ -800,9 +706,6 @@ async def verify_2fa_login_with_token(
     user = db.query(models.User).filter(models.User.id == token["sub"]).first()
     if not user or not user.is_2fa_enabled:
         raise HTTPException(status_code=400, detail="2FA не активна")
-
-    # Decrypt TOTP secret with password from request
-    secret = decrypt_secret(user.totp_secret, body.password) if user.totp_secret else None
 
     secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
     totp_valid = secret and verify_totp(secret, body.code)
@@ -856,9 +759,6 @@ async def disable_2fa(
     if not verify_password_argon2(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Неверный пароль")
 
-    # Verify code (TOTP or backup)
-    secret = decrypt_secret(user.totp_secret, body.password)
-
     secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
     totp_valid = secret and verify_totp(secret, body.code)
 
@@ -892,9 +792,6 @@ async def get_2fa_status(
     if user.backup_codes:
         try:
             remaining = len(json_lib.loads(user.backup_codes))
-        except Exception:
-            pass
-
         except Exception as e:
             logger.debug(f"Failed to parse backup codes: {e}")
 
@@ -914,7 +811,6 @@ async def refresh_token(
     """Обновить access токен по refresh токену."""
     try:
         payload = security.verify_refresh_token(refresh_token_str)
-
         # 2FA not yet completed — do not issue a full access token
         if payload.get("2fa_pending"):
             raise HTTPException(
@@ -927,9 +823,6 @@ async def refresh_token(
         new_access = security.create_access_token(
             data={"sub": user.id, "username": user.username}
         )
-        return {
-            "access_token": new_access,
-
         new_refresh = security.create_refresh_token(
             data={"sub": user.id, "username": user.username}
         )

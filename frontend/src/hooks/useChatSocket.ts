@@ -10,6 +10,12 @@ type Reactions = Record<string, Record<string, string[]>>
 type Toast = { id: string; title: string; body: string; chatId?: string } | null
 type IncomingCall = { callId: string; callerId: string; callerName: string; callType: string } | null
 
+// Last-seen message timestamp for offline sync (shared across hook instances)
+let lastMessageAt: string | null = null
+try {
+  lastMessageAt = localStorage.getItem("ws_last_message_at")
+} catch { /* ignore */ }
+
 interface UseChatSocketOptions {
   currentUser: UserResponse
   selectedChat: ChatResponse | null
@@ -104,9 +110,12 @@ export function useChatSocket({
         }
         onChatUpdate()
         // Track last message timestamp for offline sync
-        if (data.created_at) {
-          lastMessageAt = data.created_at
-          localStorage.setItem("ws_last_message_at", lastMessageAt)
+        if (typeof data.created_at === "string" && data.created_at) {
+          const stamp: string = data.created_at
+          lastMessageAt = stamp
+          try {
+            localStorage.setItem("ws_last_message_at", stamp)
+          } catch { /* ignore */ }
         }
         break
       }
@@ -196,7 +205,7 @@ export function useChatSocket({
   // Sync messages received while offline
   const syncMissedMessages = useCallback(async (since: string) => {
     try {
-      const { default: api } = await import("../services/api")
+      const { api } = await import("../services/api")
       const chats = await api.getChats()
       for (const chat of chats.slice(0, 10)) { // limit to 10 most recent chats
         const messages = await api.getChatMessages(chat.id, 0, 20)
@@ -220,7 +229,6 @@ export function useChatSocket({
     let reconnectTimer: ReturnType<typeof setTimeout>
     let reconnectAttempts = 0
     const MAX_RECONNECT = 10
-    let lastMessageAt: string | null = localStorage.getItem("ws_last_message_at")
 
     function connect() {
       const token = localStorage.getItem("token")

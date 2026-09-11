@@ -3,19 +3,12 @@ Double Ratchet implementation tests for NurChat.
 Tests forward secrecy, replay protection, X3DH key agreement, and automatic key rotation.
 """
 
-import sys
-import os
-
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
-from nacl.public import PrivateKey, PublicKey
-from nacl.encoding import HexEncoder
-from shared.double_ratchet import DoubleRatchetSession, PreKeyBundle, hkdf, KDFChain
-
 from nacl.encoding import HexEncoder
 from nacl.public import PrivateKey
 from nacl.signing import SigningKey, VerifyKey
@@ -27,9 +20,6 @@ class TestKDFChain:
     def test_chain_advances(self):
         key = b"\x01" * 32
         chain = KDFChain(key)
-        msg_key1, chain2 = chain.next_message_key()
-        msg_key2, chain3 = chain2.next_message_key()
-
         msg_key1, chain2 = chain.next_message_key(b"")
         msg_key2, chain3 = chain2.next_message_key(b"")
         assert msg_key1 != msg_key2
@@ -40,9 +30,6 @@ class TestKDFChain:
         key = b"\x02" * 32
         chain1 = KDFChain(key)
         chain2 = KDFChain(key)
-        mk1a, _ = chain1.next_message_key()
-        mk1b, _ = chain2.next_message_key()
-
         mk1a, _ = chain1.next_message_key(b"")
         mk1b, _ = chain2.next_message_key(b"")
         assert mk1a == mk1b

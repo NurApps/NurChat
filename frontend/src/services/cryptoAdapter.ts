@@ -174,12 +174,13 @@ export function hexToBytes(hex: string): Uint8Array {
 // ─── WebCrypto Integration (extractable: false) ───
 
 /**
- * Check if WebCrypto X25519 is supported.
+ * Check if WebCrypto is available (used for HKDF/HMAC operations).
  */
 export function isWebCryptoSupported(): boolean {
   try {
-    // @ts-expect-error -- checking for X25519 support
-    return typeof crypto.subtle !== "undefined" && "generateKey" in crypto.subtle
+    return typeof crypto !== "undefined"
+      && typeof crypto.subtle !== "undefined"
+      && "generateKey" in crypto.subtle
   } catch {
     return false
   }

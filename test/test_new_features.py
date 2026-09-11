@@ -1,4 +1,4 @@
-﻿"""Integration tests for contact requests and view-once media."""
+"""Integration tests for contact requests and view-once media."""
 import os
 import re
 import sys

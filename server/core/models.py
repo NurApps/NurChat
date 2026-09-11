@@ -234,13 +234,6 @@ class BlockedUser(Base):
     blocked_user = relationship("User", foreign_keys=[blocked_user_id])
 
 
-class AuditLog(Base):
-    __tablename__ = "audit_logs"
-    __table_args__ = (
-        Index("ix_audit_logs_user_action", "user_id", "created_at"),
-        Index("ix_audit_logs_action", "action"),
-    )
-
 class SignedPreKey(Base):
     __tablename__ = "signed_prekeys"
 
@@ -254,69 +247,11 @@ class SignedPreKey(Base):
     user = relationship("User")
 
 
-class P2PMessage(Base):
-    __tablename__ = "p2p_messages"
-    __table_args__ = (
-        Index("ix_p2p_messages_recipient_created", "recipient_id", "created_at"),
-    )
-
-    id = Column(String, primary_key=True, index=True)
-    sender_id = Column(String, ForeignKey("users.id"), index=True)
-    recipient_id = Column(String, ForeignKey("users.id"), index=True)
-    payload = Column(Text, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    delivered_at = Column(DateTime(timezone=True), nullable=True)
-
-    sender = relationship("User", foreign_keys=[sender_id])
-    recipient = relationship("User", foreign_keys=[recipient_id])
-
-
-class P2PBackup(Base):
-    __tablename__ = "p2p_backups"
-
-    id = Column(String, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), index=True)
-    chat_id = Column(String, index=True)
-    payload = Column(Text, nullable=False)
-    version = Column(Integer, default=1)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    user = relationship("User", foreign_keys=[user_id])
-
-
-class Bookmark(Base):
-    __tablename__ = "bookmarks"
-
 class OneTimePreKey(Base):
     __tablename__ = "one_time_prekeys"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    public_key = Column(Text, nullable=False)
-    is_used = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    user = relationship("User")
-
-
-class SignedPreKey(Base):
-    __tablename__ = "signed_prekeys"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), index=True)
-    public_key = Column(Text, nullable=False)
-    signature = Column(Text, nullable=False)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    user = relationship("User")
-
-
-class OneTimePreKey(Base):
-    __tablename__ = "one_time_prekeys"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey("users.id"), index=True)
     public_key = Column(Text, nullable=False)
     is_used = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -365,13 +300,6 @@ class PushSubscription(Base):
     user_agent = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-
-class FederationActivity(Base):
-    __tablename__ = "federation_activities"
-    __table_args__ = (
-        Index("ix_fed_activity_sender", "sender_server", "created_at"),
-        Index("ix_fed_activity_type", "activity_type", "created_at"),
-    )
 
 class RevokedToken(Base):
     __tablename__ = "revoked_tokens"

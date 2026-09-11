@@ -5,10 +5,11 @@ import GroupInviteItem from "./GroupInviteItem"
 import { ChatListSkeleton } from "./Skeleton"
 import FileManager from "./FileManager"
 import type { UserResponse, ChatResponse, ContactResponse } from "../types"
+import type { Tab } from "../store/chatStore"
 
 interface Props {
-  tab: string
-  setTab: (tab: string) => void
+  tab: Tab
+  setTab: (tab: Tab) => void
   search: string
   setSearch: (s: string) => void
   chats: ChatResponse[]
@@ -22,8 +23,8 @@ interface Props {
   setSelectedChat: (chat: ChatResponse | null) => void
   setShowCreateChat: (v: boolean) => void
   setShowAddContact: (v: boolean) => void
-  handleSelectChat: (chat: ChatResponse) => void
-  handlePin: (id: string, isPinned: boolean) => void
+  handleSelectChat: (chatId: string) => void
+  handlePin: (chatId: string, isPinned: boolean) => void
   handleMute: (id: string, muted: boolean) => void
   handleDeleteChat: (id: string) => void
   handleRemoveContact: (id: string) => void
@@ -70,7 +71,7 @@ export default function ChatSidebar({
 
       <div className="sidebar-list-header">
         <span className="sidebar-list-title">
-          {tab === "chats" ? t("chat.chats") : tab === "contacts" ? t("chat.contacts") : tab === "files" ? t("chat.files") : tab === "bookmarks" ? t("chat.bookmarks") : t("chat.invitations")}
+          {tab === "chats" ? t("chat.chats") : tab === "contacts" ? t("chat.contacts") : tab === "files" ? t("chat.files") : t("chat.invitations")}
         </span>
         {(tab === "chats" || tab === "contacts") && (
           <button className="sidebar-add-btn"

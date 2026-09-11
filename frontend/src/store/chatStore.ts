@@ -1,7 +1,5 @@
 import { create } from "zustand"
 import type {
-  ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, UserResponse,
-
   ChatResponse, ContactResponse, GroupInviteResponse, UserResponse,
 } from "../types"
 import { api } from "../services/api"
@@ -20,9 +18,7 @@ interface IncomingCall {
   callType: string
 }
 
-type Tab = "chats" | "contacts" | "invites" | "bookmarks" | "files"
-
-type Tab = "chats" | "contacts" | "invites" | "files"
+export type Tab = "chats" | "contacts" | "invites" | "files" | "calls" | "settings"
 
 interface ChatState {
   currentUser: UserResponse
@@ -32,10 +28,6 @@ interface ChatState {
   invites: GroupInviteResponse[]
   search: string
   selectedChat: ChatResponse | null
-  messages: MessageResponse[]
-  loadingMore: boolean
-  hasMore: boolean
-
   onlineUsers: Record<string, boolean>
   typingUsers: Record<string, Record<string, boolean>>
   toast: Toast | null
@@ -47,24 +39,6 @@ interface ChatState {
   showAddContact: boolean
   showCreateChat: boolean
   showMessageInfo: string | null
-  bookmarkedIds: Set<string>
-
-  input: string
-  showEmoji: boolean
-  showStickers: boolean
-  uploading: boolean
-  uploadProgress: number
-  p2pConnected: Record<string, boolean>
-
-  setTab: (tab: Tab) => void
-  setChats: (chats: ChatResponse[]) => void
-  setContacts: (contacts: ContactResponse[]) => void
-  setInvites: (invites: GroupInviteResponse[]) => void
-  setSearch: (search: string) => void
-  setSelectedChat: (chat: ChatResponse | null) => void
-  setMessages: (messages: MessageResponse[]) => void
-  setHasMore: (hasMore: boolean) => void
-
 
   input: string
   showEmoji: boolean
@@ -85,15 +59,6 @@ interface ChatState {
   setShowAddContact: (show: boolean) => void
   setShowCreateChat: (show: boolean) => void
   setShowMessageInfo: (id: string | null) => void
-  setBookmarkedIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void
-
-  setInput: (input: string | ((prev: string) => string)) => void
-  setShowEmoji: (show: boolean) => void
-  setShowStickers: (show: boolean) => void
-  setUploading: (uploading: boolean) => void
-  setUploadProgress: (progress: number) => void
-  setP2pConnected: (fn: Record<string, boolean> | ((prev: Record<string, boolean>) => Record<string, boolean>)) => void
-
 
   setInput: (input: string | ((prev: string) => string)) => void
   setShowEmoji: (show: boolean) => void
@@ -103,7 +68,6 @@ interface ChatState {
   loadChats: () => Promise<void>
   loadContacts: () => Promise<void>
   loadInvites: () => Promise<void>
-
   refreshCurrentUser: () => void
 }
 
@@ -123,10 +87,6 @@ export const useChatStore = create<ChatState>((set) => ({
   invites: [],
   search: "",
   selectedChat: null,
-  messages: [],
-  loadingMore: false,
-  hasMore: true,
-
   onlineUsers: {},
   typingUsers: {},
   toast: null,
@@ -138,24 +98,6 @@ export const useChatStore = create<ChatState>((set) => ({
   showAddContact: false,
   showCreateChat: false,
   showMessageInfo: null,
-  bookmarkedIds: new Set(),
-
-  input: "",
-  showEmoji: false,
-  showStickers: false,
-  uploading: false,
-  uploadProgress: 0,
-  p2pConnected: {},
-
-  setTab: (tab) => set({ tab }),
-  setChats: (chats) => set({ chats }),
-  setContacts: (contacts) => set({ contacts }),
-  setInvites: (invites) => set({ invites }),
-  setSearch: (search) => set({ search }),
-  setSelectedChat: (chat) => set({ selectedChat: chat }),
-  setMessages: (messages) => set({ messages }),
-  setHasMore: (hasMore) => set({ hasMore }),
-
 
   input: "",
   showEmoji: false,
@@ -176,15 +118,6 @@ export const useChatStore = create<ChatState>((set) => ({
   setShowAddContact: (show) => set({ showAddContact: show }),
   setShowCreateChat: (show) => set({ showCreateChat: show }),
   setShowMessageInfo: (id) => set({ showMessageInfo: id }),
-  setBookmarkedIds: (ids) => set((state) => ({ bookmarkedIds: typeof ids === "function" ? ids(state.bookmarkedIds) : ids })),
-
-  setInput: (input) => set((state) => ({ input: typeof input === "function" ? input(state.input) : input })),
-  setShowEmoji: (show) => set({ showEmoji: show }),
-  setShowStickers: (show) => set({ showStickers: show }),
-  setUploading: (uploading) => set({ uploading }),
-  setUploadProgress: (progress) => set({ uploadProgress: progress }),
-  setP2pConnected: (fn) => set((state) => ({ p2pConnected: typeof fn === "function" ? fn(state.p2pConnected) : fn })),
-
 
   setInput: (input) => set((state) => ({ input: typeof input === "function" ? input(state.input) : input })),
   setShowEmoji: (show) => set({ showEmoji: show }),
@@ -195,9 +128,6 @@ export const useChatStore = create<ChatState>((set) => ({
     try {
       const data = await api.getChats()
       set({ chats: data || [] })
-    } catch {
-      set({ chats: [] })
-
     } catch (err) {
       console.error("[chatStore] loadChats failed:", err)
     }
@@ -207,9 +137,6 @@ export const useChatStore = create<ChatState>((set) => ({
     try {
       const data = await api.getContacts()
       set({ contacts: data || [] })
-    } catch {
-      set({ contacts: [] })
-
     } catch (err) {
       console.error("[chatStore] loadContacts failed:", err)
     }
@@ -219,11 +146,6 @@ export const useChatStore = create<ChatState>((set) => ({
     try {
       const data = await api.getGroupInvites()
       set({ invites: data || [] })
-    } catch {
-      set({ invites: [] })
-    }
-  },
-
     } catch (err) {
       console.error("[chatStore] loadInvites failed:", err)
     }

@@ -1,8 +1,3 @@
-"""Security utilities: Argon2id hashing, TOTP 2FA, backup codes."""
-
-import base64
-import hashlib
-
 """Security utilities: Argon2id hashing, TOTP 2FA, backup codes, token blacklist."""
 
 import base64
@@ -10,7 +5,6 @@ import io
 import json
 import secrets
 import string
-
 from datetime import datetime, timezone
 
 import pyotp
@@ -18,8 +12,6 @@ import qrcode
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives.kdf.argon2 import Argon2id as Argon2idKDF
-
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id as Argon2idKDF
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC

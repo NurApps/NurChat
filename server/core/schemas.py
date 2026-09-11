@@ -1,51 +1,5 @@
 # server/core/schemas.py - экспорт общих схем
 
-from shared.schemas import (
-    BlockedUserResponse,
-    CallHistoryResponse,
-    CallResponse,
-    CallStartRequest,
-    ChatCreate,
-    ChatResponse,
-    CleanupResponse,
-    ContactCreate,
-    ContactResponse,
-    FileResponse,
-    FileUploadResponse,
-    ForwardRequest,
-    GroupInviteCreate,
-    GroupInviteResponse,
-    MessageResponse,
-    P2PBackupResponse,
-    P2PIdentityResponse,
-    P2PPeerResponse,
-    P2PPendingResponse,
-    PinnedMessageResponse,
-    ReactionCreate,
-    ReactionResponse,
-    StatsResponse,
-    StorageInfo,
-    Token,
-    TwoFAEnableRequest,
-    TwoFALoginRequest,
-    TwoFASetupRequest,
-    TwoFASetupResponse,
-    TwoFADisableRequest,
-    TwoFAResponse,
-    TwoFAVerifyRequest,
-    UserBase,
-    UserCreate,
-    UserUpdate,
-    UserResponse,
-    MessageCreate,
-    GroupRenameRequest,
-    TOTPSetupResponse,
-    TOTPVerifyRequest,
-    TOTPEnableRequest,
-    TOTPDisableRequest,
-    UserTOTPStatus
-)
-
 from shared.schemas import *  # noqa: F401, F403
 
 # Обновляем ссылки для рекурсивных типов

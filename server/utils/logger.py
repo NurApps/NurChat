@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import logging
-import sys
-
 import json
 import logging
 import sys
@@ -61,24 +58,6 @@ class HumanFormatter(logging.Formatter):
 
 def _rotating_handler(path: Path) -> RotatingFileHandler:
     return RotatingFileHandler(path, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8")
-
-
-class SafeStreamHandler(logging.StreamHandler):
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            super().emit(record)
-        except UnicodeEncodeError:
-            msg = self.format(record).encode('utf-8', errors='replace').decode()
-            try:
-                self.stream.write(msg + self.terminator)
-                self.flush()
-            except Exception:
-                self.handleError(record)
-
-
-def _rotating_handler(path: Path) -> RotatingFileHandler:
-    return RotatingFileHandler(path, maxBytes=10*1024*1024, backupCount=5, encoding='utf-8')
-
 
 
 def setup_logger():

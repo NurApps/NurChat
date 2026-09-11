@@ -14,13 +14,6 @@ function getToken(): string | null {
   return localStorage.getItem("token")
 }
 
-// Get CSRF token from cookie
-function getCsrfToken(): string | null {
-  const match = document.cookie.match(/(?:^|;\\s*)csrf_token=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-
 export function getCsrfToken(): string | null {
   const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
@@ -38,20 +31,6 @@ async function request<T>(
   body?: unknown,
 ): Promise<T> {
   const token = getToken()
-  const csrfToken = getCsrfToken()
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(csrfToken && method !== "GET" ? { "X-CSRF-Token": csrfToken } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new ApiError(res.status, text || res.statusText)
-
   const csrfToken = csrfTokenCache || getCsrfToken()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 15000)
@@ -299,131 +278,6 @@ export const api = {
 
   getIceServers: () =>
     request<{ ice_servers: Array<{ urls: string; username?: string; credential?: string }> }>("GET", "/api/calls/ice-servers"),
-
-  // P2P
-  generateP2PKeys: () =>
-    request<{ private_key: string; public_key: string; signing_private_key: string; signing_public_key: string }>("POST", "/api/p2p/keys/generate"),
-
-  getP2PIdentity: () =>
-    request<{ user_id: string; peer_id: string; public_key: string; signing_public_key: string; updated_at: string }>("GET", "/api/p2p/identity"),
-
-  updateP2PIdentity: (publicKey: string, signingPublicKey: string) =>
-    request<void>("POST", "/api/p2p/identity", { public_key: publicKey, signing_public_key: signingPublicKey }),
-
-  searchP2PPeers: (query: string, limit = 50) =>
-    request<{ user_id: string; peer_id: string; username: string; first_name: string; public_key?: string; is_online?: boolean }[]>("GET", `/api/p2p/peers/search?query=${encodeURIComponent(query)}&limit=${limit}`),
-
-  getP2PPending: (limit = 500) =>
-    request<{ id: string; sender_id: string; recipient_id: string; payload: string; created_at: string }[]>("GET", `/api/p2p/pending?limit=${limit}`),
-
-  // P2P Sharing (direct server-to-server)
-  discoverLAN: () =>
-    request<{ peers: { node_id: string; host: string; port: number; user_id: string; username: string; peer_name: string; last_seen: string }[] }>("GET", "/api/discover/lan"),
-
-  getP2PAddress: () =>
-    request<{ uri: string; host: string; port: number; user_id: string; peer_id: string; port_open: boolean }>("GET", "/api/p2p/my-address"),
-
-  openP2PPort: () =>
-    request<{ message: string; uri: string; host: string; port: number; user_id: string }>("POST", "/api/p2p/open-port"),
-
-  getRemotePeers: () =>
-    request<{ peers: { node_id: string; address: string; user_id: string; connected_at: string; is_relay: boolean }[] }>("GET", "/api/p2p/remote-peers"),
-
-  getRelayPeers: () =>
-    request<{ relays: { node_id: string; address: string; user_id: string }[] }>("GET", "/api/p2p/relay-peers"),
-
-  registerRelay: () =>
-    request<{ message: string; node_id: string }>("POST", "/api/p2p/register-relay"),
-
-  connectToRemote: async (inviteUri: string, relayUri?: string) => {
-    const [, rest] = inviteUri.split("://")
-    if (!rest) throw new Error("Неверный формат ссылки")
-    const [hostPort, userIdHash] = rest.split("/")
-    const [host, portStr] = hostPort.split(":")
-    const port = parseInt(portStr) || 8000
-    const [userId] = (userIdHash || "").split("#")
-    if (!host || !userId) throw new Error("Неверный формат ссылки")
-
-    const token = getToken()
-    if (!token) throw new Error("Не авторизован")
-
-    const myUserId = JSON.parse(atob(token.split(".")[1])).sub || ""
-
-    const tryConnect = (targetHost: string, targetPort: number, viaRelay: boolean): Promise<{ ws: WebSocket; node_id: string }> => {
-      return new Promise((resolve, reject) => {
-        const ws = new WebSocket(`ws://${targetHost}:${targetPort}/ws/remote/${encodeURIComponent(token.slice(0, 16))}`)
-        const timeout = setTimeout(() => { ws.close(); reject(new Error("Таймаут подключения")) }, 8000)
-        ws.onopen = () => {
-          clearTimeout(timeout)
-          ws.send(JSON.stringify({
-            type: "remote_hello",
-            address: `${targetHost}:${targetPort}`,
-            user_id: myUserId,
-            is_relay: viaRelay,
-            relay_for: viaRelay ? userId : "",
-          }))
-        }
-        ws.onmessage = (e) => {
-          try {
-            const data = JSON.parse(e.data)
-            if (data.type === "remote_ack") resolve({ ws, node_id: data.node_id })
-          } catch { }
-        }
-        ws.onerror = () => { clearTimeout(timeout); reject(new Error("Ошибка соединения")) }
-      })
-    }
-
-    try {
-      const result = await tryConnect(host, port, false)
-      await request("POST", "/api/p2p/backups", { chat_id: userId, payload: JSON.stringify({ nodeId: result.node_id }) })
-      return { connected: true, node_id: result.node_id }
-    } catch {
-      if (relayUri) {
-        const [, relayRest] = relayUri.split("://")
-        if (relayRest) {
-          const [relayHost, relayPortStr] = relayRest.split("/")[0].split(":")
-          const relayPort = parseInt(relayPortStr) || 8000
-          const result = await tryConnect(relayHost, relayPort, true)
-          return { connected: true, node_id: result.node_id, relayed: true }
-        }
-      }
-      throw new Error("Не удалось подключиться (прямое соединение недоступно, укажите relay сервер)")
-    }
-  },
-
-  // IPFS
-  getIPFSStatus: () =>
-    request<{ enabled: boolean; online: boolean; api_url?: string; message: string }>("GET", "/api/ipfs/status"),
-
-  getIPFSGatewayUrl: (hash: string) =>
-    request<{ url: string | null; hash: string }>("GET", `/api/ipfs/gateway-url/${hash}`),
-
-  pinIPFS: (hash: string) =>
-    request<{ success: boolean; hash: string; message: string }>("POST", `/api/ipfs/pin/${hash}`),
-
-  unpinIPFS: (hash: string) =>
-    request<{ success: boolean; hash: string; message: string }>("DELETE", `/api/ipfs/pin/${hash}`),
-
-  // IPFS Manager
-  getIPFSManagerStatus: () =>
-    request<{ installed: boolean; running: boolean; message: string; version?: string }>("GET", "/api/ipfs/manager/status"),
-
-  installIPFS: () =>
-    request<{ success: boolean; message: string }>("POST", "/api/ipfs/manager/install"),
-
-  startIPFS: () =>
-    request<{ success: boolean; message: string }>("POST", "/api/ipfs/manager/start"),
-
-  stopIPFS: () =>
-    request<{ success: boolean; message: string }>("POST", "/api/ipfs/manager/stop"),
-
-  uninstallIPFS: () =>
-    request<{ success: boolean; message: string }>("DELETE", "/api/ipfs/manager/uninstall"),
-
-  // E2E Group Keys
-  setGroupKey: (chatId: string, encryptedKeys: Record<string, string>) =>
-    request<void>("POST", `/api/chat/chats/${chatId}/group-key`, { encrypted_keys: encryptedKeys }),
-
 
   setGroupKey: (chatId: string, encryptedKeys: Record<string, string>, creatorId?: string) =>
     request<void>("POST", `/api/chat/chats/${chatId}/group-key`, { encrypted_keys: encryptedKeys, creator_id: creatorId }),

@@ -14,7 +14,7 @@ interface Props {
   onAddContact: (userId: string) => void
   onCloseAddContact: () => void
   showCreateChat: boolean
-  onCreateChat: (name: string, participantIds: string[], isSecret: boolean, expiresAfter: number) => void
+  onCreateChat: (participantIds: string[], name: string | null, isSecret?: boolean, secretTtl?: number) => void
   onCloseCreateChat: () => void
   profileUser: UserResponse | null
   onCloseProfile: () => void

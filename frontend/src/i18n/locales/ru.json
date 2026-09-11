@@ -22,13 +22,6 @@
     "groupSettings": "Настройки группы",
     "p2pOnline": "P2P · в сети",
     "p2pConnecting": "P2P · подключение...",
-    "switchAccount": "Сменить аккаунт",
-    "p2pIpfs": "P2P & IPFS",
-    "logout": "Выйти",
-    "legal": "Правила",
-    "theme": "Тема",
-    "noInternet": "Нет подключения к интернету"
-
     "viaRelay": "через сервер",
     "switchAccount": "Сменить аккаунт",
     "p2p": "P2P",
@@ -54,8 +47,6 @@
     "noAccount": "Нет аккаунта?",
     "haveAccount": "Уже есть аккаунт?",
     "loginError": "Неверное имя или пароль",
-    "registerError": "Ошибка регистрации"
-
     "registerError": "Ошибка регистрации",
     "subtitle": "Безопасный мессенджер с E2E-шифрованием",
     "firstNamePlaceholder": "Имя *",
@@ -93,7 +84,6 @@
     "bookmarks": "Избранное",
     "files": "Файлы",
     "invitations": "Приглашения",
-
     "invite": "Пригласить друга",
     "newChat": "Новый чат",
     "newContact": "Добавить контакт",
@@ -107,8 +97,6 @@
     "nothingFound": "Ничего не найдено",
     "loading": "Загрузка...",
     "pinnedMessage": "Закреплённое сообщение",
-    "secretChat": "Секретный чат · сообщения исчезают через {{seconds}}с",
-
     "pinnedMessages": "Закреплённые сообщения",
     "noPinnedMessages": "Нет закреплённых сообщений",
     "secretChat": "Секретный чат · сообщения исчезают через {{seconds}}с",
@@ -134,8 +122,6 @@
     "stop": "Остановить",
     "searchInChat": "Поиск в чате",
     "typingSingular": "печатает",
-    "typingPlural": "печатают"
-
     "typingPlural": "печатают",
     "sendViaP2P": "Отправить через P2P",
     "p2pNotConnected": "P2P не подключён",
@@ -282,8 +268,6 @@
     "camera": "Камера",
     "speaker": "Динамик",
     "screenShare": "Демонстрация экрана",
-    "screenShareFailed": "Не удалось начать демонстрацию экрана"
-
     "screenShareFailed": "Не удалось начать демонстрацию экрана",
     "connected": "Соединение установлено",
     "mute": "Отключить микрофон",
@@ -296,15 +280,11 @@
     "title": "Настройки",
     "profile": "Профиль",
     "appearance": "Внешний вид",
-    "privacy": "Конфиденциальность",
-
     "privacy": "Приватность",
     "storage": "Хранилище",
     "darkTheme": "Тёмная тема",
     "language": "Язык",
     "notifications": "Уведомления",
-    "pinCode": "PIN-код"
-
     "pinCode": "PIN-код",
     "security": "Безопасность",
     "account": "Аккаунт",
@@ -449,8 +429,6 @@
     "removeBookmark": "Не удалось убрать из избранного",
     "addBookmark": "Не удалось добавить в избранное",
     "fileUpload": "Ошибка загрузки {{name}}",
-    "deleteChat": "Не удалось удалить чат"
-
     "deleteChat": "Не удалось удалить чат",
     "somethingWentWrong": "Что-то пошло не так",
     "reload": "Перезагрузить",

@@ -22,13 +22,6 @@
     "groupSettings": "Group Settings",
     "p2pOnline": "P2P · online",
     "p2pConnecting": "P2P · connecting...",
-    "switchAccount": "Switch Account",
-    "p2pIpfs": "P2P & IPFS",
-    "logout": "Log Out",
-    "legal": "Legal",
-    "theme": "Theme",
-    "noInternet": "No internet connection"
-
     "viaRelay": "via server",
     "switchAccount": "Switch Account",
     "p2p": "P2P",
@@ -54,8 +47,6 @@
     "noAccount": "No account?",
     "haveAccount": "Already have an account?",
     "loginError": "Invalid username or password",
-    "registerError": "Registration failed"
-
     "registerError": "Registration failed",
     "subtitle": "Secure messenger with E2E encryption",
     "firstNamePlaceholder": "First name *",
@@ -93,7 +84,6 @@
     "bookmarks": "Bookmarks",
     "files": "Files",
     "invitations": "Invitations",
-
     "invite": "Invite a friend",
     "newChat": "New Chat",
     "newContact": "Add Contact",
@@ -107,8 +97,6 @@
     "nothingFound": "Nothing found",
     "loading": "Loading...",
     "pinnedMessage": "Pinned message",
-    "secretChat": "Secret chat · messages disappear after {{seconds}}s",
-
     "pinnedMessages": "Pinned messages",
     "noPinnedMessages": "No pinned messages",
     "secretChat": "Secret chat · messages disappear after {{seconds}}s",
@@ -134,8 +122,6 @@
     "stop": "Stop",
     "searchInChat": "Search in chat",
     "typingSingular": "typing",
-    "typingPlural": "typing"
-
     "typingPlural": "typing",
     "sendViaP2P": "Send via P2P",
     "p2pNotConnected": "P2P not connected",
@@ -280,8 +266,6 @@
     "connFailed": "Connection failed",
     "mic": "Microphone",
     "camera": "Camera",
-    "speaker": "Speaker"
-
     "speaker": "Speaker",
     "screenShare": "Screen sharing",
     "screenShareFailed": "Failed to start screen sharing",
@@ -301,8 +285,6 @@
     "darkTheme": "Dark Theme",
     "language": "Language",
     "notifications": "Notifications",
-    "pinCode": "PIN Code"
-
     "pinCode": "PIN Code",
     "security": "Security",
     "account": "Account",
@@ -447,8 +429,6 @@
     "removeBookmark": "Failed to remove bookmark",
     "addBookmark": "Failed to add bookmark",
     "fileUpload": "Error uploading {{name}}",
-    "deleteChat": "Failed to delete chat"
-
     "deleteChat": "Failed to delete chat",
     "somethingWentWrong": "Something went wrong",
     "reload": "Reload",

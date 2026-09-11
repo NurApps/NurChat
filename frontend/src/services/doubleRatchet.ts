@@ -3,29 +3,6 @@
  * Mirrors shared/double_ratchet.py — X3DH + Double Ratchet (Signal Protocol)
  *
  * Provides forward secrecy, automatic key rotation, and replay protection.
- */
-
-import nacl from "tweetnacl"
-import {
-  encode as base64Encode,
-  decode as base64Decode,
-} from "base64-arraybuffer"
-
-// ─── Helpers ───
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2)
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16)
-  }
-  return bytes
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("")
-}
-
-
  *
  * Uses @noble/curves + @noble/ciphers (audited by cure53, Sep 2024).
  * Replaces tweetnacl for better security and performance (1.5x faster).
@@ -63,14 +40,11 @@ function u8Concat(...arrays: Uint8Array[]): Uint8Array {
   return result
 }
 
-// ─── HKDF (SHA-256 based) ───
-
-
 export function toBase64(bytes: Uint8Array): string {
   const CHUNK = 8192
   let binary = ""
   for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK))
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)))
   }
   return btoa(binary)
 }
@@ -122,10 +96,6 @@ class KDFChain {
     this.step = step
   }
 
-  async nextMessageKey(): Promise<{ msgKey: Uint8Array; chain: KDFChain }> {
-    const nextKey = await hkdf(new Uint8Array(0), this.key, new TextEncoder().encode("chain_next"), 32)
-    const msgKey = await hkdf(new Uint8Array(0), this.key, new TextEncoder().encode("chain_out"), 32)
-
   async nextMessageKey(ad: Uint8Array): Promise<{ msgKey: Uint8Array; chain: KDFChain }> {
     const infoMsg = u8Concat(ad, new TextEncoder().encode("|nurchat:msg"))
     const infoChain = u8Concat(ad, new TextEncoder().encode("|nurchat:chain"))
@@ -145,12 +115,6 @@ export interface RatchetHeader {
 
 export interface RatchetEnvelope {
   header: RatchetHeader
-  ciphertext: string   // base64
-  ad: string           // base64 encoded associated data
-}
-
-export interface SerializedSession {
-
   ciphertext: string   // base64 (encrypted ad + plaintext)
 }
 
@@ -168,16 +132,15 @@ export interface SerializedSession {
   PN: number
   our_id: string | null
   their_id: string | null
-
   skipped: Record<string, string>
   seen: string[]
+  pendingSendRatchet?: boolean
+  dhFresh?: boolean
 }
 
 // ─── Double Ratchet Session ───
 
 export class DoubleRatchetSession {
-  DHs: nacl.BoxKeyPair | null = null
-
   DHs: BoxKeyPair | null = null
   DHr: Uint8Array | null = null
   RK: Uint8Array | null = null
@@ -189,7 +152,6 @@ export class DoubleRatchetSession {
   ourIdentityPublic: Uint8Array | null = null
   theirIdentityPublic: Uint8Array | null = null
   private seenMessageIds = new Set<string>()
-
   private skippedKeys = new Map<string, Uint8Array>()
   // Set after receiving a new remote ratchet key: our NEXT outgoing message
   // must perform a DH ratchet step. Do NOT regenerate DHs inside
@@ -203,8 +165,6 @@ export class DoubleRatchetSession {
   private associatedData(): Uint8Array {
     const a = this.ourIdentityPublic || new Uint8Array(0)
     const b = this.theirIdentityPublic || new Uint8Array(0)
-    return u8Concat(a, b)
-
     return u8Compare(a, b) < 0 ? u8Concat(a, b) : u8Concat(b, a)
   }
 
@@ -214,20 +174,6 @@ export class DoubleRatchetSession {
     theirSignedPrekeyPublic: Uint8Array,
     theirOneTimePrekeyPublic?: Uint8Array,
   ): Promise<{ sk: Uint8Array; ephemeralSecret: Uint8Array }> {
-    const ephemeralKp = nacl.box.keyPair()
-
-    const dh1 = nacl.box.before(theirSignedPrekeyPublic, ourIdentitySecret)
-    const dh2 = nacl.box.before(theirIdentityPublic, ephemeralKp.secretKey)
-    const dh3 = nacl.box.before(theirSignedPrekeyPublic, ephemeralKp.secretKey)
-
-    let dhInput = u8Concat(dh1, dh2, dh3)
-    if (theirOneTimePrekeyPublic) {
-      const dh4 = nacl.box.before(theirOneTimePrekeyPublic, ephemeralKp.secretKey)
-      dhInput = u8Concat(dhInput, dh4)
-    }
-
-    const sk = await hkdf(new Uint8Array(0), dhInput, new TextEncoder().encode("X3DH_SK"), 32)
-
     const ephemeralKp = boxKeyPair()
 
     const dh1 = boxBefore(theirSignedPrekeyPublic, ourIdentitySecret)
@@ -251,18 +197,6 @@ export class DoubleRatchetSession {
     theirIdentityPublic: Uint8Array,
     theirEphemeralPublic: Uint8Array,
   ): Promise<Uint8Array> {
-    const dh1 = nacl.box.before(theirIdentityPublic, ourSignedPrekeySecret)
-    const dh2 = nacl.box.before(theirEphemeralPublic, ourIdentitySecret)
-    const dh3 = nacl.box.before(theirEphemeralPublic, ourSignedPrekeySecret)
-
-    let dhInput = u8Concat(dh1, dh2, dh3)
-    if (ourOneTimePrekeySecret) {
-      const dh4 = nacl.box.before(theirEphemeralPublic, ourOneTimePrekeySecret)
-      dhInput = u8Concat(dhInput, dh4)
-    }
-
-    return hkdf(new Uint8Array(0), dhInput, new TextEncoder().encode("X3DH_SK"), 32)
-
     const dh1 = boxBefore(theirIdentityPublic, ourSignedPrekeySecret)
     const dh2 = boxBefore(theirEphemeralPublic, ourIdentitySecret)
     const dh3 = boxBefore(theirEphemeralPublic, ourSignedPrekeySecret)
@@ -288,9 +222,6 @@ export class DoubleRatchetSession {
       params.theirSignedPrekeyPublic,
       params.theirOneTimePrekeyPublic,
     )
-
-    const ephemeralKp = nacl.box.keyPair.fromSecretKey(ephemeralSecret)
-    const ourIdentityKp = nacl.box.keyPair.fromSecretKey(params.ourIdentitySecret)
 
     const ephemeralKp = boxKeyPairFromSecretKey(ephemeralSecret)
     const ourIdentityKp = boxKeyPairFromSecretKey(params.ourIdentitySecret)
@@ -325,11 +256,6 @@ export class DoubleRatchetSession {
       params.theirEphemeralPublic,
     )
 
-    const ourIdentityKp = nacl.box.keyPair.fromSecretKey(params.ourIdentitySecret)
-
-    this.DHr = params.theirEphemeralPublic
-    this.DHs = nacl.box.keyPair.fromSecretKey(params.ourSignedPrekeySecret)
-
     const ourIdentityKp = boxKeyPairFromSecretKey(params.ourIdentitySecret)
 
     this.DHr = params.theirEphemeralPublic
@@ -349,9 +275,6 @@ export class DoubleRatchetSession {
 
   private async dhRatchetSend(): Promise<void> {
     if (!this.DHr) throw new Error("No remote DH key for ratchet")
-    const newDHs = nacl.box.keyPair()
-    const dhShared = nacl.box.before(this.DHr, newDHs.secretKey)
-
 
     // Reuse the keypair generated in dhRatchetRecv if it is fresh;
     // otherwise generate a brand-new one.
@@ -380,7 +303,6 @@ export class DoubleRatchetSession {
     this.Ns = 0
     this.Nr = 0
     this.DHs = newDHs
-
     this.pendingSendRatchet = false
 
     // Zeroize intermediate secrets
@@ -390,8 +312,6 @@ export class DoubleRatchetSession {
 
   private async dhRatchetRecv(theirPublic: Uint8Array): Promise<void> {
     if (!this.DHs) throw new Error("No local DH key for ratchet")
-    const dhShared = nacl.box.before(theirPublic, this.DHs.secretKey)
-
     const dhShared = boxBefore(theirPublic, this.DHs.secretKey)
     const derived = await hkdf(
       this.RK || new Uint8Array(32),
@@ -406,11 +326,6 @@ export class DoubleRatchetSession {
     this.PN = this.Ns
     this.Nr = 0
     this.DHr = theirPublic
-    this.DHs = nacl.box.keyPair()
-  }
-
-  async encryptMessage(plaintext: string): Promise<RatchetEnvelope> {
-
 
     // Generate the next DH keypair now (Signal spec): the pending send
     // ratchet will reuse it so the header public key stays consistent
@@ -439,15 +354,6 @@ export class DoubleRatchetSession {
         throw new Error("No sending chain available — ratchet first")
       }
     }
-
-    if (!this.CKs) throw new Error("Sending chain still null after ratchet")
-
-    const { msgKey, chain } = await this.CKs.nextMessageKey()
-    this.CKs = chain
-
-    const nonce = nacl.randomBytes(nacl.secretbox.nonceLength)
-    const msgBytes = new TextEncoder().encode(plaintext)
-    const ciphertext = nacl.secretbox(msgBytes, nonce, msgKey)
 
     // Force DH ratchet every KEY_ROTATION_INTERVAL messages for extra forward secrecy
     if (this.CKs && this.CKs.step >= KEY_ROTATION_INTERVAL && this.CKr && this.DHr) {
@@ -480,26 +386,16 @@ export class DoubleRatchetSession {
       ns: this.Ns,
     }
 
-    const ad = this.associatedData()
-
-
     this.Ns += 1
 
     return {
       header,
-      ciphertext: base64Encode(ciphertextWithNonce.buffer as ArrayBuffer),
-      ad: base64Encode(ad.buffer as ArrayBuffer),
-
       ciphertext: toBase64(ciphertextWithNonce),
     }
   }
 
   async decryptMessage(envelope: RatchetEnvelope): Promise<string> {
     const { dh, pn, ns } = envelope.header
-
-    const msgId = `${dh}:${ns}`
-    if (this.seenMessageIds.has(msgId)) {
-      throw new Error("Replay attack detected — duplicate message ID")
 
     const ad = this.associatedData()
     const msgId = `${dh}:${ns}`
@@ -524,38 +420,6 @@ export class DoubleRatchetSession {
     if (ns < this.CKr.step) {
       throw new Error(`Message number ${ns} is in the past (chain at ${this.CKr.step})`)
     }
-
-    let chain = this.CKr
-    while (chain.step < ns) {
-      const result = await chain.nextMessageKey()
-      chain = result.chain
-    }
-
-    const { msgKey, chain: nextChain } = await chain.nextMessageKey()
-    this.CKr = nextChain
-    this.Nr += 1
-
-    this.seenMessageIds.add(msgId)
-    if (this.seenMessageIds.size > 10000) {
-      this.seenMessageIds = new Set([...this.seenMessageIds].slice(-5000))
-    }
-
-    const ciphertextBytes = new Uint8Array(base64Decode(envelope.ciphertext))
-    const nonce = ciphertextBytes.subarray(0, nacl.secretbox.nonceLength)
-    const ciphertext = ciphertextBytes.subarray(nacl.secretbox.nonceLength)
-
-    const plaintext = nacl.secretbox.open(ciphertext, nonce, msgKey)
-    if (!plaintext) throw new Error("Decryption failed")
-    return new TextDecoder().decode(plaintext)
-  }
-
-  serialize(): SerializedSession {
-    return {
-      DHs: this.DHs ? bytesToHex(this.DHs.publicKey) + ":" + bytesToHex(this.DHs.secretKey) : null,
-      DHr: this.DHr ? bytesToHex(this.DHr) : null,
-      RK: this.RK ? base64Encode(this.RK.buffer as ArrayBuffer) : null,
-      CKs: this.CKs ? base64Encode(this.CKs.key.buffer as ArrayBuffer) : null,
-      CKr: this.CKr ? base64Encode(this.CKr.key.buffer as ArrayBuffer) : null,
 
     if (ns - this.CKr.step > MAX_SKIP_GAP) {
       throw new Error("Message gap too large")
@@ -657,9 +521,6 @@ export class DoubleRatchetSession {
       Ns: this.Ns,
       Nr: this.Nr,
       PN: this.PN,
-      our_id: this.ourIdentityPublic ? base64Encode(this.ourIdentityPublic.buffer as ArrayBuffer) : null,
-      their_id: this.theirIdentityPublic ? base64Encode(this.theirIdentityPublic.buffer as ArrayBuffer) : null,
-
       our_id: this.ourIdentityPublic ? toBase64(this.ourIdentityPublic) : null,
       their_id: this.theirIdentityPublic ? toBase64(this.theirIdentityPublic) : null,
       skipped,
@@ -672,7 +533,6 @@ export class DoubleRatchetSession {
   }
 
   static deserialize(data: SerializedSession): DoubleRatchetSession {
-
     if (data.version !== PROTOCOL_VERSION) {
       throw new Error("Session protocol version mismatch")
     }
@@ -680,22 +540,12 @@ export class DoubleRatchetSession {
 
     if (data.DHs) {
       const secHex = data.DHs.split(":")[1]
-      s.DHs = nacl.box.keyPair.fromSecretKey(hexToBytes(secHex))
-
       s.DHs = boxKeyPairFromSecretKey(hexToBytes(secHex))
     }
     if (data.DHr) {
       s.DHr = hexToBytes(data.DHr)
     }
     if (data.RK) {
-      s.RK = new Uint8Array(base64Decode(data.RK))
-    }
-    if (data.CKs) {
-      s.CKs = new KDFChain(new Uint8Array(base64Decode(data.CKs)), data.CKs_step)
-    }
-    if (data.CKr) {
-      s.CKr = new KDFChain(new Uint8Array(base64Decode(data.CKr)), data.CKr_step)
-
       s.RK = fromBase64(data.RK)
     }
     if (data.CKs) {
@@ -708,12 +558,6 @@ export class DoubleRatchetSession {
     s.Nr = data.Nr
     s.PN = data.PN
     if (data.our_id) {
-      s.ourIdentityPublic = new Uint8Array(base64Decode(data.our_id))
-    }
-    if (data.their_id) {
-      s.theirIdentityPublic = new Uint8Array(base64Decode(data.their_id))
-    }
-
       s.ourIdentityPublic = fromBase64(data.our_id)
     }
     if (data.their_id) {
@@ -744,7 +588,6 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   }
   return true
 }
-
 
 const u8Equal = bytesEqual
 

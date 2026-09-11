@@ -14,6 +14,7 @@ export default function MobileChatPage() {
   const { chatId } = useParams<{ chatId: string }>();
   const [messages, setMessages] = useState<MessageResponse[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [selectedMedia, setSelectedMedia] = useState<{
     src: string;
     type: 'image' | 'video' | 'audio';
@@ -36,6 +37,10 @@ export default function MobileChatPage() {
 
   useEffect(() => {
     loadMessages();
+    try {
+      const raw = localStorage.getItem("user");
+      if (raw) setCurrentUserId((JSON.parse(raw) as { id?: string }).id ?? null);
+    } catch { /* ignore */ }
   }, [loadMessages]);
 
   useEffect(() => {
@@ -101,11 +106,11 @@ export default function MobileChatPage() {
         <div className="mobile-chat__messages">
           {messages.map((msg) => (
             <SwipeableRow key={msg.id} onDelete={() => handleDelete(msg.id)}>
-              <div className={`message-bubble ${msg.sender_id === 'me' ? 'message-bubble--sent' : 'message-bubble--received'}`}>
+              <div className={`message-bubble ${msg.user_id === currentUserId ? 'message-bubble--sent' : 'message-bubble--received'}`}>
                 <div className="message-bubble__text">{msg.content}</div>
                 <div className="message-bubble__time">
                   {formatTime(msg.created_at)}
-                  {msg.is_edited && <span className="message-bubble__edited"> (ред.)</span>}
+                  {msg.edited_at && <span className="message-bubble__edited"> (изм.)</span>}
                 </div>
               </div>
             </SwipeableRow>

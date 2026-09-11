@@ -1,21 +1,5 @@
 
 import asyncio
-import io
-import os
-import sys
-
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-from contextlib import asynccontextmanager
-
-import uvicorn
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, WebSocket
@@ -26,10 +10,6 @@ from slowapi.errors import RateLimitExceeded
 
 from server.core.database import create_tables
 from server.middleware.csrf import CSRFMiddleware
-
-# Импорты routes
-from server.routes import auth, calls, chat, contacts_groups, files, forward, keys, legal, p2p, ipfs, bookmarks, pins, stats, audit, federation, discovery
-
 from server.routes import (
     auth,
     calls,
@@ -57,31 +37,6 @@ async def lifespan(app: FastAPI):
 
     file_cleanup_service.start_cleanup_scheduler()
     logger.info("File cleanup service started")
-
-    # Auto-start IPFS daemon if enabled
-    if settings.USE_IPFS:
-        from server.core import ipfs_manager
-        if ipfs_manager.is_installed() and not ipfs_manager.is_running():
-            result = ipfs_manager.start_daemon()
-            logger.info("IPFS auto-start: %s", result.get("message", "unknown"))
-        elif ipfs_manager.is_running():
-            logger.info("IPFS daemon already running")
-        else:
-            logger.info("IPFS enabled but not installed. Install via /api/ipfs/manager/install")
-
-    # Start LAN discovery
-    from server.core.discovery import start_discovery
-    await start_discovery()
-    logger.info("LAN discovery service started")
-
-    yield
-
-    # Shutdown LAN discovery
-    from server.core.discovery import stop_discovery
-    await stop_discovery()
-    logger.info("LAN discovery service stopped")
-
-    # Shutdown: close all WebSocket connections gracefully
 
     from server.core.background_tasks import start_background_tasks
     start_background_tasks()
@@ -122,8 +77,6 @@ app = FastAPI(
     openapi_url=None,
 )
 
-# CSRF Protection (защита от подделки межсайтовых запросов)
-
 app.add_middleware(
     CSRFMiddleware,
     secret_key=settings.JWT_SECRET_KEY,
@@ -132,22 +85,6 @@ app.add_middleware(
     token_lifetime_hours=24,
     exempt_paths=[
         "/health",
-        "/docs",
-        "/redoc",
-        "/openapi.json",
-        "/api/auth/captcha",
-        "/api/auth/login",
-        "/api/auth/register",
-    ],
-)
-
-# Rate limiting (защита от брутфорса)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# CORS — строгий белый список из .env (CORS_ORIGINS) или дефолтные
-import os
-
         "/api/auth/captcha",
         "/api/auth/login",
         "/api/auth/register",
@@ -197,14 +134,6 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "Accept"],
-)
-
-# Глобальный обработчик исключений
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-Password-Confirmation", "Accept"],
     expose_headers=["X-CSRF-Token"],
 )
@@ -226,8 +155,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Внутренняя ошибка сервера"},
     )
-
-# Security headers
 
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
@@ -257,13 +184,6 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["X-XSS-Protection"] = "1; mode=block"
-    if "Content-Security-Policy" not in response.headers:
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; "
-            "img-src 'self' data: blob: http://localhost:* http://127.0.0.1:*; "
-            "media-src 'self' blob: http://localhost:* http://127.0.0.1:*; "
-
     if not settings.DEBUG:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     if "Content-Security-Policy" not in response.headers:
@@ -281,9 +201,6 @@ async def add_security_headers(request: Request, call_next):
         )
     return response
 
-# Body size limit
-MAX_BODY_SIZE = 10 * 1024 * 1024
-
 MAX_BODY_SIZE = settings.MAX_FILE_SIZE
 
 @app.middleware("http")
@@ -292,11 +209,6 @@ async def limit_body_size(request: Request, call_next):
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > MAX_BODY_SIZE:
             from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=413, content={"detail": "Тело запроса слишком большое (макс. 10MB)"})
-    return await call_next(request)
-
-# Роуты
-
             max_mb = MAX_BODY_SIZE // (1024 * 1024)
             return JSONResponse(status_code=413, content={"detail": f"Тело запроса слишком большое (макс. {max_mb}MB)"})
     return await call_next(request)
@@ -307,16 +219,6 @@ app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])
 app.include_router(files.router, prefix="/api/files", tags=["Files"])
 app.include_router(contacts_groups.router, prefix="/api/contacts-groups", tags=["Contacts and Groups"])
-app.include_router(p2p.router, prefix="/api/p2p", tags=["P2P"])
-app.include_router(ipfs.router, prefix="/api/ipfs", tags=["IPFS"])
-app.include_router(bookmarks.router, prefix="/api/bookmarks", tags=["Bookmarks"])
-app.include_router(pins.router, tags=["Pinned Messages"])
-app.include_router(stats.router, tags=["Statistics"])
-app.include_router(audit.router, prefix="/api/audit", tags=["Audit Logs"])
-app.include_router(federation.router, tags=["Federation"])
-app.include_router(keys.router, prefix="/api/keys", tags=["Keys"])
-app.include_router(discovery.router, prefix="/api/discover", tags=["LAN Discovery"])
-
 app.include_router(keys.router, prefix="/api/keys", tags=["Keys"])
 app.include_router(push.router)
 app.include_router(contact_requests.router, tags=["Contact Requests"])
@@ -404,70 +306,6 @@ async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token
     finally:
         await release_ws_connection(client_ip)
 
-# WebSocket для удалённых P2P пиров (прямое соединение сервер-сервер)
-@app.websocket("/ws/remote/{node_id}")
-async def websocket_remote_endpoint(websocket: WebSocket, node_id: str):
-    await websocket.accept()
-    try:
-        hello = await asyncio.wait_for(websocket.receive_json(), timeout=10)
-        if not isinstance(hello, dict) or hello.get("type") != "remote_hello":
-            await websocket.send_json({"type": "error", "message": "Expected remote_hello"})
-            await websocket.close()
-            return
-        address = hello.get("address", "unknown")
-        user_id = hello.get("user_id", "")
-        is_relay = bool(hello.get("is_relay", False))
-        relay_for = hello.get("relay_for", "")
-        if not user_id:
-            await websocket.send_json({"type": "error", "message": "user_id required"})
-            await websocket.close()
-            return
-        from server.ws.remote import remote_manager
-
-        # If connecting as relay client, find the target through the relay's peer connection
-        if is_relay and relay_for:
-            peer = remote_manager.get_peer_by_user(relay_for)
-            if not peer:
-                await websocket.send_json({"type": "error", "message": "Relay target not connected"})
-                await websocket.close()
-                return
-            # Register as relay client
-            await remote_manager.connect(node_id, websocket, address, user_id, is_relay=True)
-            await websocket.send_json({"type": "remote_ack", "node_id": node_id, "relayed": True})
-        else:
-            await remote_manager.connect(node_id, websocket, address, user_id, is_relay=is_relay)
-            await websocket.send_json({"type": "remote_ack", "node_id": node_id})
-        while True:
-            data = await websocket.receive_json()
-            msg_type = data.get("type")
-            if msg_type == "relay_message":
-                target = data.get("target_user_id", "")
-                payload = data.get("payload", {})
-                sent = await remote_manager.relay_message(target, payload)
-                await websocket.send_json({
-                    "type": "relay_ack",
-                    "target": target,
-                    "delivered": sent,
-                })
-            elif msg_type == "relay_register":
-                peer = remote_manager.get_peer_by_node(node_id)
-                if peer:
-                    peer.is_relay = True
-                await websocket.send_json({"type": "relay_registered"})
-            elif msg_type == "ping":
-                await websocket.send_json({"type": "pong"})
-    except asyncio.TimeoutError:
-        await websocket.send_json({"type": "error", "message": "Handshake timeout"})
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        logger.error(f"Remote peer error: {e}")
-    finally:
-        from server.ws.remote import remote_manager
-        remote_manager.disconnect(node_id)
-
-# WebSocket для уведомлений
-
 @app.websocket("/ws/notifications/{user_id}")
 async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, token: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
@@ -481,11 +319,6 @@ async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, t
         await handle_notifications_websocket(websocket, user_id)
     finally:
         await release_ws_connection(client_ip)
-
-# Статические файлы — НЕ монтируем /media напрямую (безопасность)
-# Файлы доступны только через авторизованный эндпоинт /api/files/download/{file_id}
-
-# Health check
 
 @app.get("/health")
 async def health_check():
@@ -540,30 +373,4 @@ if settings.ENABLE_METRICS:
 
     @app.get("/metrics")
     async def metrics():
-        from starlette.responses import Response
-        return Response(content=generate_latest(REGISTRY), media_type="text/plain; version=0.0.4; charset=utf-8")
-
-@app.get("/")
-async def root():
-    return {
-        "message": "Welcome to NurChat API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "health": "/health"
-    }
-
-if __name__ == "__main__":
-    # PyInstaller fix: в --noconsole sys.stderr = None, валится uvicorn
-    if sys.stderr is None:
-        sys.stderr = io.StringIO()
-
-    uvicorn.run(
-        app,
-        host=settings.SERVER_HOST,
-        port=settings.SERVER_PORT,
-        reload=False,
-        log_level="info",
-        log_config=None
-    )
-
         return JSONResponse(content={"metrics": "prometheus"})

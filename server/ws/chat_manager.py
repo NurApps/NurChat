@@ -7,8 +7,8 @@ from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from server.core.redis_manager import publish_presence, set_user_offline, set_user_online
-from shared.constants import WS_EVENTS
 from shared.config import settings
+from shared.constants import WS_EVENTS
 
 from ..core import models
 from ..core.database import SessionLocal

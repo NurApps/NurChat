@@ -1,7 +1,3 @@
-import re
-import pytest
-from fastapi.testclient import TestClient
-
 import io
 import re
 
@@ -28,13 +24,6 @@ def _solve_captcha() -> tuple[str, str]:
     assert r.status_code == 200
     data = r.json()
     q = data["question"]
-    nums = re.findall(r"\d+", q)
-    answer = str(int(nums[0]) + int(nums[1])) if len(nums) >= 2 else "0"
-    return data["captcha_id"], answer
-
-
-def _register_user(username="testuser", password="TestPass123", first_name="Test") -> dict:
-
     nums = [int(n) for n in re.findall(r"\d+", q)]
     if "×" in q or "x" in q:
         answer = nums[0] * nums[1]
@@ -52,7 +41,6 @@ def _register_user(username="testuser", password="TestPass123", first_name="Test
     r = client.post("/api/auth/register", json={
         "username": username, "password": password,
         "first_name": first_name,
-
         "public_key": public_key,
         "signing_public_key": signing_public_key,
         "captcha_id": cid, "captcha_code": ans,
@@ -68,9 +56,6 @@ def _reset_limiter():
 
 @pytest.fixture(autouse=True)
 def _clear_db():
-    from server.core.database import SessionLocal
-    from server.core import models
-
     from server.core import models
     from server.core.database import SessionLocal
     db = SessionLocal()
@@ -208,8 +193,6 @@ class TestChat:
         chat_id = r.json()["id"]
 
         r = client.post(f"/api/chat/chats/{chat_id}/messages", json={
-            "chat_id": chat_id, "content": "Hello!", "message_type": "text",
-
             "chat_id": chat_id, "content": "[encrypted]", "message_type": "text",
             "encrypted_content": "dGVzdA==", "signature": "c2ln",
         }, headers=h)
@@ -225,11 +208,6 @@ class TestChat:
     def test_body_size_limit(self):
         r = client.post(
             "/api/auth/login",
-            content=b"x" * (11 * 1024 * 1024),
-            headers={"Content-Type": "application/json"},
-        )
-        assert r.status_code == 413
-
             content=b"x" * (51 * 1024 * 1024),
             headers={"Content-Type": "application/json"},
         )

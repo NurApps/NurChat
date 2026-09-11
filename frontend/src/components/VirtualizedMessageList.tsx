@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { List, useDynamicRowHeight, useListRef } from "react-window"
 import MessageBubble from "./MessageBubble"
 import type { MessageResponse, UserResponse } from "../types"
@@ -49,8 +49,8 @@ const Row = ({
 }
 
 export default function VirtualizedMessageList(props: Props) {
-  const { messages, scrollToMessageId, ...rowProps } = props
-  const listRef = useListRef<{ scrollToRow(config: { align?: string; behavior?: string; index: number }): void }>()
+  const { messages, scrollToMessageId, currentUser, ...rowProps } = props
+  const listRef = useListRef(null)
   const scrollLockRef = useRef(false)
 
   const rowHeight = useDynamicRowHeight({ defaultRowHeight: DEFAULT_ROW_HEIGHT, key: messages.length })
@@ -72,14 +72,18 @@ export default function VirtualizedMessageList(props: Props) {
     if (!scrollLockRef.current) scrollToBottom()
   }, [scrollToBottom])
 
+  useEffect(() => {
+    handleScrollToMessage()
+  }, [handleScrollToMessage])
+
   return (
-    <List
-      ref={listRef}
+    <List<RowProps>
+      listRef={listRef}
+      rowComponent={Row}
+      rowProps={{ ...rowProps, messages, currentUser }}
       rowHeight={rowHeight}
       rowCount={messages.length}
       onRowsRendered={handleResize}
-    >
-      {(rowProps: RowProps) => Row}
-    </List>
+    />
   )
 }

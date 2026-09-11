@@ -10,30 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class BaseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-# TOTP 2FA Schemas
-class TOTPSetupResponse(BaseSchema):
-    """Response with QR code for TOTP setup"""
-    qr_code: str  # Data URI with QR code image
-    secret_hint: str  # First few characters of secret for manual entry (optional)
-    backup_codes: Optional[List[str]] = None  # Recovery codes (optional for future)
-
-class TOTPVerifyRequest(BaseSchema):
-    """Request to verify TOTP code"""
-    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
-
-class TOTPEnableRequest(TOTPVerifyRequest):
-    """Request to enable TOTP after setup"""
-    pass
-
-class TOTPDisableRequest(TOTPVerifyRequest):
-    """Request to disable TOTP"""
-    pass
-
-class UserTOTPStatus(BaseSchema):
-    """TOTP status for user"""
-    enabled: bool
-    setup_required: bool  # True if secret exists but not enabled yet
-
 # User
 class UserBase(BaseSchema):
     id: str
@@ -162,22 +138,14 @@ class FileUploadResponse(FileBase):
 class FileResponse(FileBase):
     user_id: str
     uploaded_at: datetime
-    ipfs_hash: Optional[str] = None
 
 # Auth
 class Token(BaseSchema):
     access_token: str
-    refresh_token: Optional[str] = None
-    token_type: str
-    user: UserResponse
-    private_key: Optional[str] = None
-    signing_private_key: Optional[str] = None  # Ed25519 private key (returned once on register)
-    requires_2fa: bool = False  # True if 2FA is enabled but not yet verified
-
     refresh_token: str | None = None
     token_type: str
     user: UserResponse
-    requires_2fa: bool = False
+    requires_2fa: bool = False  # True if 2FA is enabled but not yet verified
 
 # 2FA
 class TwoFASetupRequest(BaseSchema):
@@ -194,15 +162,6 @@ class TwoFAVerifyRequest(BaseSchema):
 
 class TwoFALoginRequest(BaseSchema):
     code: str = Field(..., description="6-digit TOTP code or backup code (XXXX-XXXX)")
-    password: str = Field(..., description="Password to decrypt TOTP secret")
-
-class TwoFAEnableRequest(BaseSchema):
-    code: str = Field(..., min_length=6, max_length=7, description="6-digit TOTP code to confirm setup")
-
-    code: str = Field(..., min_length=6, max_length=7)
-
-class TwoFALoginRequest(BaseSchema):
-    code: str = Field(..., description="6-digit TOTP code or backup code (XXXX-XXXX)")
     password: str | None = Field(None)
 
 class TwoFAEnableRequest(BaseSchema):
@@ -216,11 +175,6 @@ class TwoFADisableRequest(BaseSchema):
 class TwoFAResponse(BaseSchema):
     enabled: bool
     backup_codes_remaining: int = 0
-    
-# Forward
-class ForwardRequest(BaseSchema):
-    message_id: str = Field(..., min_length=1, max_length=100)
-    target_chat_ids: List[str] = Field(..., min_items=1, max_items=50, description="Can forward to 1-50 chats")
 
 
 # Contacts

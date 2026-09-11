@@ -10,14 +10,6 @@ import base64
 import hashlib
 import hmac
 import struct
-from typing import Optional
-
-from nacl.encoding import HexEncoder
-from nacl.public import PrivateKey, PublicKey, Box
-import nacl.secret
-import nacl.utils
-import nacl.signing
-
 
 import nacl.secret
 import nacl.signing
@@ -57,10 +49,6 @@ class KDFChain:
         self.key = key
         self.step = step
 
-    def next_message_key(self) -> tuple[bytes, "KDFChain"]:
-        msg_key = hkdf(b"", self.key, b"msg_out", 32)
-        next_key = hkdf(b"", self.key, b"msg_next", 32)
-
     def next_message_key(self, ad: bytes) -> tuple[bytes, "KDFChain"]:
         info_msg = ad + b"|nurchat:msg"
         info_chain = ad + b"|nurchat:chain"
@@ -85,12 +73,6 @@ class DoubleRatchetSession:
     """
 
     def __init__(self):
-        self.DHs: Optional[PrivateKey] = None
-        self.DHr: Optional[PublicKey] = None
-        self.RK: Optional[bytes] = None
-        self.CKs: Optional[KDFChain] = None
-        self.CKr: Optional[KDFChain] = None
-
         self.DHs: PrivateKey | None = None
         self.DHr: PublicKey | None = None
         self.RK: bytes | None = None
@@ -99,14 +81,6 @@ class DoubleRatchetSession:
         self.Ns: int = 0
         self.Nr: int = 0
         self.PN: int = 0
-
-        self.our_identity_public: Optional[bytes] = None
-        self.their_identity_public: Optional[bytes] = None
-
-        self._seen_message_ids: set[tuple[str, int]] = set()
-
-    def _associated_data(self) -> bytes:
-        return (self.our_identity_public or b"") + (self.their_identity_public or b"")
 
         self.our_identity_public: bytes | None = None
         self.their_identity_public: bytes | None = None
@@ -135,8 +109,6 @@ class DoubleRatchetSession:
         our_identity_private: PrivateKey,
         their_identity_public: PublicKey,
         their_signed_prekey_public: PublicKey,
-        their_one_time_prekey_public: Optional[PublicKey] = None,
-
         their_one_time_prekey_public: PublicKey | None = None,
     ) -> tuple[bytes, PrivateKey]:
         ephemeral = PrivateKey.generate()
@@ -154,8 +126,6 @@ class DoubleRatchetSession:
     def x3dh_receive(
         our_identity_private: PrivateKey,
         our_signed_prekey_private: PrivateKey,
-        our_one_time_prekey_private: Optional[PrivateKey],
-
         our_one_time_prekey_private: PrivateKey | None,
         their_identity_public: PublicKey,
         their_ephemeral_public: PublicKey,
@@ -174,8 +144,6 @@ class DoubleRatchetSession:
         our_identity_private: PrivateKey,
         their_identity_public: PublicKey,
         their_signed_prekey_public: PublicKey,
-        their_one_time_prekey_public: Optional[PublicKey] = None,
-
         their_one_time_prekey_public: PublicKey | None = None,
     ):
         sk, ephemeral = self.x3dh_initialize(
@@ -201,8 +169,6 @@ class DoubleRatchetSession:
         self,
         our_identity_private: PrivateKey,
         our_signed_prekey_private: PrivateKey,
-        our_one_time_prekey_private: Optional[PrivateKey],
-
         our_one_time_prekey_private: PrivateKey | None,
         their_identity_public: PublicKey,
         their_ephemeral_public: PublicKey,
@@ -230,8 +196,6 @@ class DoubleRatchetSession:
     # ─── DH Ratchet ───
 
     def _dh_ratchet_send(self):
-        ratchet_private = PrivateKey.generate()
-
         if self.DHr is None or self.RK is None:
             raise ValueError("DH ratchet not initialized")
         if not self._dh_fresh:
@@ -245,9 +209,6 @@ class DoubleRatchetSession:
         self.PN = self.Ns
         self.Ns = 0
         self.DHs = ratchet_private
-
-    def _dh_ratchet_recv(self, their_public: PublicKey):
-
         self._dh_fresh = False
         self._pending_send_ratchet = False
 
@@ -262,9 +223,6 @@ class DoubleRatchetSession:
         self.Nr = 0
         self.DHr = their_public
         self.DHs = PrivateKey.generate()
-
-    def encrypt_message(self, plaintext: str) -> dict:
-
         self._dh_fresh = True
         self._pending_send_ratchet = True
 
@@ -277,12 +235,6 @@ class DoubleRatchetSession:
                 self._dh_ratchet_send()
             else:
                 raise ValueError("No sending chain available")
-
-        msg_key, self.CKs = self.CKs.next_message_key()
-        nonce = nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE)
-        box = nacl.secret.SecretBox(msg_key)
-        ciphertext = box.encrypt(plaintext.encode("utf-8"), nonce)
-
 
         # Force DH ratchet every KEY_ROTATION_INTERVAL messages for extra forward secrecy
         if (self.CKs is not None and self.CKs.step >= KEY_ROTATION_INTERVAL
@@ -303,14 +255,10 @@ class DoubleRatchetSession:
             "pn": self.PN,
             "ns": self.Ns,
         }
-        ad = self._associated_data()
-
 
         envelope = {
             "header": header,
             "ciphertext": base64.b64encode(ciphertext).decode("utf-8"),
-            "ad": base64.b64encode(ad).decode("utf-8"),
-
         }
 
         self.Ns += 1
@@ -323,12 +271,6 @@ class DoubleRatchetSession:
         dh_hex = header["dh"]
         pn = header["pn"]
         ns = header["ns"]
-
-        their_ratchet = PublicKey(bytes.fromhex(dh_hex))
-
-        msg_id = (dh_hex, ns)
-        if msg_id in self._seen_message_ids:
-            raise ValueError("Replay attack detected")
 
         ad = self._associated_data()
 
@@ -351,24 +293,6 @@ class DoubleRatchetSession:
             raise ValueError("No receiving chain available")
 
         if ns < self.CKr.step:
-            raise ValueError(f"Message number {ns} is in the past (chain at {self.CKr.step})")
-
-        chain = self.CKr
-        while chain.step < ns:
-            _, chain = chain.next_message_key()
-
-        msg_key, self.CKr = chain.next_message_key()
-        self.Nr += 1
-
-        self._seen_message_ids.add(msg_id)
-        if len(self._seen_message_ids) > 10000:
-            self._seen_message_ids = set(list(self._seen_message_ids)[-5000:])
-
-        ciphertext_bytes = base64.b64decode(envelope["ciphertext"])
-        box = nacl.secret.SecretBox(msg_key)
-        plaintext = box.decrypt(ciphertext_bytes)
-        return plaintext.decode("utf-8")
-
             if msg_id in self._seen_message_ids:
                 raise ValueError("Replay attack detected")
             raise ValueError(f"Message number {ns} is in the past (chain at {self.CKr.step})")
@@ -413,7 +337,6 @@ class DoubleRatchetSession:
 
     def serialize(self) -> dict:
         return {
-
             "version": PROTOCOL_VERSION,
             "DHs": self.DHs.encode(encoder=HexEncoder).decode() if self.DHs else None,
             "DHr": self.DHr.encode(encoder=HexEncoder).decode() if self.DHr else None,
@@ -427,7 +350,6 @@ class DoubleRatchetSession:
             "PN": self.PN,
             "our_id": base64.b64encode(self.our_identity_public).decode() if self.our_identity_public else None,
             "their_id": base64.b64encode(self.their_identity_public).decode() if self.their_identity_public else None,
-
             "skipped": {k: base64.b64encode(v).decode() for k, v in self._skipped_keys.items()},
             "seen": [f"{dh}:{ns}" for dh, ns in sorted(self._seen_message_ids, key=lambda t: (t[1], t[0]))[-2000:]],
             "pending_send_ratchet": self._pending_send_ratchet,
@@ -436,7 +358,6 @@ class DoubleRatchetSession:
 
     @staticmethod
     def deserialize(data: dict) -> "DoubleRatchetSession":
-
         if data.get("version", 0) != PROTOCOL_VERSION:
             raise ValueError("Session protocol version mismatch")
         s = DoubleRatchetSession()
@@ -453,14 +374,12 @@ class DoubleRatchetSession:
         s.Ns = data.get("Ns", 0)
         s.Nr = data.get("Nr", 0)
         s.PN = data.get("PN", 0)
-
         s._pending_send_ratchet = bool(data.get("pending_send_ratchet", False))
         s._dh_fresh = bool(data.get("dh_fresh", False))
         if data.get("our_id"):
             s.our_identity_public = base64.b64decode(data["our_id"])
         if data.get("their_id"):
             s.their_identity_public = base64.b64decode(data["their_id"])
-
         skipped = data.get("skipped") or {}
         for k, v in skipped.items():
             try:
@@ -510,9 +429,6 @@ class PreKeyBundle:
         identity_private: PrivateKey,
         signed_prekey_private: PrivateKey,
         num_one_time: int = 100,
-        registration_id: Optional[int] = None,
-    ) -> "PreKeyBundle":
-
         registration_id: int | None = None,
         signing_private: nacl.signing.SigningKey | None = None,
     ) -> "PreKeyBundle":
@@ -531,8 +447,6 @@ class PreKeyBundle:
 
         identity_pub = identity_private.public_key
         signed_prekey_pub = signed_prekey_private.public_key
-
-        sign_key = nacl.signing.SigningKey(identity_private.encode())
 
         if signing_private is None:
             # Legacy fallback: derive an Ed25519 key from the X25519 identity

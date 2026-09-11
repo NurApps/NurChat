@@ -21,9 +21,6 @@ def random_username():
 
 BASE_URL = "http://127.0.0.1:8000"
 
-class TestResults:
-
-
 # Эти тесты требуют запущенного relay на 127.0.0.1:8000.
 # Если сервер недоступен — пропускаем весь модуль вместо ошибок соединения.
 try:
@@ -156,8 +153,6 @@ def test_registration(results):
             "captcha_id": captcha_id,
             "captcha_code": captcha_code,
         }, timeout=10)
-
-        }, headers=client_headers(), timeout=10)
 
         assert r.status_code == 200, f"Status: {r.status_code}, Response: {r.text}"
         data = r.json()

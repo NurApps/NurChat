@@ -23,7 +23,6 @@ from sqlalchemy import func, or_
 from server.utils.mentions import parse_mentions, resolve_mentioned_users
 from server.ws.chat_manager import connection_manager
 from server.ws.notifications import notification_manager
-from shared.config import settings
 
 router = APIRouter()
 
@@ -186,28 +185,6 @@ async def get_chat_messages(
 ):
     user_id = token["sub"]
     logger.info(f"Getting messages for chat {chat_id} by user: {user_id}")
-
-        participant = db.query(models.ChatParticipant).filter(models.ChatParticipant.chat_id == chat_id, models.ChatParticipant.user_id == user_id).first()
-        if not participant:
-            logger.warning(f"User {user_id} tried to access chat {chat_id} without permission")
-            raise ChatNotFoundError("Чат не найден или доступ запрещен")
-        if limit > 100:
-            limit = 100
-        messages = db.query(models.Message).options(joinedload(models.Message.user), joinedload(models.Message.file)).filter(models.Message.chat_id == chat_id, models.Message.is_deleted == False).order_by(models.Message.created_at.desc()).offset(skip).limit(limit).all()
-        messages.reverse()
-        processed_messages = []
-        for msg in messages:
-            try:
-                processed_msg = schemas.MessageResponse.model_validate(msg)
-                processed_messages.append(processed_msg)
-            except Exception as e:
-                logger.error(f"Error processing message {msg.id}: {e}")
-        return processed_messages
-    except ChatNotFoundError:
-        raise
-    except Exception as e:
-        logger.error(f"Get chat messages error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера")
 
     participant = db.query(models.ChatParticipant).filter(
         models.ChatParticipant.chat_id == chat_id,
@@ -870,8 +847,6 @@ async def export_chat(
         ).first()
         if not participant:
             raise HTTPException(status_code=404, detail="Чат не найден")
-        messages = db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.chat_id == chat_id, models.Message.is_deleted == False).order_by(models.Message.created_at.asc()).all()
-
         messages = (
             db.query(models.Message)
             .options(joinedload(models.Message.user))
@@ -887,7 +862,6 @@ async def export_chat(
             }
             for msg in messages:
                 sender = msg.user
-
                 ts = msg.created_at.isoformat() if hasattr(msg.created_at, 'isoformat') else str(msg.created_at)
                 export_data["messages"].append({
                     "id": msg.id, "sender": sender.username if sender else "Unknown",
@@ -900,8 +874,6 @@ async def export_chat(
             export_text += "=" * 50 + "\n\n"
             for msg in messages:
                 sender = msg.user
-                ts = msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(msg.created_at, 'strftime') else str(msg.created_at)
-
                 fmt = "%Y-%m-%d %H:%M:%S"
                 ts = msg.created_at.strftime(fmt) if hasattr(msg.created_at, 'strftime') else str(msg.created_at)
                 export_text += f"[{ts}] {sender.username if sender else 'Unknown'}: {msg.content}\n"
@@ -1011,18 +983,6 @@ async def toggle_reaction(
             )
         except Exception as ws_err:
             logger.warning(f"Failed to broadcast reaction: {ws_err}")
-
-        # Federation: send reaction to remote server
-        if settings.USE_FEDERATION:
-            try:
-                chat_obj = db.query(models.Chat).filter(models.Chat.id == message.chat_id).first()
-                if chat_obj and chat_obj.name and "@" in chat_obj.name:
-                    from server.routes.federation import send_federated_reaction
-                    sender_user = db.query(models.User).filter(models.User.id == user_id).first()
-                    if sender_user:
-                        await send_federated_reaction(sender_user, chat_obj.name, message_id, reaction.emoji)
-            except Exception as fed_err:
-                logger.warning(f"Federation reaction failed: {fed_err}")
 
         return result
     except MessageNotFoundError:

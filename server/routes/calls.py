@@ -152,18 +152,6 @@ async def get_call_history(
 
     call_responses = [schemas.CallResponse.model_validate(call) for call in calls]
 
-        logger.info(f"Retrieved {len(call_responses)} calls for user: {token['sub']}, total: {total}")
-        return schemas.CallHistoryResponse(
-            calls=call_responses,
-            total=total
-        )
-    except Exception as e:
-        logger.error(f"Get call history error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Внутренняя ошибка сервера"
-        )
-
     logger.info(f"Retrieved {len(call_responses)} calls for user: {token['sub']}, total: {total}")
     return schemas.CallHistoryResponse(
         calls=call_responses,
@@ -175,12 +163,6 @@ async def get_call_history(
 async def get_ice_servers(token: dict = Depends(verify_token_dependency)):
     """Get configured ICE servers (STUN/TURN) for WebRTC."""
     import json
-    from shared.config import settings
-    default_ice = [
-        {"urls": "stun:stun.l.google.com:19302"},
-        {"urls": "stun:stun1.l.google.com:19302"},
-    ]
-
 
     from shared.config import settings
 
@@ -199,8 +181,6 @@ async def get_ice_servers(token: dict = Depends(verify_token_dependency)):
                 return {"ice_servers": custom}
         except Exception:
             pass
-    return {"ice_servers": default_ice}
-
 
     # Use TURN_SERVERS config if set, with credentials from config
     if settings.TURN_SERVERS:

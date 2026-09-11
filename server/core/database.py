@@ -55,7 +55,6 @@ def create_tables():
     """
     import sys
 
-
     from server.core import models  # noqa: F401 — registers models
 
     if getattr(sys, 'frozen', False):

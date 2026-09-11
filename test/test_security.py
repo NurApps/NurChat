@@ -1,38 +1,15 @@
 """Tests for server/utils/security.py — Argon2id, TOTP 2FA, backup codes."""
 
 import json
-import sys
-import os
-import time
-
-import pyotp
-import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from server.utils.security import (
-    hash_password,
-    verify_password,
-    needs_rehash,
-    encrypt_secret,
-    decrypt_secret,
-    generate_totp_secret,
-    generate_totp_uri,
-    generate_qr_code_base64,
-    verify_totp,
-    generate_backup_codes,
-    hash_backup_codes,
-    verify_backup_code,
-)
-
-
-
 import os
 import sys
 
+import pyotp
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pyotp
+import os
+import sys
 
 from server.utils.security import (
     decrypt_secret,
@@ -48,6 +25,10 @@ from server.utils.security import (
     verify_password,
     verify_totp,
 )
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+
 
 # ── Argon2id Hashing ──
 

@@ -11,13 +11,6 @@ import hashlib
 import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
-
-from fastapi import Request, status
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
-
 
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
@@ -25,26 +18,6 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from shared.config import settings
 
-
-class CSRFMiddleware(BaseHTTPMiddleware):
-    """
-    CSRF Protection Middleware
-    
-    - Generates CSRF tokens stored in HttpOnly cookies
-    - Validates X-CSRF-Token header for POST, PUT, PATCH, DELETE requests
-    - Excludes paths: /health, /docs, /captcha, /auth/login, /auth/register
-    """
-    
-    def __init__(
-        self,
-        app: ASGIApp,
-        secret_key: Optional[str] = None,
-        cookie_name: str = "csrf_token",
-        header_name: str = "X-CSRF-Token",
-        token_lifetime_hours: int = 24,
-        exempt_paths: Optional[list[str]] = None,
-    ):
-        super().__init__(app)
 
 class CSRFMiddleware:
     """
@@ -79,7 +52,7 @@ class CSRFMiddleware:
             "/api/auth/login",
             "/api/auth/register",
         ]
-    
+
 
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -153,7 +126,7 @@ class CSRFMiddleware:
             hashlib.sha256
         ).hexdigest()
         return f"{message}:{signature}"
-    
+
 
 
     def _validate_token(self, token: str) -> bool:
@@ -162,7 +135,7 @@ class CSRFMiddleware:
             parts = token.rsplit(":", 2)
             if len(parts) != 3:
                 return False
-            
+
 
 
             timestamp_str, random_part, signature = parts
@@ -172,10 +145,10 @@ class CSRFMiddleware:
                 message.encode(),
                 hashlib.sha256
             ).hexdigest()
-            
+
             if not hmac.compare_digest(signature, expected_signature):
                 return False
-            
+
 
 
             if not hmac.compare_digest(signature, expected_signature):
@@ -188,11 +161,11 @@ class CSRFMiddleware:
                 timestamp = datetime.fromtimestamp(float(timestamp_str), tz=timezone.utc)
             if datetime.now(timezone.utc) - timestamp > self.token_lifetime:
                 return False
-            
+
             return True
         except Exception:
             return False
-    
+
 
 
             return True
@@ -205,16 +178,16 @@ class CSRFMiddleware:
             if path.startswith(exempt):
                 return True
         return False
-    
+
     async def dispatch(self, request: Request, call_next):
         from starlette.responses import Response
-        
+
         # Generate a new CSRF token for all requests
         new_token = self._generate_token()
-        
+
         # Process the request
         response = await call_next(request)
-        
+
         # Set CSRF token in cookie (non-HttpOnly so JS can read it for X-CSRF-Token header)
         if isinstance(response, Response):
             response.set_cookie(
@@ -226,12 +199,12 @@ class CSRFMiddleware:
                 samesite="lax",
                 path="/",
             )
-        
+
         # Only validate state-changing methods
         if request.method in ["POST", "PUT", "PATCH", "DELETE"]:
             if not self._is_exempt_path(request.url.path):
                 csrf_token = request.headers.get(self.header_name)
-                
+
                 if not csrf_token:
                     return JSONResponse(
                         status_code=status.HTTP_403_FORBIDDEN,
@@ -243,7 +216,7 @@ class CSRFMiddleware:
                         status_code=status.HTTP_403_FORBIDDEN,
                         content={"detail": "CSRF token missing or invalid"}
                     )
-        
+
         return response
 
 

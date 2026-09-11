@@ -207,7 +207,7 @@ export function resetRatchetCache(): void {
   ratchetLoadPromise = null
 }
 
-async function _groupChainNext(chainKey: Uint8Array, step: number): Promise<{ msgKey: Uint8Array; nextChain: Uint8Array }> {
+async function _groupChainNext(chainKey: Uint8Array, step: number): Promise<{ msgKey: Uint8Array<ArrayBuffer>; nextChain: Uint8Array<ArrayBuffer> }> {
   const infoMsg = new TextEncoder().encode(`group_msg_${step}`)
   const infoChain = new TextEncoder().encode(`group_chain_${step}`)
   // Use HKDF-like derivation: HMAC-based
@@ -216,7 +216,7 @@ async function _groupChainNext(chainKey: Uint8Array, step: number): Promise<{ ms
   return { msgKey, nextChain }
 }
 
-async function _hmacDerive(key: Uint8Array, info: Uint8Array): Promise<Uint8Array> {
+async function _hmacDerive(key: Uint8Array, info: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   // Hash-based KDF with domain separation via info (NOT HMAC — construction
   // kept stable for compat with existing ratchet states).
   const combined = new Uint8Array(key.length + info.length)
@@ -224,7 +224,7 @@ async function _hmacDerive(key: Uint8Array, info: Uint8Array): Promise<Uint8Arra
   combined.set(info, key.length)
   // Hash with SHA-512 then take first 32 bytes
   const hash = await sha512(combined)
-  return hash.slice(0, 32)
+  return new Uint8Array(hash.slice(0, 32))
 }
 
 // Per-chat mutex: ratchet state mutation must be serialized across
@@ -257,7 +257,7 @@ export async function encryptGroupMessageRatcheted(
       state = { chainKey: base64Encode(groupKey.buffer as ArrayBuffer), step: 0, skippedKeys: {} }
     }
 
-    const chainKeyBytes = base64Decode(state.chainKey)
+    const chainKeyBytes = new Uint8Array(base64Decode(state.chainKey))
     const { msgKey, nextChain } = await _groupChainNext(chainKeyBytes, state.step)
 
     const nonce = randomBytes(secretboxNonceLength)
@@ -309,7 +309,7 @@ export async function decryptGroupMessageRatcheted(
     // Check skipped keys cache
     const skipId = `${step}`
     if (state.skippedKeys[skipId]) {
-      const msgKey = base64Decode(state.skippedKeys[skipId])
+      const msgKey = new Uint8Array(base64Decode(state.skippedKeys[skipId]))
       const plaintext = secretboxDecrypt(ciphertext, nonce, msgKey)
       if (plaintext) {
         delete state.skippedKeys[skipId]
@@ -324,7 +324,7 @@ export async function decryptGroupMessageRatcheted(
     if (step > state.step) {
       if (step - state.step > MAX_GROUP_SKIP) return null
 
-      let chainKeyBytes = base64Decode(state.chainKey)
+      let chainKeyBytes = new Uint8Array(base64Decode(state.chainKey))
       for (let s = state.step; s < step; s++) {
         const { msgKey, nextChain } = await _groupChainNext(chainKeyBytes, s)
         state.skippedKeys[`${s}`] = base64Encode(msgKey.buffer as ArrayBuffer)

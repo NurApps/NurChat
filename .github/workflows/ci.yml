@@ -1,14 +1,10 @@
-name: CI
+﻿name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   python-tests:
@@ -18,15 +14,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: 'pip'
-      - run: |
-          pip install pytest
-          pip install -r requirements.txt
-      - run: pytest test/test_crypto.py -v
-      - run: pytest test/test_security.py -v
-
-  lint:
-
           cache: "pip"
           cache-dependency-path: requirements.txt
       - name: Install dependencies
@@ -58,85 +45,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-      - working-directory: frontend
-        run: npm ci
-      - working-directory: frontend
-        run: npx tsc --noEmit
-      - working-directory: frontend
-        run: npx vite build
-
-  build:
-    runs-on: windows-latest
-    needs: [test, lint]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            package-lock.json
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: 'pip'
-
-      - name: Install Python deps
-        run: |
-          pip install -r requirements.txt pyinstaller
-
-      - name: Build server.exe
-        run: |
-          pyinstaller --onefile --noconsole --name server.exe `
-            --hidden-import "uvicorn.logging" `
-            --hidden-import "uvicorn.loops.auto" `
-            --hidden-import "uvicorn.protocols.http.auto" `
-            --hidden-import "uvicorn.lifespan.on" `
-            --add-data "shared;shared" `
-            --collect-all "multipart" `
-            server\main.py `
-            --noconfirm
-
-      - name: Upload server.exe
-        uses: actions/upload-artifact@v4
-        with:
-          name: server-windows-${{ github.sha }}
-          path: dist/server.exe
-
-      - name: Install frontend deps
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install root deps (для @tauri-apps/cli)
-        run: npm install
-
-      - name: Build app (Tauri)
-        run: npx --yes tauri build --config src-tauri/tauri.conf.json
-
-      - name: Upload app installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-windows-${{ github.sha }}
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
-
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies

@@ -1,8 +1,5 @@
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
-
-
 from typing import cast
 
 import jwt
@@ -34,8 +31,6 @@ class SecurityManager:
             expire = datetime.now(timezone.utc) + expires_delta
         else:
             expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        to_encode.update({"exp": expire, "type": "access"})
-
         to_encode.update({"exp": expire, "type": "access", "jti": secrets.token_hex(16)})
         return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -44,9 +39,6 @@ class SecurityManager:
         """Создание refresh токена (долгий)"""
         to_encode = data.copy()
         expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-        to_encode.update({"exp": expire, "type": "refresh"})
-        return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
         to_encode.update({"exp": expire, "type": "refresh", "jti": secrets.token_hex(16)})
         return cast(str, jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM))
 
@@ -77,16 +69,11 @@ class SecurityManager:
 
     @staticmethod
     def verify_refresh_token(token: str) -> dict:
-        """Верификация refresh токена"""
-
         """Верификация refresh токена (включая проверку отзыва)"""
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             if payload.get("type") != "refresh":
                 raise AuthenticationError("Неверный тип токена")
-            return payload
-        except JWTError:
-
             jti = payload.get("jti")
             if jti and is_token_revoked(jti):
                 raise AuthenticationError("Токен отозван")

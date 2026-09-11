@@ -15,13 +15,6 @@ interface ThemeCtx {
   toggle: () => void
 }
 
-export const ThemeContext = createContext<ThemeCtx>({ theme: "light", toggle: () => {} })
-
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem("theme")
-    if (saved === "dark" || saved === "light") return saved
-
 export const ThemeContext = createContext<ThemeCtx>({
   theme: "light",
   setTheme: () => {},

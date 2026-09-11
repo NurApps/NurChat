@@ -1,10 +1,5 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { invoke } from "@tauri-apps/api/core"
-import { api } from "../services/api"
-import { BASE_URL } from "../config"
-import { saveKeys } from "../services/e2e"
-
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { BASE_URL } from "../config"
@@ -21,18 +16,6 @@ export default function LoginPage() {
   const [tab, setTab] = useState<Tab>("register")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  
-  // CAPTCHA state for registration
-  const [captchaId, setCaptchaId] = useState<string>("")
-  const [captchaQuestion, setCaptchaQuestion] = useState<string>("")
-  const [captchaCode, setCaptchaCode] = useState("")
-  const [refreshingCaptcha, setRefreshingCaptcha] = useState(false)
-  const [captchaError, setCaptchaError] = useState("")
-
-  // TOTP 2FA state for login
-  const [totpRequired, setTotpRequired] = useState(false)
-  const [totpCode, setTotpCode] = useState("")
-
   const [serverUnavailable, setServerUnavailable] = useState(false)
 
   // Register fields
@@ -85,59 +68,6 @@ export default function LoginPage() {
       })
   }, [navigate])
 
-  // Load CAPTCHA when switching to registration mode
-  useEffect(() => {
-    if (mode === "register" && !captchaId) {
-      loadCaptcha()
-    }
-  }, [mode])
-
-  const loadCaptcha = async () => {
-    setRefreshingCaptcha(true)
-    try {
-      let data: { captcha_id: string; question: string }
-
-      try {
-        const res = await fetch(`${BASE_URL}/api/auth/captcha`, { signal: AbortSignal.timeout(5000) })
-        data = await res.json()
-      } catch {
-        data = await invoke("fetch_captcha") as { captcha_id: string; question: string }
-      }
-
-      setCaptchaId(data.captcha_id)
-      setCaptchaQuestion(data.question)
-      setCaptchaCode("")
-      setCaptchaError("")
-    } catch (err) {
-      setCaptchaError("Не удалось загрузить капчу: " + (err instanceof Error ? err.message : "ошибка сети"))
-    } finally {
-      setRefreshingCaptcha(false)
-    }
-  }
-
-  const toggleMode = () => {
-    setMode(mode === "login" ? "register" : "login")
-    setError("")
-  }
-
-  const validate = (): boolean => {
-    if (!username.trim()) { setError("Введите username"); return false }
-    if (username.trim().length < 3) { setError("Username минимум 3 символа"); return false }
-    if (!/^[a-zA-Z0-9]+$/.test(username.trim())) { setError("Только латинские буквы и цифры"); return false }
-    if (mode === "register") {
-      if (!firstName.trim()) { setError("Введите имя"); return false }
-      if (firstName.trim().length < 2) { setError("Имя минимум 2 символа"); return false }
-    }
-    if (!password) { setError("Введите пароль"); return false }
-    if (password.length < 4) { setError("Пароль минимум 4 символа"); return false }
-    return true
-  }
-
-  const handleSubmit = async () => {
-    setError("")
-    if (!validate()) return
-    setLoading(true)
-
   // Load CAPTCHA when tab is register
   useEffect(() => {
     if (tab === "register") fetchCaptcha()
@@ -145,105 +75,6 @@ export default function LoginPage() {
 
   const fetchCaptcha = async () => {
     try {
-      if (mode === "login") {
-        // If TOTP is required, send the code
-        if (totpRequired) {
-          const res = await fetch(`${BASE_URL}/api/auth/login`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              username: username.trim(),
-              password,
-              totp_code: totpCode,
-            }),
-          })
-
-          if (!res.ok) {
-            const errorData = await res.json()
-            if (res.status === 401 && errorData.detail?.includes("TOTP")) {
-              setError("Неверный код TOTP или резервный код")
-              setLoading(false)
-              return
-            }
-            throw new Error(errorData.detail || "Ошибка входа")
-          }
-
-          const data = await res.json()
-          api.setToken(data.access_token)
-          localStorage.setItem("user", JSON.stringify(data.user))
-          navigate("/chat", { replace: true })
-          return
-        }
-
-        // First login attempt without TOTP
-        const res = await api.login(username.trim(), password)
-        api.setToken(res.access_token)
-        localStorage.setItem("user", JSON.stringify(res.user))
-        // Restore E2E keys from localStorage if available (set during register)
-        // If not available, keys will be generated via P2PStatusPage
-        navigate("/chat", { replace: true })
-      } else {
-        // Registration with CAPTCHA
-        if (!captchaId || !captchaCode) {
-          setError("Пройдите проверку CAPTCHA")
-          setLoading(false)
-          return
-        }
-        
-        let data: any
-        try {
-          data = await invoke("fetch_register", {
-            body: JSON.stringify({
-              username: username.trim(),
-              password,
-              first_name: firstName.trim(),
-              last_name: lastName.trim(),
-              captcha_id: captchaId,
-              captcha_code: captchaCode,
-            }),
-          })
-        } catch (fetchErr: any) {
-          const errMsg = fetchErr?.message || fetchErr?.toString() || ""
-          if (errMsg.includes("CAPTCHA")) {
-            setError("Неверная CAPTCHA. Попробуйте еще раз")
-            loadCaptcha()
-            setLoading(false)
-            return
-          }
-          throw fetchErr
-        }
-        api.setToken(data.access_token)
-        localStorage.setItem("user", JSON.stringify(data.user))
-        // Save E2E keys on registration (private keys returned once)
-        if (data.private_key && data.signing_private_key && data.user) {
-          saveKeys({
-            privateKeyHex: data.private_key,
-            publicKeyHex: data.user.public_key || "",
-            signingPrivateHex: data.signing_private_key,
-            signingPublicHex: data.user.signing_public_key || "",
-          })
-        }
-        navigate("/chat", { replace: true })
-      }
-    } catch (err: any) {
-      const msg = err?.message || err?.toString() || ""
-      if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED") || msg.includes("ERR_NETWORK") || msg.includes("request failed") || msg.includes("error sending request")) {
-        setError("Сервер недоступен. Перезапустите приложение или проверьте подключение")
-      } else if (err instanceof Error && "status" in err) {
-        const apiErr = err as { status: number; message: string; headers?: Headers }
-        // Check for TOTP required header
-        if (apiErr.status === 403 && apiErr.headers?.get("X-TOTP-Required") === "true") {
-          setTotpRequired(true)
-          setError("Требуется код двухфакторной аутентификации")
-          setLoading(false)
-          return
-        }
-        if (apiErr.status === 401) setError("Неверный username или пароль")
-        else if (apiErr.status === 409) setError("Username уже занят")
-        else setError(apiErr.message || "Ошибка сервера")
-
       const res = await api.getCaptcha()
       setCaptchaId(res.captcha_id)
       setCaptchaQuestion(res.question)
@@ -432,78 +263,6 @@ export default function LoginPage() {
           <p className="login-subtitle">{t("auth.subtitle")}</p>
         </div>
 
-        {/* Поля */}
-        <div className="login-fields">
-          {isRegister && (
-            <>
-              <div className="field-wrapper">
-                <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-                </svg>
-                <input
-                  className="login-input"
-                  type="text"
-                  placeholder="Имя *"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                />
-              </div>
-              <div className="field-wrapper">
-                <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-                </svg>
-                <input
-                  className="login-input"
-                  type="text"
-                  placeholder="Фамилия (необязательно)"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                />
-              </div>
-              
-              {/* CAPTCHA Field */}
-              <div className="field-wrapper captcha-field">
-                <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                <div className="captcha-container" style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
-                  <span className="captcha-question" style={{ fontSize: "14px", fontWeight: "bold", color: captchaError ? "#e74c3c" : "#333", minWidth: "100px" }}>
-                    {captchaError || captchaQuestion || "Загрузка..."}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={loadCaptcha}
-                    disabled={refreshingCaptcha}
-                    className="captcha-refresh-btn"
-                    style={{
-                      background: "none",
-                      border: "1px solid #ddd",
-                      borderRadius: "4px",
-                      padding: "4px 8px",
-                      cursor: refreshingCaptcha ? "not-allowed" : "pointer",
-                      opacity: refreshingCaptcha ? 0.6 : 1,
-                    }}
-                    title="Обновить CAPTCHA"
-                    aria-label="Обновить CAPTCHA"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: refreshingCaptcha ? "spin 1s linear infinite" : "none" }}>
-                      <polyline points="23 4 23 10 17 10" />
-                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                    </svg>
-                  </button>
-                </div>
-                <input
-                  className="login-input"
-                  type="text"
-                  placeholder="Введите ответ"
-                  value={captchaCode}
-                  onChange={(e) => setCaptchaCode(e.target.value)}
-                  style={{ marginLeft: "8px", maxWidth: "120px" }}
-                />
-              </div>
-            </>
-          )}
-
         {/* Tabs */}
         <div className="auth-tabs">
           <button
@@ -675,27 +434,6 @@ export default function LoginPage() {
         )}
 
         {error && <p className="login-error">{error}</p>}
-
-        {/* TOTP 2FA Field (shown when required) */}
-        {totpRequired && (
-          <div className="login-fields">
-            <div className="field-wrapper">
-              <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-              <input
-                className="login-input"
-                type="text"
-                placeholder="Код TOTP или резервный код"
-                value={totpCode}
-                onChange={(e) => setTotpCode(e.target.value)}
-                autoFocus
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Кнопки */}
 
         <div className="login-actions">
           <button

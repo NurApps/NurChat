@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next"
 import type { ChatResponse, UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
 import { getDraftForChat } from "../utils/drafts"
-
 import { formatFull, formatRelativeTime } from "../utils/format"
 
 interface Props {

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import type { MessageResponse, UserResponse } from "../types"
 import { api } from "../services/api"
-import { ipfsGatewayUrl } from "../config"
 import { getAvatarColor } from "../utils/avatar"
 import { formatTime, formatFull } from "../utils/format"
 import { renderMarkdown } from "../utils/markdown"
@@ -115,8 +114,6 @@ export default function MessageBubble({
       </span>
     )
     if (isRead || (readCount && readCount.read > 0)) return (
-      <span className="msg-status read" title={readCount ? `${readCount.read}/${readCount.total} прочитали` : "Прочитано"}>
-
       <span className="msg-status read" title={readCount ? `${readCount.read}/${readCount.total} ${t("chat.readStatus")}` : t("chat.readStatus")}>
         <svg width="16" height="10" viewBox="0 0 24 16" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="2 8 7 13 13 3"/><polyline points="11 8 16 13 22 3"/></svg>
         {readCount && readCount.total > 1 && <span className="msg-read-count">{readCount.read}/{readCount.total}</span>}
@@ -198,11 +195,6 @@ export default function MessageBubble({
 
   const renderFileContent = () => {
     const mt = message.message_type
-    const fileUrl = message.file_id ? api.getFileUrl(message.file_id) : null
-    // IPFS fallback: use gateway if ipfs_hash is available
-    const ipfsUrl = message.file?.ipfs_hash ? ipfsGatewayUrl(message.file.ipfs_hash) : null
-    const imageUrl = ipfsUrl || fileUrl
-
     const imageUrl = message.file_id ? api.getFileUrl(message.file_id) : null
     const fileUrl = imageUrl
     if (mt === "image" && imageUrl) {
@@ -214,8 +206,6 @@ export default function MessageBubble({
             alt={content}
             className="msg-image"
             loading="lazy"
-            onError={(e) => { if (ipfsUrl && fileUrl) (e.target as HTMLImageElement).src = fileUrl }}
-
             onClick={() => setMediaViewer({ type: "image", url: imageUrl, filename: content || undefined })}
             style={{ cursor: "pointer" }}
           />
@@ -338,11 +328,6 @@ export default function MessageBubble({
               <span className="msg-time" title={formatFull(message.created_at)}>
                 {time}
               </span>
-              {message.expires_at && (
-                  <span className="msg-ephemeral" title={`Исчезнет ${new Date(message.expires_at).toLocaleString("ru-RU")}`}>
-                  <span className="msg-ephemeral-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
-                </span>
-
               {message.edited_at && (
                 <span className="msg-edited" title={t("chat.edited")}>{t("chat.editedShort")}</span>
               )}
@@ -419,8 +404,6 @@ export default function MessageBubble({
         </div>
         {bubble}
         <div className="msg-menu-area" ref={menuRef}>
-          <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="Меню сообщения">
-
           <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label={t("chat.messageMenu")} aria-expanded={menuOpen} aria-haspopup="menu">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
@@ -462,8 +445,6 @@ export default function MessageBubble({
     <div className="msg-row my-row">
       <div className="msg-spacer" />
       <div className="msg-menu-area" ref={menuRef}>
-        <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="Меню сообщения">
-
         <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label={t("chat.messageMenu")} aria-expanded={menuOpen} aria-haspopup="menu">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
         </button>

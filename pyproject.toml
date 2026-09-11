@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nurchat"
 version = "1.0.0"
-description = "Анонимный мессенджер с end-to-end шифрованием"
+description = "Anonymous messenger with end-to-end encryption"
 requires-python = ">=3.10"
 
 [tool.ruff]

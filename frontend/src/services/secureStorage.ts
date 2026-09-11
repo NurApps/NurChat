@@ -56,7 +56,7 @@ export interface StoredSPK {
   publicKeyHex: string
   secretKeyHex: string
   signatureHex: string
-  createdAt: number
+  createdAt?: number
 }
 
 export interface StoredOPK {
@@ -317,8 +317,9 @@ export async function removeOPK(pubHex: string): Promise<void> {
 
 /**
  * Store serialized session data (encrypted).
+ * Accepts an object (stringified here) or a pre-encrypted string.
  */
-export async function storeSessions(data: Record<string, unknown>): Promise<void> {
+export async function storeSessions(data: Record<string, unknown> | string): Promise<void> {
   const db = await getDB()
   const plaintext = JSON.stringify(data)
   const encrypted = await encryptAtRest(plaintext)
@@ -489,8 +490,8 @@ export async function migrateFromLocalStorage(decryptedLegacyKeys: string): Prom
     if (
       !parseHex(legacy.privateKeyHex) ||
       !parseHex(legacy.publicKeyHex) ||
-      !parseHex(legacy.signingPrivateHex) ||
-      !parseHex(legacy.signingPublicHex)
+      !parseHex(legacy.signingPrivateHex || "") ||
+      !parseHex(legacy.signingPublicHex || "")
     ) {
       console.warn("[SecureStorage] Invalid legacy key hex")
       return null
@@ -499,8 +500,8 @@ export async function migrateFromLocalStorage(decryptedLegacyKeys: string): Prom
     const keys: StoredKeyPair = {
       privateKeyHex: legacy.privateKeyHex,
       publicKeyHex: legacy.publicKeyHex,
-      signingPrivateHex: legacy.signingPrivateHex,
-      signingPublicHex: legacy.signingPublicHex,
+      signingPrivateHex: legacy.signingPrivateHex || "",
+      signingPublicHex: legacy.signingPublicHex || "",
       createdAt: Date.now(),
     }
 

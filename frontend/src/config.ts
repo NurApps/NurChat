@@ -1,7 +1,3 @@
-const API_HOST = import.meta.env.VITE_API_HOST || "127.0.0.1:8000"
-const API_PROTOCOL = import.meta.env.VITE_API_PROTOCOL || "http"
-const WS_PROTOCOL = API_PROTOCOL === "https" ? "wss" : "ws"
-
 const DEFAULT_API_HOST = "127.0.0.1:8000"
 const DEFAULT_API_PROTOCOL = "http"
 
@@ -133,10 +129,6 @@ if (!import.meta.env.VITE_API_HOST) {
 export const BASE_URL = `${apiProtocol}://${apiHost}`
 export const WS_BASE = `${WS_PROTOCOL_FOR(apiProtocol)}://${apiHost}/ws`
 export const MEDIA_URL = BASE_URL
-
-// IPFS gateway for content-addressed file retrieval
-const IPFS_GATEWAY = import.meta.env.VITE_IPFS_GATEWAY || "http://127.0.0.1:8080"
-export const ipfsGatewayUrl = (cid: string) => `${IPFS_GATEWAY}/ipfs/${cid}`
 
 function WS_PROTOCOL_FOR(p: "http" | "https"): "ws" | "wss" {
   return p === "https" ? "wss" : "ws"

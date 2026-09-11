@@ -2,34 +2,25 @@ from __future__ import annotations
 
 import os
 import sys
-
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-from logging.config import fileConfig
-
-
-import os
-import sys
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-from server.core import models  # noqa: F401 — registers all models
+from server.core import models  # noqa: F401 - registers all models
 from server.core.database import Base
-from server.core import models  # noqa: F401 — register all models
-
 from shared.config import settings
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# ConfigParser interpolates % on read — escape it, otherwise passwords
+# with %XX escapes (Supabase) crash migrations with "invalid interpolation".
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

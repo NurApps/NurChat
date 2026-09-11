@@ -45,12 +45,20 @@ def fail(msg: str) -> int:
 
 
 def main() -> int:
-    url = sys.argv[1] if len(sys.argv) > 1 else os.getenv("DATABASE_URL", "")
-    if not url:
-        # Fall back to .env / settings like the app does
-        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    raw = sys.argv[1] if len(sys.argv) > 1 else os.getenv("DATABASE_URL", "")
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    from shared.config import normalize_database_url
+
+    if not raw:
+        # Fall back to .env / settings like the app does (already normalized)
         from shared.config import settings
         url = settings.DATABASE_URL
+        print("URL source: .env / settings")
+    else:
+        url = normalize_database_url(raw)
+        if url != raw.strip().strip("'\""):
+            print("NOTE: password contained raw reserved chars — auto-encoded for the driver.")
+            print("      The app does this automatically too; no need to re-encode by hand.")
     print(f"URL scheme: {url.split('://', 1)[0] if '://' in url else '(none)'}")
 
     if url.startswith("sqlite"):
@@ -80,10 +88,17 @@ def main() -> int:
         conn = psycopg2.connect(url, connect_timeout=10)
     except Exception as e:
         hint = str(e).split("\n")[0][:200]
-        return fail(
-            "Cannot connect/login: " + hint + " — check password "
-            "(URL-encode @ # % ?) and that the project finished provisioning"
-        )
+        msg = "Cannot connect/login: " + hint
+        low = hint.lower()
+        if "password authentication failed" in low or "password" in low and "failed" in low:
+            msg += " — wrong DB password (Supabase → Settings → Database → reset if lost)"
+        elif "could not connect" in low or "timeout" in low or "nodename" in low or "name resolution" in low:
+            msg += " — host unreachable (project still provisioning? wrong ref? no internet?)"
+        elif "database" in low and ("does not exist" in low or "not exist" in low):
+            msg += " — database name wrong (default is 'postgres')"
+        else:
+            msg += " — if the project was just created, wait 2-3 min for provisioning"
+        return fail(msg)
 
     try:
         cur = conn.cursor()

@@ -3,8 +3,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import sys
-
 # Должно быть самым первым — до любого вывода в консоль
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -14,6 +12,89 @@ if hasattr(sys.stderr, 'reconfigure'):
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+
+def _encode_password_once(pw: str) -> str:
+    """Percent-encode reserved chars in a DB password, idempotently.
+
+    Supabase generates passwords with @ # % ? / etc., which break URI
+    parsing (psycopg2: "invalid dsn"). Valid %XX escapes are kept as-is,
+    so manually pre-encoded passwords are NOT double-encoded.
+    """
+    if not any(c in pw for c in "%@/:?#[]&="):
+        return pw
+    hexdigits = set("0123456789abcdefABCDEF")
+    out: list[str] = []
+    i = 0
+    while i < len(pw):
+        c = pw[i]
+        if c == "%" and i + 2 < len(pw) and pw[i + 1] in hexdigits and pw[i + 2] in hexdigits:
+            out.append(pw[i:i + 3])
+            i += 3
+            continue
+        if c in "%@/:?#[]&=":
+            out.append(f"%{ord(c):02X}")
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def normalize_database_url(url: str) -> str:
+    """Make a Postgres DATABASE_URL driver-proof.
+
+    - strips surrounding whitespace/quotes (dashboard copy-paste)
+    - leaves sqlite:// untouched
+    - URL-encodes a raw password (Supabase passwords contain @ # % ? /;
+      psycopg2 dies with "invalid dsn" otherwise). Valid %XX escapes
+      are kept as-is (no double-encoding).
+    - splits userinfo on the LAST @ whose right side looks like a host,
+      so @ ? / inside the password don't break parsing
+    - drops ?pgbouncer=true (libpq chokes on unknown URI options;
+      our pooling is client-side anyway), keeps other query params
+    """
+    import re
+
+    url = (url or "").strip().strip("'\"")
+    if not url or url.startswith("sqlite") or "://" not in url:
+        return url
+    scheme, rest = url.split("://", 1)
+
+    userinfo, hostpath = "", rest
+    for m in sorted(re.finditer("@", rest), key=lambda m: m.start(), reverse=True):
+        right = rest[m.start() + 1:]
+        probe = right
+        for sep in ("?", "#"):
+            if sep in probe:
+                probe = probe.split(sep, 1)[0]
+        probe = probe.split("/", 1)[0]
+        if probe and "@" not in probe and not any(ch.isspace() for ch in probe):
+            userinfo, hostpath = rest[:m.start()], right
+            break
+
+    query = ""
+    if "?" in hostpath:
+        hostpath, query = hostpath.split("?", 1)
+        params = [p for p in query.split("&") if p.split("=")[0] != "pgbouncer"]
+        query = "&".join(params)
+    if "/" in hostpath:
+        host, dbname = hostpath.split("/", 1)
+    else:
+        host, dbname = hostpath, ""
+    if "#" in host:
+        return url  # too mangled to fix safely; leave for the driver error
+    if userinfo and ":" in userinfo:
+        user, password = userinfo.split(":", 1)
+        userinfo = f"{user}:{_encode_password_once(password)}"
+    out = f"{scheme}://"
+    if userinfo:
+        out += f"{userinfo}@"
+    out += host
+    if dbname:
+        out += f"/{dbname}"
+    if query:
+        out += f"?{query}"
+    return out
 
 
 class Settings(BaseSettings):
@@ -114,7 +195,6 @@ class Settings(BaseSettings):
 
         import sys
 
-        from pydantic_settings.sources import DotEnvSettingsSource
 
         if getattr(sys, 'frozen', False):
             exe_dir = Path(sys.executable).resolve().parent
@@ -137,6 +217,13 @@ class Settings(BaseSettings):
             return v.lower() not in ("0", "false", "no", "off", "release")
         return bool(v)
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_db_url(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return normalize_database_url(v)
+        return v
+
 def create_directories():
     directories = [
         "media",
@@ -155,8 +242,8 @@ settings = Settings()
 _env_written = False
 
 if settings.ENCRYPTION_KEY == "your_default_encryption_key_here":
-    import secrets
     import logging
+    import secrets
     logging.critical(
         "[SECURITY] ENCRYPTION_KEY is NOT set in .env! "
         "Generated a TEMPORARY key. "
@@ -167,8 +254,8 @@ if settings.ENCRYPTION_KEY == "your_default_encryption_key_here":
     _env_written = True
 
 if not settings.JWT_SECRET_KEY:
-    import secrets
     import logging
+    import secrets
     logging.critical(
         "[SECURITY] JWT_SECRET_KEY is NOT set in .env! "
         "Generated a TEMPORARY key. "
@@ -187,7 +274,7 @@ if _env_written:
         _written_jwt = False
         if _env_path.exists():
             _env_lines = _env_path.read_text().splitlines()
-            _existing = {l.split("=", 1)[0] for l in _env_lines if "=" in l}
+            _existing = {line.split("=", 1)[0] for line in _env_lines if "=" in line}
             if "ENCRYPTION_KEY" not in _existing:
                 _env_lines.append(f"ENCRYPTION_KEY={settings.ENCRYPTION_KEY}")
                 _written_enc = True

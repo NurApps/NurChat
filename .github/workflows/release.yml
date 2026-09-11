@@ -93,6 +93,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Baked-in relay: repo Settings → Variables → NURCHAT_RELAY_HOST
+          # (e.g. "100.1.2.3:8000") and NURCHAT_RELAY_PROTOCOL ("http"/"https").
+          # Empty (default) = stock behavior: probe PUBLIC_RELAYS → localhost.
+          # Use case: one-off exe for a friend that connects with zero typing.
+          VITE_API_HOST: ${{ vars.NURCHAT_RELAY_HOST }}
+          VITE_API_PROTOCOL: ${{ vars.NURCHAT_RELAY_PROTOCOL }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "NurChat ${{ github.ref_name }}"

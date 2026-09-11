@@ -80,6 +80,7 @@ function App() {
               <>
                 <Route path="/chat" element={<AuthGuard><MobileChatPage /></AuthGuard>} />
                 <Route path="/chat/:chatId" element={<AuthGuard><MobileChatPage /></AuthGuard>} />
+                <Route path="/call/:userId/:type" element={<AuthGuard><CallPage /></AuthGuard>} />
                 <Route path="/calls" element={<AuthGuard><MobileChatPage /></AuthGuard>} />
                 <Route path="/contacts" element={<AuthGuard><MobileChatPage /></AuthGuard>} />
                 <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />

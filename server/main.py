@@ -172,6 +172,9 @@ async def validate_host_header(request: Request, call_next):
     allowed_prefixes = ("localhost", "127.0.0.1", "tauri", "testserver")
     if any(host.lower().startswith(p) for p in allowed_prefixes):
         return await call_next(request)
+    # Любой dotted host (публичный DNS продакшен-релея) пропускаем осознанно:
+    # строгий вайтлист доменов задаётся через CORS_ORIGINS на уровне CORS,
+    # а здесь отсекаем только мусор без точки (сканирование, poisoned Host).
     if "." in host:
         return await call_next(request)
     return JSONResponse(status_code=400, content={"detail": "Invalid Host header"})
@@ -187,13 +190,19 @@ async def add_security_headers(request: Request, call_next):
     if not settings.DEBUG:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     if "Content-Security-Policy" not in response.headers:
+        # Prod-ready: разрешаем тот же набор хостов, что и CORS-whitelist
+        # (CORS_ORIGINS), плюс ws-варианты http-оригинов. Раньше здесь был
+        # захардкожен только localhost — удалённый relay резался браузером.
+        _ws_origins = " ".join(
+            o.replace("http://", "ws://").replace("https://", "wss://")
+            for o in _cors_origins
+        )
+        _http_origins = " ".join(_cors_origins)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "connect-src 'self' http://localhost:5173 http://localhost:8000 http://127.0.0.1:8000 "
-            "ws://localhost:5173 ws://localhost:8000 ws://127.0.0.1:8000 "
-            "https://api.qrserver.com; "
-            "img-src 'self' data: blob: http://localhost:5173 http://localhost:8000 http://127.0.0.1:8000; "
-            "media-src 'self' blob: http://localhost:5173 http://localhost:8000 http://127.0.0.1:8000; "
+            f"connect-src 'self' {_http_origins} {_ws_origins} https://api.qrserver.com; "
+            f"img-src 'self' data: blob: {_http_origins}; "
+            f"media-src 'self' blob: {_http_origins}; "
             "style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; "
             "frame-ancestors 'none'; "

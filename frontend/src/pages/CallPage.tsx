@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
-import { WS_BASE, BASE_URL } from "../config"
-import { api, csrfHeader } from "../services/api"
+import { WS_BASE } from "../config"
+import { api } from "../services/api"
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -11,35 +11,6 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
 ]
 
 type CallStatus = "connecting" | "ringing" | "active" | "ended" | "missed" | "rejected" | "failed"
-
-async function getToken() {
-  const token = localStorage.getItem("token")
-  const user = (() => {
-    try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
-  })()
-  return { token, user }
-}
-
-async function registerCallDB(targetUserId: string, callType: string): Promise<string | null> {
-  const { token } = await getToken()
-  if (!token) return null
-  try {
-    const res = await fetch(`${BASE_URL}/api/calls/start-call`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
-      },
-      body: JSON.stringify({ target_user_id: targetUserId, call_type: callType }),
-    })
-    if (!res.ok) return null
-    const data = await res.json()
-    return data.call_id || null
-  } catch {
-    return null
-  }
-}
 
 export default function CallPage() {
   const { t } = useTranslation()
@@ -59,7 +30,6 @@ export default function CallPage() {
   const [screenSharing, setScreenSharing] = useState(false)
   const [timer, setTimer] = useState(0)
   const [mediaError, setMediaError] = useState<string | null>(null)
-  const [iceServers, setIceServers] = useState<RTCIceServer[]>(DEFAULT_ICE_SERVERS)
 
   const [targetName, setTargetName] = useState(targetUserId || t("call.audioCall"))
   const avatarChar = targetName[0]?.toUpperCase() || "?"
@@ -80,6 +50,16 @@ export default function CallPage() {
   const pendingSignalsRef = useRef<{ type: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }[]>([])
   const callIdRef = useRef(incomingCallId || "")
   const wsReconnectRef = useRef<{ attempt: number; timer: ReturnType<typeof setTimeout> | null }>({ attempt: 0, timer: null })
+  // Актуальные ICE-серверы без stale-closure: PC может создаться раньше,
+  // чем прилетит ответ /ice-servers — берём из ref, а не из state.
+  const iceServersRef = useRef<RTCIceServer[]>(DEFAULT_ICE_SERVERS)
+  // Сигналинг инициализируем ОДИН раз: повторный dial при WS-reconnect
+  // посреди звонка ронял звонок (сервер отвечал user_busy → call-failed).
+  const didInitRef = useRef(false)
+  // ICE-restart делает только инициатор, иначе оба шлют offer одновременно (glare).
+  const isInitiatorRef = useRef(false)
+  // PC нельзя строить до готовности ICE (иначе молча STUN-only).
+  const iceReadyRef = useRef(false)
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60)
@@ -144,7 +124,7 @@ export default function CallPage() {
 
   const createPeerConnection = useCallback((isInitiator: boolean) => {
     if (pcRef.current) return pcRef.current
-    const pc = new RTCPeerConnection({ iceServers })
+    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current })
     pcRef.current = pc
 
     console.log("[CALL] PC created, isInitiator:", isInitiator)
@@ -160,16 +140,19 @@ export default function CallPage() {
       remoteStreamRef.current = e.streams[0]
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = e.streams[0]
+        remoteVideoRef.current.play().catch(() => {})
       }
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = e.streams[0]
+        remoteAudioRef.current.play().catch(() => {})
       }
     }
 
     pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState
       console.log("[CALL] ICE state:", iceState)
-      if (iceState === "disconnected") {
+      // Рестарт — только инициатор: иначе glare (два offer навстречу).
+      if (iceState === "disconnected" && isInitiatorRef.current) {
         console.log("[CALL] ICE disconnected, attempting restart...")
         setTimeout(() => {
           if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
@@ -224,9 +207,14 @@ export default function CallPage() {
     processPendingSignals()
 
     return pc
-  }, [sendSignaling, navigate, cleanup, processPendingSignals, iceServers, t])
+  }, [sendSignaling, navigate, cleanup, processPendingSignals, t])
 
   const startMedia = useCallback(async () => {
+    // Повторный getUserMedia при echo-сигналах тёк стримами: переиспользуем живой.
+    const live = localStreamRef.current
+    if (live && live.getTracks().some((tr) => tr.readyState === "live")) {
+      return live
+    }
     try {
       const hasDevices = await navigator.mediaDevices.enumerateDevices()
       const hasAudio = hasDevices.some(d => d.kind === "audioinput")
@@ -285,11 +273,22 @@ export default function CallPage() {
   }, [targetUserId, t])
 
   useEffect(() => {
+    let cancelled = false
+    // Ждём ICE-серверы релея (там TURN), но не дольше 4с — иначе звонок
+    // строился на дефолтном STUN и Maryland-настройки TURN не применялись.
+    const fallback = setTimeout(() => {
+      if (!cancelled) iceReadyRef.current = true
+    }, 4000)
     api.getIceServers().then(({ ice_servers }) => {
+      if (cancelled) return
       if (ice_servers && ice_servers.length > 0) {
-        setIceServers(ice_servers)
+        iceServersRef.current = ice_servers
       }
-    }).catch(() => {})
+      iceReadyRef.current = true
+    }).catch(() => {
+      if (!cancelled) iceReadyRef.current = true
+    })
+    return () => { cancelled = true; clearTimeout(fallback) }
   }, [])
 
   useEffect(() => {
@@ -311,14 +310,12 @@ export default function CallPage() {
       return
     }
 
-    if (!isIncoming) {
-      registerCallDB(targetUserId, callType).then((serverCallId) => {
-        if (serverCallId) callIdRef.current = serverCallId
-      })
-    }
-
     let reconnectAttempts = 0
     const MAX_RECONNECT = 5
+
+    // Единый источник правды — WS-сигналинг. REST /start-call больше не
+    // дёргаем: он слал дублирующее уведомление, а его call_id гонялся
+    // с локальным (два ID одного звонка).
 
     function connectWs() {
       const wsUrl = `${WS_BASE}/calls/${currentUser!.id}?token=${encodeURIComponent(token!)}`
@@ -330,12 +327,43 @@ export default function CallPage() {
         console.log("[CALL] WS connected, isIncoming:", isIncoming)
         reconnectAttempts = 0
 
+        if (didInitRef.current) {
+          // Переподключение посреди звонка: dial НЕ повторяем (иначе сервер
+          // ответит user_busy → call-failed и звонок упадёт). Сервер сам
+          // дошлёт буферизованные offer/answer/ice при коннекте.
+          console.log("[CALL] WS reattached, no re-dial")
+          return
+        }
+        didInitRef.current = true
+
+        // Ждём ICE (там TURN), иначе PC строится на голом STUN.
+        const begin = () => beginSignaling(ws)
+        if (iceReadyRef.current) {
+          begin()
+        } else {
+          const wait = setInterval(() => {
+            if (iceReadyRef.current) {
+              clearInterval(wait)
+              clearTimeout(giveUp)
+              begin()
+            }
+          }, 100)
+          const giveUp = setTimeout(() => {
+            clearInterval(wait)
+            console.warn("[CALL] ICE servers not ready, falling back to STUN")
+            begin()
+          }, 5000)
+        }
+      }
+
+      function beginSignaling(sock: WebSocket) {
         if (isIncoming) {
+          isInitiatorRef.current = false
           callIdRef.current = incomingCallId!
           setStatus("ringing")
           statusRef.current = "ringing"
 
-          ws.send(JSON.stringify({
+          sock.send(JSON.stringify({
             type: "call-join",
             call_id: incomingCallId,
           }))
@@ -356,12 +384,13 @@ export default function CallPage() {
             }
           }, 30000)
         } else {
+          isInitiatorRef.current = true
           if (!callIdRef.current) {
             callIdRef.current = `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
           }
           const generatedCallId = callIdRef.current
 
-          ws.send(JSON.stringify({
+          sock.send(JSON.stringify({
             type: "call-request",
             call_id: generatedCallId,
             target_user_id: targetUserId,
@@ -399,6 +428,14 @@ export default function CallPage() {
 
             case "call-request": {
               const incomingCallIdMsg = msg.call_id
+              // Эхо собственного join'а: сервер пересылает call-request тому,
+              // кто только что сделал call-join. Мы уже в этом звонке (PC есть) —
+              // повторный startMedia тёк стримами, повторный accept шумел.
+              if (incomingCallIdMsg === callIdRef.current && pcRef.current) {
+                console.log("[CALL] Ignoring echo call-request for current call")
+                break
+              }
+              isInitiatorRef.current = false
               callIdRef.current = incomingCallIdMsg
               setStatus("ringing")
               statusRef.current = "ringing"

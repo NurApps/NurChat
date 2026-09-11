@@ -590,9 +590,10 @@ async def handle_websocket_connection(websocket: WebSocket, user_id: str, token:
 
     try:
         while True:
-            raw = await websocket.receive_text()
-
             try:
+                # Единственное чтение за итерацию: раньше здесь было два
+                # подряд receive_text(), и каждое нечётное сообщение молча
+                # терялось (перезаписывалось следующим). Исправлено 2026-09.
                 raw = await asyncio.wait_for(websocket.receive_text(), timeout=idle_timeout)
             except asyncio.TimeoutError:
                 now = time.monotonic()
@@ -609,7 +610,6 @@ async def handle_websocket_connection(websocket: WebSocket, user_id: str, token:
                 logger.warning(f"Oversized WS message from {user_id}: {len(raw)} bytes")
                 await websocket.send_json({"event": "error", "data": {"message": "Сообщение слишком большое"}})
                 continue
-            data = json_lib.loads(raw)
 
             try:
                 data = json_lib.loads(raw)

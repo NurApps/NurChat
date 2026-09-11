@@ -54,7 +54,7 @@ def _detect_mime_type(header: bytes, filename: str) -> str:
 
 
 @router.post("/upload", response_model=schemas.FileUploadResponse)
-@limiter.limit("10/minute")
+@limiter.limit("30/minute")
 async def upload_file(
     request: Request,
     file: UploadFile = File(...),
@@ -63,7 +63,8 @@ async def upload_file(
     token: dict = Depends(verify_token_dependency)
 ):
     try:
-        logger.info(f"File upload started by user: {token['sub']}, filename: {file.filename}")
+        # Глухой relay: имена файлов пользователей в лог не пишем.
+        logger.info(f"File upload started by user: {token['sub']}")
 
         if file_type not in FILE_TYPES.values():
             logger.warning(f"User {token['sub']} tried to upload unsupported file type: {file_type}")
@@ -120,17 +121,19 @@ async def upload_file(
                 os.unlink(tmp_path)
 
                 if result.returncode == 1:  # virus found
-                    logger.warning(f"Virus detected in upload by {user_id}: {file.filename}")
+                    # Имя файла в лог не пишем (глухой relay): достаточно user_id.
+                    logger.warning(f"Virus detected in upload by {user_id}")
                     raise HTTPException(status_code=422, detail="Файл содержит вредоносный код")
-                elif result.returncode == 2:  # ClamAV error — reject to be safe
-                    logger.error(f"ClamAV error (returncode 2): {result.stderr}")
-                    raise HTTPException(status_code=422, detail="Ошибка антивируса. Попробуйте другой файл.")
+                elif result.returncode == 2:  # ClamAV error (stale DB etc.)
+                    # Не блочим юзера из-за битого сканера: MIME + блок
+                    # активного контента уже проверены выше. Шумно логируем.
+                    logger.warning(f"ClamAV error (returncode 2), allowing upload with warning: {result.stderr}")
                 # returncode 0 = clean
             except subprocess.TimeoutExpired:
                 import os
                 os.unlink(tmp_path)
-                logger.warning("ClamAV scan timed out, rejecting file for safety")
-                raise HTTPException(status_code=422, detail="Сканирование заняло слишком много времени. Попробуйте меньший файл.")
+                # Таймаут сканера — тоже не вина юзера, пропускаем с варнингом.
+                logger.warning("ClamAV scan timed out, allowing upload with warning")
         except FileNotFoundError:
             pass  # ClamAV not installed — skip scan
         except HTTPException:
@@ -246,7 +249,16 @@ async def download_file(
         import mimetypes
         mime_type = mimetypes.guess_type(file_record.filename or "")[0] or "application/octet-stream"
 
-        return FileResponse(path=file_path, filename=file_record.filename, media_type=mime_type)
+        # Inline нужен для <img>/<audio>/<video> в чате. Активный контент
+        # (svg/html/js) зарезан ещё на аплоаде, nosniff ставит глобальный
+        # middleware. Cache — только приватный: прокси не должны хранить
+        # чужие файлы, а shared-устройства — переживать сессию в общем кэше.
+        return FileResponse(
+            path=file_path,
+            filename=file_record.filename,
+            media_type=mime_type,
+            headers={"Cache-Control": "private, max-age=86400"},
+        )
     except HTTPException:
         raise
     except Exception as e:

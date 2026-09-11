@@ -312,6 +312,9 @@ export default function SettingsPage() {
   }
 
   const handleClearCache = () => {
+    // Честно: чистим только локальный маркер оффлайн-синхронизации.
+    // Черновики, сессии E2E и ключи НЕ трогаем.
+    try { localStorage.removeItem("ws_last_message_at") } catch { /* ignore */ }
     setMsg(t("settings.cacheCleared"))
   }
 
@@ -557,7 +560,7 @@ export default function SettingsPage() {
               </div>
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.management")}</h3>
-                <button className="settings-action-btn" onClick={handleClearCache}>{t("settings.clearP2pCache")}</button>
+                <button className="settings-action-btn" onClick={handleClearCache}>{t("settings.clearCache")}</button>
                 <p className="settings-info-text">{t("settings.autoDelete")}</p>
               </div>
             </div>

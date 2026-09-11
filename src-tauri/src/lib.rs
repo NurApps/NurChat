@@ -1,9 +1,7 @@
 mod ipfs;
-mod p2p;
 mod server;
 
 use ipfs::{IpfsClient, IpfsAddResult};
-use p2p::{P2PNode, P2PConfig, P2PPeerInfo};
 use server::ServerManager;
 use std::path::PathBuf;
 use tauri::{Emitter, Manager, State};

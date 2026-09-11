@@ -30,52 +30,61 @@ export function useChatActions({
   const { t } = useTranslation()
   const [replyTo, setReplyTo] = useState<MessageResponse | null>(null)
 
+  // Шифрование подписи сообщения (текст, имя файла, "Голосовое сообщение").
+  // Группы — всегда групповой ключ, лички — 1-1 Double Ratchet (см. коммент
+  // в handleSend). Используется и для вложений/войсов: без конверта глухой
+  // relay отвечает 400 и файлы вообще не отправляются.
+  const encryptCaption = useCallback(async (
+    chat: ChatResponse, text: string,
+  ): Promise<{ content: string; encryptedContent?: string; signature?: string }> => {
+    const myKeys = await loadE2EKeys()
+    let content = text
+    let encryptedContent: string | undefined
+    let signature: string | undefined
+    if (myKeys && chat.is_group) {
+      let groupKey = await fetchGroupKey(chat.id, hexToBytes(myKeys.privateKeyHex))
+      if (!groupKey && chat.participants.length > 1) {
+        const { initGroupKey } = await import("../services/groupE2E")
+        const participants = chat.participants.map(p => ({ user_id: p.id, public_key: p.public_key }))
+        await initGroupKey(chat.id, hexToBytes(myKeys.privateKeyHex), currentUser.id, participants)
+        groupKey = await fetchGroupKey(chat.id, hexToBytes(myKeys.privateKeyHex))
+      }
+      if (groupKey) {
+        const encrypted = await encryptGroupMessageRatcheted(content, groupKey, chat.id)
+        encryptedContent = JSON.stringify({ group_encrypted: encrypted })
+        content = "[encrypted]"
+      }
+    } else if (myKeys && isE2EEnabled(chat.participants, myKeys)) {
+      const peer = chat.participants.find(p => p.id !== currentUser.id)
+      if (peer?.public_key) {
+        const envelope = await encryptMessage(content, myKeys, peer.public_key, chat.id, currentUser.id, peer.id)
+        encryptedContent = JSON.stringify(envelope)
+        signature = envelope.signature
+        content = "[encrypted]"
+      }
+    }
+    return { content, encryptedContent, signature }
+  }, [currentUser])
+
   const handleSend = useCallback(async (input: string, expiresAt?: string) => {
     const text = input.trim()
     if (!text || !selectedChat) return false
-    let content = text
     const replyToId = replyTo?.id
 
-    const myKeys = await loadE2EKeys()
+    // E2E-маршрутизация (2026-09, unified): групповые чаты ВСЕГДА шифруются
+    // общим групповым ключом (обёрнут per-user через ECDH, хранится на
+    // сервере только в завёрнутом виде). Раньше групповой чат, где у всех
+    // были public_key, ошибочно уходил в 1-1 Double Ratchet с первым пиром —
+    // остальные участники не могли расшифровать.
+    let content: string
     let encryptedContent: string | undefined
     let signature: string | undefined
-    if (myKeys && isE2EEnabled(selectedChat.participants, myKeys)) {
-      try {
-        const peer = selectedChat.participants.find(p => p.id !== currentUser.id)
-        if (peer?.public_key) {
-          const envelope = await encryptMessage(content, myKeys, peer.public_key, selectedChat.id, currentUser.id, peer.id)
-          encryptedContent = JSON.stringify(envelope)
-          signature = envelope.signature
-          content = "[encrypted]"
-        }
-      } catch (e) {
-        console.error("E2E encrypt failed:", e)
-        setErrorToast(t("errors.sendFailed"))
-        return false
-      }
-    }
-
-    if (!encryptedContent && selectedChat.is_group) {
-      try {
-        if (myKeys) {
-          let groupKey = await fetchGroupKey(selectedChat.id, hexToBytes(myKeys.privateKeyHex))
-          if (!groupKey && selectedChat.is_group && selectedChat.participants.length > 1) {
-            const { initGroupKey } = await import("../services/groupE2E")
-            const participants = selectedChat.participants.map(p => ({ user_id: p.id, public_key: p.public_key }))
-            await initGroupKey(selectedChat.id, hexToBytes(myKeys.privateKeyHex), currentUser.id, participants)
-            groupKey = await fetchGroupKey(selectedChat.id, hexToBytes(myKeys.privateKeyHex))
-          }
-          if (groupKey) {
-            const encrypted = await encryptGroupMessageRatcheted(content, groupKey, selectedChat.id)
-            encryptedContent = JSON.stringify({ group_encrypted: encrypted })
-            content = "[encrypted]"
-          }
-        }
-      } catch (e) {
-        console.error("Group E2E failed:", e)
-        setErrorToast(t("errors.sendFailed"))
-        return false
-      }
+    try {
+      ({ content, encryptedContent, signature } = await encryptCaption(selectedChat, text))
+    } catch (e) {
+      console.error("E2E encrypt failed:", e)
+      setErrorToast(t("errors.sendFailed"))
+      return false
     }
 
     try {
@@ -101,7 +110,7 @@ export function useChatActions({
     }
     sendTyping(false)
     return true
-  }, [selectedChat, replyTo, currentUser, loadChats, addMessage, sendTyping, setErrorToast, t])
+  }, [selectedChat, replyTo, currentUser, loadChats, addMessage, sendTyping, setErrorToast, t, encryptCaption])
 
   const handleReply = useCallback((messageId: string, messages: MessageResponse[]) => {
     const msg = messages.find((m) => m.id === messageId)
@@ -192,9 +201,29 @@ export function useChatActions({
     }
   }, [loadChats, setErrorToast, t])
 
+  // Вложение/войс: аплоад байтов + E2E-подпись (caption). Без конверта глухой
+  // relay отвечает 400 — раньше файлы/войсы в deaf-режиме не уходили вообще.
+  const handleSendAttachment = useCallback(async (
+    chat: ChatResponse, file: File, fileType: string, caption: string,
+    onProgress?: (percent: number) => void,
+  ): Promise<boolean> => {
+    try {
+      const uploaded = await api.uploadFile(file, fileType, onProgress)
+      const { content, encryptedContent, signature } = await encryptCaption(chat, caption)
+      const msg = await api.sendMessage(chat.id, content, fileType, uploaded.id, encryptedContent, signature)
+      addMessage(msg)
+      loadChats()
+      return true
+    } catch (e) {
+      console.error("Attachment send failed:", e)
+      setErrorToast(t("errors.fileUpload", { name: file.name }))
+      return false
+    }
+  }, [addMessage, loadChats, setErrorToast, t, encryptCaption])
+
   return {
     replyTo, setReplyTo,
     handleSend, handleReply, handleReaction, handleEditMessage, handleDeleteMessage,
-    handlePin, handleMute, handleDeleteChat,
+    handlePin, handleMute, handleDeleteChat, handleSendAttachment,
   }
 }

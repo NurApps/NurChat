@@ -13,7 +13,7 @@ if %errorlevel% equ 0 (
     set SERVER_RUNNING=1
 ) else (
     echo [..] Starting server via uvicorn...
-    start /B "" ".venv\Scripts\python" -m uvicorn server.main:app --host 127.0.0.1 --port 8000 --reload > .venv\nurchat_server.log 2>&1
+    start /B "" ".venv\Scripts\python" -m uvicorn server.main:app --host 127.0.0.1 --port 8000 --reload --no-access-log > .venv\nurchat_server.log 2>&1
     echo [OK] uvicorn starting in background
 )
 

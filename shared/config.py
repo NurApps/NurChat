@@ -101,16 +101,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./nurchat.db"
     SERVER_HOST: str = "127.0.0.1"
     SERVER_PORT: int = 8000
-    DEBUG: bool = True
-    USE_P2P: bool = True
-    P2P_SIGNALING_PATH: str = "/ws/p2p"
-    P2P_RELAY_STORE_MESSAGES: bool = True
-    P2P_PENDING_LIMIT: int = 500
-    P2P_DISCOVERY_TTL_SECONDS: int = 300
-    USE_IPFS: bool = True
-    IPFS_API_URL: str = "http://127.0.0.1:5001"
-    USE_FEDERATED_BACKUP: bool = False
-    FEDERATED_BACKUP_URL: str | None = None
+    DEBUG: bool = False
+
+    # E2E-only транспорт: никакого P2P/LAN/IPFS в ядре нет.
+    # Удалены 2026-09 как мёртвые флаги: USE_P2P, P2P_*,
+    # USE_IPFS/IPFS_API_URL, USE_FEDERATED_BACKUP/FEDERATED_BACKUP_URL
+    # (grep: ни одно место кода их не читало).
 
     # Federation (server-to-server)
     USE_FEDERATION: bool = True
@@ -119,7 +115,6 @@ class Settings(BaseSettings):
     FEDERATION_ACTIVITY_TTL_HOURS: int = 72
     FEDERATION_MAX_INBOX_SIZE: int = 1000
     FEDERATION_ALLOWED_SERVERS: str = ""  # Comma-separated whitelist, empty = allow all
-    WEBRTC_ICE_SERVERS: str | None = None  # JSON: [{"urls":"stun:...","username":"...","credential":"..."}]
     CLIENT_HOST: str = "localhost"
 
     # S3 / MinIO
@@ -134,15 +129,11 @@ class Settings(BaseSettings):
     # Supabase free allows ~60 direct connections — keep pool small.
     DATABASE_POOL_SIZE: int = 0
     DATABASE_MAX_OVERFLOW: int = 0
-    SERVER_HOST: str = "127.0.0.1"
-    SERVER_PORT: int = 8000
-    DEBUG: bool = False
     # Deaf relay = conductor, not storage: delete message rows after
     # delivery to all recipients (history lives on devices only).
     # True by default — storing other people's plaintext is not our job.
     RELAY_DEAF: bool = True
     MESSAGE_RETENTION_HOURS: int = 48
-    CLIENT_HOST: str = "localhost"
     CLIENT_PORT: int = 8001
     MEDIA_ROOT: str = "media"
     MAX_FILE_SIZE: int = 50 * 1024 * 1024

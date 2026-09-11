@@ -200,4 +200,10 @@ async def get_ice_servers(token: dict = Depends(verify_token_dependency)):
         }
         return {"ice_servers": stun_list + [turn_server]}
 
+    # Честно: без TURN звонки за NAT (мобильные сети, офисы) не соединятся —
+    # только STUN. Оператору продакшена нужен coturn (см. infra/coturn.conf).
+    logger.warning(
+        "ICE servers: TURN not configured — calls behind NAT will fail. "
+        "Set TURN_USERNAME/TURN_CREDENTIAL (infra/coturn.conf) for production."
+    )
     return {"ice_servers": stun_list}

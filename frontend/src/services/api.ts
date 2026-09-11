@@ -228,7 +228,10 @@ export const api = {
 
     const res = await fetch(`${BASE_URL}/api/files/upload`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      },
       body: form,
     })
     if (!res.ok) {

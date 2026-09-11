@@ -27,7 +27,10 @@ class NurChatRunner:
 
         self.server_process = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "server.main:app",
-             "--host", "0.0.0.0", "--port", "8000", "--reload"],
+             "--host", "0.0.0.0", "--port", "8000", "--reload",
+             # Глухой relay: access-лог uvicorn писал бы полные URL,
+             # включая ?token= из WS/медиа — JWT утекали бы в логи.
+             "--no-access-log"],
             stdout=server_out, stderr=server_err,
         )
         return self.server_process

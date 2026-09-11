@@ -9,7 +9,7 @@ cd /d "%~dp0.."
 if not exist logs mkdir logs
 
 echo [NurChat] Starting relay on 0.0.0.0:8000 (prod flags, no --reload)...
-start "nurchat-relay" /min .venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --log-level info
+start "nurchat-relay" /min .venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --log-level info --no-access-log
 
 REM Wait for relay to boot before opening the tunnel
 timeout /t 8 >nul

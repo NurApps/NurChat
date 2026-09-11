@@ -46,10 +46,10 @@ class FileCleanupService:
                         # Удаляем запись из БД
                         db.delete(file)
                         deleted_count += 1
-                        logger.debug(f"File deleted: {file.filename} (user: {file.user_id})")
+                        logger.debug(f"File deleted: {file.id} (user: {file.user_id})")
                     else:
                         error_count += 1
-                        logger.warning(f"Не удалось удалить файл: {file.filename}")
+                        logger.warning(f"Не удалось удалить файл: {file.id}")
 
                 except Exception as e:
                     error_count += 1

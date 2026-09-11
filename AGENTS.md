@@ -2,7 +2,9 @@
 
 ## What This Is
 
-NurChat — self-hosted anonymous messenger. Tauri v2 desktop app (React + Rust frontend, FastAPI + SQLite backend). AGPL-3.0.
+NurChat — мессенджер на модели «глухой relay + E2E». Tauri v2 desktop app (React + Rust shell, FastAPI relay + SQLite). AGPL-3.0.
+
+Пользователи НЕ запускают свой сервер: один публичный relay (FastAPI) обслуживает всех, идентичность — локальная пара ключей на устройстве. Приватные ключи устройство не покидают. P2P-транспорта в ядре НЕТ (удалён 2026-09 как мёртвый код — см. `docs/E2E_AND_TRANSPORT.md`, раздел 7).
 
 ## Quick Start
 
@@ -11,205 +13,144 @@ NurChat — self-hosted anonymous messenger. Tauri v2 desktop app (React + Rust 
 start.bat
 
 # Manual:
-# Terminal 1 — server
-
-NurChat — анонимный мессенджер по модели «общий глухой relay». Tauri v2 desktop app (React + Rust frontend, FastAPI + SQLite backend). AGPL-3.0.
-
-Пользователи НЕ запускают свой сервер: один публичный relay (FastAPI) обслуживает всех, а идентичность определяется локальной парой ключей (анонимный вход без пароля). Privat keys хранятся только на устройстве.
-
-## Quick Start
-
-```bash
-# Relay (нужен ОДИН экземпляр для всех; для разработки можно локально):
-# Terminal 1 — relay
+# Terminal 1 — relay (ОБЯЗАТЕЛЬНО отдельно: `npx tauri dev` сервер НЕ поднимает)
 .venv\Scripts\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Terminal 2 — Tauri (handles Vite + Rust build automatically)
+# Terminal 2 — Tauri (Vite + Rust собирает сам)
 npx tauri dev
 ```
 
-**Critical:** `npx tauri dev` does NOT start the FastAPI server. Server on `:8000` must be running separately. Without it, frontend shows "Сервер недоступен".
-
-**Critical:** `npx tauri dev` does NOT start the FastAPI relay. A relay must be running separately (or the app must point to a remote one via `VITE_API_HOST`). Without it, frontend shows "Сервер недоступен".
+Без релея на `:8000` (или удалённого через `VITE_API_HOST`) фронтенд показывает «Сервер недоступен».
 
 ## Commands
 
 | Action | Command |
 |--------|---------|
 | Start everything | `start.bat` |
-| Server only | `.venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload` |
-
 | Relay only | `.venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload` |
 | Relay via Docker | `docker-compose up -d` |
 | Tauri dev | `npx tauri dev` |
 | Frontend build | `cd frontend && npm run build` |
-| Frontend dev server | `cd frontend && npm run dev` (port 5173) |
+| Frontend dev only | `cd frontend && npm run dev` (port 5173) |
 | Python tests | `pytest test/ -v` |
 | Python lint | `ruff check .` |
 | Python typecheck | `mypy .` |
 | Frontend lint | `cd frontend && npm run lint` |
+| Frontend tests | `cd frontend && npx vitest run` |
 | Tauri build (installer) | `npx tauri build` |
 
 ## Known Issues & Workarounds
 
-1. **ENCRYPTION_KEY / JWT_SECRET_KEY not set.** Both auto-generate if empty in `.env`, but temp keys mean data loss / session reset on restart. **Must set stable values in `.env` for production.**
-
-2. **UnicodeEncodeError in Windows console.** Fixed: logger uses `sys.stdout.reconfigure(errors='replace')` — non-ASCII chars (emoji, Cyrillic, etc.) are replaced with `?` instead of crashing.
-
-3. **CORS origins.** Defaults to `localhost:5173, localhost:8000, tauri://localhost, https://tauri.localhost`. Override via `CORS_ORIGINS` env var (comma-separated). No wildcard `*` even in DEBUG.
-
-4. **Server dies when terminal closes.** `start.bat` runs server in background with `start /B`. Use `taskkill /f /im python.exe` to stop.
+1. **ENCRYPTION_KEY / JWT_SECRET_KEY / TOTP_MASTER_KEY not set.** Автогенерятся при пустом `.env`, но временные ключи = потеря данных / разлогин всех при рестарте. Для продакшена — стабильные значения в `.env`.
+2. **UnicodeEncodeError in Windows console.** Fixed: `sys.stdout/stderr.reconfigure(errors='replace')` в `shared/config.py`.
+3. **CORS origins.** По умолчанию `localhost:5173, localhost:8000, tauri://localhost, https://tauri.localhost`. Прод-домен — через `CORS_ORIGINS` (comma-separated). Wildcard `*` нет даже в DEBUG. CSP собирается из того же whitelist — см. `server/main.py: add_security_headers`.
+4. **Server dies when terminal closes.** `start.bat` держит сервер через `start /B`. Остановка: `taskkill /f /im python.exe`.
+5. **Звонки за NAT не соединяются без TURN.** По умолчанию только Google STUN. Прод: coturn (`infra/coturn.conf`) + `TURN_USERNAME`/`TURN_CREDENTIAL` в `.env`. Сервер пишет warning в лог, если TURN не настроен.
+6. **`PUBLIC_RELAYS` пуст.** `frontend/src/config.ts` — некуда резолвиться, клиенты default'ят на `127.0.0.1:8000`. Вписать свой relay при деплое.
 
 ## Architecture
 
 ```
-Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI server ──> SQLite
-                              │                              │
-                              └── IPC commands ──────────────┘
-
-Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI relay ──> SQLite
-                               │                              │
-                               └── IPC commands ──────────────┘
+Tauri (Rust shell) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI relay ──> SQLite
+                                        │                              │
+                                        └── Tauri IPC (tray, файлы) ───┘
 ```
 
-- **Frontend:** React 19 + Vite 8 + TypeScript 6 + CSS modules (custom properties)
-- **Backend:** FastAPI + SQLAlchemy + SQLite (`nurchat.db`)
-- **Desktop:** Tauri v2 (Rust shell, WebView2 on Windows)
-- **Migrations:** Alembic (fallback to `create_all` if not configured)
-- **File storage:** Local `media/` directory (no cloud)
+- **Frontend:** React 19 + Vite 8 + TypeScript + CSS modules
+- **Relay:** FastAPI + SQLAlchemy + SQLite (`nurchat.db`), глухой режим `RELAY_DEAF=true`
+- **Desktop:** Tauri v2 (Rust, WebView2 на Windows)
+- **Migrations:** Alembic (fallback на `create_all`)
+- **Файлы:** локальный `media/`, байты ОТКРЫТО (не E2E; случайные имена, EXIF счищается, TTL 30 дней), но caption вложения шифруется E2E (`handleSendAttachment` в `useChatActions.ts`)
+- **Звонки:** сигналинг через relay WS, медиа — WebRTC напрямую между устройствами (настоящий P2P, сервер медиа не касается)
 
-## Non-Obvious Quirks
+Полная честная картина: `docs/E2E_AND_TRANSPORT.md`.
 
-1. **Token in query params for media.** `<img>`, `<audio>`, `<video>` can't send Authorization headers. All file URLs use `?token=...`. Frontend `api.getFileUrl()` handles this.
+## Non-Obvious Quirks (доказанные кодом)
 
-2. **Token in WS query param.** WebSocket at `/ws/chat/{user_id}?token=...` — JWT verified from query string, not header.
-
-3. **Python imports are absolute from repo root.** `server/main.py` adds repo root to `sys.path`. Use `from shared.config import settings`, `from server.core.models import User`, etc.
-
-4. **`config.py` auto-creates dirs on import.** `media/`, `logs/`, `legal/` are created at module load time.
-
-5. **`ENCRYPTION_KEY` and `JWT_SECRET_KEY` auto-generate if not set.** Data encrypted with auto-generated keys won't survive restarts. Set stable values in `.env`.
-
-6. **CORS uses whitelist, not wildcard.** Default: `localhost:5173, localhost:8000, tauri://localhost, https://tauri.localhost`. Even in DEBUG mode, no wildcard `*`.
-
-7. **Frontend env vars use `VITE_` prefix.** Set in shell or `.env`, not in `frontend/.env`. Key vars: `VITE_API_HOST`, `VITE_API_PROTOCOL`.
-
-8. **Supabase/Firebase fully removed.** All storage is local. No cloud dependencies.
-
-9. **Tray icon.** App minimizes to system tray on close. Click tray icon to show, click "Выйти" in tray menu to quit. Frontend `invoke("minimize_to_tray")` hides the window.
-
-10. **P2P Sharing via `nurchat://`.** Invite URIs: `nurchat://IP:PORT/USER_ID#HASH`. Direct WebSocket connection server-to-server. NAT relay fallback if direct connection fails.
-
-11. **LAN discovery via UDP multicast.** `239.255.43.21:8002` — `/api/discover/lan` scans local network. "Найти в локальной сети" button in P2P page.
-
-12. **Onboarding wizard.** Shown on first launch (4 steps). Dismissed with `localStorage.onboarding_seen`.
-
-13. **ErrorBoundary.** Catches React render errors, shows friendly error page with reload button.
-
-9. **Identity via keypair.** Auth currently uses register/login with captcha (anonymous key-based login is planned, not yet implemented). The user's private key never leaves the device.
-
-10. **Tray icon.** App minimizes to system tray on close. Click tray icon to show, click "Выйти" in tray menu to quit. Frontend `invoke("minimize_to_tray")` hides the window.
-
-11. **E2E storage key is `device_secret`, not token.** `deriveStorageKey()` in `e2e.ts` uses a stable `device_secret` (IndexedDB) because the token changes on every login — using it would break decryption across restarts. NOTE: device_secret itself is plaintext in IndexedDB (no OS keystore in browser) — see secureStorage.ts header.
-
-12. **P2P REMOVED (2026-09).** P2P networking, LAN discovery, `nurchat://` URIs, `USE_P2P` — all deleted. Calls use WebSocket signaling at `/ws/signaling/{user_id}` + `/ws/calls/{user_id}`. Do not reintroduce P2P references.
-
-13. **X3DH uses 3 DHs, no OPK.** The wire protocol carries no one-time-prekey id, so the client intentionally ignores `bundle.one_time_prekey` (dh4 mismatch → undecryptable first message). Server still claims+marks OPKs used on bundle fetch (harmless waste, refilled at <20).
-
-14. **Onboarding wizard.** Shown on first launch (4 steps). Dismissed with `localStorage.onboarding_seen`.
-
-15. **ErrorBoundary.** Catches React render errors, shows friendly error page with reload button.
+1. **Token в query для медиа и WS.** `<img>/<audio>/<video>` и WebSocket не умеют Authorization-заголовки: файлы — `?token=`, сокеты — `/ws/chat/{user_id}?token=`. JWT сверяется с `sub == user_id`. Mitigations: только `wss/https` в проде, короткий TTL.
+2. **WS-эндпоинты (4 штуки):** `/ws/chat/{user_id}` — сообщения (`{"event": ...}`), `/ws/calls/{user_id}` и `/ws/signaling/{user_id}` — синонимы сигналинга (`{"type": ...}`), `/ws/notifications/{user_id}` — уведомления. Лимит 10 соединений/IP, 1 МБ/сообщение, ping при простое 120с, разрыв после 300с тишины.
+3. **Форматы событий разные — это нормально:** chat-WS шлёт `{"event": ...}`, signaling-WS — `{"type": ...}`. Не «унифицировать» без обновления обоих клиентов (`useChatSocket.ts`, `CallPage.tsx`).
+4. **Python imports — абсолютные от корня репо.** `from shared.config import settings`, `from server.core.models import User`.
+5. **`shared/config.py` — без P2P-флагов.** `USE_P2P`, `P2P_*`, `USE_IPFS`, `USE_FEDERATED_BACKUP` удалены 2026-09 (код их не читал). Живой флаг федерации — `USE_FEDERATION`. Дубли `SERVER_HOST/DEBUG/CLIENT_HOST` вычищены.
+6. **CORS — whitelist, CSP — из него же.** Даже в DEBUG нет `*`.
+7. **Frontend env — только `VITE_` префикс** (shell/корневой `.env`, не `frontend/.env`). Ключи: `VITE_API_HOST`, `VITE_API_PROTOCOL`. `BASE_URL/WS_BASE` заморожены на старте модуля — смена релея требует перезагрузки.
+8. **Supabase/Firebase удалены полностью.** Только локальное хранение.
+9. **Tray icon.** Close сворачивает в трей (`minimize_to_tray`); выход — «Выйти» в меню трея.
+10. **E2E-ключ хранилища — `device_secret`, не токен.** `deriveStorageKey()` в `e2e.ts`: токен меняется при каждом логине, шифровать им сессии нельзя. Честное ограничение: `device_secret` лежит в IndexedDB открытым текстом (в браузере нет OS-keystore) — см. шапку `secureStorage.ts`.
+11. **X3DH — 3 DH, без OPK.** В протоколе нет OPK id, клиент осознанно игнорирует `bundle.one_time_prekey` (иначе первое сообщение не расшифровать). Сервер OPK при выдаче помечает использованным (безвредная трата, догрузка при <20).
+12. **Маршрутизация E2E:** групповой чат ВСЕГДА шифруется групповым ключом (`groupE2E.ts`), личка — 1-1 Double Ratchet (`e2e.ts`). Не менять порядок без понимания (был баг наоборот).
+13. **Сессии — в IndexedDB (`nurchat-secure`), НЕ в localStorage.** AES-256-GCM, PBKDF2 100k, автоочистка кэша через 10 мин неактивности.
+14. **Onboarding wizard.** 4 шага, гасится `localStorage.onboarding_seen`.
+15. **ErrorBoundary.** Ловит ошибки рендера React, показывает страницу с кнопкой reload.
+16. **P2P НЕ возвращать.** TCP-нода (`src-tauri/src/p2p.rs`), LAN discovery, `nurchat://`, `USE_P2P` — удалены как нерабочие. Остатки: `p2pchat/` (прототип, не импортируется), таблицы `p2p_*` в миграции 001 (история), `src-tauri/src/ipfs.rs` (мёртвый импорт). Рабочий P2P остался только в WebRTC-медиа звонков.
 
 ## Env Variables
 
-Required in `.env`:
+Обязательные в `.env`:
 ```
 ENCRYPTION_KEY=<stable hex key>
 JWT_SECRET_KEY=<stable hex key>
+TOTP_MASTER_KEY=<stable secret>
 ```
 
-Optional:
+Прод связи/звонков:
 ```
-USE_FEDERATION=true
-FEDERATION_SERVER_NAME=localhost:8000
-USE_IPFS=true
-USE_P2P=true
+CORS_ORIGINS=https://relay.example.com
+TURN_USERNAME=nurchat
+TURN_CREDENTIAL=<из infra/coturn.conf>
+# или JSON целиком:
+# WEBRTC_ICE_SERVERS=[{"urls":"turn:...","username":"...","credential":"..."}]
+VITE_API_HOST=relay.example.com
+VITE_API_PROTOCOL=https
 ```
 
-Full reference: `.env.example` and `shared/config.py`.
-
-
-Full reference: `.env.example` and `shared/config.py`.
+Полный референс: `.env.example` и `shared/config.py`.
 
 ## Auto-Update (Tauri Updater)
 
-- Uses `tauri-plugin-updater` + `tauri-plugin-process` (Rust) and `@tauri-apps/plugin-updater` + `@tauri-apps/plugin-process` (frontend).
-- Checks GitHub releases via `latest.json` manifest published by `tauri-action@v0` in `.github/workflows/release.yml`.
-- `UpdateBanner.tsx` polls every launch (10s delay), shows version, downloads with progress, installs, relaunches.
-
-**Signing (required for release builds):**
-- Public key is embedded in `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`.
-- Private key lives in `update_key_private.key` (gitignored, minisign format).
-- GitHub Secrets (must be set for the release workflow to build):
-  - `TAURI_SIGNING_PRIVATE_KEY` — contents of `update_key_private.key`
-  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — empty (key has no password)
-- `tauri build` fails without the private key env var; that's expected. `tauri dev` doesn't need it.
-- To regenerate a key if lost: `npx tauri signer generate --ci -w update_key_private.key` then copy `.pub` value into `tauri.conf.json`.
+- `tauri-plugin-updater` + `tauri-plugin-process` (Rust) и `@tauri-apps/plugin-updater` + `@tauri-apps/plugin-process` (frontend).
+- `UpdateBanner.tsx` опрашивает GitHub releases через `latest.json` (публикует `tauri-action@v0` в `.github/workflows/release.yml`), задержка 10с после старта.
+- Публичный ключ в `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`; приватный — `update_key_private.key` (gitignored). Секреты CI: `TAURI_SIGNING_PRIVATE_KEY` (+ пустой `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). `tauri build` без ключа падает — ожидаемо; `tauri dev` ключ не нужен.
 
 ## Testing
 
-- Test dir: `test/` (singular, not `tests/`)
-- Run: `pytest test/ -v`
-- Frontend tests: `cd frontend && npx vitest run` (5 tests in `frontend/src/test/api.test.ts`)
-- Key test files: `test/test_crypto.py`, `test/test_security.py`, `test/test_double_ratchet.py`
+- Python: `pytest test/ -v` (директория `test/`, singular). Ключевые: `test_double_ratchet.py`, `test_crypto.py`, `test_security.py`.
+- Frontend: `cd frontend && npx vitest run` (`frontend/src/test/api.test.ts`).
+- После правок транспорта/E2E: обязательно `ruff check .` + `mypy .` + `cd frontend && npm run lint`.
 
-## Encryption Architecture
+## Encryption Architecture (кратко; полно — в docs/)
 
-NurChat implements **Double Ratchet** (Signal Protocol) for E2E encryption:
-
-- **X3DH** — initial key agreement with identity keys, signed pre-keys, and one-time pre-keys
-- **Double Ratchet** — continuous key rotation on every message
-- **Forward secrecy** — old keys destroyed after each ratchet step
-- **Replay protection** — message IDs tracked per session
-
-```
-shared/double_ratchet.py              ← Python implementation (server-side tests)
-frontend/src/services/doubleRatchet.ts ← TypeScript implementation (browser)
-frontend/src/services/e2e.ts           ← Session manager integrating Double Ratchet
-server/routes/keys.py                  ← PreKey API endpoints
-```
-
-**PreKey lifecycle:**
-1. User registers → generates identity keypair (existing `public_key` on `User`)
-2. User uploads signed pre-key + one-time pre-keys via `/api/keys/*`
-3. Initiator fetches bundle: `GET /api/keys/bundle/{user_id}`
-4. After X3DH, one-time pre-key is marked `is_used=True`
-5. Cleanup: `POST /api/keys/cleanup` removes used pre-keys
-
-**Session state** serialized to `localStorage` (`e2e_sessions`).
+X3DH (3 DH, подписи Ed25519 обязательны) + Double Ratchet. Лички: `e2e.ts` + `doubleRatchet.ts` (+ Python-зеркало `shared/double_ratchet.py` для тестов). Группы: `groupE2E.ts` (симметричный ключ, завёрнут per-user через ECDH; сервер хранит только завёрнутые копии в `Chat.group_key`). PreKey API: `server/routes/keys.py`. Relay принимает только `encrypted_content` (`content="[encrypted]"`), иначе 400/отброс.
 
 ## Key Files
 
-**Server entry:** `server/main.py` — FastAPI app, CORS, routes, WS endpoints, lifespan
-**Config:** `shared/config.py` — Pydantic Settings, reads `.env`
-**Models:** `server/core/models.py` — All SQLAlchemy models (includes `SignedPreKey`, `OneTimePreKey`)
-**Auth:** `server/routes/auth.py` — Register, login, profile, avatar
-
-**Auth:** `server/routes/auth.py` — register/login (with captcha), 2FA, profile, avatar
-**Chat:** `server/routes/chat.py` — CRUD, search, reactions, block, export
-**Keys:** `server/routes/keys.py` — PreKey bundle, signed/one-time pre-key API
-**Files:** `server/routes/files.py` — Upload/download (with `?token=`), delete
-**WS manager:** `server/ws/chat_manager.py` — WebSocket connections
-**Frontend entry:** `frontend/src/App.tsx` — Route definitions
-**API client:** `frontend/src/services/api.ts` — All HTTP calls
-**Main page:** `frontend/src/pages/ChatPage.tsx` — Sidebar + chat + WS
-**Tauri config:** `src-tauri/tauri.conf.json` — App metadata, CSP, build settings
+**Relay entry:** `server/main.py` — app, CORS/CSP, rate limits, WS-эндпоинты, lifespan
+**Config:** `shared/config.py` — Pydantic Settings, читает корневой `.env`
+**Models:** `server/core/models.py` — все SQLAlchemy-модели (включая `SignedPreKey`, `OneTimePreKey`, `CallLog`, `PushSubscription`)
+**Auth:** `server/routes/auth.py` — register/login + captcha, 2FA TOTP, ротация E2E-ключей
+**Chat:** `server/routes/chat.py` — CRUD, RELAY_DEAF-принуждение, group-key API
+**Keys:** `server/routes/keys.py` — SPK/OPK/bundle/cleanup
+**Files:** `server/routes/files.py` — upload/download (`?token=`), открытое хранение
+**Calls REST:** `server/routes/calls.py` — история, ICE-серверы
+**WS chat:** `server/ws/chat_manager.py` — соединения, доставка, presence
+**WS calls:** `server/ws/signaling.py` — WebRTC-сигналинг, pending-буфер
+**WS push:** `server/ws/notifications.py` + `server/routes/push.py` — VAPID Web Push
+**Docs:** `docs/E2E_AND_TRANSPORT.md` — честная документация (читать первой)
+**Frontend entry:** `frontend/src/App.tsx`
+**API client:** `frontend/src/services/api.ts`
+**Relay config:** `frontend/src/config.ts` — резолвинг релея, `BASE_URL`/`WS_BASE`
+**E2E:** `frontend/src/services/e2e.ts`, `doubleRatchet.ts`, `groupE2E.ts`, `secureStorage.ts`, `cryptoAdapter.ts`
+**WS client:** `frontend/src/hooks/useChatSocket.ts` (чат), `frontend/src/pages/CallPage.tsx` (звонки)
+**Отправка/история:** `frontend/src/hooks/useChatActions.ts`, `useChatMessages.ts`
+**Main page:** `frontend/src/pages/ChatPage.tsx`
+**Tauri:** `src-tauri/tauri.conf.json`, `src-tauri/src/lib.rs` (без `mod p2p`)
 
 ## Conventions
 
 - Russian language in UI and commit messages
-- All API responses are JSON (Pydantic models)
-- WebSocket events use `{"type": "event_name", ...}` format
-- File IDs use `file_` prefix, message IDs use `msg_`, user IDs use `user_`
-- Messages in DB store `content` as plaintext or `"[encrypted]"` for E2E
-- Reactions are stored server-side in `MessageReaction` table (not ephemeral)
+- Все API-ответы — JSON (Pydantic)
+- Chat WS: `{"event": "event_name", "data": {...}}`; signaling WS: `{"type": "...", ...}`
+- Префиксы ID: `file_`, `msg_`, `user_`
+- `content="[encrypted]"` в БД при E2E; конверт — в `encrypted_content`
+- Реакции — серверные (`MessageReaction`), не эфемерные
+- Не вводить новые системы шифрования/транспорта рядом с ядром — чинить ядро

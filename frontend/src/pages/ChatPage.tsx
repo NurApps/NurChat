@@ -13,7 +13,7 @@ import { useMobile } from "../hooks/useMobile"
 import OfflineBanner from "../components/OfflineBanner"
 import { BottomTabs } from "../components/mobile/BottomTabs"
 import { loadKeys as loadE2EKeys, decryptMessage, type E2EKeys } from "../services/e2e"
-import { initGroupKey } from "../services/groupE2E"
+import { initGroupKey, fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications } from "../services/notifications"
 import { clearPin } from "../services/pinLock"
@@ -31,6 +31,14 @@ import ChatSidebar from "../components/ChatSidebar"
 import ChatModals from "../components/ChatModals"
 
 import { getDraft, saveDraft, removeDraft } from "../utils/drafts"
+
+function hexToBytesLocal(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16)
+  }
+  return bytes
+}
 
 export default function ChatPage() {
   const { t } = useTranslation()
@@ -129,13 +137,25 @@ export default function ChatPage() {
       if (data._edit) { updateMessage(data.message_id as string, { content: data.content as string }); return }
       if (data.encrypted_content && e2eKeys && selectedChat) {
         try {
-          const peer = selectedChat.participants.find((p: any) => p.id !== currentUser.id)
-          if (peer?.public_key) {
-            const envelope = JSON.parse(data.encrypted_content)
-            const plain = await decryptMessage(
-              envelope, e2eKeys, peer.public_key, selectedChat.id,
-            )
-            if (plain) data.content = plain
+          const envelope = JSON.parse(data.encrypted_content)
+          if (envelope.group_encrypted) {
+            // Групповое сообщение в реальном времени: раньше расшифровывалась
+            // только история (useChatMessages), а live-сообщения висели как
+            // "[encrypted]" до перезагрузки. Исправлено 2026-09.
+            const sk = hexToBytesLocal(e2eKeys.privateKeyHex)
+            const groupKey = await fetchGroupKey(selectedChat.id, sk)
+            if (groupKey) {
+              const plain = await decryptGroupMessageRatcheted(envelope.group_encrypted, groupKey, selectedChat.id)
+              if (plain) data.content = plain
+            }
+          } else {
+            const peer = selectedChat.participants.find((p: any) => p.id !== currentUser.id)
+            if (peer?.public_key) {
+              const plain = await decryptMessage(
+                envelope, e2eKeys, peer.public_key, selectedChat.id,
+              )
+              if (plain) data.content = plain
+            }
           }
         } catch (e) { console.warn("[WS] decrypt failed:", e) }
       }
@@ -175,7 +195,7 @@ export default function ChatPage() {
   const {
     replyTo, setReplyTo,
     handleSend: handleSendAction, handleReply, handleReaction, handleEditMessage, handleDeleteMessage,
-    handlePin, handleMute, handleDeleteChat,
+    handlePin, handleMute, handleDeleteChat, handleSendAttachment,
   } = useChatActions({
     currentUser, selectedChat, addMessage, setMessages, loadChats,
     sendTyping,
@@ -485,19 +505,20 @@ export default function ChatPage() {
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0 || !selectedChat) return
+    const chat = selectedChat
     setUploading(true); setUploadProgress(0)
     let completed = 0
     for (const file of files) {
-      try {
-        const fileType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "file"
-        const uploaded = await api.uploadFile(file, fileType, (p) => setUploadProgress(((completed + p) / files.length) * 100))
-        const msg = await api.sendMessage(selectedChat.id, file.name, fileType, uploaded.id)
-        addMessage(msg); completed++
-      } catch { setErrorToast(t("errors.fileUpload", { name: file.name })) }
+      const fileType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "file"
+      const ok = await handleSendAttachment(
+        chat, file, fileType, file.name,
+        (p) => setUploadProgress(((completed + p / 100) / files.length) * 100),
+      )
+      if (ok) completed++
     }
-    loadChats(); setUploading(false); setUploadProgress(0)
+    setUploading(false); setUploadProgress(0)
     if (fileInputRef.current) fileInputRef.current.value = ""
-  }, [selectedChat, loadChats, addMessage, setErrorToast, setUploading, setUploadProgress, t])
+  }, [selectedChat, handleSendAttachment, setUploading, setUploadProgress])
 
   const startRecording = useCallback(async () => {
     try {
@@ -518,9 +539,7 @@ export default function ChatPage() {
         const file = new File([blob], `voice_${Date.now()}.webm`, { type: mr.mimeType })
         setUploading(true)
         try {
-          const uploaded = await api.uploadFile(file, "voice")
-          const msg = await api.sendMessage(targetChat.id, t("chat.voiceMessage"), "voice", uploaded.id)
-          addMessage(msg); loadChats()
+          await handleSendAttachment(targetChat, file, "voice", t("chat.voiceMessage"))
         } catch { console.error("Voice failed") }
         setUploading(false)
       }
@@ -533,7 +552,7 @@ export default function ChatPage() {
         })
       }, 1000)
     } catch { console.error("Microphone denied") }
-  }, [selectedChat, loadChats, addMessage, setUploading, t])
+  }, [handleSendAttachment, setUploading, t])
 
   const stopRecording = useCallback(() => { mediaRecorder?.stop(); setMediaRecorder(null); setRecording(false) }, [mediaRecorder])
 

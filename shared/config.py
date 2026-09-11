@@ -152,6 +152,12 @@ class Settings(BaseSettings):
     WS_RECONNECT_TIMEOUT: int = 5
     CLEANUP_INTERVAL_HOURS: int = 6
     ORPHANED_CLEANUP_HOURS: int = 12
+    # Background loops (seconds). Lower = fresher purges, more DB queries.
+    # Serverless free DBs (Neon: 100 CU-h/month) need these HIGH so compute
+    # sleeps between runs — e.g. 600. Delivery itself doesn't use the loop
+    # (WebSocket push + on-demand reads), only purges/cleanups do.
+    BACKGROUND_LOOP_SECONDS: int = 30
+    EPHEMERAL_CLEANUP_SECONDS: int = 60
     REDIS_URL: str = "redis://localhost:6379/0"
     USE_REDIS: bool = True
     ENABLE_METRICS: bool = False

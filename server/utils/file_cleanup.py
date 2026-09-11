@@ -148,10 +148,11 @@ class FileCleanupService:
             id="orphaned_files_cleanup"
         )
 
-        # Очистка эфемерных сообщений каждые 60 секунд
+        # Очистка эфемерных сообщений (интервал из env — на serverless-БД
+        # ставьте пореже, чтобы compute засыпал: EPHEMERAL_CLEANUP_SECONDS)
         self.scheduler.add_job(
             self.cleanup_expired_ephemeral_messages,
-            trigger=IntervalTrigger(seconds=60),
+            trigger=IntervalTrigger(seconds=settings.EPHEMERAL_CLEANUP_SECONDS),
             id="ephemeral_messages_cleanup"
         )
 

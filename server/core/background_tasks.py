@@ -153,7 +153,12 @@ async def _deaf_relay_purge():
 async def _background_loop():
     global _running
     _running = True
-    logger.info("[BACKGROUND] Task loop started")
+    # Interval is configurable: serverless free DBs (Neon) bill per active
+    # minute, so slow the loop down there (e.g. 600) to let compute sleep.
+    # Trade-off: delivered messages are purged with up to this delay.
+    from shared.config import settings
+    interval = max(10, settings.BACKGROUND_LOOP_SECONDS)
+    logger.info(f"[BACKGROUND] Task loop started (every {interval}s)")
 
     while _running:
         try:
@@ -163,7 +168,7 @@ async def _background_loop():
         except Exception as e:
             logger.error(f"[BACKGROUND] Loop error: {e}")
 
-        await asyncio.sleep(30)
+        await asyncio.sleep(interval)
 
 
 def start_background_tasks():

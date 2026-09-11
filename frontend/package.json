@@ -33,8 +33,6 @@
     "react-i18next": "^17.0.9",
     "react-router-dom": "^7.18.0",
     "react-window": "^2.2.7",
-    "tweetnacl": "^1.0.3",
-
     "zustand": "^5.0.14"
   },
   "devDependencies": {

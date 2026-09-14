@@ -83,8 +83,8 @@ export const api = {
   getChats: (search?: string) =>
     request<ChatResponse[]>("GET", "/api/chat/chats" + (search ? `?search=${encodeURIComponent(search)}` : "")),
 
-  getChatMessages: (chatId: string, skip = 0, limit = 50) =>
-    request<MessageResponse[]>("GET", `/api/chat/chats/${chatId}/messages?skip=${skip}&limit=${limit}`),
+  getChatMessages: (chatId: string, skip = 0, limit = 50, since?: string) =>
+    request<MessageResponse[]>("GET", `/api/chat/chats/${chatId}/messages?skip=${skip}&limit=${limit}` + (since ? `&since=${encodeURIComponent(since)}` : "")),
 
   sendMessage: async (chatId: string, content: string, messageType = "text", fileId?: string, encryptedContent?: string, signature?: string, expiresAt?: string, replyToId?: string): Promise<MessageResponse> => {
     const body = {
@@ -116,8 +116,8 @@ export const api = {
   deleteMessage: (messageId: string, deleteForAll = false) =>
     request<void>("DELETE", `/api/chat/messages/${messageId}?delete_for_all=${deleteForAll}`),
 
-  editMessage: (messageId: string, content: string) =>
-    request<MessageResponse>("PUT", `/api/chat/messages/${messageId}/edit?new_content=${encodeURIComponent(content)}`),
+  editMessage: (messageId: string, body: { content: string; encrypted_content?: string; signature?: string }) =>
+    request<{ message: string }>("PUT", `/api/chat/messages/${messageId}/edit`, body),
 
   deleteAccount: () =>
     request<{ message: string }>("DELETE", "/api/auth/account"),

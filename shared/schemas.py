@@ -215,6 +215,10 @@ class CallStartRequest(BaseSchema):
     target_user_id: str = Field(..., min_length=1, max_length=100)
     call_type: str = Field(..., pattern=r"^(audio|video)$")
     chat_id: str | None = Field(None, max_length=100)
+    # Клиентский call_id (формат фронта: call_<ms>_<rand>). Если задан —
+    # relay использует его для строки CallLog, чтобы REST и WS-сигналинг
+    # говорили об одном и том же звонке, а не о двух разных ID.
+    call_id: str | None = Field(None, min_length=1, max_length=100)
 
 class CallResponse(BaseSchema):
     call_id: str

@@ -29,9 +29,6 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://nurchat:nurchat_pass@db:5432/nurchat
-      - REDIS_URL=redis://redis:6379/0
-
       - DATABASE_URL=postgresql://${POSTGRES_USER:-nurchat}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nurchat}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - USE_REDIS=true
@@ -39,8 +36,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
-
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -61,10 +56,6 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: nurchat
-      POSTGRES_PASSWORD: nurchat_pass
-      POSTGRES_DB: nurchat
-
       POSTGRES_USER: ${POSTGRES_USER:-nurchat}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-nurchat}
@@ -72,29 +63,12 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nurchat -d nurchat"]
-
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nurchat} -d ${POSTGRES_DB:-nurchat}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - nurchat-network
-
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    networks:
-      - nurchat-network
-
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.5"
 
   redis:
     image: redis:7-alpine

@@ -96,3 +96,49 @@ def get_online_users() -> list[str]:
     except Exception as exc:
         logger.debug("Redis get_online_users error: %s", exc)
         return []
+
+
+# Pending call-signaling (per-user buffer, survives restart via Redis).
+# In-memory dict в CallManager остаётся как fallback при недоступном Redis.
+PENDING_CALLS_PREFIX = "nurchat:pending_calls:"
+PENDING_CALLS_TTL_SECONDS = 24 * 60 * 60  # как PENDING_MESSAGE_TTL_SECONDS в signaling.py
+PENDING_CALLS_MAX_PER_USER = 50
+
+
+def push_pending_call(user_id: str, message: dict) -> bool:
+    """Положить сигналинг-кадр в Redis-буфер. False = Redis нет, нужен fallback."""
+    import time
+    r = get_redis()
+    if r is None:
+        return False
+    try:
+        key = PENDING_CALLS_PREFIX + user_id
+        r.rpush(key, json.dumps({"msg": message, "ts": time.time()}, ensure_ascii=False))
+        r.ltrim(key, -PENDING_CALLS_MAX_PER_USER, -1)
+        r.expire(key, PENDING_CALLS_TTL_SECONDS)
+        return True
+    except Exception as exc:
+        logger.debug("Redis push_pending_call error: %s", exc)
+        return False
+
+
+def pop_pending_calls(user_id: str) -> list[dict]:
+    """Забрать и удалить весь Redis-буфер пользователя. Пусто = [] (не ошибка)."""
+    r = get_redis()
+    if r is None:
+        return []
+    try:
+        key = PENDING_CALLS_PREFIX + user_id
+        raw = r.lrange(key, 0, -1)
+        if raw:
+            r.delete(key)
+        out: list[dict] = []
+        for item in raw or []:
+            try:
+                out.append(json.loads(item))
+            except (json.JSONDecodeError, TypeError):
+                continue
+        return out
+    except Exception as exc:
+        logger.debug("Redis pop_pending_calls error: %s", exc)
+        return []

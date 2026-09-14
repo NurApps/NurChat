@@ -180,6 +180,7 @@ async def get_chat_messages(
     chat_id: str,
     skip: int = 0,
     limit: int = 50,
+    since: str | None = None,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
@@ -195,17 +196,27 @@ async def get_chat_messages(
         raise ChatNotFoundError("Чат не найден или доступ запрещен")
     if limit > 100:
         limit = 100
+    filters = [
+        models.Message.chat_id == chat_id,
+        ~models.Message.is_deleted,
+        or_(
+            models.Message.expires_at.is_(None),
+            models.Message.expires_at > datetime.now(timezone.utc),
+        ),
+    ]
+    # Докачка после оффлайна: ?since=ISO — только новее метки, без skip.
+    # Невалидный since игнорируем (отдаём как без него), а не 400.
+    if since:
+        try:
+            from datetime import datetime as _dt
+            since_dt = _dt.fromisoformat(since.replace("Z", "+00:00"))
+            filters.append(models.Message.created_at > since_dt)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid since param ignored: {since!r}")
     messages = (
         db.query(models.Message)
         .options(joinedload(models.Message.user), joinedload(models.Message.file))
-        .filter(
-            models.Message.chat_id == chat_id,
-            ~models.Message.is_deleted,
-            or_(
-                models.Message.expires_at.is_(None),
-                models.Message.expires_at > datetime.now(timezone.utc),
-            ),
-        )
+        .filter(*filters)
         .order_by(models.Message.created_at.desc())
         .offset(skip).limit(limit).all()
     )
@@ -365,6 +376,10 @@ async def send_message(
                     for mentioned in mentioned_users:
                         if mentioned.id == user_id:
                             continue
+                        # Глухой relay: превью из исходного текста до шифрования —
+                        # утечка. Для E2E-сообщений превью пустое (метаданные
+                        # mention нужны для маршрутизации, текст — нет).
+                        preview = "" if encrypted_content else (message_data.content or "")[:100]
                         mention_event = {
                             "event": "mention",
                             "data": {
@@ -372,7 +387,7 @@ async def send_message(
                                 "message_id": message_id,
                                 "mentioned_by": user_id,
                                 "mentioned_by_username": sender_username,
-                                "content_preview": (message_data.content or "")[:100],
+                                "content_preview": preview,
                             }
                         }
                         await connection_manager.send_personal_message(mention_event, mentioned.id)
@@ -500,13 +515,33 @@ async def delete_message(
 @router.put("/messages/{message_id}/edit")
 async def edit_message(
     message_id: str,
-    new_content: str,
+    new_content: str | None = None,
+    payload: dict | None = None,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
+    """Редактирование сообщения.
+
+    Глухой relay: принимает content в query (legacy, только при
+    RELAY_DEAF=false) или JSON-body {content, encrypted_content, signature}.
+    При RELAY_DEAF=true требуется конверт — иначе 400, как send_message.
+    """
     try:
         user_id = token["sub"]
         logger.info(f"Editing message {message_id} by user: {user_id}")
+
+        body = payload or {}
+        content = body.get("content", new_content)
+        encrypted_content = body.get("encrypted_content")
+        signature = body.get("signature")
+        if not content:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Пустое содержимое")
+        if settings.RELAY_DEAF and not encrypted_content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Этот relay работает в глухом режиме: только E2E-шифрованные правки",
+            )
+        stored_content = "[encrypted]" if encrypted_content else content
 
         message = db.query(models.Message).filter(models.Message.id == message_id).first()
         if not message:
@@ -530,13 +565,17 @@ async def edit_message(
         )
         history.append({
             "content": message.content,
+            "encrypted_content": message.encrypted_content,
             "edited_at": edited_at_str,
         })
         # Keep last 50 edits max
         if len(history) > 50:
             history = history[-50:]
 
-        message.content = new_content
+        message.content = stored_content
+        if encrypted_content:
+            message.encrypted_content = encrypted_content
+            message.signature = signature
         message.edited_at = datetime.now(timezone.utc)
         message.edit_history = json.dumps(history, ensure_ascii=False)
         db.commit()
@@ -545,7 +584,9 @@ async def edit_message(
             "data": {
                 "message_id": message_id,
                 "chat_id": message.chat_id,
-                "new_content": new_content,
+                "new_content": stored_content,
+                "encrypted_content": encrypted_content,
+                "signature": signature,
                 "edited_by": user_id,
                 "edited_at": message.edited_at.isoformat(),
                 "timestamp": datetime.now(timezone.utc).isoformat()
@@ -1188,6 +1229,8 @@ async def send_ephemeral_message(
     expires_in_seconds: int,
     message_type: str = "text",
     file_id: str | None = None,
+    encrypted_content: str | None = None,
+    signature: str | None = None,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
@@ -1205,13 +1248,23 @@ async def send_ephemeral_message(
         if not content.strip():
             raise HTTPException(status_code=400, detail="Содержимое сообщения не может быть пустым")
 
+        # Глухой relay: тот же запрет плейнтекста, что и в send_message.
+        # Раньше этот эндпоинт хранил content открыто безо всякой проверки.
+        if settings.RELAY_DEAF and not encrypted_content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Этот relay работает в глухом режиме: только E2E-шифрованные сообщения",
+            )
+        stored_content = "[encrypted]" if encrypted_content else content
+
         message_id = security.generate_message_id()
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)
 
         message = models.Message(
             id=message_id, chat_id=chat_id, user_id=user_id,
-            content=content, message_type=message_type,
+            content=stored_content, message_type=message_type,
             file_id=file_id, expires_at=expires_at,
+            encrypted_content=encrypted_content, signature=signature,
         )
         db.add(message)
         db.commit()
@@ -1243,6 +1296,8 @@ async def send_ephemeral_message(
                         "file_id": message_full.file_id,
                         "user_id": message_full.user_id,
                         "username": message_full.user.username if message_full.user else "Unknown",
+                        "encrypted_content": message_full.encrypted_content,
+                        "signature": message_full.signature,
                         "expires_at": expires_at.isoformat(),
                         "timestamp": message_full.created_at.isoformat() if message_full.created_at else None,
                     }

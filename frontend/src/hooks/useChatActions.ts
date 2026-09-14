@@ -87,6 +87,9 @@ export function useChatActions({
       return false
     }
 
+    const effectiveExpiresAt = expiresAt || (selectedChat.is_secret && selectedChat.disappears_after_seconds
+      ? new Date(Date.now() + selectedChat.disappears_after_seconds * 1000).toISOString()
+      : undefined)
     try {
       const msg = await api.sendMessage(
         selectedChat.id,
@@ -95,22 +98,69 @@ export function useChatActions({
         undefined,
         encryptedContent,
         signature,
-        expiresAt || (selectedChat.is_secret && selectedChat.disappears_after_seconds
-          ? new Date(Date.now() + selectedChat.disappears_after_seconds * 1000).toISOString()
-          : undefined),
+        effectiveExpiresAt,
         replyToId,
       )
       addMessage(msg)
       loadChats()
     } catch (e) {
       console.error("Send failed:", e)
-      setErrorToast(t("errors.sendFailed"))
-      sendTyping(false)
-      return false
+      // Оффлайн: кладём плейнтекст в локальный outbox — уйдёт само при
+      // появлении связи (flushOutbox перешифрует свежими ключами).
+      try {
+        const { queueOutboxMessage } = await import("../services/outbox")
+        await queueOutboxMessage({
+          chatId: selectedChat.id, text, replyToId, expiresAt: effectiveExpiresAt,
+        })
+        setErrorToast(t("errors.sendQueued"))
+        sendTyping(false)
+        return true // инпут можно чистить — текст в надёжной очереди
+      } catch {
+        setErrorToast(t("errors.sendFailed"))
+        sendTyping(false)
+        return false
+      }
     }
     sendTyping(false)
     return true
   }, [selectedChat, replyTo, currentUser, loadChats, addMessage, sendTyping, setErrorToast, t, encryptCaption])
+
+  // Отправка накопленного outbox: вызывается при реконнекте WS / online.
+  // Возвращает число реально ушедших сообщений.
+  const flushOutbox = useCallback(async (): Promise<number> => {
+    let items
+    try {
+      const m = await import("../services/outbox")
+      items = await m.listOutbox()
+      if (!items.length) return 0
+    } catch { return 0 }
+    const { removeOutbox, bumpOutboxAttempts, isPoison } = await import("../services/outbox")
+    let chats: ChatResponse[] | null = null
+    let sent = 0
+    for (const item of items) {
+      try {
+        if (item.id === undefined || isPoison(item)) {
+          if (item.id !== undefined) await removeOutbox(item.id)
+          continue
+        }
+        if (!chats) chats = await api.getChats()
+        const chat = chats.find((c) => c.id === item.chatId)
+        if (!chat) { await removeOutbox(item.id as number); continue } // чат удалён
+        const { content, encryptedContent, signature } = await encryptCaption(chat, item.text)
+        const msg = await api.sendMessage(
+          chat.id, content, "text", undefined, encryptedContent, signature,
+          item.expiresAt, item.replyToId,
+        )
+        await removeOutbox(item.id as number)
+        sent++
+        if (selectedChat?.id === chat.id) addMessage(msg)
+      } catch {
+        await bumpOutboxAttempts(item) // яд копится до isPoison, потом дроп
+      }
+    }
+    if (sent) loadChats()
+    return sent
+  }, [selectedChat, addMessage, loadChats, encryptCaption])
 
   const handleReply = useCallback((messageId: string, messages: MessageResponse[]) => {
     const msg = messages.find((m) => m.id === messageId)
@@ -154,13 +204,27 @@ export function useChatActions({
 
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
     try {
-      await api.editMessage(messageId, newContent)
+      // Глухой relay принимает только E2E-правки: шифруем тем же маршрутом,
+      // что и отправку (группы — групповой ключ, лички — 1-1 ратчет).
+      // Плейнтекст в query больше не шлём (тёк в логи/прокси).
+      let body: { content: string; encrypted_content?: string; signature?: string } = { content: newContent }
+      if (selectedChat) {
+        try {
+          const enc = await encryptCaption(selectedChat, newContent)
+          body = { content: enc.content, encrypted_content: enc.encryptedContent, signature: enc.signature }
+        } catch (e) {
+          console.error("E2E encrypt (edit) failed:", e)
+          setErrorToast(t("errors.editFailed"))
+          return
+        }
+      }
+      await api.editMessage(messageId, body)
       setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, content: newContent } : m))
     } catch (e) {
       setErrorToast(t("errors.editFailed"))
       console.error("Edit failed:", e)
     }
-  }, [setErrorToast, setMessages, t])
+  }, [selectedChat, setErrorToast, setMessages, t, encryptCaption])
 
   const handleDeleteMessage = useCallback(async (messageId: string, deleteForAll = false) => {
     try {
@@ -224,6 +288,6 @@ export function useChatActions({
   return {
     replyTo, setReplyTo,
     handleSend, handleReply, handleReaction, handleEditMessage, handleDeleteMessage,
-    handlePin, handleMute, handleDeleteChat, handleSendAttachment,
+    handlePin, handleMute, handleDeleteChat, handleSendAttachment, flushOutbox,
   }
 }

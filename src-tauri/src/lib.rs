@@ -1,7 +1,5 @@
-mod ipfs;
 mod server;
 
-use ipfs::{IpfsClient, IpfsAddResult};
 use server::ServerManager;
 use std::path::PathBuf;
 use tauri::{Emitter, Manager, State};

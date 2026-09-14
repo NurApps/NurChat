@@ -178,8 +178,15 @@ class NotificationManager:
             self.user_notifications[user_id].clear()
 
     def _truncate_message_preview(self, content: str | None, max_length: int = 100) -> str:
-        """Обрезка текста сообщения для превью"""
+        """Обрезка текста сообщения для превью.
+
+        Глухой relay: E2E-конверты в превью не попадают никогда. Тело
+        уведомления летит ещё и через сторонние push-сервисы (Google/Apple),
+        поэтому для шифрованных сообщений — только generic-заглушка.
+        """
         content = content or ""
+        if not content or content == "[encrypted]":
+            return "Новое сообщение"
         if len(content) <= max_length:
             return content
         return content[:max_length] + "..."

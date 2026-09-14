@@ -128,6 +128,11 @@ export default function ChatPage() {
     setTypingUsers(fn)
   }, [])
 
+  // Outbox-флаш вызывается сокетом при (пере)подключении; сам флаш живёт в
+  // useChatActions ниже — поэтому ref, заполняемый после его создания.
+  const flushOutboxRef = useRef<() => void>(() => {})
+  const [outboxPending, setOutboxPending] = useState(0)
+
   const { wsRef, chatIdRef } = useChatSocket({
     currentUser, selectedChat,
     mutedChatIds: useMemo(() => new Set(chats.filter(c => c.is_muted).map(c => c.id)), [chats]),
@@ -176,9 +181,8 @@ export default function ChatPage() {
     }, [setToast]),
     onReactions: useCallback(() => undefined, []),
     onNavigate: navigate,
+    onReconnect: useCallback(() => { flushOutboxRef.current() }, []),
   })
-
-  const { isOnline: offlineQueueIsOnline, pendingCount } = { isOnline: navigator.onLine, pendingCount: 0 }
 
   const sendWs = useCallback((data: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(data))
@@ -195,12 +199,32 @@ export default function ChatPage() {
   const {
     replyTo, setReplyTo,
     handleSend: handleSendAction, handleReply, handleReaction, handleEditMessage, handleDeleteMessage,
-    handlePin, handleMute, handleDeleteChat, handleSendAttachment,
+    handlePin, handleMute, handleDeleteChat, handleSendAttachment, flushOutbox,
   } = useChatActions({
     currentUser, selectedChat, addMessage, setMessages, loadChats,
     sendTyping,
     setErrorToast: (msg) => { if (msg !== null) setErrorToast(msg) },
   })
+
+  // Outbox: счётчик для баннера + флаш при возврате сети и опросом.
+  useEffect(() => {
+    flushOutboxRef.current = () => {
+      flushOutbox()
+        .then(() => import("../services/outbox").then((m) => m.countOutbox()).then(setOutboxPending).catch(() => {}))
+        .catch(() => {})
+    }
+  }, [flushOutbox])
+  useEffect(() => {
+    let alive = true
+    const refresh = () => {
+      import("../services/outbox").then((m) => m.countOutbox()).then((n) => { if (alive) setOutboxPending(n) }).catch(() => {})
+    }
+    refresh()
+    const t = setInterval(refresh, 5000)
+    const onOnline = () => { flushOutboxRef.current() }
+    window.addEventListener("online", onOnline)
+    return () => { alive = false; clearInterval(t); window.removeEventListener("online", onOnline) }
+  }, [])
 
   // Load E2E keys asynchronously
   useEffect(() => {
@@ -597,7 +621,7 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
-      <OfflineBanner isOnline={offlineQueueIsOnline} pendingCount={pendingCount} />
+      <OfflineBanner isOnline={isOnline} pendingCount={outboxPending} />
       <TopBar
         username={currentUser.username}
         avatarChar={currentUser.username[0]?.toUpperCase() || "?"}

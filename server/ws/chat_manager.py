@@ -166,8 +166,8 @@ class ConnectionManager:
         self._broadcast_to_user_chats_sync(user_id, offline_event)
         logger.debug(f"Notified chats about user {user_id} offline")
 
-    async def send_personal_message(self, message: dict, user_id: str):
-        """Отправка личного сообщения пользователю"""
+    async def send_local(self, message: dict, user_id: str):
+        """Доставка только локальным сокетам этого инстанса (без шины)."""
         if user_id in self.active_connections:
             try:
                 await self.active_connections[user_id].send_json(message)
@@ -178,8 +178,23 @@ class ConnectionManager:
                 return False
         return False
 
-    async def broadcast_to_chat(self, message: dict, chat_id: str, exclude_user: str = None):
-        """Отправка сообщения всем участникам чата — O(K) where K = users in chat"""
+    async def send_personal_message(self, message: dict, user_id: str):
+        """Отправка личного сообщения пользователю.
+
+        Локальная доставка + публикация в шину (другие инстансы).
+        Возвращает локальный результат — семантика для старых вызывателей
+        не меняется; кросс-инстанс доставляет подписчик шины.
+        """
+        delivered = await self.send_local(message, user_id)
+        try:
+            from .bus import publish_personal
+            publish_personal(user_id, message)
+        except Exception:
+            pass
+        return delivered
+
+    async def broadcast_local(self, message: dict, chat_id: str, exclude_user: str = None):
+        """Доставка только локальным сокетам этого инстанса — O(K)."""
         sent_to = []
         members = self.chat_users.get(chat_id, set())
         for user_id in members:
@@ -195,6 +210,16 @@ class ConnectionManager:
                     self.disconnect(user_id)
 
         logger.debug(f"Broadcast to chat {chat_id} sent to {len(sent_to)} users: {sent_to}")
+        return sent_to
+
+    async def broadcast_to_chat(self, message: dict, chat_id: str, exclude_user: str = None):
+        """Отправка всем участникам чата: локально + шина другим инстансам."""
+        sent_to = await self.broadcast_local(message, chat_id, exclude_user=exclude_user)
+        try:
+            from .bus import publish_chat
+            publish_chat(chat_id, message, exclude_user=exclude_user)
+        except Exception:
+            pass
         return sent_to
 
     async def _broadcast_to_user_chats(self, user_id: str, message: dict):
@@ -305,9 +330,16 @@ class ChatManager:
 
         # Глухой relay: принимаем ТОЛЬКО E2E-шифрованные сообщения (как HTTP-путь)
         from shared.config import settings as _settings
-        if _settings.RELAY_DEAF and not data.get("encrypted_content"):
+        encrypted_content = data.get("encrypted_content")
+        signature = data.get("signature")
+        if _settings.RELAY_DEAF and not encrypted_content:
             logger.warning(f"RELAY_DEAF: rejected plaintext WS message from {user_id}")
             return
+
+        # REST-путь (routes/chat.py:send_message) при наличии конверта хранит
+        # content="[encrypted]" + конверт/подпись. WS обязан делать так же,
+        # иначе история по HTTP не расшифруется (live по WS — да).
+        stored_content = "[encrypted]" if encrypted_content else content
 
         # Сохраняем сообщение в БД
         db: Session = SessionLocal()
@@ -326,10 +358,12 @@ class ChatManager:
                 id=message_id,
                 chat_id=data["chat_id"],
                 user_id=user_id,
-                content=content,
+                content=stored_content,
                 message_type=message_type,
                 file_id=data.get("file_id"),
                 reply_to_id=data.get("reply_to_id"),
+                encrypted_content=encrypted_content,
+                signature=signature,
             )
             db.add(message)
             db.commit()
@@ -354,6 +388,8 @@ class ChatManager:
                 for mentioned in mentioned_users:
                     if mentioned.id == user_id:
                         continue
+                    # Глухой relay: для E2E-сообщений превью пустое.
+                    preview = "" if encrypted_content else (data.get("content") or "")[:100]
                     mention_event = {
                         "event": "mention",
                         "data": {
@@ -361,7 +397,7 @@ class ChatManager:
                             "message_id": message_id,
                             "mentioned_by": user_id,
                             "mentioned_by_username": sender_username,
-                            "content_preview": (data.get("content") or "")[:100],
+                            "content_preview": preview,
                         }
                     }
                     await self.connection_manager.send_personal_message(mention_event, mentioned.id)
@@ -379,8 +415,9 @@ class ChatManager:
                 "id": message_id,
                 "user_id": user_id,
                 "username": sender_username,
-                "encrypted_content": data.get("encrypted_content"),
-                "signature": data.get("signature"),
+                "content": stored_content,
+                "encrypted_content": encrypted_content,
+                "signature": signature,
                 "timestamp": data.get("timestamp") or datetime.now(timezone.utc).isoformat()
             }
         }
@@ -442,9 +479,43 @@ class ChatManager:
         logger.debug(f"Typing event from {user_id} in chat {data['chat_id']}: {data['is_typing']}")
 
     async def _handle_read_receipt(self, user_id: str, data: dict):
-        """Обработка подтверждения прочтения"""
+        """Обработка подтверждения прочтения (бродкаст + персист как REST)."""
         if not all(k in data for k in ["chat_id", "message_id"]):
             return
+
+        # Персист — иначе read_count по REST врёт после WS-ридов.
+        db: Session = SessionLocal()
+        try:
+            msg = db.query(models.Message).filter(
+                models.Message.id == data["message_id"],
+                models.Message.chat_id == data["chat_id"],
+            ).first()
+            if msg:
+                participant = db.query(models.ChatParticipant).filter(
+                    models.ChatParticipant.chat_id == data["chat_id"],
+                    models.ChatParticipant.user_id == user_id,
+                ).first()
+                if participant:
+                    rs = db.query(models.MessageReadStatus).filter(
+                        models.MessageReadStatus.message_id == data["message_id"],
+                        models.MessageReadStatus.user_id == user_id,
+                    ).first()
+                    if rs:
+                        rs.is_read = True
+                        rs.read_at = datetime.now(timezone.utc)
+                    else:
+                        db.add(models.MessageReadStatus(
+                            message_id=data["message_id"],
+                            user_id=user_id,
+                            is_read=True,
+                            read_at=datetime.now(timezone.utc),
+                        ))
+                    db.commit()
+        except Exception as e:
+            logger.error(f"Error persisting read receipt: {e}")
+            db.rollback()
+        finally:
+            db.close()
 
         read_event = {
             "event": WS_EVENTS["READ_RECEIPT"],
@@ -512,9 +583,21 @@ class ChatManager:
         logger.info(f"Delete message {data['message_id']} by {user_id} notified to {len(sent_to)} users")
 
     async def _handle_edit_message(self, user_id: str, data: dict):
-        """Обработка редактирования сообщения через WebSocket"""
+        """Обработка редактирования сообщения через WebSocket.
+
+        E2E-консистентно с REST: если прислан конверт — храним конверт и
+        content="[encrypted]", иначе плейнтекст (только при RELAY_DEAF=false).
+        """
         if not all(k in data for k in ["message_id", "chat_id", "new_content"]):
             return
+
+        from shared.config import settings as _settings
+        new_encrypted = data.get("encrypted_content")
+        new_signature = data.get("signature")
+        if _settings.RELAY_DEAF and not new_encrypted:
+            logger.warning(f"RELAY_DEAF: rejected plaintext WS edit from {user_id}")
+            return
+        stored_new = "[encrypted]" if new_encrypted else data["new_content"]
 
         # Обновляем в БД
         db: Session = SessionLocal()
@@ -539,12 +622,16 @@ class ChatManager:
                 )
                 history.append({
                     "content": message.content,
+                    "encrypted_content": message.encrypted_content,
                     "edited_at": edited_at_str,
                 })
                 if len(history) > 50:
                     history = history[-50:]
 
-                message.content = data["new_content"]
+                message.content = stored_new
+                if new_encrypted:
+                    message.encrypted_content = new_encrypted
+                    message.signature = new_signature
                 message.edited_at = datetime.now(timezone.utc)
                 message.edit_history = json.dumps(history, ensure_ascii=False)
                 db.commit()
@@ -560,7 +647,9 @@ class ChatManager:
             "data": {
                 "message_id": data["message_id"],
                 "chat_id": data["chat_id"],
-                "new_content": data["new_content"],
+                "new_content": stored_new,
+                "encrypted_content": new_encrypted,
+                "signature": new_signature,
                 "edited_by": user_id,
                 "edited_at": datetime.now(timezone.utc).isoformat(),
                 "timestamp": datetime.now(timezone.utc).isoformat()

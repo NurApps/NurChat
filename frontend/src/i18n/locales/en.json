@@ -408,6 +408,7 @@
     "network": "Server is not available",
     "uploadFailed": "Failed to upload file",
     "sendFailed": "Failed to send message",
+    "sendQueued": "No connection — message queued, will send automatically",
     "deleteFailed": "Failed to delete",
     "editFailed": "Failed to edit",
     "forwardFailed": "Failed to forward message",

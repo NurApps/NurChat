@@ -172,6 +172,11 @@ class Settings(BaseSettings):
     STUN_SERVERS: str = "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
     WEBRTC_ICE_SERVERS: str = ""
     TURN_SERVERS: str = ""
+    # TURN_URLS: comma-separated turn:/turns: URLs, напр.
+    # "turn:relay.example.com:3478?transport=udp,turn:relay.example.com:3478?transport=tcp".
+    # Без него relay НЕ выдумывает хост: внутренний docker-хост бесполезен
+    # удалённым клиентам, а угаданный — вводит в заблуждение.
+    TURN_URLS: str = ""
     TURN_USERNAME: str = ""
     TURN_CREDENTIAL: str = "CHANGE_ME_IN_PRODUCTION"
 

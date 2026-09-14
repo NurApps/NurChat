@@ -42,6 +42,11 @@ async def lifespan(app: FastAPI):
     start_background_tasks()
     logger.info("Background tasks started")
 
+    from server.ws.bus import start_bus
+    from server.ws.chat_manager import connection_manager as _cm
+    start_bus(asyncio.get_running_loop(), _cm)
+    logger.info("WS bus subscriber started")
+
     yield
 
     from server.ws.chat_manager import connection_manager
@@ -62,6 +67,8 @@ async def lifespan(app: FastAPI):
     call_manager.call_websockets.clear()
 
     logger.info("All WebSocket connections closed")
+    from server.ws.bus import stop_bus
+    stop_bus()
     file_cleanup_service.stop_cleanup_scheduler()
     from server.core.background_tasks import stop_background_tasks
     stop_background_tasks()
@@ -185,7 +192,9 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    # Звонки (WebRTC) требуют камеру/микрофон/шаринг экрана на своём origin.
+    # Было camera=(), microphone=() — браузер резал getUserMedia вообще.
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=(self), display-capture=(self), geolocation=()"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     if not settings.DEBUG:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"

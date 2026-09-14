@@ -29,10 +29,11 @@ interface UseChatSocketOptions {
   onReactions: (fn: (prev: Reactions) => Reactions) => void
   onMention: (data: { chat_id: string; message_id: string; mentioned_by: string; mentioned_by_username: string; content_preview: string }) => void
   onNavigate: (path: string) => void
+  onReconnect?: () => void
 }
 
 export function useChatSocket({
-  currentUser, selectedChat, mutedChatIds, onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate,
+  currentUser, selectedChat, mutedChatIds, onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, onReconnect,
 }: UseChatSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null)
   const chatIdRef = useRef<string | null>(null)
@@ -40,9 +41,9 @@ export function useChatSocket({
   mutedRef.current = mutedChatIds
 
   // Stable refs so callbacks don't force WS reconnection on every render
-  const handlersRef = useRef({ onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, currentUserId: currentUser.id })
+  const handlersRef = useRef({ onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, onReconnect, currentUserId: currentUser.id })
   useEffect(() => {
-    handlersRef.current = { onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, currentUserId: currentUser.id }
+    handlersRef.current = { onMessage, onChatUpdate, onToast, onIncomingCall, onTypingUsers, onOnlineUsers, onReactions, onMention, onNavigate, onReconnect, currentUserId: currentUser.id }
   })
 
   useEffect(() => {
@@ -95,6 +96,14 @@ export function useChatSocket({
           onMessage(data)
         }
         onChatUpdate()
+        // WS шлёт timestamp, REST — created_at; трекаем оба для ?since=
+        const stamp: string | undefined = data.created_at || data.timestamp
+        if (typeof stamp === "string" && stamp) {
+          lastMessageAt = stamp
+          try {
+            localStorage.setItem("ws_last_message_at", stamp)
+          } catch { /* ignore */ }
+        }
         if (data.chat_id !== chatIdRef.current && !(mutedRef.current?.has(data.chat_id))) {
           const sender = data.username || "Пользователь"
           const preview = (data.content || "").slice(0, 50)
@@ -202,17 +211,15 @@ export function useChatSocket({
     }
   }, [])
 
-  // Sync messages received while offline
+  // Sync messages received while offline — серверный ?since=, без клиентской фильтрации
   const syncMissedMessages = useCallback(async (since: string) => {
     try {
       const { api } = await import("../services/api")
       const chats = await api.getChats()
       for (const chat of chats.slice(0, 10)) { // limit to 10 most recent chats
-        const messages = await api.getChatMessages(chat.id, 0, 20)
+        const messages = await api.getChatMessages(chat.id, 0, 100, since)
         for (const msg of messages) {
-          if (msg.created_at > since) {
-            handleWsEvent({ event: "new_message", data: msg }).catch(() => {})
-          }
+          handleWsEvent({ event: "new_message", data: msg }).catch(() => {})
         }
       }
     } catch {
@@ -245,6 +252,10 @@ export function useChatSocket({
         if (hadGap && lastMessageAt) {
           syncMissedMessages(lastMessageAt).catch(() => {})
         }
+        // Outbox: накопленное оффлайн уходит само при появлении связи
+        try {
+          handlersRef.current.onReconnect?.()
+        } catch { /* ignore */ }
       }
       ws.onclose = (event) => {
         if (stopped) return

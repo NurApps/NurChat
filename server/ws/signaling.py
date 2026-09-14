@@ -112,8 +112,11 @@ class CallManager:
             })
             return
 
-        # Проверяем, что целевой пользователь существует и онлайн
-        if not connection_manager.is_user_online(target_user_id):
+        # Проверяем, что целевой пользователь существует и онлайн.
+        # Локальный сокет — только свой инстанс; Redis-сет — все инстансы.
+        from server.core.redis_manager import is_user_online as redis_online
+        if not (connection_manager.is_user_online(target_user_id)
+                or redis_online(target_user_id)):
             await self._send_to_user(user_id, {
                 "type": "call-failed",
                 "call_id": call_id,
@@ -395,7 +398,11 @@ class CallManager:
             return call["caller_id"]
 
     async def _send_to_user(self, user_id: str, message: dict) -> bool:
-        """Отправка сообщения пользователю через WebSocket"""
+        """Отправка сообщения пользователю через WebSocket.
+
+        Порядок: локальный сокет → Redis-буфер (переживает рестарт и виден
+        всем инстансам) → in-memory fallback (без Redis).
+        """
         if user_id in self.call_websockets:
             try:
                 await self.call_websockets[user_id].send_json(message)
@@ -406,22 +413,32 @@ class CallManager:
                     del self.call_websockets[user_id]
                 return False
         else:
+            from server.core.redis_manager import push_pending_call
+            if push_pending_call(user_id, message):
+                logger.debug(f"Buffered message for {user_id} in Redis (not on calls WS yet)")
+                return True
             if user_id not in self.pending_messages:
                 self.pending_messages[user_id] = []
             # Cap pending messages per user to prevent memory exhaustion
             if len(self.pending_messages[user_id]) >= self.MAX_PENDING_PER_USER:
                 self.pending_messages[user_id].pop(0)  # Drop oldest
             self.pending_messages[user_id].append({"msg": message, "ts": time.time()})
-            logger.debug(f"Buffered message for {user_id} (not on calls WS yet)")
+            logger.debug(f"Buffered message for {user_id} in memory (Redis unavailable)")
             return True
 
     async def _flush_pending_messages(self, user_id: str):
-        """Отправка буферизированных сообщений при подключении (с TTL)"""
+        """Отправка буферизированных сообщений при подключении (с TTL).
+
+        Сначала Redis-буфер (кросс-инстанс, пережил рестарт), потом локальный.
+        """
+        from server.core.redis_manager import pop_pending_calls
+        entries = pop_pending_calls(user_id)
         if user_id in self.pending_messages:
+            entries.extend(self.pending_messages.pop(user_id))
+        if entries:
             now = time.time()
-            messages = self.pending_messages.pop(user_id)
-            for entry in messages:
-                if now - entry["ts"] > PENDING_MESSAGE_TTL_SECONDS:
+            for entry in entries:
+                if now - entry.get("ts", 0) > PENDING_MESSAGE_TTL_SECONDS:
                     logger.debug(f"Discarding expired pending message for {user_id}")
                     continue
                 if user_id in self.call_websockets:

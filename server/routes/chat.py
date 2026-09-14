@@ -338,8 +338,11 @@ async def send_message(
                 db.add(read_status)
             db.commit()
             try:
+                # Глухой relay: в уведомления не попадает plaintext никогда.
+                # Передаём уже хранимое "[encrypted]" — notification_manager
+                # при RELAY_DEAF и так вернёт generic, но double-guard.
                 notification_message_data = message_data.model_dump()
-                notification_message_data['content'] = message_data.content
+                notification_message_data['content'] = "[encrypted]" if settings.RELAY_DEAF else message_data.content
                 await notification_manager.send_message_notification(
                     message_data=notification_message_data,
                     target_user_ids=target_user_ids,

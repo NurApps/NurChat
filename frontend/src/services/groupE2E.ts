@@ -25,6 +25,24 @@ import { storeSecureValue, loadSecureValue } from "./secureStorage"
 
 const GROUP_RATCHET_KEY = "group_ratchet_states"
 const MAX_GROUP_SKIP = 500
+const PAD_BLOCK = 128
+function padBytes(plain: Uint8Array): Uint8Array {
+  const paddedLen = Math.ceil((plain.length + 4) / PAD_BLOCK) * PAD_BLOCK
+  const out = new Uint8Array(paddedLen)
+  new DataView(out.buffer).setUint32(0, plain.length, false)
+  out.set(plain, 4)
+  if (paddedLen > plain.length + 4) {
+    const tail = out.subarray(plain.length + 4)
+    tail.set(randomBytes(tail.length))
+  }
+  return out
+}
+function unpadBytes(padded: Uint8Array): Uint8Array | null {
+  if (padded.length < 4 || padded.length % PAD_BLOCK !== 0) return null
+  const len = new DataView(padded.buffer, padded.byteOffset, 4).getUint32(0, false)
+  if (len > padded.length - 4 || len > 8192) return null
+  return padded.subarray(4, 4 + len)
+}
 
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
@@ -283,7 +301,7 @@ export async function encryptGroupMessageRatcheted(
     const { msgKey, nextChain } = await _groupChainNext(chainKeyBytes, state.step)
 
     const nonce = randomBytes(secretboxNonceLength)
-    const msgBytes = new TextEncoder().encode(content)
+    const msgBytes = padBytes(new TextEncoder().encode(content))
     const ciphertext = secretboxEncrypt(msgBytes, nonce, msgKey)
 
     // Envelope: step (4 bytes big-endian) || nonce || ciphertext
@@ -339,18 +357,19 @@ export async function decryptGroupMessageRatcheted(
     const skipId = `${step}`
     if (state.skippedKeys[skipId]) {
       const msgKey = new Uint8Array(base64Decode(state.skippedKeys[skipId]))
-      const plaintext = secretboxDecrypt(ciphertext, nonce, msgKey)
-      if (plaintext) {
+      const padded = secretboxDecrypt(ciphertext, nonce, msgKey)
+      if (padded) {
         delete state.skippedKeys[skipId]
         states[chatId] = state
         await _saveRatchetStates(states)
-        return new TextDecoder().decode(plaintext)
+        const plain = unpadBytes(padded) ?? padded
+        return new TextDecoder().decode(plain)
       }
       return null
     }
 
-    // If step is ahead, derive intermediate keys and cache them
-    if (step > state.step) {
+    // If step is on or ahead, derive (equal = next key, ahead = cache gaps)
+    if (step >= state.step) {
       if (step - state.step > MAX_GROUP_SKIP) return null
 
       let chainKeyBytes = new Uint8Array(base64Decode(state.chainKey))
@@ -362,7 +381,7 @@ export async function decryptGroupMessageRatcheted(
 
       // Derive the actual message key
       const { msgKey, nextChain } = await _groupChainNext(chainKeyBytes, step)
-      const plaintext = secretboxDecrypt(ciphertext, nonce, msgKey)
+      const padded = secretboxDecrypt(ciphertext, nonce, msgKey)
 
       // Advance state
       state.chainKey = base64Encode(nextChain.buffer as ArrayBuffer)
@@ -377,7 +396,9 @@ export async function decryptGroupMessageRatcheted(
       states[chatId] = state
       await _saveRatchetStates(states)
 
-      return plaintext ? new TextDecoder().decode(plaintext) : null
+      if (!padded) return null
+      const plain = unpadBytes(padded) ?? padded
+      return new TextDecoder().decode(plain)
     }
 
     // Step is in the past — can't decrypt (key already ratcheted past)

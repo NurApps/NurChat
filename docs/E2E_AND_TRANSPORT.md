@@ -105,12 +105,15 @@ localStorage), но полный дамп IndexedDB её пробивает. Н�
 
 Что relay **видит** (и это нормально для релея, но знай):
 
-- членство в чатах, отправитель/получатели, время, размеры конвертов;
-- read receipts, typing-индикаторы, mention-превью (**осторожно**: mention
-  несёт `content_preview` до 100 символов исходного текста до шифрования —
-  для E2E-чатов превью строится из `"[encrypted]"`, утечки текста нет);
-- содержимое уведомлений = `"[encrypted]"`, т.к. `content` подменяется
-  до рассылки нотификаций;
+- членство в чатах, отправитель/получатели, время; размеры скрыты паддингом
+  (1-1: `PAD_BLOCK=128` в `e2e.ts`, группы: 128B, `fileE2E` — nonce+box; relay
+  видит только бакет, не точную длину);
+- уведомления — **всегда** `"Новое сообщение"` при `RELAY_DEAF=true`
+  (`notifications.py` возвращает generic даже если вверх случайно ушёл
+  plaintext — double-guard в `chat.py`); push через Google/Apple тоже без текста;
+- read receipts, typing-индикаторы (эфемерны, не пишутся в логи при
+  `RELAY_DEAF` — `chat_manager.py` режет `user_id`/`chat_id` до `***`);
+- mention-превью — `""` для E2E (пусто), `content_preview` не течёт;
 - **файлы — true E2E по байтам (2026-09)**: клиент генерит случайный `fileKey` (32B, XSalsa20-Poly1305), шифрует `nonce||box` и льёт как `enc_*.bin` (`is_encrypted=true` → relay пропускает MIME-check); ключ оборачивается per-recipient через X25519 ECDH+secretbox (`frontend/src/services/fileE2E.ts`, врап `wrapped[userId]` в `encrypted_content.file`). В `media/` только ciphertext, имя оригинала не течёт (на диск — `enc_*.bin`, оригинал — в зашифрованной подписи/caption `handleSendAttachment`). Расшифровка — `useFileBlobUrl` (скачивает ciphertext и делает `decryptFileBytes`). EXIF/GPS с фото всё равно счищается до шифрования, TTL 30 дней + orphan-cleanup, Blob URL кэшируется в `blobManager` (LRU 64, stable encode/decode);
 - Защита аплоада: MIME по magic-bytes + жёсткий блок активного контента
   (svg/html/js), лимит 30/мин, ClamAV — оппортунистический (если стоит):

@@ -50,7 +50,10 @@ class ConnectionManager:
         await set_user_online(user_id)
         await publish_presence(user_id, "online")
 
-        logger.info(f"User {user_id} connected to WebSocket. Active chats: {len(self.user_chats.get(user_id, []))}")
+        if settings.RELAY_DEAF:
+            logger.info(f"User {user_id[:6]}*** connected. Chats: {len(self.user_chats.get(user_id, []))}")
+        else:
+            logger.info(f"User {user_id} connected to WebSocket. Active chats: {len(self.user_chats.get(user_id, []))}")
 
     def disconnect(self, user_id: str, websocket: WebSocket | None = None):
         """Отключение пользователя.
@@ -74,7 +77,10 @@ class ConnectionManager:
         asyncio.ensure_future(set_user_offline(user_id))
         asyncio.ensure_future(publish_presence(user_id, "offline"))
 
-        logger.info(f"User {user_id} disconnected from WebSocket")
+        if settings.RELAY_DEAF:
+            logger.info(f"User {user_id[:6]}*** disconnected")
+        else:
+            logger.info(f"User {user_id} disconnected from WebSocket")
 
     async def _load_user_chats(self, user_id: str):
         """Загрузка чатов пользователя из БД"""
@@ -209,7 +215,10 @@ class ConnectionManager:
                     logger.error(f"Error broadcasting to {user_id}: {e}")
                     self.disconnect(user_id)
 
-        logger.debug(f"Broadcast to chat {chat_id} sent to {len(sent_to)} users: {sent_to}")
+        if not settings.RELAY_DEAF:
+            logger.debug(f"Broadcast to chat {chat_id} sent to {len(sent_to)} users: {sent_to}")
+        else:
+            logger.debug(f"Broadcast to chat {chat_id[:6]}*** to {len(sent_to)} users")
         return sent_to
 
     async def broadcast_to_chat(self, message: dict, chat_id: str, exclude_user: str = None):
@@ -440,7 +449,10 @@ class ChatManager:
         }
         await self.connection_manager.send_personal_message(delivered_event, user_id)
 
-        logger.info(f"Message from {user_id} in chat {data['chat_id']} saved and delivered to {len(sent_to)} users")
+        if settings.RELAY_DEAF:
+            logger.info(f"Message saved chat {data['chat_id'][:6]}*** to {len(sent_to)} users")
+        else:
+            logger.info(f"Message from {user_id} in chat {data['chat_id']} saved and delivered to {len(sent_to)} users")
 
     async def _handle_typing(self, user_id: str, data: dict):
         """Обработка индикатора набора текста"""

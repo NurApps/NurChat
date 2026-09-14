@@ -183,7 +183,12 @@ class NotificationManager:
         Глухой relay: E2E-конверты в превью не попадают никогда. Тело
         уведомления летит ещё и через сторонние push-сервисы (Google/Apple),
         поэтому для шифрованных сообщений — только generic-заглушка.
+        При RELAY_DEAF=true даже если кто-то случайно передаст plaintext,
+        превью всегда глухое — relay не должен видеть текст.
         """
+        from shared.config import settings as _s
+        if _s.RELAY_DEAF:
+            return "Новое сообщение"
         content = content or ""
         if not content or content == "[encrypted]":
             return "Новое сообщение"

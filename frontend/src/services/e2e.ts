@@ -50,6 +50,44 @@ import {
   bytesToHex,
 } from "./secureStorage"
 
+// ─── Padding (hide plaintext length from relay) ───
+// Before encryption we pad to next 128B bucket: [4B BE len][plain][random tail].
+// Relay sees only bucketed ciphertext size. Decrypt tries to unpad; legacy
+// unpadded messages fall back to raw plaintext.
+const PAD_BLOCK = 128
+function padBytes(plain: Uint8Array): Uint8Array {
+  const paddedLen = Math.ceil((plain.length + 4) / PAD_BLOCK) * PAD_BLOCK
+  const out = new Uint8Array(paddedLen)
+  new DataView(out.buffer).setUint32(0, plain.length, false)
+  out.set(plain, 4)
+  if (paddedLen > plain.length + 4) {
+    const tail = out.subarray(plain.length + 4)
+    const rnd = randomBytes(tail.length)
+    tail.set(rnd)
+  }
+  return out
+}
+function unpadBytes(padded: Uint8Array): Uint8Array | null {
+  if (padded.length < 4 || padded.length % PAD_BLOCK !== 0) return null
+  const len = new DataView(padded.buffer, padded.byteOffset, 4).getUint32(0, false)
+  if (len > padded.length - 4 || len > 8192) return null
+  return padded.subarray(4, 4 + len)
+}
+function padString(plain: string): string {
+  const plainBytes = new TextEncoder().encode(plain)
+  const padded = padBytes(plainBytes)
+  return base64Encode(padded.buffer as ArrayBuffer)
+}
+function unpadString(maybeB64: string): string | null {
+  try {
+    const padded = new Uint8Array(base64Decode(maybeB64))
+    const plain = unpadBytes(padded)
+    return plain ? new TextDecoder().decode(plain) : null
+  } catch {
+    return null
+  }
+}
+
 export type { RatchetEnvelope } from "./doubleRatchet"
 
 export interface EncryptedEnvelope {
@@ -549,7 +587,7 @@ export async function encryptMessage(
   resetAutoClearTimer()
 
   const session = await getOrCreateSession(chatId, myKeys, theirPublicKeyHex, true, theirUserId)
-  const envelope = await session.encryptMessage(plaintext)
+  const envelope = await session.encryptMessage(padString(plaintext))
   const signingKeyBytes = hexToBytesSecure(myKeys.signingPrivateHex)
   const signature = signDetached(
     new TextEncoder().encode(plaintext),
@@ -602,7 +640,10 @@ export async function decryptMessage(
       zeroize(ourIdentitySecret)
       zeroize(spkSecret)
     }
-    const plaintext = await session.decryptMessage(ratchetEnvelope)
+    const raw = await session.decryptMessage(ratchetEnvelope)
+    // New messages are padded base64; legacy messages are raw plaintext.
+    const maybe = unpadString(raw)
+    const plaintext = maybe ?? raw
     await persistSessions()
 
     // Signature is MANDATORY — omit or invalid = reject message

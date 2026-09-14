@@ -183,6 +183,15 @@ export function useChatSocket({
         wsRef.current?.send(JSON.stringify({ event: "pong", data: {} }))
         break
       }
+      case "group_key_rotated": {
+        // Member add/remove/leave wiped the group key server-side.
+        // Drop local ratchet so next encrypt/decrypt restarts from the new key.
+        if (data.group_id) {
+          import("../services/groupE2E").then(m => m.clearGroupRatchet(data.group_id)).catch(() => {})
+        }
+        onChatUpdate()
+        break
+      }
       case "key_changed": {
         // Contact rotated their E2E key — invalidate cached sessions for them
         if (data.user_id) {

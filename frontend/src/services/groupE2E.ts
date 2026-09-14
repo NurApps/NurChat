@@ -152,6 +152,26 @@ interface GroupRatchetState {
   chainKey: string   // base64
   step: number
   skippedKeys: Record<string, string>  // "step" -> base64 msgKey
+  // Hash of the groupKey this chain was derived from. After add/remove
+  // member the server wipes group_key and admin re-inits a NEW key — the
+  // chain MUST restart from it, otherwise the sender keeps encrypting with
+  // the old chain (new member can't read, removed member still can).
+  keyHash?: string
+}
+
+// Short stable id of a groupKey (first 16 bytes of SHA-512, base64).
+export async function groupKeyHash(groupKey: Uint8Array): Promise<string> {
+  const hash = await sha512(groupKey)
+  return base64Encode(hash.slice(0, 16).buffer as ArrayBuffer)
+}
+
+/** Drop ratchet state for one chat — call on `group_key_rotated` event. */
+export async function clearGroupRatchet(chatId: string): Promise<void> {
+  const states = await _loadRatchetStates()
+  if (states[chatId]) {
+    delete states[chatId]
+    await _saveRatchetStates(states)
+  }
 }
 
 type GroupRatchetStates = Record<string, GroupRatchetState>
@@ -251,10 +271,12 @@ export async function encryptGroupMessageRatcheted(
   return _withChatLock(chatId, async () => {
     const states = await _loadRatchetStates()
     let state = states[chatId]
+    const hash = await groupKeyHash(groupKey)
 
-    if (!state) {
-      // Initialize ratchet from group key
-      state = { chainKey: base64Encode(groupKey.buffer as ArrayBuffer), step: 0, skippedKeys: {} }
+    if (!state || state.keyHash !== hash) {
+      // Fresh key (first message or post-rekey after add/remove member):
+      // restart the chain from the new groupKey.
+      state = { chainKey: base64Encode(groupKey.buffer as ArrayBuffer), step: 0, skippedKeys: {}, keyHash: hash }
     }
 
     const chainKeyBytes = new Uint8Array(base64Decode(state.chainKey))
@@ -301,9 +323,16 @@ export async function decryptGroupMessageRatcheted(
 
     const states = await _loadRatchetStates()
     let state = states[chatId]
+    const hash = await groupKeyHash(groupKey)
 
     if (!state) {
-      state = { chainKey: base64Encode(groupKey.buffer as ArrayBuffer), step: 0, skippedKeys: {} }
+      state = { chainKey: base64Encode(groupKey.buffer as ArrayBuffer), step: 0, skippedKeys: {}, keyHash: hash }
+    } else if (state.keyHash && state.keyHash !== hash) {
+      // Sender rotated the key (member add/remove) — restart chain from it.
+      // Legacy states without keyHash keep old behaviour (compat).
+      state = { chainKey: base64Encode(groupKey.buffer as ArrayBuffer), step: 0, skippedKeys: {}, keyHash: hash }
+    } else if (!state.keyHash) {
+      state.keyHash = hash
     }
 
     // Check skipped keys cache

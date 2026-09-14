@@ -65,6 +65,12 @@ JSON `{user_id: sealed}`).
   и остальные не могли расшифровать. Исправлено 2026-09.
 - Live-расшифровка групп по WS (`ChatPage.tsx`) + расшифровка истории
   (`useChatMessages.ts`) — обе ветки (`group_encrypted` и 1-1) покрыты.
+- Rekey при смене состава: сервер стирает `group_key` при add/remove/leave,
+  админ ре-инитит новый ключ следующим сообщением; состояние ratchet
+  привязано к хешу ключа (`keyHash`, `groupE2E.ts: groupKeyHash`) и сбрасывается
+  по событию `group_key_rotated` (`useChatSocket.ts`) — иначе отправитель
+  продолжал бы шифровать старой цепочкой (новичок не читает, удалённый
+  продолжает читать). Исправлено 2026-09.
 
 ## 4. Хранение ключей на устройстве
 
@@ -119,8 +125,8 @@ localStorage), но полный дамп IndexedDB её пробивает. Н�
 |---|---|---|
 | REST API | `/api/...` | JWT Bearer + CSRF (`X-CSRF-Token`), таймаут клиента 15с, ретраи отправки 3× с backoff |
 | Сообщения realtime | `/ws/chat/{user_id}?token=` | JWT из query (заголовки в WS невозможны), проверка `sub == user_id`, перепроверка токена каждые 10с, ping/probe при простое 120с, разрыв после 300с тишины, лимит 1 МБ/сообщение. Реконнект клиента: экспоненциальный backoff до 30с, макс 10 попыток, докачка пропущенного по HTTP |
-| Звонки (сигналинг) | `/ws/calls/{user_id}`, `/ws/signaling/{user_id}` (синонимы) | offer/answer/ice-candidate + call-request/accept/reject/end/timeout, pending-буфер 50/пользователь с TTL 24ч, история — опционально `CallLog` (выкл. при `CALLS_MINIMAL_METADATA=true`) |
-| Звонки (медиа) | WebRTC напрямую между устройствами | **Настоящий P2P**, сервер медиа не касается. ICE через `/api/calls/ice-servers`. При `CALLS_MINIMAL_METADATA=true` relay только форвардит SDP/ICE и не хранит метаданные звонков (логи без SDP, `CallLog` пустой — история на устройствах) |
+| Звонки (сигналинг) | `/ws/calls/{user_id}`, `/ws/signaling/{user_id}` (синонимы) | offer/answer/ice-candidate + call-request/accept/reject/end/timeout, pending-буфер 50/пользователь с TTL 24ч, история — опционально `CallLog` (выкл. при `CALLS_MINIMAL_METADATA=true`). **Тела SDP/ICE — E2E** (`frontend/src/services/callE2E.ts`): ECDH + secretbox, по проводу `{type, enc}`, relay видит только тип/call_id (нужно для маршрутизации), SDP-фингерпринты и host-IP скрыты; fallback — plaintext для старых клиентов |
+| Звонки (медиа) | WebRTC напрямую между устройствами | **Настоящий P2P**, DTLS-SRTP — сервер медиа не касается и расшифровать не может. ICE через `/api/calls/ice-servers`. При `CALLS_MINIMAL_METADATA=true` relay только форвардит сигналинг и не хранит метаданные звонков (логи без SDP, `CallLog` пустой — история на устройствах) |
 | Уведомления | `/ws/notifications/{user_id}` + Web Push (VAPID) | in-memory история (100/пользователь, теряется при рестарте); оффлайн — Web Push, мёртвые подписки (404/410) чистятся |
 | Файлы | `/api/files/...?token=` (есть `?is_encrypted=true`) | токен в query — иначе `<img>/<video>` не скачать; скачивание — через `blobManager` (fetch → decrypt → Blob URL, LRU, revoke, encode `b64url(fileId)` для стабильной ссылки) |
 
@@ -163,6 +169,22 @@ localhost — иначе браузер режет удалённый relay. Р�
 сторон и дублировал криптографический «салат». Приватность даёт E2E+глухой
 relay, а P2P-медиа (звонки) никуда не девался. Возвращать P2P стоит только
 точечно и рабочим: прямая передача файлов по WebRTC-datachannel.
+
+## 7.1. Честная карта: что E2E, а что — нет (2026-09)
+
+| Данные | Статус | Почему |
+|---|---|---|
+| Текст 1-1 | ✅ E2E (X3DH + Double Ratchet + Ed25519-подпись обязательна) | `e2e.ts`, `doubleRatchet.ts` |
+| Текст группы | ✅ E2E (обёрнутый ключ + ratchet, rekey при смене состава) | `groupE2E.ts` + `keyHash` |
+| Байты файлов/медиа/войсов | ✅ E2E (per-file ключ, ECDH-врап) | `fileE2E.ts`, relay хранит ciphertext |
+| Имя файла / caption | ✅ E2E (в `encrypted_content`) | иначе глухой relay 400 |
+| Правки сообщений | ✅ E2E (тот же маршрут, что отправка) | `chat.py: edit_message` требует конверт |
+| SDP/ICE звонков | ✅ E2E (ECDH + secretbox, `{type, enc}`) | `callE2E.ts`; relay видит только кто-кому-когда |
+| Медиа звонков | ✅ E2E (DTLS-SRTP, relay вне тракта) | WebRTC напрямую |
+| Реакции (emoji) | ❌ plaintext | сервер агрегирует по emoji — шифрование сломало бы счётчики; это метаданные |
+| Аватарки, username, bio | ❌ публично | справочник нужен для discovery и X3DH офлайн-контактов |
+| Typing, presence, read receipts | ❌ метаданные релея | неустранимо у релея; задокументировано |
+| Кто-с-кем-когда (граф) | ❌ видит relay | неустранимо у релея; `LOG_IPS=false`, CallLog выкл. при `CALLS_MINIMAL_METADATA` |
 
 ## 8. Прод-чеклист оператора релея
 

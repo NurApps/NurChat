@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 
 import { WS_BASE } from "../config"
 import { api } from "../services/api"
+import { sealSignalingMessage, unsealSignalingMessage } from "../services/callE2E"
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -85,11 +86,44 @@ export default function CallPage() {
     remoteStreamRef.current = null
   }, [])
 
+  // ─── Call signaling E2E ───
+  // SDP offer/answer + ICE candidates шифруются ECDH (мой secret + публичный
+  // ключ пира). Relay видит только type/call_id (нужно для маршрутизации),
+  // но НЕ видит SDP-фингерпринты и host-IP из ICE. Fallback — plaintext для
+  // совместимости со старыми клиентами / если у пира нет public_key.
+  const callE2ERef = useRef<{ mySecretHex: string; peerPubHex: string }>({ mySecretHex: "", peerPubHex: "" })
+
   const sendSignaling = useCallback((msg: Record<string, unknown>) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg))
+      let out = msg
+      const { mySecretHex, peerPubHex } = callE2ERef.current
+      if (mySecretHex && peerPubHex && (msg.type === "offer" || msg.type === "answer" || msg.type === "ice-candidate")) {
+        out = sealSignalingMessage(msg, mySecretHex, peerPubHex)
+      }
+      wsRef.current.send(JSON.stringify(out))
     }
   }, [])
+
+  // Загружаем ключи для E2E-сигналинга: свой secret + публичный ключ пира.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { loadKeys } = await import("../services/e2e")
+        const myKeys = await loadKeys()
+        if (!myKeys || cancelled) return
+        let peerPub = ""
+        if (targetUserId) {
+          try {
+            const peer = await api.getUser(targetUserId)
+            peerPub = peer?.public_key || ""
+          } catch { /* offline — останемся на plaintext */ }
+        }
+        if (!cancelled) callE2ERef.current = { mySecretHex: myKeys.privateKeyHex, peerPubHex: peerPub }
+      } catch { /* plaintext fallback */ }
+    })()
+    return () => { cancelled = true }
+  }, [targetUserId])
 
   const processPendingSignals = useCallback(async () => {
     const pc = pcRef.current
@@ -414,8 +448,17 @@ export default function CallPage() {
 
       ws.onmessage = async (event) => {
         try {
-          const msg = JSON.parse(event.data)
-          console.log("[CALL] WS message:", msg.type)
+          let msg = JSON.parse(event.data)
+          // E2E-сигналинг: расшифровываем тело (sdp/candidate), если есть `enc`.
+          // Plaintext-поля старых клиентов проходят как есть.
+          if (msg.type === "offer" || msg.type === "answer" || msg.type === "ice-candidate") {
+            const { mySecretHex, peerPubHex } = callE2ERef.current
+            if (mySecretHex && peerPubHex && typeof msg.enc === "string") {
+              msg = unsealSignalingMessage(msg, mySecretHex, peerPubHex)
+            }
+          }
+          // Never log SDP/candidate bodies (may contain IPs when legacy plaintext).
+          console.log("[CALL] WS message:", msg.type, typeof msg.enc === "string" ? "(e2e)" : "(plain)")
 
           if (ringingTimerRef.current && (msg.type === "call-accepted" || msg.type === "call-rejected" || msg.type === "call-failed" || msg.type === "call-request-sent")) {
             clearTimeout(ringingTimerRef.current)
@@ -504,7 +547,7 @@ export default function CallPage() {
                 await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
                 const answer = await pc.createAnswer()
                 await pc.setLocalDescription(answer)
-                ws.send(JSON.stringify({ type: "answer", sdp: answer }))
+                sendSignaling({ type: "answer", sdp: answer })
               } else {
                 console.log("[CALL] Offer received before PC ready, queuing")
                 pendingSignalsRef.current.push(msg)

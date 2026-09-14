@@ -265,15 +265,80 @@ export function useChatActions({
     }
   }, [loadChats, setErrorToast, t])
 
-  // Вложение/войс: аплоад байтов + E2E-подпись (caption). Без конверта глухой
-  // relay отвечает 400 — раньше файлы/войсы в deaf-режиме не уходили вообще.
+  // Вложение/войс: true E2E — байты шифруются fileKey (XSalsa20-Poly1305),
+  // ключ оборачивается per-recipient через ECDH. Relay хранит только ciphertext.
+  // Подпись вложения (caption) — как раньше E2E, иначе глухой relay 400.
   const handleSendAttachment = useCallback(async (
     chat: ChatResponse, file: File, fileType: string, caption: string,
     onProgress?: (percent: number) => void,
   ): Promise<boolean> => {
     try {
-      const uploaded = await api.uploadFile(file, fileType, onProgress)
-      const { content, encryptedContent, signature } = await encryptCaption(chat, caption)
+      const myKeys = await loadE2EKeys()
+      const shouldEncryptBytes = !!(myKeys && (chat.is_group || isE2EEnabled(chat.participants, myKeys)))
+      let uploaded: { id: string } | null = null
+      let fileEnvelope: { v: number; wrapped: Record<string, string>; senderPublicKey: string } | null = null
+      let fileToUpload: File = file
+      let isEncryptedUpload = false
+
+      if (shouldEncryptBytes && myKeys) {
+        try {
+          const { generateFileKey, encryptFileBytes, wrapFileKey } = await import("../services/fileE2E")
+          const plain = new Uint8Array(await file.arrayBuffer())
+          const fileKey = generateFileKey()
+          const cipherWithNonce = encryptFileBytes(plain, fileKey)
+          const wrapped: Record<string, string> = {}
+          for (const p of chat.participants) {
+            if (!p.public_key) continue
+            try { wrapped[p.id] = wrapFileKey(fileKey, myKeys.privateKeyHex, p.public_key) } catch {}
+          }
+          // Fallback: ensure at least self is included
+          if (!wrapped[currentUser.id] && myKeys.publicKeyHex) {
+            try { wrapped[currentUser.id] = wrapFileKey(fileKey, myKeys.privateKeyHex, myKeys.publicKeyHex) } catch {}
+          }
+          fileEnvelope = { v: 1, wrapped, senderPublicKey: myKeys.publicKeyHex }
+          const blob = new Blob([cipherWithNonce as BlobPart], { type: "application/octet-stream" })
+          // Filename on relay must not leak original name: use opaque name. Original name stays in encrypted caption.
+          fileToUpload = new File([blob], `enc_${fileType}_${Date.now()}.bin`, { type: "application/octet-stream" })
+          isEncryptedUpload = true
+        } catch (e) {
+          console.warn("[E2E file] bytes encrypt failed, fallback to plaintext upload:", e)
+          fileToUpload = file
+          isEncryptedUpload = false
+          fileEnvelope = null
+        }
+      }
+
+      uploaded = await api.uploadFile(fileToUpload, fileType, onProgress, isEncryptedUpload)
+
+      // Encrypt caption; then embed file envelope into encrypted_content JSON
+      let content: string
+      let encryptedContent: string | undefined
+      let signature: string | undefined
+      try {
+        const enc = await encryptCaption(chat, caption)
+        content = enc.content
+        encryptedContent = enc.encryptedContent
+        signature = enc.signature
+        if (fileEnvelope && encryptedContent) {
+          try {
+            const parsed = JSON.parse(encryptedContent)
+            parsed.file = fileEnvelope
+            encryptedContent = JSON.stringify(parsed)
+          } catch {
+            encryptedContent = JSON.stringify({ file: fileEnvelope, fallback: encryptedContent })
+          }
+        } else if (fileEnvelope && !encryptedContent) {
+          // Chat not E2E-capable but file bytes are encrypted: still need to send envelope
+          // Send as plaintext content with file envelope in separate field (non-deaf fallback)
+          encryptedContent = JSON.stringify({ file: fileEnvelope })
+          content = caption || "[file]"
+        }
+      } catch (e) {
+        console.error("E2E encrypt (caption+file) failed:", e)
+        setErrorToast(t("errors.sendFailed"))
+        return false
+      }
+
       const msg = await api.sendMessage(chat.id, content, fileType, uploaded.id, encryptedContent, signature)
       addMessage(msg)
       loadChats()
@@ -283,7 +348,7 @@ export function useChatActions({
       setErrorToast(t("errors.fileUpload", { name: file.name }))
       return false
     }
-  }, [addMessage, loadChats, setErrorToast, t, encryptCaption])
+  }, [addMessage, loadChats, setErrorToast, t, encryptCaption, currentUser])
 
   return {
     replyTo, setReplyTo,

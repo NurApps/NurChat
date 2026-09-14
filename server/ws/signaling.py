@@ -448,6 +448,10 @@ class CallManager:
                         break
 
     async def _save_call_to_db(self, call_id: str, action: str, reason: str = None, duration: float = None, ended_by: str = None):
+        from shared.config import settings as _cfg
+        if _cfg.CALLS_MINIMAL_METADATA:
+            # Deaf relay for calls: don't persist CallLog rows; history stays on devices.
+            return
         call = self.active_calls.get(call_id)
         if not call:
             return

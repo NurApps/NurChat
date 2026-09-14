@@ -196,12 +196,13 @@ export const api = {
   globalSearch: (query: string) =>
     request<MessageResponse[]>("GET", `/api/chat/search-global?q=${encodeURIComponent(query)}`),
 
-  uploadFile: async (file: File, fileType: string, onProgress?: (percent: number) => void): Promise<FileUploadResponse> => {
+  uploadFile: async (file: File, fileType: string, onProgress?: (percent: number) => void, isEncrypted = false): Promise<FileUploadResponse> => {
     const token = getToken()
     const csrf = getCsrfToken()
     const form = new FormData()
     form.append("file", file)
     form.append("file_type", fileType)
+    form.append("is_encrypted", isEncrypted ? "true" : "false")
 
     if (onProgress) {
       return new Promise((resolve, reject) => {
@@ -246,11 +247,31 @@ export const api = {
     return `${BASE_URL}/api/files/download/${fileId}?token=${encodeURIComponent(token || "")}`
   },
 
-  downloadFile: async (fileId: string, filename: string) => {
+  // Stable blob URL via blobManager (cached, revocable, decrypt-aware)
+  getFileBlobUrl: async (fileId: string, decrypt?: (blob: Blob) => Promise<Blob>): Promise<string> => {
+    const { getOrCreateBlobUrl } = await import("./blobManager")
+    return getOrCreateBlobUrl(fileId, decrypt ? { decrypt } : undefined)
+  },
+
+  fetchFileBlob: async (fileId: string): Promise<Blob> => {
     const token = getToken()
     const res = await fetch(`${BASE_URL}/api/files/download/${fileId}?token=${encodeURIComponent(token || "")}`)
     if (!res.ok) throw new ApiError(res.status, "Ошибка скачивания")
-    const blob = await res.blob()
+    return res.blob()
+  },
+
+  downloadFile: async (fileId: string, filename: string, decrypt?: (blob: Blob) => Promise<Blob>) => {
+    const token = getToken()
+    // Prefer blobManager cache + stable revoke semantics
+    try {
+      const { downloadBlobUrl } = await import("./blobManager")
+      await downloadBlobUrl(fileId, filename, decrypt)
+      return
+    } catch {}
+    const res = await fetch(`${BASE_URL}/api/files/download/${fileId}?token=${encodeURIComponent(token || "")}`)
+    if (!res.ok) throw new ApiError(res.status, "Ошибка скачивания")
+    let blob = await res.blob()
+    if (decrypt) blob = await decrypt(blob)
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
@@ -258,7 +279,7 @@ export const api = {
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 30000)
   },
 
   getStorageInfo: () =>

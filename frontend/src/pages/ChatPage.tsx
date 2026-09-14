@@ -544,10 +544,28 @@ export default function ChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }, [selectedChat, handleSendAttachment, setUploading, setUploadProgress])
 
+  const pickVoiceMime = () => {
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/mp4",
+      "audio/aac",
+    ]
+    for (const c of candidates) if (MediaRecorder.isTypeSupported(c)) return c
+    return ""
+  }
+  const mimeToExt = (mime: string) => {
+    if (mime.includes("mp4") || mime.includes("aac")) return "m4a"
+    if (mime.includes("ogg")) return "ogg"
+    return "webm"
+  }
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mr = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4" })
+      const mime = pickVoiceMime()
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+      const actualMime = mr.mimeType || mime || "audio/webm"
       const chunks: Blob[] = []
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
       mr.onstop = async () => {
@@ -555,27 +573,28 @@ export default function ChatPage() {
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
         setRecording(false)
         setRecordingTime(0)
-        // Read the chat at stop-time, not start-time — the user may
-        // have switched chats while recording.
         const targetChat = useChatStore.getState().selectedChat
         if (chunks.length === 0 || !targetChat) return
-        const blob = new Blob(chunks, { type: mr.mimeType })
-        const file = new File([blob], `voice_${Date.now()}.webm`, { type: mr.mimeType })
+        const blob = new Blob(chunks, { type: actualMime })
+        const ext = mimeToExt(actualMime)
+        const file = new File([blob], `voice_${Date.now()}.${ext}`, { type: blob.type || actualMime })
         setUploading(true)
         try {
-          await handleSendAttachment(targetChat, file, "voice", t("chat.voiceMessage"))
-        } catch { console.error("Voice failed") }
+          const ok = await handleSendAttachment(targetChat, file, "voice", t("chat.voiceMessage"))
+          if (!ok) console.error("Voice send returned false")
+        } catch (e) { console.error("Voice failed:", e) }
         setUploading(false)
       }
+      mr.onerror = (e) => { console.error("MediaRecorder error:", e); setRecording(false) }
       const MAX_DURATION = 300
-      mr.start(); setMediaRecorder(mr); setRecording(true); setRecordingTime(0)
+      mr.start(100); setMediaRecorder(mr); setRecording(true); setRecordingTime(0)
       recordingTimerRef.current = setInterval(() => {
         setRecordingTime((t) => {
-          if (t + 1 >= MAX_DURATION) { mr.stop(); return MAX_DURATION }
+          if (t + 1 >= MAX_DURATION) { try { if (mr.state !== "inactive") mr.stop() } catch {} ; return MAX_DURATION }
           return t + 1
         })
       }, 1000)
-    } catch { console.error("Microphone denied") }
+    } catch (e) { console.error("Microphone denied:", e) }
   }, [handleSendAttachment, setUploading, t])
 
   const stopRecording = useCallback(() => { mediaRecorder?.stop(); setMediaRecorder(null); setRecording(false) }, [mediaRecorder])

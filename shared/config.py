@@ -165,6 +165,13 @@ class Settings(BaseSettings):
     # IP rate-limiting still works in-memory regardless of this flag.
     LOG_IPS: bool = False
 
+    # Calls metadata minimization: true = relay only forwards signaling,
+    # does not persist CallLog rows (media is P2P, metadata stays on devices).
+    # History then lives only on devices; toggle to false to keep server history.
+    CALLS_MINIMAL_METADATA: bool = True
+    # True E2E for files: client encrypts bytes before upload. Relay sees only ciphertext.
+    FILE_E2E_ENABLED: bool = True
+
     VAPID_PRIVATE_KEY: str = ""
     VAPID_CLAIM_EMAIL: str = "admin@nurchat.app"
 

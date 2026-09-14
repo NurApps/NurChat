@@ -59,6 +59,7 @@ async def upload_file(
     request: Request,
     file: UploadFile = File(...),
     file_type: str = Form(...),
+    is_encrypted: bool = Form(False),
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
@@ -75,20 +76,30 @@ async def upload_file(
         await file.seek(0)
         detected_type = _detect_mime_type(header, file.filename or "")
 
-        allowed_mimes = {
+        # Voice containers: webm+opus often sniffed as video/webm (EBML), accept both.
+        # Encrypted files (is_encrypted=true) are random bytes: skip strict MIME check.
+        allowed_mimes = {  # noqa: E501
             "image": {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp"},
             "video": {"video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/avi"},
-            "audio": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/aac", "audio/x-m4a"},
-            "voice": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4", "audio/x-m4a"},
-            "document": {"application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument",
-                         "text/plain", "application/zip", "application/x-rar"},
+            "audio": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "video/webm", "audio/aac", "audio/x-m4a", "audio/mp4"},  # noqa: E501
+            "voice": {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "video/webm", "audio/mp4", "audio/x-m4a", "audio/opus", "video/ogg"},  # noqa: E501
+            "document": {"application/pdf", "application/msword",  # noqa: E501
+                         "application/vnd.openxmlformats-officedocument",
+                         "text/plain", "application/zip", "application/x-rar", "application/octet-stream"},
             "file": set(),
         }
 
         expected_mimes = allowed_mimes.get(file_type, set())
-        if expected_mimes and detected_type and detected_type not in expected_mimes:
-            logger.warning(f"User {token['sub']} MIME mismatch: claimed {file_type}, detected {detected_type}")
-            raise FileTypeNotAllowedError(f"Файл не соответствует типу {file_type}")
+        # E2E-encrypted blobs are ciphertext: magic bytes meaningless; accept by extension.
+        if not is_encrypted and expected_mimes and detected_type and detected_type not in expected_mimes:
+            # Lenient for webm: audio/webm vs video/webm are same container.
+            if file_type == "voice" and detected_type in {"video/webm", "audio/webm", "audio/ogg", "video/ogg"}:
+                pass
+            elif file_type == "audio" and detected_type in {"video/webm", "audio/webm"}:
+                pass
+            else:
+                logger.warning(f"User {token['sub']} MIME mismatch: claimed {file_type}, detected {detected_type}")
+                raise FileTypeNotAllowedError(f"Файл не соответствует типу {file_type}")
 
         file.file.seek(0, 2)
         file_size = file.file.tell()

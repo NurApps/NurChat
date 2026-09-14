@@ -105,14 +105,7 @@ localStorage), но полный дамп IndexedDB её пробивает. Н�
   для E2E-чатов превью строится из `"[encrypted]"`, утечки текста нет);
 - содержимое уведомлений = `"[encrypted]"`, т.к. `content` подменяется
   до рассылки нотификаций;
-- **файлы НЕ E2E по байтам**: загрузки в `media/` хранятся открыто
-  (случайные имена `file_*`, EXIF/GPS с фото счищается, TTL 30 дней +
-  orphan-cleanup). Но **подпись вложения (caption) — E2E**: имя файла /
-  «Голосовое сообщение» шифруется тем же маршрутом, что и текст
-  (`handleSendAttachment`), иначе глухой relay отвечал 400 и файлы/войсы
-  вообще не отправлялись. Настоящее file-E2E (байты) — следующий шаг,
-  требует протокола прямой передачи (кандидат: WebRTC-datachannel
-  между онлайн-устройствами);
+- **файлы — true E2E по байтам (2026-09)**: клиент генерит случайный `fileKey` (32B, XSalsa20-Poly1305), шифрует `nonce||box` и льёт как `enc_*.bin` (`is_encrypted=true` → relay пропускает MIME-check); ключ оборачивается per-recipient через X25519 ECDH+secretbox (`frontend/src/services/fileE2E.ts`, врап `wrapped[userId]` в `encrypted_content.file`). В `media/` только ciphertext, имя оригинала не течёт (на диск — `enc_*.bin`, оригинал — в зашифрованной подписи/caption `handleSendAttachment`). Расшифровка — `useFileBlobUrl` (скачивает ciphertext и делает `decryptFileBytes`). EXIF/GPS с фото всё равно счищается до шифрования, TTL 30 дней + orphan-cleanup, Blob URL кэшируется в `blobManager` (LRU 64, stable encode/decode);
 - Защита аплоада: MIME по magic-bytes + жёсткий блок активного контента
   (svg/html/js), лимит 30/мин, ClamAV — оппортунистический (если стоит):
   вирус = 422, а **ошибка/таймаут сканера больше не блочит всех** (раньше
@@ -126,10 +119,10 @@ localStorage), но полный дамп IndexedDB её пробивает. Н�
 |---|---|---|
 | REST API | `/api/...` | JWT Bearer + CSRF (`X-CSRF-Token`), таймаут клиента 15с, ретраи отправки 3× с backoff |
 | Сообщения realtime | `/ws/chat/{user_id}?token=` | JWT из query (заголовки в WS невозможны), проверка `sub == user_id`, перепроверка токена каждые 10с, ping/probe при простое 120с, разрыв после 300с тишины, лимит 1 МБ/сообщение. Реконнект клиента: экспоненциальный backoff до 30с, макс 10 попыток, докачка пропущенного по HTTP |
-| Звонки (сигналинг) | `/ws/calls/{user_id}`, `/ws/signaling/{user_id}` (синонимы) | offer/answer/ice-candidate + call-request/accept/reject/end/timeout, pending-буфер 50/пользователь с TTL 24ч, история в `CallLog` |
-| Звонки (медиа) | WebRTC напрямую между устройствами | **Настоящий P2P**, сервер медиа не касается. ICE через `/api/calls/ice-servers` |
+| Звонки (сигналинг) | `/ws/calls/{user_id}`, `/ws/signaling/{user_id}` (синонимы) | offer/answer/ice-candidate + call-request/accept/reject/end/timeout, pending-буфер 50/пользователь с TTL 24ч, история — опционально `CallLog` (выкл. при `CALLS_MINIMAL_METADATA=true`) |
+| Звонки (медиа) | WebRTC напрямую между устройствами | **Настоящий P2P**, сервер медиа не касается. ICE через `/api/calls/ice-servers`. При `CALLS_MINIMAL_METADATA=true` relay только форвардит SDP/ICE и не хранит метаданные звонков (логи без SDP, `CallLog` пустой — история на устройствах) |
 | Уведомления | `/ws/notifications/{user_id}` + Web Push (VAPID) | in-memory история (100/пользователь, теряется при рестарте); оффлайн — Web Push, мёртвые подписки (404/410) чистятся |
-| Файлы | `/api/files/...?token=` | токен в query — иначе `<img>/<video>` не скачать (заголовки не послать) |
+| Файлы | `/api/files/...?token=` (есть `?is_encrypted=true`) | токен в query — иначе `<img>/<video>` не скачать; скачивание — через `blobManager` (fetch → decrypt → Blob URL, LRU, revoke, encode `b64url(fileId)` для стабильной ссылки) |
 
 Токен в query — вынужденная мера (WS/медиатеги), mitigations: только `wss/https`
 в проде, короткий TTL JWT, токен нигде не логируется сервером, а **uvicorn

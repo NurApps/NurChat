@@ -56,21 +56,27 @@ async def start_call(
         # для звонков, ещё не дошедших до accept.
         call_id = call_data.call_id or security.generate_call_id()
 
-        existing = db.query(models.CallLog).filter(
-            models.CallLog.call_id == call_id
-        ).first()
-        if existing:
-            logger.info(f"Call {call_id} already exists, returning it idempotently")
-            return schemas.CallResponse.model_validate(existing)
+        # Minimal metadata mode: don't persist CallLog on relay; history lives
+        # on devices only. Signaling (WS) still forwards call-request.
+        from shared.config import settings as _cfg
+        if _cfg.CALLS_MINIMAL_METADATA:
+            logger.info(f"Call {call_id} minimal mode: skip DB persist ({token['sub']}→{call_data.target_user_id})")
+        else:
+            existing = db.query(models.CallLog).filter(
+                models.CallLog.call_id == call_id
+            ).first()
+            if existing:
+                logger.info(f"Call {call_id} already exists, returning it idempotently")
+                return schemas.CallResponse.model_validate(existing)
 
-        db.add(models.CallLog(
-            call_id=call_id,
-            caller_id=token["sub"],
-            callee_id=call_data.target_user_id,
-            call_type=call_data.call_type,
-            started_at=datetime.now(timezone.utc),
-        ))
-        db.commit()
+            db.add(models.CallLog(
+                call_id=call_id,
+                caller_id=token["sub"],
+                callee_id=call_data.target_user_id,
+                call_type=call_data.call_type,
+                started_at=datetime.now(timezone.utc),
+            ))
+            db.commit()
 
         try:
             await notification_manager.send_call_notification(
@@ -111,6 +117,24 @@ async def end_call(
     """Завершение звонка в NurChat"""
     try:
         logger.info(f"Call end requested by user: {token['sub']} for call: {call_id}")
+
+        from shared.config import settings as _cfg2
+        if _cfg2.CALLS_MINIMAL_METADATA:
+            # No DB row to update; just forward call-ended via signaling
+            try:
+                from server.ws.signaling import call_manager
+                # Broadcast to both sides via cleanup
+                await call_manager._send_to_user(call_id, {
+                    "type": "call-ended",
+                    "call_id": call_id,
+                    "ended_by": token["sub"],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                call_manager._cleanup_call(call_id)
+            except Exception:
+                pass
+            logger.info(f"Call ended (minimal): {call_id} by {token['sub']}")
+            return {"message": "Звонок завершен", "call_id": call_id}
 
         # Находим запись о звонке
         call_log = db.query(models.CallLog).filter(
@@ -178,6 +202,10 @@ async def get_call_history(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
 ):
+    from shared.config import settings as _cfg3
+    if _cfg3.CALLS_MINIMAL_METADATA:
+        # Relay doesn't store history in minimal mode; client keeps local history.
+        return schemas.CallHistoryResponse(calls=[], total=0)
     logger.info(f"Getting call history for user: {token['sub']}, skip: {skip}, limit: {limit}")
 
     if limit > 100:

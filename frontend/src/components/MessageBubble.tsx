@@ -7,6 +7,7 @@ import { formatTime, formatFull } from "../utils/format"
 import { renderMarkdown } from "../utils/markdown"
 import MediaViewer from "./MediaViewer"
 import VoiceMessage from "./VoiceMessage"
+import { useFileBlobUrl } from "../hooks/useFileBlobUrl"
 
 interface Props {
   message: MessageResponse
@@ -192,10 +193,21 @@ export default function MessageBubble({
   }
 
   const [mediaViewer, setMediaViewer] = useState<{ type: "image" | "video" | "document"; url: string; filename?: string } | null>(null)
+  const blobUrl = useFileBlobUrl(message.file_id ? message : null)
 
   const renderFileContent = () => {
     const mt = message.message_type
-    const imageUrl = message.file_id ? api.getFileUrl(message.file_id) : null
+    const hasFile = !!message.file_id
+    if (hasFile && !blobUrl) {
+      return (
+        <div className="msg-file msg-file--loading">
+          <span className="msg-file-icon">⏳</span>
+          <span className="msg-text">{t("chat.loading")}</span>
+        </div>
+      )
+    }
+    // E2E files: blobUrl is decrypted object URL; plain fallback is cached blob URL.
+    const imageUrl = message.file_id ? (blobUrl || null) : null
     const fileUrl = imageUrl
     if (mt === "image" && imageUrl) {
       return (

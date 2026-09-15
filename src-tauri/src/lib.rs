@@ -1,20 +1,17 @@
 mod server;
 
 use server::ServerManager;
-use std::path::PathBuf;
 use tauri::{Emitter, Manager, State};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tauri::menu::{MenuBuilder};
 
-use tauri::{Manager, State, Emitter};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
-use tauri::menu::MenuBuilder;
 use tokio::sync::RwLock;
 use tokio::process::{Child, Command as TokioCommand};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 struct AppState {
     cloudflared: RwLock<Option<Child>>,
+    server: ServerManager,
 }
 
 #[tauri::command]
@@ -238,10 +235,6 @@ async fn check_update(current_version: String) -> Result<serde_json::Value, Stri
     let latest = tag_name.trim_start_matches('v');
     let current = current_version.trim_start_matches('v');
     
-    Ok(serde_json::json!({
-        "has_update": latest != current,
-
-
     fn parse_semver(v: &str) -> Vec<u64> {
         v.split('.')
             .map(|p| p.split('-').next().unwrap_or("0").parse().unwrap_or(0))
@@ -300,6 +293,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             cloudflared: RwLock::new(None),
+            server: ServerManager::new(),
         })
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -452,7 +446,7 @@ pub fn run() {
                 }
                 tauri::RunEvent::Exit => {
                     state.server.stop();
-
+                }
                 tauri::RunEvent::ExitRequested { .. } => {
                     if let Some(state) = app_handle.try_state::<AppState>() {
                         if let Ok(mut cf) = state.cloudflared.try_write() {

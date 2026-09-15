@@ -782,3 +782,96 @@
   cursor: pointer;
 }
 .poll-check input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+/* ─── Onboarding wizard ─── */
+.ob-overlay { z-index: 2000; padding: 16px; }
+
+.ob-card { padding: 28px; gap: 0; }
+
+.ob-title {
+  font-family: "Varela Round", "Nunito Sans", sans-serif;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.ob-subtitle {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.ob-step {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  background: var(--surface-variant);
+  border-radius: 12px;
+  padding: 20px;
+  min-height: 110px;
+}
+
+.ob-icon {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tg-blue-soft);
+  color: var(--tg-blue);
+}
+
+.ob-step-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.ob-step-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.ob-dots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.ob-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: var(--border-color);
+  opacity: 0.6;
+  cursor: pointer;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+.ob-dot.active { background: var(--tg-blue); opacity: 1; }
+
+.ob-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+
+.ob-next {
+  background: var(--tg-blue);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.ob-next:hover { opacity: 0.9; }

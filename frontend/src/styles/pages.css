@@ -108,7 +108,6 @@
   min-height: 2px;
   background: var(--tg-blue);
   border-radius: 2px 2px 0 0;
-  transition: height 0.3s;
 }
 
 .stats-bar-label { font-size: 9px; color: var(--text-secondary); }

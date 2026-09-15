@@ -1,6 +1,28 @@
 import { useState, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 
+function StepIcon({ d }: { d: string[] }) {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {d.map((path, i) => <path key={i} d={path} />)}
+    </svg>
+  )
+}
+
+const ICONS: string[][] = [
+  // identity — key stays on the device
+  ["M14 10a4 4 0 1 0-3.4 3.9", "M10.6 13.9 20 3.5", "M16.5 7l2.5 2.5", "M13.5 10l2 2"],
+  // keys are yours — shield
+  ["M12 3l7 2.8v5.1c0 4.9-3.4 7.9-7 9.1-3.6-1.2-7-4.2-7-9.1V5.8z", "M9.3 11.8l2 2 3.4-3.9"],
+  // e2e — lock
+  ["M5 11h14a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z", "M8 11V8a4 4 0 0 1 8 0v3"],
+  // shared relay — server
+  ["M4 4.5h16a1 1 0 0 1 1 1V9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1z", "M4 14.5h16a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3.5a1 1 0 0 1 1-1z", "M7 7.2h.01", "M7 17.2h.01"],
+  // chat
+  ["M21 11.5a8.5 8.5 0 0 1-12.4 7.5L3 21l2-5.6A8.5 8.5 0 1 1 21 11.5z"],
+]
+
 export default function Onboarding() {
   const { t } = useTranslation()
   const [show, setShow] = useState(false)
@@ -19,62 +41,42 @@ export default function Onboarding() {
   if (!show) return null
 
   const steps = [
-    { icon: "🔐", title: t("onboarding.step1Title"), desc: t("onboarding.step1Desc") },
-    { icon: "💾", title: t("onboarding.step2Title"), desc: t("onboarding.step2Desc") },
-    { icon: "🔒", title: t("onboarding.step3Title"), desc: t("onboarding.step3Desc") },
-    { icon: "🌐", title: t("onboarding.step4Title"), desc: t("onboarding.step4Desc") },
-    { icon: "💬", title: t("onboarding.step5Title"), desc: t("onboarding.step5Desc") },
+    { title: t("onboarding.step1Title"), desc: t("onboarding.step1Desc") },
+    { title: t("onboarding.step2Title"), desc: t("onboarding.step2Desc") },
+    { title: t("onboarding.step3Title"), desc: t("onboarding.step3Desc") },
+    { title: t("onboarding.step4Title"), desc: t("onboarding.step4Desc") },
+    { title: t("onboarding.step5Title"), desc: t("onboarding.step5Desc") },
   ]
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999,
-    }}>
-      <div style={{
-        background: "var(--surface, #ffffff)", color: "var(--text-primary, #000000)",
-        borderRadius: 16, padding: 32, maxWidth: 440,
-        width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-      }}>
-        <h3 style={{ margin: "0 0 4px", fontSize: 22 }}>🚀 {t("onboarding.welcome")}</h3>
-        <p style={{ color: "var(--text-secondary, #6b7280)", fontSize: 14, margin: "0 0 24px" }}>
-          {t("onboarding.subtitle")}
-        </p>
+    <div className="modal-overlay ob-overlay">
+      <div className="modal-content ob-card" role="dialog" aria-modal="true" aria-labelledby="ob-title">
+        <h3 id="ob-title" className="ob-title">{t("onboarding.welcome")}</h3>
+        <p className="ob-subtitle">{t("onboarding.subtitle")}</p>
 
-        <div style={{
-          display: "flex", gap: 16, alignItems: "flex-start",
-          background: "var(--surface-variant, var(--hover, #f3f4f6))", borderRadius: 12, padding: 20, minHeight: 110,
-        }}>
-          <div style={{ fontSize: 36, lineHeight: 1 }}>{steps[step].icon}</div>
+        <div className="ob-step">
+          <div className="ob-icon"><StepIcon d={ICONS[step]} /></div>
           <div>
-            <h4 style={{ margin: "0 0 6px", fontSize: 16 }}>{steps[step].title}</h4>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary, #6b7280)", lineHeight: 1.5 }}>{steps[step].desc}</p>
+            <h4 className="ob-step-title">{steps[step].title}</h4>
+            <p className="ob-step-desc">{steps[step].desc}</p>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 6, justifyContent: "center", margin: "20px 0" }}>
-          {steps.map((_, i) => (
-            <span key={i} style={{
-              width: i === step ? 24 : 8, height: 8, borderRadius: i === step ? 4 : "50%",
-              background: i === step ? "var(--accent, #2563eb)" : "var(--border-color, #d1d5db)", transition: "all 0.2s",
-            }} />
+        <div className="ob-dots">
+          {steps.map((s, i) => (
+            <button key={s.title} type="button" onClick={() => setStep(i)}
+              aria-label={`${i + 1} / ${steps.length}`}
+              aria-current={i === step ? "step" : undefined}
+              className={`ob-dot${i === step ? " active" : ""}`} />
           ))}
         </div>
 
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={dismiss} style={{
-            background: "none", border: "none", color: "var(--text-secondary, #9ca3af)", cursor: "pointer", padding: "8px 16px", fontSize: 14,
-          }}>{t("onboarding.skip")}</button>
+        <div className="ob-actions">
+          <button type="button" className="link-btn" onClick={dismiss}>{t("onboarding.skip")}</button>
           {step < steps.length - 1 ? (
-            <button onClick={() => setStep(s => s + 1)} style={{
-              background: "var(--accent, #2563eb)", color: "white", border: "none", borderRadius: 8,
-              padding: "10px 24px", fontSize: 14, cursor: "pointer", fontWeight: 600,
-            }}>{t("chat.next")} →</button>
+            <button type="button" className="ob-next" onClick={() => setStep((s) => s + 1)}>{t("chat.next")}</button>
           ) : (
-            <button onClick={dismiss} style={{
-              background: "var(--accent, #2563eb)", color: "white", border: "none", borderRadius: 8,
-              padding: "10px 24px", fontSize: 14, cursor: "pointer", fontWeight: 600,
-            }}>{t("onboarding.start")}</button>
+            <button type="button" className="ob-next" onClick={dismiss}>{t("onboarding.start")}</button>
           )}
         </div>
       </div>

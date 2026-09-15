@@ -204,9 +204,8 @@
 
 .settings-storage-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--tg-blue), #4ecdc4);
+  background: var(--tg-blue);
   border-radius: 4px;
-  transition: width 0.3s;
 }
 
 .settings-storage-info p { margin: 0; color: var(--text-secondary); font-size: 13px; }

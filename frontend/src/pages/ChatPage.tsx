@@ -949,7 +949,7 @@ export default function ChatPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
                       <span>{t("chat.uploading")}</span>
                       <div style={{ flex: 1, height: 4, background: "var(--input-bg)", borderRadius: 2, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${uploadProgress}%`, background: "var(--tg-blue)", borderRadius: 2, transition: "width 0.2s" }} />
+                        <div style={{ height: "100%", width: `${uploadProgress}%`, background: "var(--tg-blue)", borderRadius: 2 }} />
                       </div>
                       <span style={{ fontSize: 12, color: "var(--tg-blue)" }}>{uploadProgress}%</span>
                     </div>

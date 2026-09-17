@@ -85,6 +85,8 @@ class CallManager:
 
         call = self.active_calls.get(call_id)
         if not call:
+            logger.warning(f"call-join for unknown call {call_id} from user {user_id[:6]}*** "
+                           f"(active: {len(self.active_calls)})")
             await self._send_to_user(user_id, {
                 "type": "call-failed",
                 "call_id": call_id,
@@ -230,6 +232,9 @@ class CallManager:
         call = self.active_calls.get(call_id)
 
         if not call or call["callee_id"] != user_id:
+            logger.warning(f"call-accept rejected: call={call_id} "
+                           f"{'missing' if not call else 'callee mismatch'} "
+                           f"(active: {len(self.active_calls)})")
             await self._send_to_user(user_id, {
                 "type": "call-error",
                 "call_id": call_id,

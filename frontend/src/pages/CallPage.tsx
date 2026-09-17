@@ -79,6 +79,9 @@ export default function CallPage() {
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     cameraTrackRef.current = null
     pcRef.current?.close()
+    // Обнуляем onclose ДО close: иначе закрытие по размонтированию
+    // запланирует ghost-reconnect уже после смерти компонента.
+    if (wsRef.current) wsRef.current.onclose = null
     wsRef.current?.close()
     localStreamRef.current = null
     pcRef.current = null
@@ -615,7 +618,10 @@ export default function CallPage() {
     }
 
     connectWs()
-    return cleanup
+    // StrictMode в dev монтирует эффект дважды (mount → cleanup → remount).
+    // Сбрасываем флаг, чтобы remount переподключился чисто, а не остался
+    // без сокета из-за раннего return по connectedRef.
+    return () => { connectedRef.current = false; cleanup() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t])
 

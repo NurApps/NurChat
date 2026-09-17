@@ -2,27 +2,21 @@
 
 ## Быстрый запуск
 
-```bash
-# Relay (нужен ОДИН экземпляр для всех)
-.venv\Scripts\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Tauri dev (отдельная консоль)
-cd frontend
-npx tauri dev
+```bat
+run.bat          :: dev: relay (SQLite) + Tauri
+run.bat vite     :: relay (SQLite) + Vite в браузере (:5173)
+run.bat relay    :: только relay (.env как есть)
 ```
+
+Ручной вариант: relay отдельно (`run.bat relay`), Tauri отдельно (`npx tauri dev`).
 
 ## Сборка Tauri exe
 
-```bash
-# Установить зависимости фронтенда
-cd frontend
-npm ci
-
-# Сборка
-npx tauri build
+```bat
+run.bat build
 ```
 
-Результат: `src-tauri/target/release/bundle/nsis/*.exe`
+Тот же `npx tauri build` напрямую. Результат: `src-tauri/target/release/bundle/nsis/*.exe` (`NurChat_<версия>_x64-setup.exe`).
 
 ## Автообновления (Tauri Updater)
 
@@ -31,9 +25,11 @@ Relay сервер НЕ входит в сборку — приложение п
 ### Релиз новой версии
 
 ```bash
-# Обновить версию в src-tauri/Cargo.toml и frontend/package.json
-git tag v0.2.0
-git push origin v0.2.0
+# Версия — в ДВУХ местах (должны совпадать):
+#   src-tauri/tauri.conf.json ("version") и src-tauri/Cargo.toml (version).
+# Сейчас: 0.16.2. Пример следующего релиза:
+git tag v0.16.3
+git push origin v0.16.3
 ```
 
 GitHub Actions автоматически создаст релиз с exe и latest.json.

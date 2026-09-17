@@ -40,7 +40,9 @@ https://xxxx-yyy-zzz.trycloudflare.com
 
 ## 4) Дать друзьям
 
-Друг ставит NurChat (exe из Releases или `npx tauri dev`) и на экране подключения вводит:
+Друг ставит NurChat — exe из CI-артефакта `nurchat-windows-x64` (Actions →
+последний зелёный Build, живёт 3 дня), из GitHub Releases (по тегам `v*`)
+или собранный тобой через `run.bat build` — и на экране подключения вводит:
 
 - Host: `xxxx-yyy-zzz.trycloudflare.com` (без https://)
 - Protocol: `https`

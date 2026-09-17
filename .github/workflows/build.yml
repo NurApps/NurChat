@@ -25,6 +25,26 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Install root deps (Tauri CLI)
+        run: npm ci
+
+      - name: Allow unsigned build when no signing key
+        # tauri build fails in ~1s when the updater plugin is active but
+        # TAURI_SIGNING_PRIVATE_KEY is unset (no secret in repo settings).
+        # With the key present we keep full updater signing; without it we
+        # strip the updater section so CI still produces a working .exe
+        # (auto-update just stays unconfigured in that build).
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            Write-Host "No signing key - stripping updater section for unsigned build"
+            node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(p,'utf8'));delete c.plugins.updater;fs.writeFileSync(p,JSON.stringify(c,null,2));"
+          } else {
+            Write-Host "Signing key present - building with updater"
+          }
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -34,7 +54,7 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Build Tauri
-        run: npx tauri build
+        run: npx --yes tauri build
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

@@ -14,7 +14,7 @@ Funnel выставляет твой локальный порт в интерн
 
 ```powershell
 # Релей как обычно
-.venv\Scripts\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000
+run.bat relay
 # Публикация (free-тариф, имя стабильно)
 tailscale funnel 8000
 # выдаст https://твой-пк.твой-teйлнет.ts.net — это и есть адрес релея
@@ -22,7 +22,10 @@ tailscale funnel 8000
 
 Друг в приложении вводит **один раз**: хост `твой-пк.твой-тейлнет.ts.net`,
 protocol `https`. Всё. Перезапуски переживает, адрес не меняется.
-(Если захочешь потом вшить адрес в exe — скажи, сделаем через Variables.)
+Адрес можно и вшить в exe заранее: repo Settings → Variables →
+`NURCHAT_RELAY_HOST` (хост) + `NURCHAT_RELAY_PROTOCOL` (`https`) —
+релизная сборка (`release.yml`) запечёт их в инсталлер, друг вообще
+ничего вводить не будет.
 
 **Вариант 2 — белый IP.** Сверь `2ip.ru` с WAN в роутере. Совпал →
 проброс `8000/TCP` → друг ходит на `http://ТВОЙ_IP:8000`. Вообще без
@@ -38,15 +41,17 @@ protocol `https`. Всё. Перезапуски переживает, адре�
 Сборка установщика для друга (обязательно — NurChat только десктоп):
 
 ```powershell
-$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content update_key_private.key -Raw
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
-npx tauri build
-# exe: src-tauri\target\release\bundle\nsis\NurChat_*_x64-setup.exe
+run.bat build
+# exe: src-tauri\target\release/bundle\nsis\NurChat_*_x64-setup.exe
 ```
 
-(Без ключа сборка упадёт — так задумано, ключ лежит в корне, в git не коммитится.
-Другу также понадобится WebView2 — на Win10/11 обычно уже стоит, установщик
-доставит сам.)
+`run.bat build` сам смотрит ключ подписи: есть настоящий
+`update_key_private.key` — подписанная сборка с апдейтером; нет —
+временно вырезает updater, собирает unsigned и возвращает конфиг назад
+(сейчас ключа в репо нет — будет unsigned, для теста с другом ок).
+CI (`build.yml`) делает так же и кладёт `.exe` в артефакт
+`nurchat-windows-x64` (живёт 3 дня, для скачивания нужен GitHub-аккаунт).
+Другу также понадобится WebView2 — на Win10/11 обычно уже стоит.
 
 Отправь другу exe + адрес релея: `твой-пк.твой-тейлнет.ts.net` с protocol
 `https` (Funnel), либо `ТВОЙ_IP:8000` / `имя.duckdns.org:8000` с `http`,

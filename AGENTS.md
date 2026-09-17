@@ -9,7 +9,7 @@ NurChat — мессенджер на модели «глухой relay + E2E».
 ## Quick Start
 
 ```bash
-# One-click (Windows), режимы: dev | vite | relay | tunnel | build
+# One-click (Windows), без аргументов — меню; режимы: dev | vite | relay | tunnel | build | checks
 run.bat
 
 # Manual:

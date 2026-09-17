@@ -4,51 +4,105 @@ cd /d "%~dp0"
 set PYTHONUTF8=1
 
 :: Единый лаунчер NurChat (Windows).
-::   run.bat          - dev: relay (SQLite) + Tauri
-::   run.bat vite     - relay (SQLite) + Vite (браузер / Tauri beforeDev)
-::   run.bat relay    - только relay, foreground, .env как есть (prod-флаги)
-::   run.bat tunnel   - relay (фон, .env как есть) + cloudflared quick tunnel
-::   run.bat build    - сборка Tauri-инсталлера
+:: Без аргументов — интерактивное меню. С аргументом — прямой режим
+:: (для скриптов, Tauri beforeDev, Планировщика):
+::   run.bat dev      - relay (SQLite) + Tauri
+::   run.bat vite     - relay (SQLite) + Vite (браузер :5173)
+::   run.bat relay    - только relay, foreground, .env как есть
+::   run.bat tunnel   - relay (фон, .env как есть) + cloudflared
+::   run.bat build    - сборка Tauri-инсталлера (.exe)
+::   run.bat checks   - быстрые проверки (ruff + pytest-подмножество)
 ::
 :: dev/vite форсируют SQLite, чтобы локальная разработка не упиралась
-:: в Supabase из .env. relay/tunnel .env НЕ трогают: аккаунты друзей
-:: живут в настроенной БД, смена БД = потеря аккаунтов.
+:: в Supabase из .env. relay/tunnel .env НЕ трогают: аккаунты живут
+:: в настроенной БД, смена БД = потеря аккаунтов.
 
 set MODE=%~1
-if "%MODE%"=="" set MODE=dev
+if "%MODE%"=="" (
+  set INTERACTIVE=1
+  goto menu
+)
+set INTERACTIVE=0
+goto dispatch
 
-if /i "%MODE%"=="dev" goto dev
-if /i "%MODE%"=="vite" goto vite
-if /i "%MODE%"=="relay" goto relay
-if /i "%MODE%"=="tunnel" goto tunnel
-if /i "%MODE%"=="build" goto build
-echo Unknown mode "%MODE%". Use: dev ^| vite ^| relay ^| tunnel ^| build
+:menu
+cls
+echo ========================================
+echo   NurChat — launcher
+echo ========================================
+echo.
+echo   1^) Dev full       relay (SQLite) + Tauri app
+echo   2^) Frontend       relay (SQLite) + Vite (browser :5173)
+echo   3^) Relay only     foreground, .env as-is
+echo   4^) Relay + tunnel relay (bg) + cloudflared -^> internet
+echo   5^) Build          Tauri installer (.exe)
+echo   6^) Checks         ruff + fast pytest subset
+echo   0^) Exit
+echo.
+choice /c 1234560 /n /m "  Select [1-6,0]: "
+if %errorlevel%==7 goto bye
+if %errorlevel%==6 set MODE=checks
+if %errorlevel%==5 set MODE=build
+if %errorlevel%==4 set MODE=tunnel
+if %errorlevel%==3 set MODE=relay
+if %errorlevel%==2 set MODE=vite
+if %errorlevel%==1 set MODE=dev
+
+:dispatch
+if /i "%MODE%"=="dev" call :act_dev
+if /i "%MODE%"=="vite" call :act_vite
+if /i "%MODE%"=="relay" call :act_relay
+if /i "%MODE%"=="tunnel" call :act_tunnel
+if /i "%MODE%"=="build" call :act_build
+if /i "%MODE%"=="checks" call :act_checks
+if /i "%MODE%"=="dev" goto after_action
+if /i "%MODE%"=="vite" goto after_action
+if /i "%MODE%"=="relay" goto after_action
+if /i "%MODE%"=="tunnel" goto after_action
+if /i "%MODE%"=="build" goto after_action
+if /i "%MODE%"=="checks" goto after_action
+echo Unknown mode "%MODE%". Use: dev ^| vite ^| relay ^| tunnel ^| build ^| checks
 exit /b 1
 
-:dev
+:after_action
+if "%INTERACTIVE%"=="1" (
+  echo.
+  pause
+  goto menu
+)
+exit /b 0
+
+:bye
+echo Bye.
+exit /b 0
+
+:: ============ actions ============
+
+:act_dev
 set DATABASE_URL=sqlite:///./nurchat.db
 set RELAY_FLAGS=--reload
 call :ensure_relay
 echo [..] Starting Tauri dev...
 npx tauri dev
 call :stop_relay_if_mine
-exit /b 0
+goto :eof
 
-:vite
+:act_vite
 set DATABASE_URL=sqlite:///./nurchat.db
 set RELAY_FLAGS=--reload
 call :ensure_relay
 echo [..] Starting Vite (http://localhost:5173)...
 cd frontend
 call npm run dev
-exit /b 0
+cd /d "%~dp0"
+goto :eof
 
-:relay
+:act_relay
 echo [..] Relay foreground, .env as-is. Ctrl+C to stop.
 .venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --no-access-log
-exit /b 0
+goto :eof
 
-:tunnel
+:act_tunnel
 call :ensure_relay_prod
 where cloudflared >nul 2>&1
 if %errorlevel% neq 0 (
@@ -59,12 +113,38 @@ if %errorlevel% neq 0 (
 echo [..] NOTE: quick-tunnel URL changes on every restart. Stable address = named tunnel.
 cloudflared tunnel --url http://localhost:8000
 call :stop_relay_if_mine
-exit /b 0
+goto :eof
 
-:build
-echo [..] Building Tauri installer...
+:act_build
+set TAURI_CONF=src-tauri\tauri.conf.json
+set TAURI_CONF_BAK=src-tauri\tauri.conf.json.bak-run
+set HAVE_KEY=0
+for %%A in (update_key_private.key) do if %%~zA GTR 50 set HAVE_KEY=1
+if "%HAVE_KEY%"=="1" (
+  echo [OK] Signing key found - signed build with updater.
+  for /f "usebackq delims=" %%k in ("update_key_private.key") do set TAURI_SIGNING_PRIVATE_KEY=%%k
+  set TAURI_SIGNING_PRIVATE_KEY_PASSWORD=
+  npx tauri build
+  goto :eof
+)
+echo [..] No signing key - unsigned build (updater section stripped temporarily, config restored after).
+copy /Y "%TAURI_CONF%" "%TAURI_CONF_BAK%" >nul
+node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(p,'utf8'));delete c.plugins.updater;fs.writeFileSync(p,JSON.stringify(c,null,2));"
 npx tauri build
-exit /b 0
+set BUILD_RC=%errorlevel%
+copy /Y "%TAURI_CONF_BAK%" "%TAURI_CONF%" >nul
+del "%TAURI_CONF_BAK%" >nul 2>&1
+exit /b %BUILD_RC%
+
+:act_checks
+echo [..] ruff...
+.venv\Scripts\python.exe -m ruff check .
+if %errorlevel% neq 0 goto :eof
+echo [..] pytest (fast subset)...
+.venv\Scripts\python.exe -m pytest test/test_call_join_accept.py test/test_deaf_calls.py -q
+goto :eof
+
+:: ============ helpers ============
 
 :ensure_relay
 curl -s -m 2 http://127.0.0.1:8000/health >nul 2>&1
@@ -96,4 +176,5 @@ if not "%RELAY_STARTED_BY_ME%"=="1" (
 )
 echo [..] Stopping relay on :8000...
 for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /PID %%p >nul 2>&1
+set RELAY_STARTED_BY_ME=
 goto :eof

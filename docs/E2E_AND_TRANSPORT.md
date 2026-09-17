@@ -48,6 +48,19 @@ PreKey-цикл (`server/routes/keys.py`, `e2e.ts: setupPreKeys`):
    а не баг безопасности.
 5. `POST /api/keys/cleanup` удаляет использованные OPK.
 
+Свои сообщения из истории расшифровать нельзя (и это не баг): у
+отправителя в Double Ratchet есть только sending-цепочка, receiving —
+нет, ключи sending-цепочки удаляются сразу (forward secrecy). Поэтому
+`decryptMessages` свои сообщения (`msg.user_id === currentUser.id`)
+не трогает вообще, а текст берёт из локального кэша
+(`frontend/src/services/plaintextCache.ts`, localStorage, до 2000
+записей, только своё устройство). Кэш пишется при отправке
+(`useChatActions.ts`: текст, outbox-flush, caption вложений). Свои
+сообщения, отправленные до появления кэша, в истории показываются
+сырым серверным `content` (`[encrypted]`) — открытого текста уже
+нигде нет. Чужие сообщения кэшировать запрещено. В группах то же
+самое (свой шаг цепочки уже ушёл вперёд).
+
 ## 3. Групповые чаты: обёрнутый симметричный ключ + цепочка
 
 `frontend/src/services/groupE2E.ts`, сервер хранит только завёрнутые копии
@@ -127,8 +140,8 @@ localStorage), но полный дамп IndexedDB её пробивает. Н�
 | Канал | Эндпоинт | Как |
 |---|---|---|
 | REST API | `/api/...` | JWT Bearer + CSRF (`X-CSRF-Token`), таймаут клиента 15с, ретраи отправки 3× с backoff |
-| Сообщения realtime | `/ws/chat/{user_id}?token=` | JWT из query (заголовки в WS невозможны), проверка `sub == user_id`, перепроверка токена каждые 10с, ping/probe при простое 120с, разрыв после 300с тишины, лимит 1 МБ/сообщение. Реконнект клиента: экспоненциальный backoff до 30с, макс 10 попыток, докачка пропущенного по HTTP |
-| Звонки (сигналинг) | `/ws/calls/{user_id}`, `/ws/signaling/{user_id}` (синонимы) | offer/answer/ice-candidate + call-request/accept/reject/end/timeout, pending-буфер 50/пользователь с TTL 24ч, история — опционально `CallLog` (выкл. при `CALLS_MINIMAL_METADATA=true`). **Тела SDP/ICE — E2E** (`frontend/src/services/callE2E.ts`): ECDH + secretbox, по проводу `{type, enc}`, relay видит только тип/call_id (нужно для маршрутизации), SDP-фингерпринты и host-IP скрыты; fallback — plaintext для старых клиентов |
+| Сообщения realtime | `/ws/chat/{user_id}?token=` | JWT из query (заголовки в WS невозможны), проверка `sub == user_id`, перепроверка токена каждые 10с, ping/probe при простое 120с, разрыв после 300с тишины, лимит 1 МБ/сообщение. Реконнект клиента: экспоненциальный backoff до 30с, макс 10 попыток, докачка пропущенного по HTTP. Входящие по WS расшифровываются до добавления в state (`useChatMessages.ts: handleWsMessage`, 1-1 и группы); тосты для чужих чатов показывают «🔒 Зашифрованное сообщение», а не сырой `[encrypted]` |
+| Звонки (сигналинг) | `/ws/calls/{user_id}`, `/ws/signaling/{user_id}` (синонимы) | offer/answer/ice-candidate + call-request/accept/reject/end/timeout, pending-буфер 50/пользователь с TTL 24ч, история — опционально `CallLog` (выкл. при `CALLS_MINIMAL_METADATA=true`). **Тела SDP/ICE — E2E** (`frontend/src/services/callE2E.ts`): ECDH + secretbox, по проводу `{type, enc}`, relay видит только тип/call_id (нужно для маршрутизации), SDP-фингерпринты и host-IP скрыты; fallback — plaintext для старых клиентов. **Принятие через chat WS гоняется с навигацией**: callee шлёт `call_accept` по chat WS и тут же уходит на CallPage — сообщение может потеряться при разрыве. Поэтому `_handle_call_join` (`server/ws/signaling.py`) авто-принимает RINGING-звонок, если `call-join` пришёл от callee (`test/test_call_join_accept.py`). Промах `call-join`/`call-accept` пишется в лог (`call-join for unknown call ...` / `call-accept rejected: ...`) — иначе «звонок не найден» недиагностируем. `CallPage.tsx`: StrictMode в dev монтирует эффект дважды — `connectedRef` сбрасывается в cleanup, иначе второй монт оставался без сокета; `cleanup()` гасит `onclose` до `close()`, иначе разрыв при размонтировании планировал ghost-reconnect |
 | Звонки (медиа) | WebRTC напрямую между устройствами | **Настоящий P2P**, DTLS-SRTP — сервер медиа не касается и расшифровать не может. ICE через `/api/calls/ice-servers`. При `CALLS_MINIMAL_METADATA=true` relay только форвардит сигналинг и не хранит метаданные звонков (логи без SDP, `CallLog` пустой — история на устройствах) |
 | Уведомления | `/ws/notifications/{user_id}` + Web Push (VAPID) | in-memory история (100/пользователь, теряется при рестарте); оффлайн — Web Push, мёртвые подписки (404/410) чистятся |
 | Файлы | `/api/files/...?token=` (есть `?is_encrypted=true`) | токен в query — иначе `<img>/<video>` не скачать; скачивание — через `blobManager` (fetch → decrypt → Blob URL, LRU, revoke, encode `b64url(fileId)` для стабильной ссылки) |
@@ -201,3 +214,11 @@ relay, а P2P-медиа (звонки) никуда не девался. Воз
 5. Помнить: relay — центральная точка по метаданным и доступности.
    Следующий уровень — несколько независимых релеев + федерация
    (`USE_FEDERATION`, whitelist `FEDERATION_ALLOWED_SERVERS`).
+6. Тест через туннель (подробно — `docs/TUNNEL_FRIENDS.md`): оба клиента
+   на одном релеe и на одном коде (`git pull` с обеих сторон, иначе старый
+   клиент не расшифрует входящие по WS и не знает авто-принятия звонков);
+   один аккаунт = одно устройство (вход тем же аккаунтом с браузера и
+   десктопа ломает E2E — ключи per-device); принимать звонок в первые 30с,
+   звонящему оставаться на экране звонка; `.py`-файлы во время теста не
+   трогать — `uvicorn --reload` рестартует сервер и стирает активные
+   звонки из памяти.

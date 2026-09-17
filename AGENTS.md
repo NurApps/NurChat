@@ -27,6 +27,7 @@ npx tauri dev
 | Action | Command |
 |--------|---------|
 | Start everything | `start.bat` |
+| Start everything (SQLite, ждёт /health) | `run.bat` |
 | Relay only | `.venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload` |
 | Relay via Docker | `docker-compose up -d` |
 | Tauri dev | `npx tauri dev` |
@@ -83,6 +84,8 @@ Tauri (Rust shell) ── wraps ──> React frontend ── HTTP/WS ──> Fa
 14. **Onboarding wizard.** 4 шага, гасится `localStorage.onboarding_seen`.
 15. **ErrorBoundary.** Ловит ошибки рендера React, показывает страницу с кнопкой reload.
 16. **P2P НЕ возвращать.** TCP-нода (`src-tauri/src/p2p.rs`), LAN discovery, `nurchat://`, `USE_P2P` — удалены как нерабочие. Остатки: `p2pchat/` (прототип, не импортируется), таблицы `p2p_*` в миграции 001 (история), `src-tauri/src/ipfs.rs` (мёртвый импорт). Рабочий P2P остался только в WebRTC-медиа звонков.
+17. **Свои сообщения не расшифровывать.** Double Ratchet: sending ≠ receiving, свои из истории нечитаемы криптографически. `decryptMessages`/`handleWsMessage` свои скипают, текст — из `plaintextCache.ts`. Чужие в кэш не писать.
+18. **Звонок: `call-join` авто-принимает.** `call_accept` по chat WS гоняется с навигацией на CallPage и может потеряться — `_handle_call_join` принимает RINGING-звонок от callee сам (`test/test_call_join_accept.py`). Промах join/accept логируется (`call-join for unknown call`, `call-accept rejected`). `CallPage`: `connectedRef` сбрасывается в cleanup (StrictMode-remount), `cleanup()` гасит `onclose` до `close()` (иначе ghost-reconnect).
 
 ## Env Variables
 
@@ -140,6 +143,7 @@ X3DH (3 DH, подписи Ed25519 обязательны) + Double Ratchet. Л�
 **API client:** `frontend/src/services/api.ts`
 **Relay config:** `frontend/src/config.ts` — резолвинг релея, `BASE_URL`/`WS_BASE`
 **E2E:** `frontend/src/services/e2e.ts`, `doubleRatchet.ts`, `groupE2E.ts`, `secureStorage.ts`, `cryptoAdapter.ts`
+**E2E-кэш своих:** `frontend/src/services/plaintextCache.ts` — свои сообщения из истории расшифровать НЕЛЬЗЯ (DR), текст берётся из локального кэша, пишется при отправке
 **WS client:** `frontend/src/hooks/useChatSocket.ts` (чат), `frontend/src/pages/CallPage.tsx` (звонки)
 **Отправка/история:** `frontend/src/hooks/useChatActions.ts`, `useChatMessages.ts`
 **Main page:** `frontend/src/pages/ChatPage.tsx`

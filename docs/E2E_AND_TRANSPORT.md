@@ -148,9 +148,9 @@ localStorage), но полный дамп IndexedDB её пробивает. Н�
 
 Токен в query — вынужденная мера (WS/медиатеги), mitigations: только `wss/https`
 в проде, короткий TTL JWT, токен нигде не логируется сервером, а **uvicorn
-access-лог выключен везде** (`--no-access-log` во всех лаунчерах и Dockerfile:
-systemd-unit был уже, `start.bat`/`dev.bat`/`relay-home.bat`/`run.py` — починили
-2026-09). Иначе JWT из `?token=` оседали бы в access-логах. Имена файлов
+access-лог выключен везде** (`--no-access-log` во всех лаунчерах и Dockerfile —
+единый `run.bat`, `systemd-unit` был уже — починили 2026-09). Иначе JWT из
+`?token=` оседали бы в access-логах. Имена файлов
 пользователей из логов тоже вычищены (только `file_id`).
 
 NAT и звонки (честно): по умолчанию только публичные Google STUN.

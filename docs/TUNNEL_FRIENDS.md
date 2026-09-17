@@ -5,8 +5,7 @@
 ## 1) Поднять релей локально
 
 ```bat
-:: в корне проекта
-.venv\Scripts\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
+run.bat relay
 :: проверь: http://127.0.0.1:8000/health  -> {"status":"healthy"}
 ```
 

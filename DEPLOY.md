@@ -179,7 +179,7 @@ Timeweb ~10 дней, AdminVPS ~7 дней, RuVDS ~3 дня, SpaceWeb ~3 дня.
 # На старом реле: бэкап БД + файлы
 .venv\Scripts\python scripts\backup-sqlite.py   # → backup/nurchat_*.db
 # На новом: развернуть код, положить бэкап как nurchat.db,
-# скопировать media/ целиком, поднять systemd unit / relay-home.bat
+# скопировать media/ целиком, поднять systemd unit / run.bat relay
 # Друг вводит новый адрес один раз (экран подключения → свой релей)
 ```
 
@@ -206,14 +206,14 @@ powercfg /setactive SCHEME_CURRENT
 ```
 
 **2. Автозапуск при включении.** Планировщик заданий →
-«При входе пользователя» → действие: `D:\projects\NurChat\scripts\relay-home.bat`
-(аргументы не нужны; туннель поднимается отдельно, см. ниже).
+«При входе пользователя» → действие: `D:\projects\NurChat\run.bat`
+(аргументы: `relay`; туннель поднимается отдельно, см. ниже).
 Либо просто кинь ярлык в `shell:startup`.
 
 **3. Запуск:**
 
 ```powershell
-scripts\relay-home.bat tunnel
+run.bat tunnel
 ```
 
 Релей — в свернутом окне `nurchat-relay`, туннель — в текущем.

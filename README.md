@@ -202,9 +202,9 @@ pip install -r requirements.txt
 cd frontend && npm install && cd ..
 
 # 4. Запуск (сервер + Tauri)
-./start.bat  # Windows
+./run.bat  # Windows: dev | vite | relay | tunnel | build
 # или
-python -m uvicorn server.main:app --port 8000 &  # сервер отдельно
+run.bat relay  # сервер отдельно
 npx tauri dev  # Tauri отдельно
 ```
 

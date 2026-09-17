@@ -9,12 +9,12 @@ NurChat — мессенджер на модели «глухой relay + E2E».
 ## Quick Start
 
 ```bash
-# One-click (Windows):
-start.bat
+# One-click (Windows), режимы: dev | vite | relay | tunnel | build
+run.bat
 
 # Manual:
 # Terminal 1 — relay (ОБЯЗАТЕЛЬНО отдельно: `npx tauri dev` сервер НЕ поднимает)
-.venv\Scripts\python -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
+run.bat relay
 
 # Terminal 2 — Tauri (Vite + Rust собирает сам)
 npx tauri dev
@@ -26,9 +26,9 @@ npx tauri dev
 
 | Action | Command |
 |--------|---------|
-| Start everything | `start.bat` |
-| Start everything (SQLite, ждёт /health) | `run.bat` |
-| Relay only | `.venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload` |
+| Start everything | `run.bat` |
+| Relay only | `run.bat relay` |
+| Relay + Cloudflare tunnel | `run.bat tunnel` |
 | Relay via Docker | `docker-compose up -d` |
 | Tauri dev | `npx tauri dev` |
 | Frontend build | `cd frontend && npm run build` |
@@ -45,7 +45,7 @@ npx tauri dev
 1. **ENCRYPTION_KEY / JWT_SECRET_KEY / TOTP_MASTER_KEY not set.** Автогенерятся при пустом `.env`, но временные ключи = потеря данных / разлогин всех при рестарте. Для продакшена — стабильные значения в `.env`.
 2. **UnicodeEncodeError in Windows console.** Fixed: `sys.stdout/stderr.reconfigure(errors='replace')` в `shared/config.py`.
 3. **CORS origins.** По умолчанию `localhost:5173, localhost:8000, tauri://localhost, https://tauri.localhost`. Прод-домен — через `CORS_ORIGINS` (comma-separated). Wildcard `*` нет даже в DEBUG. CSP собирается из того же whitelist — см. `server/main.py: add_security_headers`.
-4. **Server dies when terminal closes.** `start.bat` держит сервер через `start /B`. Остановка: `taskkill /f /im python.exe`.
+4. **Server dies when terminal closes.** `run.bat` держит сервер через `start /B` и ждёт `/health`. Остановка только своего релея: по порту `:8000` (внутри `run.bat`).
 5. **Звонки за NAT не соединяются без TURN.** По умолчанию только Google STUN. Прод: coturn (`infra/coturn.conf`) + `TURN_USERNAME`/`TURN_CREDENTIAL` в `.env`. Сервер пишет warning в лог, если TURN не настроен.
 6. **`PUBLIC_RELAYS` пуст.** `frontend/src/config.ts` — некуда резолвиться, клиенты default'ят на `127.0.0.1:8000`. Вписать свой relay при деплое.
 

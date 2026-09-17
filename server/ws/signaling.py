@@ -73,7 +73,12 @@ class CallManager:
                 del self.call_websockets[user_id]
 
     async def _handle_call_join(self, user_id: str, data: dict):
-        """Обработка присоединения к существующему звонку (callee)"""
+        """Обработка присоединения к существующему звонку (callee).
+
+        Если callee подключается к calls WS и шлёт call-join, а звонок ещё
+        в статусе RINGING — автоматически принимаем его (chat WS мог
+        оборваться при навигации, и call_accept не дошёл).
+        """
         call_id = data.get("call_id")
         if not call_id:
             return
@@ -89,6 +94,24 @@ class CallManager:
             return
 
         logger.info(f"User {user_id} joined call {call_id}")
+
+        # Если callee подключился к calls WS, а звонок всё ещё RINGING —
+        # значит call_accept через chat WS не дошёл (навигация оборвала
+        # соединение). Принимаем автоматически.
+        if user_id == call.get("callee_id") and call["status"] == CALL_STATUS["RINGING"]:
+            call["status"] = CALL_STATUS["ACTIVE"]
+            call_accepted = {
+                "type": "call-accepted",
+                "call_id": call_id,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            success = await self._send_to_user(call["caller_id"], call_accepted)
+            if success:
+                logger.info(f"Call {call_id} auto-accepted via call-join (chat WS race)")
+                await self._save_call_to_db(call_id, "accepted")
+            else:
+                await self._handle_call_end(user_id, {"call_id": call_id})
+                return
 
         await self._send_to_user(user_id, {
             "type": "call-request",

@@ -32,6 +32,10 @@ update_key_private.key
 # Agent/IDE workspace files
 .opencode/
 .agents/
+.claude/
+.continue/
+opencode.json
+skills-lock.json
 
 
 # Database
@@ -43,6 +47,13 @@ backup/
 
 # Windows system files
 desktop.ini
+
+# Stray files
+npx
+
+# Pentest reports (contain vulnerability details, not for public repo)
+pentest_report.md
+reports/
 
 # Generated/cache directories
 .nurchat_cache/

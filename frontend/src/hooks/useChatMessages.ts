@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react"
 import { api } from "../services/api"
 import { decryptMessage, isE2EEnabled, type E2EKeys } from "../services/e2e"
 import { fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
+import { loadPlaintextCache } from "../services/plaintextCache"
 import type { ChatResponse, MessageResponse, UserResponse } from "../types"
 
 interface UseChatMessagesOptions {
@@ -39,7 +40,16 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
     }
 
     const results: MessageResponse[] = []
+    // Свои сообщения расшифровать из истории нельзя в принципе (Double
+    // Ratchet: sending-цепочка ≠ receiving-цепочка) — берём текст из
+    // локального кэша, сохранённого при отправке.
+    const ownCache = loadPlaintextCache()
     for (const msg of msgs) {
+      if (msg.user_id === currentUser.id) {
+        const cached = ownCache[msg.id]
+        results.push(cached !== undefined ? { ...msg, content: cached } : msg)
+        continue
+      }
       if (msg.encrypted_content) {
         try {
           const envelope = JSON.parse(msg.encrypted_content)
@@ -107,7 +117,15 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
     } else if (data._edit) {
       setMessages((prev) => prev.map((m) => m.id === data.message_id ? { ...m, content: data.content, edited_at: data.edited_at || m.edited_at } : m))
     } else {
-      // WS messages with encrypted_content must be decrypted before display
+      // WS messages with encrypted_content must be decrypted before display.
+      // Свои не расшифровываем (невозможно криптографически) — текст уже
+      // подставлен при отправке; здесь лишь страховка через кэш.
+      if (data.user_id === currentUser.id) {
+        const { getPlaintext } = await import("../services/plaintextCache")
+        const cached = data.id ? getPlaintext(data.id) : null
+        setMessages((prev) => [...prev, cached ? { ...data, content: cached } : data])
+        return
+      }
       if (data.encrypted_content && e2eKeys && currentChatRef.current) {
         const chat = currentChatRef.current
         if (isE2EEnabled(chat.participants, e2eKeys)) {

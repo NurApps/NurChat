@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
+import { savePlaintext } from "../services/plaintextCache"
 import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled } from "../services/e2e"
 import { fetchGroupKey, encryptGroupMessageRatcheted } from "../services/groupE2E"
 import { useChatStore } from "../store/chatStore"
@@ -103,7 +104,11 @@ export function useChatActions({
       )
       // Сервер хранит content="[encrypted]"; подменяем на исходный текст,
       // чтобы отправитель видел своё сообщение, а не "[encrypted]".
+      // Копия текста — в локальный кэш: свои сообщения из истории
+      // расшифровать нельзя (Double Ratchet), без кэша после
+      // перезахода будет "[не удалось расшифровать]".
       if (encryptedContent) msg.content = text
+      if (msg.id) savePlaintext(msg.id, text)
       addMessage(msg)
       loadChats()
     } catch (e) {
@@ -157,6 +162,7 @@ export function useChatActions({
         await removeOutbox(item.id as number)
         sent++
         if (encryptedContent) msg.content = item.text
+        if (msg.id) savePlaintext(msg.id, item.text)
         if (selectedChat?.id === chat.id) addMessage(msg)
       } catch {
         await bumpOutboxAttempts(item) // яд копится до isPoison, потом дроп
@@ -347,6 +353,7 @@ export function useChatActions({
       // Сервер хранит content="[encrypted]"; подменяем на подпись,
       // чтобы отправитель видел «Голосовое сообщение», а не "[encrypted]".
       if (encryptedContent) msg.content = caption
+      if (msg.id) savePlaintext(msg.id, caption)
       addMessage(msg)
       loadChats()
       return true

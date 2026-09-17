@@ -106,7 +106,9 @@ export function useChatSocket({
         }
         if (data.chat_id !== chatIdRef.current && !(mutedRef.current?.has(data.chat_id))) {
           const sender = data.username || "Пользователь"
-          const preview = (data.content || "").slice(0, 50)
+          const preview = data.encrypted_content
+            ? "🔒 Зашифрованное сообщение"
+            : (data.content || "").slice(0, 50)
           onToast({ id: data.id, title: sender, body: preview, chatId: data.chat_id })
           showNotification(sender, preview)
           playMessageSound()

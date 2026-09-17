@@ -115,6 +115,7 @@
     "keyChanged": "Ключи {{name}} изменились",
     "keyNew": "Новый ключ {{name}}",
     "voiceMessage": "Голосовое сообщение",
+    "encryptedMessage": "Зашифрованное сообщение",
     "stop": "Остановить",
     "searchInChat": "Поиск в чате",
     "typingSingular": "печатает",

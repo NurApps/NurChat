@@ -115,6 +115,7 @@
     "keyChanged": "{{name}} keys have changed",
     "keyNew": "New key for {{name}}",
     "voiceMessage": "Voice message",
+    "encryptedMessage": "Encrypted message",
     "stop": "Stop",
     "searchInChat": "Search in chat",
     "typingSingular": "typing",

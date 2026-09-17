@@ -25,6 +25,8 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   const containerRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const chatIdRef = useRef<string | null>(null)
+  // Cache current chat context for decrypting incoming WS messages
+  const currentChatRef = useRef<ChatResponse | null>(null)
 
   const decryptMessages = useCallback(async (msgs: MessageResponse[], chat: ChatResponse): Promise<MessageResponse[]> => {
     if (!e2eKeys || !isE2EEnabled(chat.participants, e2eKeys)) return msgs
@@ -64,6 +66,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
 
   const loadMessages = useCallback(async (chat: ChatResponse) => {
     chatIdRef.current = chat.id
+    currentChatRef.current = chat
     setInitialLoading(true)
     try {
       const msgs = await api.getChatMessages(chat.id, 0, 50)
@@ -94,7 +97,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
     }
   }, [loadingMore, hasMore, messages.length, decryptMessages])
 
-  const handleWsMessage = useCallback((data: any) => {
+  const handleWsMessage = useCallback(async (data: any) => {
     if (data._update) {
       setMessages((prev) => prev.map((m) => m.id === data.message_id ? { ...m, is_read: true } : m))
     } else if (data._delete) {
@@ -104,9 +107,31 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
     } else if (data._edit) {
       setMessages((prev) => prev.map((m) => m.id === data.message_id ? { ...m, content: data.content, edited_at: data.edited_at || m.edited_at } : m))
     } else {
+      // WS messages with encrypted_content must be decrypted before display
+      if (data.encrypted_content && e2eKeys && currentChatRef.current) {
+        const chat = currentChatRef.current
+        if (isE2EEnabled(chat.participants, e2eKeys)) {
+          const peer = chat.participants.find(p => p.id !== currentUser.id)
+          if (peer?.public_key) {
+            try {
+              const envelope = JSON.parse(data.encrypted_content)
+              let plain: string | null = null
+              if (envelope.group_encrypted && chat.is_group) {
+                try {
+                  const groupKey = await fetchGroupKey(chat.id, hexToBytes(e2eKeys.privateKeyHex))
+                  if (groupKey) plain = await decryptGroupMessageRatcheted(envelope.group_encrypted, groupKey, chat.id)
+                } catch {}
+              } else {
+                plain = await decryptMessage(envelope, e2eKeys, peer.public_key, chat.id)
+              }
+              if (plain) data = { ...data, content: plain }
+            } catch {}
+          }
+        }
+      }
       setMessages((prev) => [...prev, data])
     }
-  }, [])
+  }, [e2eKeys, currentUser.id])
 
   const addMessage = useCallback((msg: MessageResponse) => {
     setMessages((prev) => [...prev, msg])

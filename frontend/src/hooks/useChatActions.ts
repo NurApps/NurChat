@@ -101,6 +101,9 @@ export function useChatActions({
         effectiveExpiresAt,
         replyToId,
       )
+      // Сервер хранит content="[encrypted]"; подменяем на исходный текст,
+      // чтобы отправитель видел своё сообщение, а не "[encrypted]".
+      if (encryptedContent) msg.content = text
       addMessage(msg)
       loadChats()
     } catch (e) {
@@ -153,6 +156,7 @@ export function useChatActions({
         )
         await removeOutbox(item.id as number)
         sent++
+        if (encryptedContent) msg.content = item.text
         if (selectedChat?.id === chat.id) addMessage(msg)
       } catch {
         await bumpOutboxAttempts(item) // яд копится до isPoison, потом дроп
@@ -340,6 +344,9 @@ export function useChatActions({
       }
 
       const msg = await api.sendMessage(chat.id, content, fileType, uploaded.id, encryptedContent, signature)
+      // Сервер хранит content="[encrypted]"; подменяем на подпись,
+      // чтобы отправитель видел «Голосовое сообщение», а не "[encrypted]".
+      if (encryptedContent) msg.content = caption
       addMessage(msg)
       loadChats()
       return true

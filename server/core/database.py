@@ -5,7 +5,17 @@ from shared.config import settings
 
 # Detect dialect for connection args
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
-connect_args = {"check_same_thread": False} if _is_sqlite else {}
+# connect_timeout обязателен для Supabase pooler (Supavisor): без него
+# первое пользовательское заявление после init-запросов умирает с
+# "server closed the connection unexpectedly" (доказано бисекцией:
+# raw/kwargs/creator/AUTOCOMMIT живут, дефолтный engine — нет;
+# с connect_timeout=10 живут все). Только сетевой таймаут установки
+# соединения, на логику ничего не влияет.
+connect_args = (
+    {"check_same_thread": False}
+    if _is_sqlite
+    else {"connect_timeout": 10}
+)
 
 # Pool: explicit env wins, otherwise safe defaults.
 # (Supabase free caps direct connections — never default high.)

@@ -4,8 +4,6 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
-
 from alembic import context
 
 # Add project root to path
@@ -41,10 +39,18 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+    # НЕ engine_from_config: Supabase pooler (Supavisor) требует
+    # connect_timeout, иначе первое заявление умирает с "server closed
+    # the connection unexpectedly". Именованные секции (-n) не используем.
+    from sqlalchemy import create_engine
+    from sqlalchemy import pool as sa_pool
+
+    url = settings.DATABASE_URL
+    connect_args = (
+        {} if url.startswith("sqlite") else {"connect_timeout": 10}
+    )
+    connectable = create_engine(
+        url, poolclass=sa_pool.NullPool, connect_args=connect_args
     )
     with connectable.connect() as connection:
         context.configure(

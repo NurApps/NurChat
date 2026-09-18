@@ -4,9 +4,9 @@
   "version": "0.16.2",
   "identifier": "com.nurapps.nurchat",
   "build": {
-    "beforeDevCommand": ".\\dev.bat",
+    "beforeDevCommand": "npm --prefix frontend run dev",
     "beforeBuildCommand": "npm --prefix frontend run build",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://127.0.0.1:5173",
     "frontendDist": "../frontend/dist"
   },
   "app": {

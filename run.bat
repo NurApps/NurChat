@@ -82,8 +82,9 @@ exit /b 0
 set DATABASE_URL=sqlite:///./nurchat.db
 set RELAY_FLAGS=--reload
 call :ensure_relay
+if %errorlevel% neq 0 goto :eof
 echo [..] Starting Tauri dev...
-npx tauri dev
+call npx tauri dev
 call :stop_relay_if_mine
 goto :eof
 
@@ -91,10 +92,12 @@ goto :eof
 set DATABASE_URL=sqlite:///./nurchat.db
 set RELAY_FLAGS=--reload
 call :ensure_relay
+if %errorlevel% neq 0 goto :eof
 echo [..] Starting Vite (http://localhost:5173)...
 cd frontend
 call npm run dev
 cd /d "%~dp0"
+call :stop_relay_if_mine
 goto :eof
 
 :act_relay
@@ -104,6 +107,7 @@ goto :eof
 
 :act_tunnel
 call :ensure_relay_prod
+if %errorlevel% neq 0 goto :eof
 where cloudflared >nul 2>&1
 if %errorlevel% neq 0 (
   echo [!!] cloudflared not found: winget install --id Cloudflare.cloudflared
@@ -124,13 +128,13 @@ if "%HAVE_KEY%"=="1" (
   echo [OK] Signing key found - signed build with updater.
   for /f "usebackq delims=" %%k in ("update_key_private.key") do set TAURI_SIGNING_PRIVATE_KEY=%%k
   set TAURI_SIGNING_PRIVATE_KEY_PASSWORD=
-  npx tauri build
-  goto :eof
+  call npx tauri build
+  exit /b %errorlevel%
 )
 echo [..] No signing key - unsigned build (updater section stripped temporarily, config restored after).
 copy /Y "%TAURI_CONF%" "%TAURI_CONF_BAK%" >nul
 node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(p,'utf8'));delete c.plugins.updater;fs.writeFileSync(p,JSON.stringify(c,null,2));"
-npx tauri build
+call npx tauri build
 set BUILD_RC=%errorlevel%
 copy /Y "%TAURI_CONF_BAK%" "%TAURI_CONF%" >nul
 del "%TAURI_CONF_BAK%" >nul 2>&1
@@ -150,11 +154,19 @@ goto :eof
 curl -s -m 2 http://127.0.0.1:8000/health >nul 2>&1
 if %errorlevel% equ 0 (
   echo [OK] Relay already on :8000
-  goto :eof
+  exit /b 0
 )
+:: Порт может быть занят "зависшим" процессом с прошлого неудачного запуска
+:: (health не отвечает, но порт всё ещё держится) - освобождаем, иначе
+:: uvicorn не сможет забиндиться и wait_relay зависнет навсегда.
+:: /T обязателен: --reload поднимает reloader + отдельный дочерний
+:: server-процесс, PID в netstat - это reloader, kill без /T убивает
+:: только его, а дочерний процесс остаётся висеть на порту.
+for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /T /PID %%p >nul 2>&1
 echo [..] Starting relay in background...
 start "NurChat Relay" /B .venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 %RELAY_FLAGS% --no-access-log
 set RELAY_STARTED_BY_ME=1
+set WAIT_RELAY_TRIES=0
 goto wait_relay
 
 :ensure_relay_prod
@@ -163,6 +175,12 @@ call :ensure_relay
 goto :eof
 
 :wait_relay
+set /a WAIT_RELAY_TRIES+=1
+if %WAIT_RELAY_TRIES% gtr 20 (
+  echo [!!] Relay didn't come up on :8000 in time - aborting.
+  call :stop_relay_if_mine
+  exit /b 1
+)
 timeout /t 1 /nobreak >nul
 curl -s -m 2 http://127.0.0.1:8000/health | findstr /C:"healthy" >nul 2>&1
 if %errorlevel% neq 0 goto wait_relay
@@ -172,9 +190,9 @@ goto :eof
 :stop_relay_if_mine
 if not "%RELAY_STARTED_BY_ME%"=="1" (
   echo [..] Relay left running (was already up).
-  goto :eof
+  exit /b 0
 )
 echo [..] Stopping relay on :8000...
-for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /PID %%p >nul 2>&1
+for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /T /PID %%p >nul 2>&1
 set RELAY_STARTED_BY_ME=
 goto :eof

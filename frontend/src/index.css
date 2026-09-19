@@ -1,13 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Varela+Round&family=Nunito+Sans:wght@400;500;600;700&family=Caveat:wght@600&family=JetBrains+Mono:wght@400&display=swap');
 
-@font-face {
-  font-family: 'Noto Color Emoji';
-  src: url('/fonts/NotoColorEmoji.woff2') format('woff2');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
-
 :root {
   --bg: #FDFBF7;
   --surface: #FFFFFF;

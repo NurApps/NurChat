@@ -316,9 +316,31 @@ export function removeOPK(pubHex: string): void {
   removeOPKSecure(pubHex).catch(console.error)
 }
 
+/**
+ * True when the stored SPK was signed by the CURRENT identity signing key.
+ * After re-registration or key rotation in the same browser profile the
+ * IndexedDB copy belongs to a previous identity: the server (which checks
+ * against the current signing_public_key) answers 400 "Invalid SPK
+ * signature", and trusting it would mean bundle 404 forever.
+ */
+function spkMatchesIdentity(spk: StoredSPK, myKeys: E2EKeys): boolean {
+  try {
+    return signVerify(
+      hexToBytesSecure(spk.publicKeyHex),
+      hexToBytesSecure(spk.signatureHex),
+      hexToBytesSecure(myKeys.signingPublicHex),
+    )
+  } catch {
+    return false
+  }
+}
+
 export async function setupPreKeys(myKeys: E2EKeys): Promise<void> {
   const existing = await loadSPKFromStorage()
-  if (existing) return
+  if (existing) {
+    if (spkMatchesIdentity(existing, myKeys)) return
+    console.warn("[E2E] local SPK not signed by current identity — regenerating")
+  }
 
   const spkKp = boxKeyPair()
   const spkPubHex = bytesToHex(spkKp.publicKey)
@@ -379,6 +401,9 @@ export async function setupPreKeys(myKeys: E2EKeys): Promise<void> {
   }
 }
 
+// IDs already probed by ensurePreKeysUploaded in this page session.
+const ensureAttempted = new Set<string>()
+
 /**
  * Self-heal for missing server-side SPK (bundle 404 for new contacts).
  *
@@ -393,8 +418,15 @@ export async function setupPreKeys(myKeys: E2EKeys): Promise<void> {
  * spurious SPK rotation (which would break peers' live sessions).
  */
 export async function ensurePreKeysUploaded(myKeys: E2EKeys, ownUserId: string): Promise<void> {
+  // One attempt per page session: the endpoint is rate-limited (10/min) and
+  // ChatPage remounts would otherwise burn the quota with 404→upload loops.
+  if (ensureAttempted.has(ownUserId)) return
+  ensureAttempted.add(ownUserId)
+
   const local = await loadSPKFromStorage()
-  if (!local) {
+  if (!local || !spkMatchesIdentity(local, myKeys)) {
+    // Never uploaded, or stale copy from a previous identity in this
+    // profile (re-uploading it yields 400 "Invalid SPK signature").
     await setupPreKeys(myKeys)
     return
   }

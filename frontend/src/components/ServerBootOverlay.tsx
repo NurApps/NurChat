@@ -29,9 +29,10 @@ export default function ServerBootOverlay({ onReady }: Props) {
         setErrorMsg(`Relay responded with status ${res.status}`)
         return false
       }
-    } catch {
+    } catch (err) {
       setPhase("failed")
-      setErrorMsg("Could not connect to relay server")
+      const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+      setErrorMsg(`Could not connect to relay server (${detail})`)
       return false
     }
   }, [])
@@ -114,8 +115,11 @@ export default function ServerBootOverlay({ onReady }: Props) {
           <>
             <div className="server-boot-icon error" style={{ fontSize: 48, marginBottom: 12 }}>⚠</div>
             <h2 style={{ marginBottom: 8 }}>Relay unavailable</h2>
-            <p style={{ opacity: 0.7, fontSize: 14, marginBottom: 16 }}>
+            <p style={{ opacity: 0.7, fontSize: 13, marginBottom: 4, fontFamily: "monospace", wordBreak: "break-word" }}>
               {errorMsg}
+            </p>
+            <p style={{ opacity: 0.5, fontSize: 11, marginBottom: 16 }}>
+              Точный HTTP-код (например, Cloudflare 5xx) браузер может скрывать здесь из-за CORS — смотрите вкладку Network в devtools для деталей.
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>

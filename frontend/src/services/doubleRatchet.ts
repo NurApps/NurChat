@@ -487,7 +487,14 @@ export class DoubleRatchetSession {
    */
   private zeroizeBytes(buffer: Uint8Array | null): void {
     if (!buffer) return
-    buffer.fill(0)
+    try {
+      buffer.fill(0)
+    } catch {
+      // Already detached (double-zeroize via concurrent encrypt calls) —
+      // bytes were wiped by the first pass, nothing left to do.
+      // Must not throw: zeroize runs inside encrypt/decrypt paths.
+      return
+    }
     try {
       if (buffer.buffer instanceof ArrayBuffer && typeof buffer.buffer.transfer === "function") {
         buffer.buffer.transfer(0)

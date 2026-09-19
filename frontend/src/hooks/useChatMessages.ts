@@ -61,7 +61,7 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
               results.push({ ...msg, content: "[ошибка расшифровки группы]" })
             }
           } else {
-            const plain = await decryptMessage(envelope, e2eKeys, peer.public_key, chat.id)
+            const plain = await decryptMessage(envelope, e2eKeys, peer.public_key, chat.id, msg.id)
             results.push({ ...msg, content: plain || "[не удалось расшифровать]" })
           }
         } catch {
@@ -152,7 +152,10 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
   }, [e2eKeys, currentUser.id])
 
   const addMessage = useCallback((msg: MessageResponse) => {
-    setMessages((prev) => [...prev, msg])
+    // Server may deliver the same message twice (WS live + reconnect replay):
+    // appending blindly duplicates bubbles and — worse — the duplicate path
+    // re-decrypts an already-consumed envelope ("message in the past").
+    setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
   }, [])
 
   const updateMessage = useCallback((id: string, updates: Partial<MessageResponse>) => {

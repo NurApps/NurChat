@@ -47,7 +47,7 @@ export default function LoginPage() {
         .then(async (user) => {
           localStorage.setItem("user", JSON.stringify(user))
           const keys = await loadKeys()
-          if (keys) setupPreKeys(keys).catch(() => {})
+          if (keys) setupPreKeys(keys).catch((e) => console.warn("[E2E] setupPreKeys (auto-login) failed:", e))
           navigate("/chat", { replace: true })
         })
         .catch(() => {
@@ -139,7 +139,7 @@ export default function LoginPage() {
 
       // Persist identity keys locally (encrypted at rest)
       await saveKeys(e2eKeys)
-      setupPreKeys(e2eKeys).catch(() => {})
+      setupPreKeys(e2eKeys).catch((e) => console.warn("[E2E] setupPreKeys (register) failed:", e))
 
       navigate("/chat", { replace: true })
     } catch (err: any) {
@@ -180,7 +180,7 @@ export default function LoginPage() {
       api.setToken(res.access_token)
       localStorage.setItem("user", JSON.stringify(res.user))
       const keys = await loadKeys()
-      if (keys) setupPreKeys(keys).catch(() => {})
+      if (keys) setupPreKeys(keys).catch((e) => console.warn("[E2E] setupPreKeys (login) failed:", e))
       navigate("/chat", { replace: true })
     } catch (err: any) {
       const msg = err?.message || err?.toString() || ""
@@ -206,7 +206,7 @@ export default function LoginPage() {
       api.setToken(res.access_token)
       localStorage.setItem("user", JSON.stringify(res.user))
       const keys = await loadKeys()
-      if (keys) setupPreKeys(keys).catch(() => {})
+      if (keys) setupPreKeys(keys).catch((e) => console.warn("[E2E] setupPreKeys (2fa) failed:", e))
       setAwaiting2fa(false)
       setTwoFactorCode("")
       navigate("/chat", { replace: true })

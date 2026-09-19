@@ -379,6 +379,48 @@ export async function setupPreKeys(myKeys: E2EKeys): Promise<void> {
   }
 }
 
+/**
+ * Self-heal for missing server-side SPK (bundle 404 for new contacts).
+ *
+ * setupPreKeys() skips when a LOCAL SPK exists — but the server copy can be
+ * gone (DB move/wipe, Supabase switch, failed first upload on a stayed
+ * logged-in session). Then every new contact gets "User has no signed
+ * pre-key" and falls back to identity-as-SPK sessions that the peer cannot
+ * always reproduce ("Decryption failed" forever).
+ *
+ * Uses the side-effect-free GET /signed-prekey (unlike bundle, it does NOT
+ * claim an OPK). Re-uploads only on 404 — never on network errors, to avoid
+ * spurious SPK rotation (which would break peers' live sessions).
+ */
+export async function ensurePreKeysUploaded(myKeys: E2EKeys, ownUserId: string): Promise<void> {
+  const local = await loadSPKFromStorage()
+  if (!local) {
+    await setupPreKeys(myKeys)
+    return
+  }
+  let serverHasSpk = false
+  try {
+    const spk = await api.getSignedPrekey(ownUserId)
+    serverHasSpk = !!spk?.public_key
+  } catch (err) {
+    const status = (err as { status?: number })?.status
+    const msg = err instanceof Error ? err.message : String(err)
+    if (status !== 404 && !msg.includes("No signed pre-key")) {
+      // Network/auth error — do NOT rotate SPK on a guess.
+      console.warn("[E2E] SPK check failed (keeping local SPK):", err)
+      return
+    }
+  }
+  if (!serverHasSpk) {
+    console.warn("[E2E] SPK missing on server, re-uploading local SPK")
+    try {
+      await api.uploadSignedPrekey(local.publicKeyHex, local.signatureHex)
+    } catch (err) {
+      console.warn("[E2E] SPK re-upload failed:", err)
+    }
+  }
+}
+
 export async function fetchAndVerifyBundle(
   userId: string,
 ): Promise<{ signedPrekeyHex: string; oneTimePrekeyHex?: string } | null> {
@@ -426,6 +468,15 @@ export async function fetchAndVerifyBundle(
 const sessionCache = new Map<string, DoubleRatchetSession>()
 // chatId → peer userId (populated on initiator path; persisted with session)
 const sessionPeers = new Map<string, string>()
+// Memory-only plaintext of foreign messages already decrypted (key: chatId:msgId).
+// History reloads and live WS handlers share one session: without this, the
+// second consumer re-decrypts the same envelope and hits "message in the past"
+// (chain already advanced), replacing good text with "[не удалось расшифровать]".
+// Cleared together with sessions (logout / auto-clear / rotate). Never persisted.
+const decryptedCache = new Map<string, string>()
+function clearDecryptedCache(): void {
+  decryptedCache.clear()
+}
 
 export async function getOrCreateSession(
   chatId: string,
@@ -533,6 +584,7 @@ export function invalidateSessionsForUser(userId: string): void {
 export async function clearSessions(): Promise<void> {
   sessionCache.clear()
   sessionPeers.clear()
+  clearDecryptedCache()
   await clearSessionsSecure()
 }
 
@@ -610,8 +662,17 @@ export async function decryptMessage(
   myKeys: E2EKeys,
   senderPublicKeyHex: string,
   chatId: string,
+  msgId?: string,
 ): Promise<string | null> {
   resetAutoClearTimer()
+
+  // Second consumer for the same envelope (live WS + history reload share
+  // one session): serve from memory instead of advancing the chain twice.
+  const cacheKey = msgId ? `${chatId}:${msgId}` : null
+  if (cacheKey) {
+    const cached = decryptedCache.get(cacheKey)
+    if (cached !== undefined) return cached
+  }
 
   try {
     const ratchetEnvelope: RatchetEnvelope = JSON.parse(envelope.ciphertext)
@@ -665,9 +726,20 @@ export async function decryptMessage(
       console.warn("[E2E] REJECTED message: signature verification failed")
       return null
     }
+    if (cacheKey) decryptedCache.set(cacheKey, plaintext)
     return plaintext
   } catch (err) {
-    console.warn("[E2E] decryptMessage failed:", err)
+    const msg = err instanceof Error ? err.message : String(err)
+    if (/Decryption failed|Associated data mismatch/.test(msg)) {
+      // Likely stale session (peer re-registered/rotated, or a fallback
+      // session built from a 404 bundle). Drop it so the next message
+      // re-handshakes from a fresh bundle instead of failing forever.
+      // "in the past"/replay errors are duplicates — session itself is fine.
+      console.warn("[E2E] dropping stale session for chat", chatId, "after:", msg)
+      removeSession(chatId)
+    } else {
+      console.warn("[E2E] decryptMessage failed:", err)
+    }
     return null
   }
 }
@@ -794,6 +866,7 @@ export async function initSecureStorage(): Promise<{
   onAutoClear(() => {
     console.warn("[E2E] Auto-clearing session cache due to inactivity")
     sessionCache.clear()
+    clearDecryptedCache()
   })
 
   // Load sessions
@@ -809,5 +882,6 @@ export async function logout(): Promise<void> {
   cancelAutoClear()
   sessionCache.clear()
   sessionPeers.clear()
+  clearDecryptedCache()
   await clearSessionsSecure()
 }

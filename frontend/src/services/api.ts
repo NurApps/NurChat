@@ -336,6 +336,10 @@ export const api = {
   uploadSignedPrekey: (publicKey: string, signature: string) =>
     request<{ status: string }>("POST", `/api/keys/signed-prekey?public_key=${encodeURIComponent(publicKey)}&signature=${encodeURIComponent(signature)}`),
 
+  // Side-effect-free SPK check (unlike getBundle, does NOT claim an OPK).
+  getSignedPrekey: (userId: string) =>
+    request<{ public_key: string; signature: string }>("GET", `/api/keys/signed-prekey/${userId}`),
+
   uploadOneTimePrekeys: (publicKeys: string[]) =>
     request<{ count: number }>("POST", "/api/keys/one-time", { public_keys: publicKeys }),
 

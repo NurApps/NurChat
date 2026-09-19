@@ -60,7 +60,7 @@ export default function MobileChatPage() {
           const plain = await decryptGroupMessageRatcheted(envelope.group_encrypted, groupKey, chatObj.id);
           out.push({ ...msg, content: plain || '[не удалось расшифровать]' });
         } else if (peer?.public_key && !envelope.group_encrypted) {
-          const plain = await decryptMessage(envelope, keys, peer.public_key, chatObj.id);
+          const plain = await decryptMessage(envelope, keys, peer.public_key, chatObj.id, msg.id);
           out.push({ ...msg, content: plain || '[не удалось расшифровать]' });
         } else {
           out.push(msg);

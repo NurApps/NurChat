@@ -12,7 +12,7 @@ import { useChatTyping } from "../hooks/useChatTyping"
 import { useMobile } from "../hooks/useMobile"
 import OfflineBanner from "../components/OfflineBanner"
 import { BottomTabs } from "../components/mobile/BottomTabs"
-import { loadKeys as loadE2EKeys, decryptMessage, type E2EKeys } from "../services/e2e"
+import { loadKeys as loadE2EKeys, decryptMessage, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
 import { initGroupKey, fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications } from "../services/notifications"
@@ -158,6 +158,7 @@ export default function ChatPage() {
             if (peer?.public_key) {
               const plain = await decryptMessage(
                 envelope, e2eKeys, peer.public_key, selectedChat.id,
+                (data.id ?? data.message_id) as string | undefined,
               )
               if (plain) data.content = plain
             }
@@ -226,10 +227,20 @@ export default function ChatPage() {
     return () => { alive = false; clearInterval(t); window.removeEventListener("online", onOnline) }
   }, [])
 
-  // Load E2E keys asynchronously
+  // Load E2E keys asynchronously + self-heal server-side SPK (a local SPK
+  // with no server copy means every new contact gets bundle 404).
   useEffect(() => {
-    loadE2EKeys().then(setE2eKeys).catch(() => setE2eKeys(null))
-  }, [])
+    loadE2EKeys()
+      .then((keys) => {
+        setE2eKeys(keys)
+        if (keys && currentUser?.id) {
+          ensurePreKeysUploaded(keys, currentUser.id).catch((e) =>
+            console.warn("[E2E] ensurePreKeys failed:", e),
+          )
+        }
+      })
+      .catch(() => setE2eKeys(null))
+  }, [currentUser])
 
   useEffect(() => {
     loadChats()

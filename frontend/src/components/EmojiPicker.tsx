@@ -652,9 +652,9 @@ export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
               >
                 <div className="emoji-category-title">{cat.name}</div>
                 <div className="emoji-grid">
-                  {cat.emojis.map((emoji) => (
+                  {cat.emojis.map((emoji, idx) => (
                     <button
-                      key={`${cat.name}-${emoji}`}
+                      key={`${cat.name}-${emoji}-${idx}`}
                       className="emoji-btn"
                       onClick={() => handleSelect(emoji)}
                       title={emoji}

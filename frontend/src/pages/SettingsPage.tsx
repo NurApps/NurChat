@@ -325,9 +325,10 @@ export default function SettingsPage() {
     } else {
       setRelayConfig({ host, protocol: relayProtocol })
     }
-    setRelaySaved(true)
-    setTimeout(() => setRelaySaved(false), 3000)
-    setMsg(t("settings.relaySaved"))
+    // BASE_URL/WS_BASE are frozen at module load — a relay switch only takes
+    // effect after reload (same as ServerBootOverlay). Sessions/tokens belong
+    // to one relay anyway, so a fresh boot on the new host is correct.
+    window.location.reload()
   }
 
   const handleLogout = () => {

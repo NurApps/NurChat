@@ -105,9 +105,12 @@ export function resetRelayConfig() {
 }
 
 // Mutable module state — updated by resolution below.
-let apiHost = import.meta.env.VITE_API_HOST || DEFAULT_API_HOST
-let apiProtocol: "http" | "https" =
-  import.meta.env.VITE_API_PROTOCOL === "https" ? "https" : "http"
+// IMPORTANT: seed from getRelayConfig() (env + saved localStorage override),
+// not from env alone — otherwise a relay picked in ServerBootOverlay/Settings
+// is forgotten on every reload and the app loops on 127.0.0.1:8000 forever.
+const _initialRelay = getRelayConfig()
+let apiHost = _initialRelay.host
+let apiProtocol: "http" | "https" = _initialRelay.protocol
 
 export function getApiHost(): string { return apiHost }
 export function getApiProtocol(): "http" | "https" { return apiProtocol }

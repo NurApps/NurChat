@@ -22,7 +22,6 @@ select = ["E", "F", "W", "I", "N", "UP"]
 "shared/double_ratchet.py" = ["N806"]
 "server/ws/signaling.py" = ["E501"]
 "alembic/**" = ["E402", "E501"]
-"p2pchat/**" = ["E501"]
 "test/**" = ["E402", "E501"]
 
 [tool.ruff.format]
@@ -43,7 +42,6 @@ exclude = [
     "alembic[\\\\/]",
     "tools[\\\\/]",
     "additional_scripts[\\\\/]",
-    "p2pchat[\\\\/]",
     "server[\\\\/]ws[\\\\/]",
     "server[\\\\/]middleware[\\\\/]",
     "server[\\\\/]utils[\\\\/]file_cleanup[\\\\/]*.py",

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import secrets
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -24,7 +25,7 @@ def _get_or_generate_vapid_keys() -> dict:
     """Load or generate VAPID keypair."""
     if os.path.exists(_vapid_keys_path):
         with open(_vapid_keys_path) as f:
-            return json.load(f)
+            return dict(json.load(f))
 
     from py_vapid import Vapid
     vapid = Vapid()
@@ -55,7 +56,7 @@ def _public_key_to_base64url(public_key) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def _load_vapid() -> "object":
+def _load_vapid() -> Any:
     """Load a Vapid instance from env key or generated key file."""
     from py_vapid import Vapid
 
@@ -78,7 +79,7 @@ def _get_vapid_private_key() -> str:
     if settings.VAPID_PRIVATE_KEY:
         return settings.VAPID_PRIVATE_KEY
     keys = _get_or_generate_vapid_keys()
-    return keys["private_key"]
+    return str(keys["private_key"])
 
 
 class PushSubscriptionRequest(BaseModel):

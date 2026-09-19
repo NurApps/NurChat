@@ -64,11 +64,6 @@ def setup_logger():
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
 
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-
     use_json = not settings.DEBUG
     formatter: logging.Formatter = JSONFormatter() if use_json else HumanFormatter()
 

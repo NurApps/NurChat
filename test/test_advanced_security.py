@@ -212,13 +212,15 @@ class TestRandomness:
             values.add(value)
 
     def test_random_uniformity(self):
+        # 1M samples: at ±20% bounds this is ±12σ per bin (flake ~1e-36),
+        # while 100k samples was ±4σ (flake ~2% per run — CI noise).
         counts = [0] * 256
-        for _ in range(100000):
+        for _ in range(1000000):
             byte = secrets.token_bytes(1)[0]
             counts[byte] += 1
 
         # Each byte value should appear roughly equally
-        expected = 100000 / 256
+        expected = 1000000 / 256
         for count in counts:
             assert expected * 0.8 < count < expected * 1.2
 

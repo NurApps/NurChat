@@ -21,6 +21,8 @@ describe("plaintextCache", () => {
     expect(loadPlaintextCache()).toEqual({})
   })
 
+  // 2100 full parse+stringify cycles: fast in real browsers, slow under
+  // jsdom — hence the extended timeout (not a prod perf problem).
   it("prunes oldest entries past the cap", () => {
     for (let i = 0; i < 2100; i++) savePlaintext(`msg_${i}`, `t${i}`)
     const cache = loadPlaintextCache()
@@ -29,5 +31,5 @@ describe("plaintextCache", () => {
     expect(cache["msg_2099"]).toBe("t2099")
     // oldest evicted
     expect(cache["msg_0"]).toBeUndefined()
-  })
+  }, 30000)
 })

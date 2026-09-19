@@ -83,7 +83,7 @@ Tauri (Rust shell) ── wraps ──> React frontend ── HTTP/WS ──> Fa
 13. **Сессии — в IndexedDB (`nurchat-secure`), НЕ в localStorage.** AES-256-GCM, PBKDF2 100k, автоочистка кэша через 10 мин неактивности.
 14. **Onboarding wizard.** 4 шага, гасится `localStorage.onboarding_seen`.
 15. **ErrorBoundary.** Ловит ошибки рендера React, показывает страницу с кнопкой reload.
-16. **P2P НЕ возвращать.** TCP-нода (`src-tauri/src/p2p.rs`), LAN discovery, `nurchat://`, `USE_P2P` — удалены как нерабочие. Остатки: `p2pchat/` (прототип, не импортируется), таблицы `p2p_*` в миграции 001 (история), `src-tauri/src/ipfs.rs` (мёртвый импорт). Рабочий P2P остался только в WebRTC-медиа звонков.
+16. **P2P НЕ возвращать.** TCP-нода (`src-tauri/src/p2p.rs`), LAN discovery, `nurchat://`, `USE_P2P`, прототип `p2pchat/` — удалены как нерабочие. Остатки: таблицы `p2p_*` в миграции 001 (история), `src-tauri/src/ipfs.rs` (мёртвый импорт). Рабочий P2P остался только в WebRTC-медиа звонков.
 17. **Свои сообщения не расшифровывать.** Double Ratchet: sending ≠ receiving, свои из истории нечитаемы криптографически. `decryptMessages`/`handleWsMessage` свои скипают, текст — из `plaintextCache.ts`. Чужие в кэш не писать.
 18. **Звонок: `call-join` авто-принимает.** `call_accept` по chat WS гоняется с навигацией на CallPage и может потеряться — `_handle_call_join` принимает RINGING-звонок от callee сам (`test/test_call_join_accept.py`). Промах join/accept логируется (`call-join for unknown call`, `call-accept rejected`). `CallPage`: `connectedRef` сбрасывается в cleanup (StrictMode-remount), `cleanup()` гасит `onclose` до `close()` (иначе ghost-reconnect).
 

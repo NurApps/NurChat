@@ -95,6 +95,12 @@ app.add_middleware(
         "/api/auth/captcha",
         "/api/auth/login",
         "/api/auth/register",
+        # /api/files/upload осознанно exempt: <img>/<audio>/<video> и
+        # прямые ссылки не могут ставить X-CSRF-Token, а скачивание идёт
+        # через Blob URL после fetch. Компенсация: обязательный валидный
+        # JWT (query ?token=), проверка sub == user_id, MIME по magic-bytes,
+        # блок активного контента, лимит 30/мин. Токен в логах не светится
+        # (--no-access-log во всех лаунчерах).
         "/api/files/upload",
     ],
 )

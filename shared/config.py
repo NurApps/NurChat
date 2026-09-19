@@ -1,5 +1,6 @@
 import secrets
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -108,8 +109,10 @@ class Settings(BaseSettings):
     # USE_IPFS/IPFS_API_URL, USE_FEDERATED_BACKUP/FEDERATED_BACKUP_URL
     # (grep: ни одно место кода их не читало).
 
-    # Federation (server-to-server)
-    USE_FEDERATION: bool = True
+    # Federation (server-to-server). OFF by default until federation is
+    # ready: with an empty FEDERATION_ALLOWED_SERVERS whitelist "on" would
+    # mean "federate with anyone". Enable explicitly per relay.
+    USE_FEDERATION: bool = False
     FEDERATION_SERVER_NAME: str = ""  # Public server address, e.g. "nurchat.example.com:8000"
     FEDERATION_SERVER_KEY_PATH: str = "federation_keys.json"
     FEDERATION_ACTIVITY_TTL_HOURS: int = 72
@@ -305,10 +308,10 @@ if _env_written:
 
 _keys_file = Path(__file__).resolve().parent.parent / ".env"
 
-def _ensure_key(name: str, value: str, generator) -> str:
+def _ensure_key(name: str, value: str, generator: Callable[[], str]) -> str:
     if value:
         return value
-    generated = generator()
+    generated: str = generator()
     try:
         existing = _keys_file.read_text(encoding="utf-8") if _keys_file.exists() else ""
         if name not in existing:

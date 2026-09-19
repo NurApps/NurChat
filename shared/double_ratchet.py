@@ -201,6 +201,8 @@ class DoubleRatchetSession:
         if not self._dh_fresh:
             ratchet_private = PrivateKey.generate()
         else:
+            if self.DHs is None:
+                raise ValueError("DH ratchet marked fresh but DHs is missing")
             ratchet_private = self.DHs
         dh_shared = Box(ratchet_private, self.DHr).shared_key()
         derived = hkdf(self.RK, dh_shared, b"DoubleRatchet_Ratchet", 64)

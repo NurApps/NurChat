@@ -816,24 +816,6 @@ export function decryptGroupMessage(
   }
 }
 
-// ─── Key Rotation ───
-
-export async function rotateE2EKeys(): Promise<E2EKeys> {
-  await clearSessions()
-  const boxKp = boxKeyPair()
-  const signKp = signKeyPair()
-  const newKeys: E2EKeys = {
-    privateKeyHex: bytesToHex(boxKp.secretKey),
-    publicKeyHex: bytesToHex(boxKp.publicKey),
-    signingPrivateHex: bytesToHex(signKp.secretKey),
-    signingPublicHex: bytesToHex(signKp.publicKey),
-  }
-  zeroize(boxKp.secretKey)
-  zeroize(signKp.secretKey)
-  await saveKeys(newKeys)
-  return newKeys
-}
-
 export function isE2EEnabled(
   participants: Array<{ id: string; public_key?: string }>,
   myKeys: E2EKeys | null,

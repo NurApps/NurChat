@@ -30,8 +30,8 @@ jobs:
       - name: Lint
         run: ruff check . --ignore E501
       - name: Typecheck
+        # Strict since 2026-09: mypy is clean (0 errors), failures must break CI.
         run: mypy server shared --ignore-missing-imports
-        continue-on-error: true
       - name: Run tests
         run: pytest test/ -q --timeout=60 --ignore=test/load_test_websocket.py --ignore=test/load_test_ws.py
         env:

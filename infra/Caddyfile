@@ -5,14 +5,10 @@
 }
 
 {$DOMAIN:relay.nurchat.app} {
-	reverse_proxy nurchat:8000
-
-	# Long-lived WebSocket connections
-	@ws {
-		header Connection *Upgrade*
-		header Upgrade websocket
-	}
-	reverse_proxy @ws nurchat:8000 {
+	# Single block: Caddy upgrades websockets transparently, no separate
+	# @ws matcher needed (a second unconditional reverse_proxy would shadow
+	# it anyway — only the first handler ever fires).
+	reverse_proxy nurchat:8000 {
 		header_up Host {host}
 		header_up X-Real-IP {remote}
 	}

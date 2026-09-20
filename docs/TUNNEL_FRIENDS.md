@@ -30,6 +30,14 @@ cloudflared --version
 cloudflared tunnel --url http://localhost:8000
 ```
 
+Если у друга рвётся соединение, хотя URL живой (таймауты, обрывы каждые
+пару минут): у него может быть порезан UDP/QUIC. Лечится одним флагом —
+переключить транспорт туннеля на HTTP/2:
+
+```powershell
+cloudflared tunnel --protocol http2 --url http://localhost:8000
+```
+
 Вывод содержит:
 ```
 https://xxxx-yyy-zzz.trycloudflare.com

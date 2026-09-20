@@ -50,7 +50,7 @@ const TabIcons = {
 
 export default function SettingsPage() {
   const navigate = useNavigate()
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
   const [user, setUser] = useState<UserResponse | null>(null)
   const [firstName, setFirstName] = useState("")
@@ -59,7 +59,8 @@ export default function SettingsPage() {
   const [bio, setBio] = useState("")
   const [saving, setSaving] = useState(false)
   const [tab, setTab] = useState<SettingsTab>("profile")
-  const { uploading, msg, setMsg, uploadAvatar, deleteAvatar } = useAvatar(setUser)
+  const { uploading, msg, msgKind, setMsg, uploadAvatar, deleteAvatar } = useAvatar(setUser)
+  const [lang, setLang] = useState(i18n.language)
   const [appVersion, setAppVersion] = useState("")
   const [updateStatus, setUpdateStatus] = useState<"checking" | "available" | "latest" | "error" | "">("")
   const [updateUrl, setUpdateUrl] = useState("")
@@ -462,7 +463,7 @@ export default function SettingsPage() {
                 <textarea className="settings-textarea" rows={3} placeholder={t("settings.bioPlaceholder")} value={bio} onChange={(e) => setBio(e.target.value)} />
               </div>
 
-              {msg && <p className={`settings-msg ${msg === t("settings.saved") ? "ok" : "err"}`}>{msg}</p>}
+              {msg && <p className={`settings-msg ${msgKind ? (msgKind === "err" ? "err" : "ok") : (msg === t("settings.saved") ? "ok" : "err")}`}>{msg}</p>}
 
               <button className="settings-save-btn" disabled={saving} onClick={handleSave}>
                 {saving ? t("settings.saving") : t("common.save")}
@@ -486,6 +487,29 @@ export default function SettingsPage() {
                       }}
                     >
                       {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="settings-group" style={{ marginTop: 24 }}>
+                <h3 className="settings-group-title">{t("settings.language")}</h3>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  {(["ru", "en"] as const).map((lng) => (
+                    <button
+                      key={lng}
+                      className={`settings-tab ${lang === lng ? "active" : ""}`}
+                      onClick={() => { i18n.changeLanguage(lng); setLang(lng) }}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        border: lang === lng ? "2px solid var(--accent)" : "2px solid transparent",
+                        background: lang === lng ? "var(--surface-variant)" : "var(--card-bg)",
+                        cursor: "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      {lng === "ru" ? "Русский" : "English"}
                     </button>
                   ))}
                 </div>
@@ -553,7 +577,7 @@ export default function SettingsPage() {
                     <div className="settings-storage-bar">
                       <div className="settings-storage-fill" style={{ width: `${Math.min(100, (storageInfo.total / (1024 * 1024 * 100)) * 100)}%` }} />
                     </div>
-                    <p>{formatSize(storageInfo.total)} {t("settings.used")} · {storageInfo.files} {t("settings.filesCount")}</p>
+                    <p>{formatSize(storageInfo.total)} {t("settings.used")} · {t("settings.filesCount", { count: storageInfo.files })}</p>
                   </div>
                 ) : (
                   <p className="settings-info-text">{t("settings.loadingInfo")}</p>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { avatarUrl } from "../config"
 import { useAvatar } from "../hooks/useAvatar"
@@ -7,10 +8,11 @@ import { formatDateShort } from "../utils/format"
 import type { UserResponse } from "../types"
 
 export default function ProfilePage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
   const [user, setUser] = useState<UserResponse | null>(null)
-  const { uploading, msg, uploadAvatar, deleteAvatar } = useAvatar(setUser)
+  const { uploading, msg, msgKind, uploadAvatar, deleteAvatar } = useAvatar(setUser)
 
   useEffect(() => {
     api.getCurrentUser()
@@ -30,7 +32,7 @@ export default function ProfilePage() {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h2>Профиль</h2>
+        <h2>{t("profile.title")}</h2>
       </div>
 
       <div className="settings-body">
@@ -48,11 +50,11 @@ export default function ProfilePage() {
           </div>
           <div className="avatar-actions">
             <button className="avatar-btn" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              {uploading ? "..." : "Сменить аватар"}
+              {uploading ? "..." : t("profile.changeAvatar")}
             </button>
             {user.avatar_path && (
               <button className="avatar-btn danger" onClick={deleteAvatar} disabled={uploading}>
-                Удалить
+                {t("profile.removeAvatar")}
               </button>
             )}
           </div>
@@ -64,31 +66,31 @@ export default function ProfilePage() {
 
         <div className="settings-fields">
           <div className="profile-field">
-            <span className="profile-field-label">Имя</span>
+            <span className="profile-field-label">{t("profile.firstName")}</span>
             <span className="profile-field-value">{user.first_name || "—"}</span>
           </div>
           <div className="profile-field">
-            <span className="profile-field-label">Фамилия</span>
+            <span className="profile-field-label">{t("profile.lastName")}</span>
             <span className="profile-field-value">{user.last_name || "—"}</span>
           </div>
           <div className="profile-field">
-            <span className="profile-field-label">Статус</span>
+            <span className="profile-field-label">{t("profile.status")}</span>
             <span className="profile-field-value">{user.status || "—"}</span>
           </div>
           <div className="profile-field">
-            <span className="profile-field-label">О себе</span>
+            <span className="profile-field-label">{t("profile.bio")}</span>
             <span className="profile-field-value">{user.bio || "—"}</span>
           </div>
           <div className="profile-field">
-            <span className="profile-field-label">Дата регистрации</span>
+            <span className="profile-field-label">{t("profile.registeredAt")}</span>
             <span className="profile-field-value">{user.created_at ? formatDateShort(user.created_at) : "—"}</span>
           </div>
         </div>
 
-        {msg && <p className={`settings-msg ${msg.startsWith("Ошиб") ? "err" : "ok"}`}>{msg}</p>}
+        {msg && <p className={`settings-msg ${msgKind === "err" ? "err" : "ok"}`}>{msg}</p>}
 
         <button className="settings-save-btn" onClick={() => navigate("/settings")}>
-          Редактировать профиль
+          {t("profile.editProfile")}
         </button>
       </div>
     </div>

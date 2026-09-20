@@ -1,15 +1,25 @@
 import { useState, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { BASE_URL } from "../config"
 import { csrfHeader } from "../services/api"
 import type { UserResponse } from "../types"
 
 export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
+  const { t } = useTranslation()
   const [uploading, setUploading] = useState(false)
-  const [msg, setMsg] = useState("")
+  const [msg, _setMsg] = useState("")
+  const [msgKind, setMsgKind] = useState<"ok" | "err" | "">("")
+
+  // Direct setMsg calls (settings flows) reset kind to neutral — the page
+  // falls back to its legacy rule. Avatar flows use setOk/setErr instead.
+  const setMsg = (m: string) => { _setMsg(m); setMsgKind("") }
+  const setOk = (m: string) => { _setMsg(m); setMsgKind("ok") }
+  const setErr = (m: string) => { _setMsg(m); setMsgKind("err") }
 
   const uploadAvatar = useCallback(async (file: File) => {
     setUploading(true)
     setMsg("")
+    setMsgKind("")
     try {
       const token = localStorage.getItem("token")
       const form = new FormData()
@@ -26,17 +36,18 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
       const updated: UserResponse = await res.json()
       localStorage.setItem("user", JSON.stringify(updated))
       onUserUpdate?.(updated)
-      setMsg("Аватар обновлён")
+      setOk(t("profile.avatarUpdated"))
     } catch (e: any) {
-      setMsg(e.message || "Ошибка загрузки")
+      setErr(e.message || t("profile.avatarUploadError"))
     } finally {
       setUploading(false)
     }
-  }, [onUserUpdate])
+  }, [onUserUpdate, t])
 
   const deleteAvatar = useCallback(async () => {
     setUploading(true)
     setMsg("")
+    setMsgKind("")
     try {
       const token = localStorage.getItem("token")
       const res = await fetch(`${BASE_URL}/api/auth/profile/avatar`, {
@@ -50,13 +61,13 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
       const updated: UserResponse = await res.json()
       localStorage.setItem("user", JSON.stringify(updated))
       onUserUpdate?.(updated)
-      setMsg("Аватар удалён")
+      setOk(t("profile.avatarDeleted"))
     } catch (e: any) {
-      setMsg(e.message || "Ошибка удаления")
+      setErr(e.message || t("profile.avatarDeleteError"))
     } finally {
       setUploading(false)
     }
-  }, [onUserUpdate])
+  }, [onUserUpdate, t])
 
-  return { uploading, msg, setMsg, uploadAvatar, deleteAvatar }
+  return { uploading, msg, msgKind, setMsg, uploadAvatar, deleteAvatar }
 }

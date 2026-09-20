@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { lazy, Suspense, useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { ThemeProvider } from "./context/ThemeContext"
 import AuthGuard from "./components/AuthGuard"
 import ServerBootOverlay from "./components/ServerBootOverlay"
@@ -32,6 +33,7 @@ function PageLoader() {
 }
 
 function App() {
+  const { t } = useTranslation()
   const [serverReady, setServerReady] = useState(false)
   const { isMobile } = useMobile()
 
@@ -67,7 +69,7 @@ function App() {
   return (
     <ThemeProvider>
       <ErrorBoundary>
-        <a href="#main-content" className="skip-link">Перейти к основному содержимому</a>
+        <a href="#main-content" className="skip-link">{t("common.skipToContent")}</a>
         <Onboarding />
         <UpdateBanner />
         {!serverReady && <ServerBootOverlay onReady={() => setServerReady(true)} />}

@@ -31,14 +31,14 @@ export default function UserProfileModal({ user, onClose }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [showSafetyNumber, setShowSafetyNumber] = useState(false)
-  const name = user.first_name || user.username || "Пользователь"
+  const name = user.first_name || user.username || t("profile.unknownUser")
   const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username
   const avatarChar = name[0]?.toUpperCase() || "?"
   const avatarColor = getAvatarColor(name)
   const avatar = avatarUrl(user.avatar_path)
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Профиль пользователя" onClick={onClose}>
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={t("profile.userProfile")} onClick={onClose}>
       <div className="user-profile-modal" onClick={(e) => e.stopPropagation()}>
         <div className="upm-header">
           <button className="upm-close" onClick={onClose}>

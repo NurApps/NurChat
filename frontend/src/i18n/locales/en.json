@@ -31,7 +31,11 @@
     "add": "Add",
     "offlineMode": "Offline mode — messages will be sent when connected",
     "backOnline": "Connection restored",
-    "syncing": "Syncing ({{count}} messages)..."
+    "skipToContent": "Skip to main content",
+    "syncing_one": "Syncing ({{count}} message)...",
+    "syncing_few": "Syncing ({{count}} message)...",
+    "syncing_many": "Syncing ({{count}} messages)...",
+    "syncing_other": "Syncing ({{count}} messages)..."
   },
   "auth": {
     "login": "Sign In",
@@ -192,7 +196,12 @@
     "fromUser": "From {{username}}",
     "accept": "Accept",
     "decline": "Decline",
-    "uploaded": "Uploaded"
+    "uploaded": "Uploaded",
+    "selectChat": "Select a chat",
+    "selectChatHint": "Start chatting by selecting a chat from the list",
+    "secretChatOption": "Secret chat",
+    "disappearAfter": "Messages disappear after:",
+    "ephemeral15m": "15 minutes"
   },
   "contacts": {
     "addContact": "Add Contact",
@@ -269,7 +278,13 @@
     "unmute": "Unmute",
     "hangup": "End call",
     "startVideo": "Turn on camera",
-    "stopVideo": "Turn off camera"
+    "stopVideo": "Turn off camera",
+    "history": "Call history",
+    "empty": "No calls",
+    "missedShort": "Missed",
+    "videoShort": "Video",
+    "audioShort": "Audio",
+    "unknown": "Unknown"
   },
   "settings": {
     "title": "Settings",
@@ -308,7 +323,6 @@
     "manageBlocking": "Manage blocking",
     "usage": "Usage",
     "used": "used",
-    "filesCount": "files",
     "loadingInfo": "Loading info...",
     "management": "Management",
     "autoDelete": "Files older than 30 days are automatically deleted.",
@@ -393,7 +407,11 @@
     "status": "Status",
     "statusPlaceholder": "e.g.: online, busy...",
     "bioPlaceholder": "Tell about yourself...",
-    "clearCache": "Clear cache"
+    "clearCache": "Clear cache",
+    "filesCount_one": "{{count}} file",
+    "filesCount_few": "{{count}} file",
+    "filesCount_many": "{{count}} files",
+    "filesCount_other": "{{count}} files"
   },
   "profile": {
     "title": "Profile",
@@ -402,7 +420,16 @@
     "bio": "Bio",
     "changeAvatar": "Change Avatar",
     "removeAvatar": "Remove Avatar",
-    "keyVerification": "Key Verification"
+    "keyVerification": "Key Verification",
+    "status": "Status",
+    "registeredAt": "Registered",
+    "editProfile": "Edit profile",
+    "avatarUpdated": "Avatar updated",
+    "avatarUploadError": "Upload failed",
+    "avatarDeleted": "Avatar deleted",
+    "avatarDeleteError": "Delete failed",
+    "userProfile": "User profile",
+    "unknownUser": "User"
   },
   "errors": {
     "general": "Something went wrong",
@@ -458,8 +485,11 @@
   },
   "pinLock": {
     "enterPin": "Enter PIN code",
-    "wrongPin": "Wrong PIN. Attempts left: {{count}}",
-    "locked": "Locked {{time}}"
+    "locked": "Locked {{time}}",
+    "wrongPin_one": "Wrong PIN. {{count}} attempt left",
+    "wrongPin_few": "Wrong PIN. {{count}} attempt left",
+    "wrongPin_many": "Wrong PIN. {{count}} attempts left",
+    "wrongPin_other": "Wrong PIN. {{count}} attempts left"
   },
   "safetyNumber": {
     "compare": "Compare this code with {{username}}. If codes match — E2E encryption is verified.",
@@ -470,15 +500,23 @@
     "pasteCode": "Paste peer's code...",
     "verify": "Verify",
     "codesMatch": "✓ Codes match — keys verified",
-    "codesDontMatch": "✗ Codes don't match — keys may have changed"
+    "codesDontMatch": "✗ Codes don't match — keys may have changed",
+    "title": "Safety Number",
+    "description": "Compare this code with {{username}} to verify identity. If the codes match, encryption is working correctly.",
+    "keysNotFound": "Keys not found",
+    "identityMissing": "Identity key not found",
+    "generateError": "Safety Number generation failed"
   },
   "messageInfo": {
     "title": "Message Info",
     "messageId": "Message ID",
     "readBy": "Read by",
-    "readByCount": "{{count}} of {{total}} participants",
     "encrypted": "Encrypted",
-    "endToEnd": "✓ End-to-End encryption"
+    "endToEnd": "✓ End-to-End encryption",
+    "readByCount_one": "{{count}} of {{total}} participant",
+    "readByCount_few": "{{count}} of {{total}} participant",
+    "readByCount_many": "{{count}} of {{total}} participants",
+    "readByCount_other": "{{count}} of {{total}} participants"
   },
   "invite": {
     "description": "Copy the link and send it to a friend any way you like:"
@@ -510,12 +548,15 @@
   "group": {
     "name": "Group name",
     "clickToChange": "Click to change",
-    "members": "Members ({{count}})",
     "you": "(You)",
     "admin": "Admin",
     "leaveGroup": "Leave group",
     "addMember": "Add member",
-    "noUsers": "No users to add"
+    "noUsers": "No users to add",
+    "members_one": "{{count}} member",
+    "members_few": "{{count}} member",
+    "members_many": "{{count}} members",
+    "members_other": "{{count}} members"
   },
   "userProfile": {
     "wasOnline": "{{time}} ago",

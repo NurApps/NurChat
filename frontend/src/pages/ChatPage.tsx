@@ -815,7 +815,7 @@ export default function ChatPage() {
                     <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
                   </svg>
                   <span>{keyWarning}</span>
-                  <button onClick={() => setKeyWarning(null)} style={{ marginLeft: "auto", background: "none", border: "none", color: "#ff9800", cursor: "pointer", padding: 4 }}>Г—</button>
+                  <button onClick={() => setKeyWarning(null)} style={{ marginLeft: "auto", background: "none", border: "none", color: "#ff9800", cursor: "pointer", padding: 4 }}>×</button>
                 </div>
               )}
 

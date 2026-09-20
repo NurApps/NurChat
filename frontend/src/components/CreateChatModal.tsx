@@ -146,18 +146,18 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
             <div className="secret-chat-option">
               <label className="secret-toggle">
                 <input type="checkbox" checked={isSecret} onChange={(e) => setIsSecret(e.target.checked)} />
-                <span className="secret-toggle-label">Секретный чат</span>
+                <span className="secret-toggle-label">{t("chat.secretChatOption")}</span>
               </label>
               {isSecret && (
                 <div className="secret-ttl-row">
-                  <span>Сообщения исчезают через:</span>
+                  <span>{t("chat.disappearAfter")}</span>
                   <select value={secretTtl} onChange={(e) => setSecretTtl(Number(e.target.value))}>
-                    <option value={10}>10 сек</option>
-                    <option value={30}>30 сек</option>
-                    <option value={60}>1 мин</option>
-                    <option value={300}>5 мин</option>
-                    <option value={900}>15 мин</option>
-                    <option value={3600}>1 час</option>
+                    <option value={10}>{t("chat.ephemeral10s")}</option>
+                    <option value={30}>{t("chat.ephemeral30s")}</option>
+                    <option value={60}>{t("chat.ephemeral1m")}</option>
+                    <option value={300}>{t("chat.ephemeral5m")}</option>
+                    <option value={900}>{t("chat.ephemeral15m")}</option>
+                    <option value={3600}>{t("chat.ephemeral1h")}</option>
                   </select>
                 </div>
               )}

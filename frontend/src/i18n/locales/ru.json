@@ -31,7 +31,11 @@
     "add": "Добавить",
     "offlineMode": "Офлайн режим — сообщения будут отправлены при подключении",
     "backOnline": "Подключение восстановлено",
-    "syncing": "Синхронизация ({{count}} сообщений)..."
+    "skipToContent": "Перейти к основному содержимому",
+    "syncing_one": "Синхронизация ({{count}} сообщение)...",
+    "syncing_few": "Синхронизация ({{count}} сообщения)...",
+    "syncing_many": "Синхронизация ({{count}} сообщений)...",
+    "syncing_other": "Синхронизация ({{count}} сообщений)..."
   },
   "auth": {
     "login": "Войти",
@@ -192,7 +196,12 @@
     "fromUser": "От {{username}}",
     "accept": "Принять",
     "decline": "Отклонить",
-    "uploaded": "Загружено"
+    "uploaded": "Загружено",
+    "selectChat": "Выберите чат",
+    "selectChatHint": "Начните общение, выбрав чат из списка",
+    "secretChatOption": "Секретный чат",
+    "disappearAfter": "Сообщения исчезают через:",
+    "ephemeral15m": "15 минут"
   },
   "contacts": {
     "addContact": "Добавить контакт",
@@ -269,7 +278,13 @@
     "unmute": "Включить микрофон",
     "hangup": "Завершить звонок",
     "startVideo": "Включить камеру",
-    "stopVideo": "Выключить камеру"
+    "stopVideo": "Выключить камеру",
+    "history": "История звонков",
+    "empty": "Нет звонков",
+    "missedShort": "Пропущенный",
+    "videoShort": "Видео",
+    "audioShort": "Аудио",
+    "unknown": "Неизвестный"
   },
   "settings": {
     "title": "Настройки",
@@ -308,7 +323,6 @@
     "manageBlocking": "Управление блокировками",
     "usage": "Использование",
     "used": "использовано",
-    "filesCount": "файлов",
     "loadingInfo": "Загрузка информации...",
     "management": "Управление",
     "autoDelete": "Файлы старше 30 дней автоматически удаляются.",
@@ -393,7 +407,11 @@
     "status": "Статус",
     "statusPlaceholder": "Например: в сети, занят...",
     "bioPlaceholder": "Расскажите о себе...",
-    "clearCache": "Очистить кэш"
+    "clearCache": "Очистить кэш",
+    "filesCount_one": "{{count}} файл",
+    "filesCount_few": "{{count}} файла",
+    "filesCount_many": "{{count}} файлов",
+    "filesCount_other": "{{count}} файлов"
   },
   "profile": {
     "title": "Профиль",
@@ -402,7 +420,16 @@
     "bio": "О себе",
     "changeAvatar": "Сменить аватар",
     "removeAvatar": "Удалить аватар",
-    "keyVerification": "Проверка ключей"
+    "keyVerification": "Проверка ключей",
+    "status": "Статус",
+    "registeredAt": "Дата регистрации",
+    "editProfile": "Редактировать профиль",
+    "avatarUpdated": "Аватар обновлён",
+    "avatarUploadError": "Ошибка загрузки",
+    "avatarDeleted": "Аватар удалён",
+    "avatarDeleteError": "Ошибка удаления",
+    "userProfile": "Профиль пользователя",
+    "unknownUser": "Пользователь"
   },
   "errors": {
     "general": "Произошла ошибка",
@@ -458,8 +485,11 @@
   },
   "pinLock": {
     "enterPin": "Введите PIN-код",
-    "wrongPin": "Неверный PIN. Осталось попыток: {{count}}",
-    "locked": "Блокировка {{time}}"
+    "locked": "Блокировка {{time}}",
+    "wrongPin_one": "Неверный PIN. Осталась {{count}} попытка",
+    "wrongPin_few": "Неверный PIN. Осталось {{count}} попытки",
+    "wrongPin_many": "Неверный PIN. Осталось {{count}} попыток",
+    "wrongPin_other": "Неверный PIN. Осталось {{count}} попыток"
   },
   "safetyNumber": {
     "compare": "Сравните этот код с {{username}}. Если коды совпадают — E2E шифрование подтверждено.",
@@ -470,15 +500,23 @@
     "pasteCode": "Вставьте код собеседника...",
     "verify": "Проверить",
     "codesMatch": "✓ Коды совпадают — ключи подтверждены",
-    "codesDontMatch": "✗ Коды не совпадают — возможно, ключи были изменены"
+    "codesDontMatch": "✗ Коды не совпадают — возможно, ключи были изменены",
+    "title": "Safety Number",
+    "description": "Сравните этот код с {{username}} для проверки личности. Если коды совпадают — шифрование работает правильно.",
+    "keysNotFound": "Ключи не найдены",
+    "identityMissing": "Identity ключ не найден",
+    "generateError": "Ошибка генерации Safety Number"
   },
   "messageInfo": {
     "title": "Информация о сообщении",
     "messageId": "ID сообщения",
     "readBy": "Прочитали",
-    "readByCount": "{{count}} из {{total}} участников",
     "encrypted": "Зашифровано",
-    "endToEnd": "✓ End-to-End шифрование"
+    "endToEnd": "✓ End-to-End шифрование",
+    "readByCount_one": "{{count}} из {{total}} прочитал",
+    "readByCount_few": "{{count}} из {{total}} прочитали",
+    "readByCount_many": "{{count}} из {{total}} прочитали",
+    "readByCount_other": "{{count}} из {{total}} прочитали"
   },
   "invite": {
     "description": "Скопируйте ссылку и отправьте другу любым способом:"
@@ -510,12 +548,15 @@
   "group": {
     "name": "Название группы",
     "clickToChange": "Нажмите, чтобы изменить",
-    "members": "Участники ({{count}})",
     "you": "(Вы)",
     "admin": "Админ",
     "leaveGroup": "Выйти из группы",
     "addMember": "Добавить участника",
-    "noUsers": "Нет пользователей для добавления"
+    "noUsers": "Нет пользователей для добавления",
+    "members_one": "{{count}} участник",
+    "members_few": "{{count}} участника",
+    "members_many": "{{count}} участников",
+    "members_other": "{{count}} участников"
   },
   "userProfile": {
     "wasOnline": "был(а) {{time}}",

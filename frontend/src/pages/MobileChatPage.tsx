@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { MobileMessageInput } from '../components/mobile/MobileMessageInput';
 import { SwipeableRow } from '../components/mobile/SwipeableRow';
 import { PullToRefresh } from '../components/mobile/PullToRefresh';
@@ -20,6 +21,7 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 export default function MobileChatPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { chatId } = useParams<{ chatId?: string }>();
   const [messages, setMessages] = useState<MessageResponse[]>([]);
@@ -171,8 +173,8 @@ export default function MobileChatPage() {
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           </div>
-          <h2>Выберите чат</h2>
-          <p>Начните общение, выбрав чат из списка</p>
+          <h2>{t("chat.selectChat")}</h2>
+          <p>{t("chat.selectChatHint")}</p>
         </div>
         <BottomTabs />
       </div>

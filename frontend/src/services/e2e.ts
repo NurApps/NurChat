@@ -51,11 +51,13 @@ import {
 } from "./secureStorage"
 
 // ─── Padding (hide plaintext length from relay) ───
-// Before encryption we pad to next 128B bucket: [4B BE len][plain][random tail].
-// Relay sees only bucketed ciphertext size. Decrypt tries to unpad; legacy
-// unpadded messages fall back to raw plaintext.
-const PAD_BLOCK = 128
-function padBytes(plain: Uint8Array): Uint8Array {
+// Before encryption we pad to the next 512B bucket: [4B BE len][plain][random tail].
+// Relay sees only bucketed ciphertext size ("да"/"нет" are indistinguishable
+// from a paragraph). Decrypt tries to unpad; pre-512 legacy 128B buckets and
+// unpadded messages fall back gracefully (see unpadBytes).
+const PAD_BLOCK = 512
+const LEGACY_PAD_BLOCK = 128
+export function padBytes(plain: Uint8Array): Uint8Array {
   const paddedLen = Math.ceil((plain.length + 4) / PAD_BLOCK) * PAD_BLOCK
   const out = new Uint8Array(paddedLen)
   new DataView(out.buffer).setUint32(0, plain.length, false)
@@ -67,8 +69,9 @@ function padBytes(plain: Uint8Array): Uint8Array {
   }
   return out
 }
-function unpadBytes(padded: Uint8Array): Uint8Array | null {
-  if (padded.length < 4 || padded.length % PAD_BLOCK !== 0) return null
+export function unpadBytes(padded: Uint8Array): Uint8Array | null {
+  if (padded.length < 4) return null
+  if (padded.length % PAD_BLOCK !== 0 && padded.length % LEGACY_PAD_BLOCK !== 0) return null
   const len = new DataView(padded.buffer, padded.byteOffset, 4).getUint32(0, false)
   if (len > padded.length - 4 || len > 8192) return null
   return padded.subarray(4, 4 + len)

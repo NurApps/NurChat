@@ -161,7 +161,26 @@ export default function CallPage() {
 
   const createPeerConnection = useCallback((isInitiator: boolean) => {
     if (pcRef.current) return pcRef.current
-    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current })
+    // WebRTC may be unavailable (old WebView2, locked-down browser, SSR):
+    // fail with a readable error instead of crashing call setup with
+    // "RTCPeerConnection is not a constructor".
+    if (typeof RTCPeerConnection === "undefined") {
+      console.error("[CALL] WebRTC unavailable in this browser")
+      setMediaError(t("call.mediaFailed"))
+      setStatus("failed")
+      statusRef.current = "failed"
+      return null
+    }
+    let pc: RTCPeerConnection
+    try {
+      pc = new RTCPeerConnection({ iceServers: iceServersRef.current })
+    } catch (err) {
+      console.error("[CALL] PC creation failed:", err)
+      setMediaError(t("call.mediaFailed"))
+      setStatus("failed")
+      statusRef.current = "failed"
+      return null
+    }
     pcRef.current = pc
 
     console.log("[CALL] PC created, isInitiator:", isInitiator)
@@ -417,7 +436,7 @@ export default function CallPage() {
 
           startMedia().then((stream) => {
             if (stream) {
-              createPeerConnection(false)
+              if (!createPeerConnection(false)) return
             }
           })
 
@@ -499,7 +518,7 @@ export default function CallPage() {
               const stream = await startMedia()
               if (!stream) return
 
-              createPeerConnection(false)
+              if (!createPeerConnection(false)) return
 
               ws.send(JSON.stringify({
                 type: "call-accept",
@@ -513,7 +532,7 @@ export default function CallPage() {
               ringingTimerRef.current = null
               const stream = await startMedia()
               if (!stream) return
-              createPeerConnection(true)
+              if (!createPeerConnection(true)) return
               break
             }
 

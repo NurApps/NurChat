@@ -483,24 +483,18 @@ export class DoubleRatchetSession {
   }
 
   /**
-   * Zeroize a Uint8Array buffer and release memory.
+   * Zeroize a Uint8Array buffer (overwrite with zeros).
+   *
+   * No transfer(0) detach by design — see secureStorage.zeroize: detaching
+   * shared/live buffers destroys session material and crashes serialize().
+   * Idempotent: safe to call twice on the same buffer.
    */
   private zeroizeBytes(buffer: Uint8Array | null): void {
     if (!buffer) return
     try {
       buffer.fill(0)
     } catch {
-      // Already detached (double-zeroize via concurrent encrypt calls) —
-      // bytes were wiped by the first pass, nothing left to do.
-      // Must not throw: zeroize runs inside encrypt/decrypt paths.
-      return
-    }
-    try {
-      if (buffer.buffer instanceof ArrayBuffer && typeof buffer.buffer.transfer === "function") {
-        buffer.buffer.transfer(0)
-      }
-    } catch {
-      // ignore transfer errors
+      // Already detached by legacy code — bytes were wiped by an earlier pass.
     }
   }
 

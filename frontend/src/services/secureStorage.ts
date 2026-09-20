@@ -176,29 +176,21 @@ async function decryptAtRest(encodedData: string): Promise<string> {
 // ─── Zeroize ───
 
 /**
- * Explicitly zeroes out a Uint8Array buffer and releases memory.
- * Steps:
- * 1. Overwrite with zeros (defense-in-depth against GC copying)
- * 2. Detach via transfer(0) to signal GC for immediate release
+ * Explicitly zeroes out a Uint8Array buffer.
  *
- * transfer(0) is Baseline 2024 — available in Chrome 117+, Firefox 128+, Safari 17.2+.
+ * Deliberately NO detach via transfer(0): detaching is unsound here because
+ * key buffers are routinely shared by reference (e.g. keypairs rebuilt from
+ * a secret via boxKeyPairFromSecretKey). Detaching a shared buffer destroys
+ * live session/identity material elsewhere and crashes later readers
+ * (Array.from/subarray on detached buffers throw). GC reclaims garbage;
+ * fill(0) gives the actual secrecy. Idempotent.
  */
 export function zeroize(buffer: Uint8Array | null): void {
   if (!buffer) return
-
-  // Step 1: Overwrite with zeros
-  buffer.fill(0)
-
-  // Step 2: Detach if possible (forces memory release)
   try {
-    if (
-      buffer.buffer instanceof ArrayBuffer &&
-      typeof buffer.buffer.transfer === "function"
-    ) {
-      buffer.buffer.transfer(0)
-    }
+    buffer.fill(0)
   } catch {
-    // transfer() may fail if buffer is a SharedArrayBuffer — ignore
+    // Already detached by legacy code — bytes were wiped by an earlier pass.
   }
 }
 

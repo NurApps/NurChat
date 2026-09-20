@@ -594,7 +594,13 @@ export async function getOrCreateSession(
   if (theirUserId && theirUserId.startsWith("user_")) {
     sessionPeers.set(chatId, theirUserId)
   }
-  await persistSessions()
+  // Storage must never break messaging: a persist failure degrades to
+  // re-handshake on next load, it must not fail this operation.
+  try {
+    await persistSessions()
+  } catch (err) {
+    console.warn("[E2E] persistSessions failed (non-fatal):", err)
+  }
   return session
 }
 
@@ -689,7 +695,11 @@ export async function encryptMessage(
   )
   zeroize(signingKeyBytes)
 
-  await persistSessions()
+  try {
+    await persistSessions()
+  } catch (err) {
+    console.warn("[E2E] persistSessions failed (non-fatal):", err)
+  }
   return {
     ciphertext: JSON.stringify(envelope),
     signature: base64Encode(signature.buffer as ArrayBuffer),
@@ -747,7 +757,11 @@ export async function decryptMessage(
     // New messages are padded base64; legacy messages are raw plaintext.
     const maybe = unpadString(raw)
     const plaintext = maybe ?? raw
-    await persistSessions()
+    try {
+      await persistSessions()
+    } catch (err) {
+      console.warn("[E2E] persistSessions failed (non-fatal):", err)
+    }
 
     // Signature is MANDATORY — omit or invalid = reject message
     if (!envelope.senderSigningKey || !envelope.signature) {

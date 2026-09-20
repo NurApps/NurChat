@@ -28,10 +28,15 @@ export default function SafetyNumberModal({ theirUserId, theirPublicKey, theirUs
 
         // Prefer the key the caller already has (no round trip, works offline);
         // fall back to fetching the current identity key from the relay.
+        // NOTE: always re-fetch when possible — a cached participants list
+        // may predate the peer's re-registration, and comparing against a
+        // stale key shows mismatched safety numbers for honest parties.
         let theirIdentityKey = theirPublicKey || null
-        if (!theirIdentityKey) {
+        try {
           const remoteKeys = await api.getIdentityKeys(theirUserId)
-          theirIdentityKey = remoteKeys.identity_key
+          if (remoteKeys.identity_key) theirIdentityKey = remoteKeys.identity_key
+        } catch {
+          // offline or relay hiccup — fall back to the passed-in key
         }
         const myIdentityKey = myKeys.signingPublicHex
 

@@ -43,10 +43,15 @@ export function boxKeyPair(): BoxKeyPair {
 
 /**
  * Generate X25519 keypair from existing secret key.
+ *
+ * Copies the secret into a fresh buffer: callers routinely zeroize the input
+ * afterwards, and a shared buffer would destroy this pair's live secret too
+ * (aliasing bug that broke sessions + serialize).
  */
 export function boxKeyPairFromSecretKey(secretKey: Uint8Array): BoxKeyPair {
-  const publicKey = x25519.getPublicKey(secretKey)
-  return { publicKey, secretKey }
+  const secretCopy = new Uint8Array(secretKey)
+  const publicKey = x25519.getPublicKey(secretCopy)
+  return { publicKey, secretKey: secretCopy }
 }
 
 /**
@@ -71,8 +76,10 @@ export function signKeyPair(): SignKeyPair {
  * Generate Ed25519 keypair from existing secret key.
  */
 export function signKeyPairFromSecretKey(secretKey: Uint8Array): SignKeyPair {
-  const publicKey = ed25519.getPublicKey(secretKey)
-  return { publicKey, secretKey }
+  // Same copy rule as boxKeyPairFromSecretKey (see above).
+  const secretCopy = new Uint8Array(secretKey)
+  const publicKey = ed25519.getPublicKey(secretCopy)
+  return { publicKey, secretKey: secretCopy }
 }
 
 /**

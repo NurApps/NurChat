@@ -101,6 +101,25 @@ class MessageReplyPreview(BaseSchema):
     user_id: str
     user: UserResponse
 
+# Reactions (E2E) — declared before MessageResponse which embeds rows.
+# tag: blinded toggle token (HMAC, opaque to relay); enc_emoji: E2E
+# ciphertext of the emoji via the chat channel. Legacy rows carry emoji.
+class ReactionBase(BaseSchema):
+    id: int
+    message_id: str
+    user_id: str
+    emoji: str | None = None
+    tag: str | None = None
+    enc_emoji: str | None = None
+    created_at: datetime
+
+class ReactionCreate(BaseSchema):
+    tag: str = Field(..., min_length=1, max_length=256)
+    enc_emoji: str = Field(..., min_length=1)
+
+class ReactionResponse(ReactionBase):
+    user: UserResponse
+
 class MessageResponse(MessageBase):
     user_id: str
     chat_id: str
@@ -121,7 +140,9 @@ class MessageResponse(MessageBase):
     is_view_once: bool = False
     viewed_at: datetime | None = None
     created_at: datetime
-    reactions: dict[str, list[str]] | None = None
+    # Raw reaction rows (E2E: tag + enc_emoji; legacy rows carry emoji).
+    # Grouping by emoji happens client-side AFTER decrypting enc_emoji.
+    reactions: list[ReactionResponse] | None = None
 
 # File
 class FileBase(BaseSchema):
@@ -257,19 +278,6 @@ class BlockedUserBase(BaseSchema):
 
 class BlockedUserResponse(BlockedUserBase):
     pass
-
-class ReactionBase(BaseSchema):
-    id: int
-    message_id: str
-    user_id: str
-    emoji: str
-    created_at: datetime
-
-class ReactionCreate(BaseSchema):
-    emoji: str
-
-class ReactionResponse(ReactionBase):
-    user: UserResponse
 
 # Contact Requests
 class ContactRequestCreate(BaseSchema):

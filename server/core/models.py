@@ -207,12 +207,22 @@ class MessageReaction(Base):
     __tablename__ = "message_reactions"
     __table_args__ = (
         Index("ix_reactions_message", "message_id"),
+        Index("ix_reactions_toggle", "message_id", "user_id", "tag"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
     message_id = Column(String, ForeignKey("messages.id", ondelete="CASCADE"))
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"))
-    emoji = Column(String, nullable=False)
+    # Legacy plaintext emoji (pre-E2E reactions). New rows carry tag +
+    # enc_emoji instead; emoji stays NULL for them. Never backfilled —
+    # old reactions become E2E only when re-reacted.
+    emoji = Column(String, nullable=True)
+    # Blinded toggle token: HMAC(identity_secret, "reaction:"+msg+":"+emoji).
+    # Deterministic per user/message/emoji (untoggle matches on it),
+    # unlinkable across messages/users and irreversible for the relay.
+    tag = Column(String, nullable=True)
+    # E2E ciphertext of the emoji via the chat channel (DR / group ratchet).
+    enc_emoji = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     message = relationship("Message")

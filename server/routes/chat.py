@@ -229,10 +229,10 @@ async def get_chat_messages(
             .filter(models.MessageReaction.message_id.in_(msg_ids))
             .all()
         )
-        reactions_map: dict[str, dict[str, list[str]]] = {}
+        reactions_map: dict[str, list] = {}
         for r in reaction_rows:
-            per_msg = reactions_map.setdefault(r.message_id, {})
-            per_msg.setdefault(r.emoji, []).append(r.user_id)
+            per_msg = reactions_map.setdefault(r.message_id, [])
+            per_msg.append(schemas.ReactionResponse.model_validate(r))
     for msg in messages:
         try:
             processed_msg = schemas.MessageResponse.model_validate(msg)
@@ -1004,12 +1004,18 @@ async def toggle_reaction(
         existing = db.query(models.MessageReaction).filter(
             models.MessageReaction.message_id == message_id,
             models.MessageReaction.user_id == user_id,
-            models.MessageReaction.emoji == reaction.emoji
+            models.MessageReaction.tag == reaction.tag
         ).first()
         if existing:
             db.delete(existing)
         else:
-            db.add(models.MessageReaction(message_id=message_id, user_id=user_id, emoji=reaction.emoji))
+            # E2E reaction: relay matches the blinded tag for toggle and
+            # stores the ciphertext — the emoji itself is never visible here.
+            # Legacy plaintext flow is gone (clients send tag + enc_emoji).
+            db.add(models.MessageReaction(
+                message_id=message_id, user_id=user_id,
+                tag=reaction.tag, enc_emoji=reaction.enc_emoji,
+            ))
         db.commit()
 
         reactions = db.query(models.MessageReaction).options(joinedload(models.MessageReaction.user)).filter(

@@ -173,6 +173,10 @@ export function useChatSocket({
         if (data.message_id && data.reactions) {
           const grouped: Record<string, string[]> = {}
           for (const r of data.reactions) {
+            // E2E rows (tag + enc_emoji) can't be decrypted here (no key
+            // context in the socket hook) — history reload fills them via
+            // decryptMessages. Legacy plaintext rows group directly.
+            if (!r.emoji) continue
             if (!grouped[r.emoji]) grouped[r.emoji] = []
             grouped[r.emoji].push(r.user_id)
           }

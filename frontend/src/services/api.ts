@@ -257,8 +257,8 @@ export const api = {
       "GET", `/api/chat/chats/${chatId}/export?format=${format}`
     ),
 
-  toggleReaction: (messageId: string, emoji: string) =>
-    request<ReactionResponse[]>("POST", `/api/chat/messages/${messageId}/react`, { emoji }),
+  toggleReaction: (messageId: string, tag: string, encEmoji: string) =>
+    request<ReactionResponse[]>("POST", `/api/chat/messages/${messageId}/react`, { tag, enc_emoji: encEmoji }),
 
   globalSearch: (query: string) =>
     request<MessageResponse[]>("GET", `/api/chat/search-global?q=${encodeURIComponent(query)}`),

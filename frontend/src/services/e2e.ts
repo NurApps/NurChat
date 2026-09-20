@@ -19,12 +19,19 @@ import {
   secretboxNonceLength,
   randomBytes,
   sha512,
+  hmacSha256,
 } from "./cryptoAdapter"
 import {
   encode as base64Encode,
   decode as base64Decode,
 } from "base64-arraybuffer"
 import { DoubleRatchetSession, type RatchetEnvelope, type SerializedSession } from "./doubleRatchet"
+import {
+  fetchGroupKey,
+  encryptGroupMessageRatcheted,
+  decryptGroupMessageRatcheted,
+} from "./groupE2E"
+import type { ChatResponse } from "../types"
 import { api } from "./api"
 import {
   type StoredSPK,
@@ -777,6 +784,90 @@ export async function decryptMessage(
     }
     return null
   }
+}
+
+// ─── Reactions (E2E) ───
+//
+// The relay must match reactions for toggle but must not see the emoji.
+// tag = HMAC(identity_secret, "reaction:"+message_id+":"+emoji): deterministic
+// per user/message/emoji (untoggle matches on it), unlinkable across messages
+// and users, irreversible for the relay. enc_emoji = the emoji encrypted via
+// the chat channel (same envelope conventions as messages).
+
+export interface ReactionRowLike {
+  user_id: string
+  emoji?: string | null
+  enc_emoji?: string | null
+}
+
+export function reactionTag(identitySecretHex: string, messageId: string, emoji: string): string {
+  const mac = hmacSha256(
+    hexToBytesSecure(identitySecretHex),
+    new TextEncoder().encode(`reaction:${messageId}:${emoji}`),
+  )
+  return bytesToHex(mac)
+}
+
+export async function encryptReactionEmoji(
+  chat: ChatResponse,
+  myKeys: E2EKeys,
+  myUserId: string,
+  emoji: string,
+): Promise<string | null> {
+  resetAutoClearTimer()
+  try {
+    if (chat.is_group) {
+      const groupKey = await fetchGroupKey(chat.id, hexToBytesSecure(myKeys.privateKeyHex))
+      if (!groupKey) return null
+      const enc = await encryptGroupMessageRatcheted(emoji, groupKey, chat.id)
+      return JSON.stringify({ group_encrypted: enc })
+    }
+    const peer = chat.participants.find((p) => p.id !== myUserId)
+    if (!peer?.public_key || !isE2EEnabled(chat.participants, myKeys)) return null
+    const env = await encryptMessage(emoji, myKeys, peer.public_key, chat.id, myUserId, peer.id)
+    return JSON.stringify(env)
+  } catch (err) {
+    console.warn("[E2E] encryptReactionEmoji failed:", err)
+    return null
+  }
+}
+
+export async function decryptReactionRow(
+  row: ReactionRowLike,
+  chat: ChatResponse,
+  myKeys: E2EKeys,
+): Promise<string | null> {
+  if (row.emoji) return row.emoji // legacy plaintext row
+  if (!row.enc_emoji) return null
+  try {
+    const parsed = JSON.parse(row.enc_emoji)
+    if (parsed.group_encrypted && chat.is_group) {
+      const groupKey = await fetchGroupKey(chat.id, hexToBytesSecure(myKeys.privateKeyHex))
+      if (!groupKey) return null
+      return decryptGroupMessageRatcheted(parsed.group_encrypted, groupKey, chat.id)
+    }
+    const peer = chat.participants.find((p) => p.id === row.user_id)
+    if (!peer?.public_key) return null
+    return decryptMessage(parsed, myKeys, peer.public_key, chat.id)
+  } catch {
+    return null
+  }
+}
+
+export async function groupReactionRows(
+  rows: ReactionRowLike[] | null | undefined,
+  chat: ChatResponse,
+  myKeys: E2EKeys,
+): Promise<Record<string, string[]>> {
+  const grouped: Record<string, string[]> = {}
+  if (!rows) return grouped
+  for (const r of rows) {
+    const emoji = await decryptReactionRow(r, chat, myKeys)
+    if (!emoji) continue
+    if (!grouped[emoji]) grouped[emoji] = []
+    if (!grouped[emoji].includes(r.user_id)) grouped[emoji].push(r.user_id)
+  }
+  return grouped
 }
 
 // ─── Group Message (legacy, kept for compatibility) ───

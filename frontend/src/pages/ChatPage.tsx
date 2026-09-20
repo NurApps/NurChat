@@ -871,7 +871,7 @@ export default function ChatPage() {
                   <VirtualizedMessageList
                     messages={messages}
                     currentUser={currentUser}
-                    reactions={messages.reduce((acc, m) => { if (m.reactions) acc[m.id] = m.reactions; return acc }, {} as Record<string, Record<string, string[]>>)}
+                    reactions={messages.reduce((acc, m) => { if (m.reactions && !Array.isArray(m.reactions)) acc[m.id] = m.reactions; return acc }, {} as Record<string, Record<string, string[]>>)}
                     onReply={(id) => handleReply(id, messages)}
                     onDelete={handleDeleteMessage}
                     onReaction={handleReaction}

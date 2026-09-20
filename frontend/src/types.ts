@@ -39,7 +39,7 @@ export interface MessageResponse {
   forwarded_from?: string
   reply_to_id?: string
   reply_to?: MessageReplyPreview
-  reactions?: Record<string, string[]>
+  reactions?: Record<string, string[]> | ReactionRow[]
   expires_at?: string
   scheduled_at?: string
   is_view_once?: boolean
@@ -47,14 +47,19 @@ export interface MessageResponse {
   is_pinned?: boolean
 }
 
-export interface ReactionResponse {
+export interface ReactionRow {
   id: number
   message_id: string
   user_id: string
-  emoji: string
+  // E2E rows: tag + enc_emoji. Legacy rows: emoji only.
+  emoji?: string | null
+  tag?: string | null
+  enc_emoji?: string | null
   created_at: string
   user: UserResponse
 }
+
+export type ReactionResponse = ReactionRow
 
 export interface ChatResponse {
   id: string

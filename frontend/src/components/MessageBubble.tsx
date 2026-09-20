@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import type { MessageResponse, UserResponse } from "../types"
+import type { MessageResponse, ReactionRow, UserResponse } from "../types"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
 import { formatTime, formatFull } from "../utils/format"
@@ -15,7 +15,7 @@ interface Props {
   isMyMessage: boolean
   isRead?: boolean
   status?: string
-  reactions?: Record<string, string[]>
+  reactions?: Record<string, string[]> | ReactionRow[]
   onDelete?: (id: string, deleteForAll?: boolean) => void
   onReply?: (id: string) => void
   onEdit?: (id: string, content: string) => void
@@ -44,6 +44,9 @@ export default function MessageBubble({
 }: Props) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  // Safety: wire shape is always normalized to grouped upstream, but a raw
+  // row array must never crash render (shows no reactions until reload fills).
+  const reactionMap: Record<string, string[]> = Array.isArray(reactions) ? {} : reactions
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(message.content)
   const [showDeleteOptions, setShowDeleteOptions] = useState(false)
@@ -293,9 +296,9 @@ export default function MessageBubble({
 
   const renderReactionBar = () => {
     const buttons = REACTION_LIST
-      .filter((emoji) => (reactions[emoji]?.length || 0) > 0)
+      .filter((emoji) => (reactionMap[emoji]?.length || 0) > 0)
       .map((emoji) => {
-        const reactors = reactions[emoji] || []
+        const reactors = reactionMap[emoji] || []
         const byMe = reactors.includes(peerId)
         return (
           <button

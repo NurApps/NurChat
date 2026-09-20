@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react"
 import { api } from "../services/api"
-import { decryptMessage, isE2EEnabled, type E2EKeys } from "../services/e2e"
+import { decryptMessage, isE2EEnabled, groupReactionRows, type E2EKeys } from "../services/e2e"
 import { fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
 import { loadPlaintextCache } from "../services/plaintextCache"
 import type { ChatResponse, MessageResponse, UserResponse } from "../types"
@@ -44,6 +44,17 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
     // Ratchet: sending-цепочка ≠ receiving-цепочка) — берём текст из
     // локального кэша, сохранённого при отправке.
     const ownCache = loadPlaintextCache()
+    // Сервер отдаёт реакции сырыми строками (E2E: tag + enc_emoji) —
+    // группировка по emoji только после расшифровки, иначе MessageBubble
+    // получит нечитаемое. Группируем здесь же, пока есть контекст чата.
+    const normalizeReactions = async (msg: MessageResponse, chat: ChatResponse) => {
+      if (!Array.isArray(msg.reactions)) return msg.reactions
+      try {
+        return await groupReactionRows(msg.reactions, chat, e2eKeys!)
+      } catch {
+        return {}
+      }
+    }
     for (const msg of msgs) {
       if (msg.user_id === currentUser.id) {
         const cached = ownCache[msg.id]
@@ -69,6 +80,13 @@ export function useChatMessages({ currentUser, e2eKeys }: UseChatMessagesOptions
         }
       } else {
         results.push(msg)
+      }
+    }
+    // Реакции-строки → сгруппированные emoji (свои и чужие сообщения alike:
+    // чужие реакции зашифрованы под общий канал чата и читаются нами).
+    for (const r of results) {
+      if (Array.isArray(r.reactions)) {
+        r.reactions = await normalizeReactions(r, chat)
       }
     }
     return results

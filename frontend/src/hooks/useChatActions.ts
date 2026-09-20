@@ -2,7 +2,7 @@ import { useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { savePlaintext } from "../services/plaintextCache"
-import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled } from "../services/e2e"
+import { loadKeys as loadE2EKeys, encryptMessage, isE2EEnabled, reactionTag, encryptReactionEmoji, groupReactionRows } from "../services/e2e"
 import { fetchGroupKey, encryptGroupMessageRatcheted } from "../services/groupE2E"
 import { useChatStore } from "../store/chatStore"
 
@@ -179,9 +179,23 @@ export function useChatActions({
 
   const handleReaction = useCallback(async (messageId: string, emoji: string, add: boolean) => {
     const peerId = currentUser.id
+    const revert = () => {
+      setMessages((prev) => prev.map((m) => {
+        if (m.id !== messageId) return m
+        const msgReactions = { ...(Array.isArray(m.reactions) ? {} : (m.reactions || {})) }
+        const reactors = [...(msgReactions[emoji] || [])]
+        if (!add) { if (!reactors.includes(peerId)) reactors.push(peerId) }
+        else { const idx = reactors.indexOf(peerId); if (idx >= 0) reactors.splice(idx, 1) }
+        if (reactors.length > 0) msgReactions[emoji] = reactors
+        else delete msgReactions[emoji]
+        return { ...m, reactions: msgReactions }
+      }))
+    }
+
+    // Optimistic local update (plaintext emoji never leaves the device here).
     setMessages((prev) => prev.map((m) => {
       if (m.id !== messageId) return m
-      const msgReactions = { ...(m.reactions || {}) }
+      const msgReactions = { ...(Array.isArray(m.reactions) ? {} : (m.reactions || {})) }
       const reactors = [...(msgReactions[emoji] || [])]
       if (add) { if (!reactors.includes(peerId)) reactors.push(peerId) }
       else { const idx = reactors.indexOf(peerId); if (idx >= 0) reactors.splice(idx, 1) }
@@ -191,26 +205,21 @@ export function useChatActions({
     }))
 
     try {
-      const serverReactions = await api.toggleReaction(messageId, emoji)
-      const grouped: Record<string, string[]> = {}
-      for (const r of serverReactions) {
-        if (!grouped[r.emoji]) grouped[r.emoji] = []
-        grouped[r.emoji].push(r.user_id)
-      }
+      // E2E reaction: blinded toggle tag + encrypted emoji. The relay matches
+      // the tag for untoggle and stores ciphertext — emoji stays on devices.
+      // No plaintext fallback: a relay that can't see content is the point.
+      const myKeys = await loadE2EKeys()
+      if (!myKeys || !selectedChat) { revert(); return }
+      const tag = reactionTag(myKeys.privateKeyHex, messageId, emoji)
+      const enc = await encryptReactionEmoji(selectedChat, myKeys, currentUser.id, emoji)
+      if (!enc) { revert(); return }
+      const serverReactions = await api.toggleReaction(messageId, tag, enc)
+      const grouped = await groupReactionRows(serverReactions, selectedChat, myKeys)
       setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, reactions: grouped } : m))
     } catch {
-      setMessages((prev) => prev.map((m) => {
-        if (m.id !== messageId) return m
-        const msgReactions = { ...(m.reactions || {}) }
-        const reactors = [...(msgReactions[emoji] || [])]
-        if (!add) { if (!reactors.includes(peerId)) reactors.push(peerId) }
-        else { const idx = reactors.indexOf(peerId); if (idx >= 0) reactors.splice(idx, 1) }
-        if (reactors.length > 0) msgReactions[emoji] = reactors
-        else delete msgReactions[emoji]
-        return { ...m, reactions: msgReactions }
-      }))
+      revert()
     }
-  }, [currentUser.id, setMessages])
+  }, [currentUser.id, selectedChat, setMessages])
 
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
     try {

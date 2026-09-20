@@ -10,6 +10,15 @@ type Reactions = Record<string, Record<string, string[]>>
 type Toast = { id: string; title: string; body: string; chatId?: string } | null
 type IncomingCall = { callId: string; callerId: string; callerName: string; callType: string } | null
 
+// Broadcast live-socket state so UI (OfflineBanner) can show a dead socket:
+// navigator.onLine tracks the NIC, not the relay connection.
+export const WS_STATE_EVENT = "nurchat:ws-state"
+function setWsUp(up: boolean): void {
+  try {
+    window.dispatchEvent(new CustomEvent<boolean>(WS_STATE_EVENT, { detail: up }))
+  } catch { /* ignore */ }
+}
+
 // Last-seen message timestamp for offline sync (shared across hook instances)
 let lastMessageAt: string | null = null
 try {
@@ -257,6 +266,7 @@ export function useChatSocket({
         const hadGap = reconnectAttempts > 0
         reconnectAttempts = 0
         console.log("WS connected")
+        setWsUp(true)
         // Refetch missed data after a reconnect gap
         handlersRef.current.onChatUpdate()
         // Sync messages received while offline
@@ -268,11 +278,24 @@ export function useChatSocket({
           handlersRef.current.onReconnect?.()
         } catch { /* ignore */ }
       }
-      ws.onclose = (event) => {
+      ws.onclose = async (event) => {
         if (stopped) return
-        // Auth rejection — retrying with the same token is futile
+        setWsUp(false)
+        // 4001 = token rejected/expired (server rechecks JWT every 10s,
+        // access TTL is 30 min). Retrying with the same token is futile —
+        // refresh once and reconnect; only give up when refresh is dead.
         if (event.code === 4001) {
-          console.warn("WS rejected: token invalid/expired")
+          try {
+            const { refreshAccessToken, AUTH_EXPIRED_EVENT } = await import("../services/api")
+            const ok = await refreshAccessToken()
+            if (ok && !stopped) {
+              reconnectAttempts = 0
+              connect()
+              return
+            }
+            window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
+          } catch { /* ignore */ }
+          console.warn("WS rejected: session expired, re-login required")
           return
         }
         if (reconnectAttempts >= MAX_RECONNECT) { console.warn("WS max reconnect attempts reached"); return }

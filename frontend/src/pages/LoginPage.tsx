@@ -134,7 +134,7 @@ export default function LoginPage() {
         e2eKeys.publicKeyHex,
         e2eKeys.signingPublicHex
       )
-      api.setToken(res.access_token)
+      api.setToken(res.access_token, res.refresh_token)
       localStorage.setItem("user", JSON.stringify(res.user))
 
       // Persist identity keys locally (encrypted at rest)
@@ -177,7 +177,7 @@ export default function LoginPage() {
         return
       }
 
-      api.setToken(res.access_token)
+      api.setToken(res.access_token, res.refresh_token)
       localStorage.setItem("user", JSON.stringify(res.user))
       const keys = await loadKeys()
       if (keys) setupPreKeys(keys).catch((e) => console.warn("[E2E] setupPreKeys (login) failed:", e))
@@ -203,7 +203,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const res = await api.verify2faLogin(code)
-      api.setToken(res.access_token)
+      api.setToken(res.access_token, res.refresh_token)
       localStorage.setItem("user", JSON.stringify(res.user))
       const keys = await loadKeys()
       if (keys) setupPreKeys(keys).catch((e) => console.warn("[E2E] setupPreKeys (2fa) failed:", e))

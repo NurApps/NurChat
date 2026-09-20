@@ -25,10 +25,70 @@ export function csrfHeader(): string | null {
 
 let csrfTokenCache: string | null = null;
 
+// Fired when the session is unrecoverably dead (refresh rejected/expired).
+// App listens and navigates to /login; AuthGuard covers the rest on mount.
+export const AUTH_EXPIRED_EVENT = "nurchat:auth-expired"
+function notifyAuthExpired(): void {
+  try {
+    localStorage.removeItem("token")
+    localStorage.removeItem("refresh_token")
+    localStorage.removeItem("user")
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
+  } catch { /* ignore */ }
+}
+
+// Single-flight refresh: concurrent 401s share one POST /refresh
+// (the endpoint is rate-limited 10/min AND rotates the refresh token,
+// so parallel refreshes would revoke each other).
+let refreshPromise: Promise<boolean> | null = null
+export function refreshAccessToken(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise
+  refreshPromise = (async () => {
+    try {
+      const rt = localStorage.getItem("refresh_token")
+      if (!rt) return false
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 15000)
+      try {
+        const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: rt }),
+          signal: controller.signal,
+        })
+        if (!res.ok) return false
+        const data = await res.json()
+        if (!data.access_token) return false
+        localStorage.setItem("token", data.access_token)
+        if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token)
+        return true
+      } finally {
+        clearTimeout(timer)
+      }
+    } catch {
+      return false
+    } finally {
+      refreshPromise = null
+    }
+  })()
+  return refreshPromise
+}
+
+// Auth endpoints must never trigger auto-refresh (a 401 there means
+// wrong credentials / bad captcha, not an expired session).
+function isAuthPath(path: string): boolean {
+  return path.startsWith("/api/auth/login")
+    || path.startsWith("/api/auth/register")
+    || path.startsWith("/api/auth/refresh")
+    || path.startsWith("/api/auth/captcha")
+    || path.startsWith("/api/auth/2fa")
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  retried = false,
 ): Promise<T> {
   const token = getToken()
   const csrfToken = csrfTokenCache || getCsrfToken()
@@ -48,6 +108,13 @@ async function request<T>(
     const headerToken = res.headers.get("X-CSRF-Token")
     if (headerToken) csrfTokenCache = headerToken
     if (!res.ok) {
+      // Access TTL is 30 min and the server rechecks JWTs on live sockets:
+      // a 401 here usually means expiry, not logout — refresh once and retry.
+      if (res.status === 401 && !retried && !isAuthPath(path)) {
+        const ok = await refreshAccessToken()
+        if (ok) return request<T>(method, path, body, true)
+        notifyAuthExpired()
+      }
       const text = await res.text()
       throw new ApiError(res.status, text || res.statusText)
     }
@@ -63,10 +130,10 @@ export const api = {
     request<{ access_token: string; refresh_token?: string; token_type: string; user: UserResponse; requires_2fa?: boolean }>("POST", "/api/auth/login", { username, password }),
 
   verify2faLogin: (code: string) =>
-    request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/2fa/verify-login", { code }),
+    request<{ access_token: string; refresh_token?: string; token_type: string; user: UserResponse }>("POST", "/api/auth/2fa/verify-login", { code }),
 
   register: (username: string, password: string, first_name: string, last_name: string, captcha_id: string, captcha_code: string, public_key: string, signing_public_key: string) =>
-    request<{ access_token: string; token_type: string; user: UserResponse }>("POST", "/api/auth/register", { username, password, first_name, last_name, captcha_id, captcha_code, public_key, signing_public_key }),
+    request<{ access_token: string; refresh_token?: string; token_type: string; user: UserResponse }>("POST", "/api/auth/register", { username, password, first_name, last_name, captcha_id, captcha_code, public_key, signing_public_key }),
 
   getCaptcha: () =>
     request<{ captcha_id: string; question: string }>("GET", "/api/auth/captcha"),
@@ -352,8 +419,9 @@ export const api = {
   getIdentityKeys: (userId: string) =>
     request<{ user_id: string; identity_key: string; public_key: string }>("GET", `/api/auth/user/${userId}/identity-keys`),
 
-  setToken: (token: string) => {
+  setToken: (token: string, refreshToken?: string) => {
     localStorage.setItem("token", token)
+    if (refreshToken) localStorage.setItem("refresh_token", refreshToken)
   },
 
   isAuthenticated: () => {
@@ -370,6 +438,7 @@ export const api = {
       }).catch(() => {})
     }
     localStorage.removeItem("token")
+    localStorage.removeItem("refresh_token")
     localStorage.removeItem("user")
   },
 }

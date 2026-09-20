@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom"
 import { lazy, Suspense, useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { ThemeProvider } from "./context/ThemeContext"
@@ -30,6 +30,18 @@ function PageLoader() {
       <div className="spinner" />
     </div>
   )
+}
+
+// Session died unrecoverably (refresh rejected/expired WS + REST):
+// bounce to login regardless of which screen is mounted.
+function AuthExpiredListener() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    const handler = () => navigate("/login", { replace: true })
+    window.addEventListener("nurchat:auth-expired", handler)
+    return () => window.removeEventListener("nurchat:auth-expired", handler)
+  }, [navigate])
+  return null
 }
 
 function App() {
@@ -74,6 +86,7 @@ function App() {
         <UpdateBanner />
         {!serverReady && <ServerBootOverlay onReady={() => setServerReady(true)} />}
         <BrowserRouter>
+        <AuthExpiredListener />
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />

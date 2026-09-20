@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts"
-import { useChatSocket } from "../hooks/useChatSocket"
+import { useChatSocket, WS_STATE_EVENT } from "../hooks/useChatSocket"
 import { useChatMessages } from "../hooks/useChatMessages"
 import { useChatActions } from "../hooks/useChatActions"
 import { useChatTyping } from "../hooks/useChatTyping"
@@ -111,6 +111,9 @@ export default function ChatPage() {
   const [searching, setSearching] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
+  // Live-socket state (navigator.onLine tracks the NIC, not the relay).
+  // Starts true to avoid a false offline flash before first connect.
+  const [wsUp, setWsUp] = useState(true)
   const [ephemeralSeconds, setEphemeralSeconds] = useState<number | null>(null)
   const [showEphemeralMenu, setShowEphemeralMenu] = useState(false)
 
@@ -252,11 +255,14 @@ export default function ChatPage() {
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
     const handleOffline = () => setIsOnline(false)
+    const handleWsState = (e: Event) => setWsUp((e as CustomEvent<boolean>).detail !== false)
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOffline)
+    window.addEventListener(WS_STATE_EVENT, handleWsState)
     return () => {
       window.removeEventListener("online", handleOnline)
       window.removeEventListener("offline", handleOffline)
+      window.removeEventListener(WS_STATE_EVENT, handleWsState)
     }
   }, [])
 
@@ -651,7 +657,7 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
-      <OfflineBanner isOnline={isOnline} pendingCount={outboxPending} />
+      <OfflineBanner isOnline={isOnline && wsUp} pendingCount={outboxPending} />
       <TopBar
         username={currentUser.username}
         avatarChar={currentUser.username[0]?.toUpperCase() || "?"}

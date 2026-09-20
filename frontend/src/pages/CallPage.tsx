@@ -355,8 +355,18 @@ export default function CallPage() {
     // с локальным (два ID одного звонка).
 
     function connectWs() {
-      const wsUrl = `${WS_BASE}/calls/${currentUser!.id}?token=${encodeURIComponent(token!)}`
-      console.log("[CALL] Connecting to:", wsUrl.replace(token!, "***"))
+      // Fresh token on every (re)connect: the effect captured it once at
+      // mount, but access TTL is 30 min — a stale token 4001-loops here.
+      const freshToken = localStorage.getItem("token")
+      if (!freshToken) {
+        setMediaError(t("call.authError"))
+        setStatus("failed")
+        statusRef.current = "failed"
+        setTimeout(() => navigate("/chat"), 1500)
+        return
+      }
+      const wsUrl = `${WS_BASE}/calls/${currentUser!.id}?token=${encodeURIComponent(freshToken)}`
+      console.log("[CALL] Connecting to:", wsUrl.replace(freshToken, "***"))
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
@@ -605,8 +615,29 @@ export default function CallPage() {
         }
 
         if (ev.code === 4001) {
-          setMediaError(t("call.authError"))
-        } else if (ev.code === 1006) {
+          // Token expired mid-call: refresh once and reattach (server
+          // replays buffered offer/answer/ice on connect). Only fail
+          // and bounce to /login when refresh itself is dead.
+          const failAuth = () => {
+            setMediaError(t("call.authError"))
+            setStatus("failed")
+            statusRef.current = "failed"
+            setTimeout(() => navigate("/chat"), 1500)
+          }
+          import("../services/api").then(({ refreshAccessToken, AUTH_EXPIRED_EVENT }) => {
+            refreshAccessToken().then((ok) => {
+              if (ok) {
+                reconnectAttempts = 0
+                connectWs()
+                return
+              }
+              failAuth()
+              window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
+            }).catch(failAuth)
+          }).catch(failAuth)
+          return
+        }
+        if (ev.code === 1006) {
           setMediaError(t("call.connLost"))
         } else if (ev.code !== 1000) {
           setMediaError(t("call.connClosed"))

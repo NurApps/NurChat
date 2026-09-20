@@ -264,6 +264,44 @@ async def get_chat_messages(
     return processed_messages
 
 
+def _escape_like(q: str) -> str:
+    """Escape LIKE wildcards so search matches literally.
+    Without this, % and _ in the query act as wildcards (over-matching
+    within own chats — low severity, but wrong results)."""
+    return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _validate_message_links(
+    db, chat_id: str, user_id: str,
+    file_id: str | None, reply_to_id: str | None,
+) -> None:
+    """file_id must exist and belong to the sender (or already be attached
+    in THIS chat — resends). reply_to_id must live in the same chat.
+    Raises ValueError (bad reference) or PermissionError (foreign object).
+
+    Without this, anyone could attach someone else's file_id to a message in
+    a chat with an outsider, and the download path (owner-or-participant-of
+    *that* message) would serve the foreign file. Same for cross-chat
+    replies leaking quoted content into history previews.
+    """
+    if file_id:
+        f = db.query(models.File).filter(models.File.id == file_id).first()
+        if not f:
+            raise ValueError("Файл не найден")
+        if f.user_id != user_id:
+            linked = db.query(models.Message).filter(
+                models.Message.chat_id == chat_id,
+                models.Message.file_id == file_id,
+            ).first()
+            if not linked:
+                raise PermissionError("Чужой файл нельзя прикрепить к этому чату")
+    if reply_to_id:
+        target = db.query(models.Message).filter(
+            models.Message.id == reply_to_id).first()
+        if not target or target.chat_id != chat_id:
+            raise ValueError("Ответ должен ссылаться на сообщение этого чата")
+
+
 @router.post("/chats/{chat_id}/messages", response_model=schemas.MessageResponse)
 @limiter.limit("60/minute")
 async def send_message(
@@ -287,6 +325,15 @@ async def send_message(
         if not message_data.content.strip():
             detail = "Содержимое сообщения не может быть пустым"
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+        try:
+            _validate_message_links(
+                db, chat_id, user_id,
+                message_data.file_id, message_data.reply_to_id,
+            )
+        except PermissionError as e:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         message_content = message_data.content
         message_id = security.generate_message_id()
 
@@ -646,7 +693,9 @@ async def get_edit_history(
 
 
 @router.post("/messages/{message_id}/view-once")
+@limiter.limit("30/minute")
 async def mark_view_once_viewed(
+    request: Request,
     message_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
@@ -710,7 +759,9 @@ async def mark_view_once_viewed(
 
 
 @router.post("/chats/{chat_id}/pin")
+@limiter.limit("30/minute")
 async def pin_chat(
+    request: Request,
     chat_id: str,
     pin: bool = True,
     db: Session = Depends(get_db),
@@ -803,7 +854,9 @@ async def delete_chat(
 
 
 @router.post("/block/{blocked_user_id}")
+@limiter.limit("30/minute")
 async def block_user(
+    request: Request,
     blocked_user_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -834,7 +887,9 @@ async def block_user(
 
 
 @router.delete("/block/{blocked_user_id}")
+@limiter.limit("30/minute")
 async def unblock_user(
+    request: Request,
     blocked_user_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -971,7 +1026,7 @@ async def search_messages(
         .options(joinedload(models.Message.user))
         .filter(
             models.Message.chat_id == chat_id,
-            models.Message.content.ilike(f"%{q}%"),
+            models.Message.content.ilike(f"%{_escape_like(q)}%", escape="\\"),
             ~models.Message.is_deleted,
         )
         .order_by(models.Message.created_at.desc())
@@ -1070,7 +1125,9 @@ async def get_reactions(
 # ─── E2E Group Key ───
 
 @router.post("/chats/{chat_id}/group-key")
+@limiter.limit("10/minute")
 async def set_group_key(
+    request: Request,
     chat_id: str,
     payload: dict,
     db: Session = Depends(get_db),
@@ -1153,7 +1210,8 @@ async def search_global(
     token: dict = Depends(verify_token_dependency)
 ):
     user_id = token["sub"]
-    logger.info(f"Global search by user {user_id}: {q}")
+    # Never log the query itself: it may contain message text.
+    logger.info(f"Global search by user {user_id} (q length {len(q)})")
 
     if limit > 100:
         limit = 100
@@ -1172,7 +1230,7 @@ async def search_global(
         .options(joinedload(models.Message.user))
         .filter(
             models.Message.chat_id.in_(user_chat_ids),
-            models.Message.content.ilike(f"%{q}%"),
+            models.Message.content.ilike(f"%{_escape_like(q)}%", escape="\\"),
             ~models.Message.is_deleted,
         )
         .order_by(models.Message.created_at.desc())
@@ -1265,6 +1323,13 @@ async def send_ephemeral_message(
                 detail="Этот relay работает в глухом режиме: только E2E-шифрованные сообщения",
             )
         stored_content = "[encrypted]" if encrypted_content else content
+
+        try:
+            _validate_message_links(db, chat_id, user_id, file_id, None)
+        except PermissionError as e:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
         message_id = security.generate_message_id()
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)

@@ -362,6 +362,17 @@ class ChatManager:
                 logger.warning(f"User {user_id} is not a participant of chat {data['chat_id']}")
                 return
 
+            # Same link rules as REST: no foreign file_id / cross-chat reply.
+            try:
+                from server.routes.chat import _validate_message_links
+                _validate_message_links(
+                    db, data["chat_id"], user_id,
+                    data.get("file_id"), data.get("reply_to_id"),
+                )
+            except (ValueError, PermissionError) as e:
+                logger.warning(f"Bad message links from {user_id}: {e}")
+                return
+
             message_id = security.generate_message_id()
             message = models.Message(
                 id=message_id,
@@ -459,6 +470,18 @@ class ChatManager:
         if not all(k in data for k in ["chat_id", "is_typing"]):
             return
 
+        # Don't let outsiders inject typing noise into arbitrary chats.
+        db: Session = SessionLocal()
+        try:
+            participant = db.query(models.ChatParticipant).filter(
+                models.ChatParticipant.chat_id == data["chat_id"],
+                models.ChatParticipant.user_id == user_id,
+            ).first()
+            if not participant:
+                return
+        finally:
+            db.close()
+
         typing_event = {
             "event": WS_EVENTS["TYPING"],
             "data": {
@@ -554,24 +577,35 @@ class ChatManager:
 
         delete_for_all = bool(data.get("delete_for_all", False))
 
-        # Persist the deletion (only the author may delete for all)
+        # Mirror REST semantics (routes/chat.py:delete_message): is_deleted is
+        # global, so ONLY the author may delete — and must be a participant.
+        # Without this anyone could globally hide anyone's messages.
         db: Session = SessionLocal()
         try:
+            participant = db.query(models.ChatParticipant).filter(
+                models.ChatParticipant.chat_id == data["chat_id"],
+                models.ChatParticipant.user_id == user_id,
+            ).first()
+            if not participant:
+                logger.warning(
+                    f"User {user_id} tried to delete in foreign chat {data['chat_id']}"
+                )
+                return
             message = db.query(models.Message).filter(
                 models.Message.id == data["message_id"],
                 models.Message.chat_id == data["chat_id"],
             ).first()
-            if message:
-                if not delete_for_all or message.user_id == user_id:
-                    message.is_deleted = True
-                    if delete_for_all and message.user_id == user_id:
-                        message.deleted_for_all = True
-                    db.commit()
-                else:
-                    logger.warning(
-                        f"User {user_id} tried to delete-for-all message {data['message_id']} of another user"
-                    )
-                    return
+            if not message:
+                return
+            if message.user_id != user_id:
+                logger.warning(
+                    f"User {user_id} tried to delete message {data['message_id']} of another user"
+                )
+                return
+            message.is_deleted = True
+            if delete_for_all:
+                message.deleted_for_all = True
+            db.commit()
         finally:
             db.close()
 
@@ -613,7 +647,15 @@ class ChatManager:
 
         # Обновляем в БД
         db: Session = SessionLocal()
+        updated = False
         try:
+            participant = db.query(models.ChatParticipant).filter(
+                models.ChatParticipant.chat_id == data["chat_id"],
+                models.ChatParticipant.user_id == user_id,
+            ).first()
+            if not participant:
+                logger.warning(f"User {user_id} tried to edit in foreign chat {data['chat_id']}")
+                return
             message = db.query(models.Message).filter(
                 models.Message.id == data["message_id"],
                 models.Message.user_id == user_id
@@ -647,12 +689,18 @@ class ChatManager:
                 message.edited_at = datetime.now(timezone.utc)
                 message.edit_history = json.dumps(history, ensure_ascii=False)
                 db.commit()
+                updated = True
                 logger.info(f"Message {data['message_id']} edited by {user_id}")
         except Exception as e:
             logger.error(f"Error editing message in DB: {e}")
             db.rollback()
         finally:
             db.close()
+
+        if not updated:
+            # Don't broadcast phantom edits: recipients would apply fake
+            # content to their UI with no DB change behind it.
+            return
 
         edit_event = {
             "event": WS_EVENTS["EDIT_MESSAGE"],

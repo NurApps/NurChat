@@ -26,16 +26,16 @@ export default function ServerBootOverlay({ onReady }: Props) {
         return true
       } else {
         setPhase("failed")
-        setErrorMsg(`Relay responded with status ${res.status}`)
+        setErrorMsg(t("errors.relayResponded", { status: res.status }))
         return false
       }
     } catch (err) {
       setPhase("failed")
       const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
-      setErrorMsg(`Could not connect to relay server (${detail})`)
+      setErrorMsg(t("serverBoot.connectFailed", { detail }))
       return false
     }
-  }, [])
+  }, [t])
 
   // Poll relay health until reachable
   useEffect(() => {
@@ -105,7 +105,7 @@ export default function ServerBootOverlay({ onReady }: Props) {
           <line x1="12" y1="2" x2="12" y2="12" />
         </svg>
         <p className="server-boot-side-text">
-          {phase === "checking" ? "Подключение к NurChat" : "Нет связи с сервером"}
+          {phase === "checking" ? t("serverBoot.connecting") : t("serverBoot.noServer")}
         </p>
       </div>
       <div className="server-boot-main">
@@ -113,8 +113,8 @@ export default function ServerBootOverlay({ onReady }: Props) {
         {phase === "checking" && (
           <>
             <div className="spinner" />
-            <h2>Connecting to relay{dots}</h2>
-            <p>Waiting {elapsed}s...</p>
+            <h2>{t("serverBoot.connectingToRelay", { dots })}</h2>
+            <p>{t("serverBoot.pleaseWait", { elapsed })}</p>
             <p className="server-boot-hint">
               <code>{BASE_URL}</code>
             </p>
@@ -124,19 +124,19 @@ export default function ServerBootOverlay({ onReady }: Props) {
         {phase === "failed" && (
           <>
             <div className="server-boot-icon error" style={{ fontSize: 48, marginBottom: 12 }}>⚠</div>
-            <h2 style={{ marginBottom: 8 }}>Relay unavailable</h2>
+            <h2 style={{ marginBottom: 8 }}>{t("serverBoot.relayUnavailable")}</h2>
             <p style={{ opacity: 0.7, fontSize: 13, marginBottom: 4, fontFamily: "monospace", wordBreak: "break-word" }}>
               {errorMsg}
             </p>
             <p style={{ opacity: 0.5, fontSize: 11, marginBottom: 16 }}>
-              Точный HTTP-код (например, Cloudflare 5xx) браузер может скрывать здесь из-за CORS — смотрите вкладку Network в devtools для деталей.
+              {t("serverBoot.corsHint")}
             </p>
 
             <div className="server-boot-options">
               {/* Try public relays */}
               {PUBLIC_RELAYS.length > 0 && (
                 <div className="server-boot-option server-boot-option-wide">
-                  <p className="server-boot-option-label">PUBLIC RELAY</p>
+                  <p className="server-boot-option-label">{t("serverBoot.publicRelay")}</p>
                   {PUBLIC_RELAYS.map((r) => (
                     <button
                       key={r.host}
@@ -152,9 +152,9 @@ export default function ServerBootOverlay({ onReady }: Props) {
 
               {/* Connect to friend's relay */}
               <div className="server-boot-option">
-                <p className="server-boot-option-label">FRIEND'S RELAY</p>
+                <p className="server-boot-option-label">{t("serverBoot.friendsRelay")}</p>
                 <p className="server-boot-option-desc">
-                  Ask your friend for their relay address
+                  {t("serverBoot.friendsRelayDesc")}
                 </p>
                 <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
                   <select
@@ -183,22 +183,22 @@ export default function ServerBootOverlay({ onReady }: Props) {
                   disabled={!relayHost.trim()}
                   style={{ width: "100%", fontSize: 13 }}
                 >
-                  Connect
+                  {t("serverBoot.connect")}
                 </button>
               </div>
 
               {/* Start local server */}
               <div className="server-boot-option">
-                <p className="server-boot-option-label">YOUR OWN SERVER</p>
+                <p className="server-boot-option-label">{t("serverBoot.ownServer")}</p>
                 <p className="server-boot-option-desc">
-                  Run your own relay for full control
+                  {t("serverBoot.ownServerDesc")}
                 </p>
                 <button
                   className="settings-action-btn"
                   onClick={handleStartLocal}
                   style={{ width: "100%", fontSize: 13 }}
                 >
-                  Setup guide
+                  {t("serverBoot.setupGuide")}
                 </button>
               </div>
             </div>
@@ -210,16 +210,16 @@ export default function ServerBootOverlay({ onReady }: Props) {
                 color: "var(--accent)", cursor: "pointer", fontSize: 13,
               }}
             >
-              Retry connection
+              {t("serverBoot.retry")}
             </button>
           </>
         )}
 
         {phase === "setup" && (
           <>
-            <h2 style={{ marginBottom: 12 }}>Setup your own relay</h2>
+            <h2 style={{ marginBottom: 12 }}>{t("serverBoot.setupTitle")}</h2>
             <div style={{ fontSize: 13, lineHeight: 1.7, textAlign: "left", opacity: 0.85 }}>
-              <p style={{ marginBottom: 12 }}>Quick start with Docker:</p>
+              <p style={{ marginBottom: 12 }}>{t("serverBoot.setupDocker")}</p>
               <pre style={{
                 background: "var(--input-bg)", padding: 12, borderRadius: 8,
                 fontSize: 12, overflow: "auto", border: "1px solid var(--border)",
@@ -238,7 +238,7 @@ docker-compose up -d
 # http://YOUR_IP:8000`}
               </pre>
               <p style={{ marginTop: 12, opacity: 0.6 }}>
-                Then enter your relay address above.
+                {t("serverBoot.setupThen")}
               </p>
             </div>
             <button
@@ -248,7 +248,7 @@ docker-compose up -d
                 color: "var(--accent)", cursor: "pointer", fontSize: 13,
               }}
             >
-              Back
+              {t("serverBoot.back")}
             </button>
           </>
         )}

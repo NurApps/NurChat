@@ -1,5 +1,5 @@
 # Dependabot: automated dependency updates (security patches while unmaintained).
-# Review and merge the weekly PRs — or enable auto-merge for patch updates.
+# Interval is monthly — review and merge the PRs, or enable auto-merge for patch updates.
 version: 2
 updates:
   - package-ecosystem: "pip"

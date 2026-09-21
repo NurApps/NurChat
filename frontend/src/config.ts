@@ -5,6 +5,10 @@ const RELAY_HOST_KEY = "nurchat_relay_host"
 const RELAY_PROTOCOL_KEY = "nurchat_relay_protocol"
 // Set after resolveDefaultRelay() picks a healthy public relay at startup
 const RELAY_RESOLVED_KEY = "nurchat_relay_resolved"
+// Явно выбранный релей (env/?relay=/ручной ввод) против молчаливого
+// дефолта на localhost. Неявный дефолт никого никуда не ведёт: у тестера
+// без своего релея localhost мёртв, а регистрация ушла бы не на тот relay.
+const RELAY_EXPLICIT_KEY = "nurchat_relay_explicit"
 
 export interface RelayConfig {
   host: string
@@ -72,13 +76,116 @@ function apply(config: RelayConfig): void {
   apiProtocol = config.protocol
 }
 
+/**
+ * Парсинг ?relay= из ссылки-приглашения (чистая функция — покрыта тестами).
+ * Принимает `?relay=host[:port]`, полный URL `?relay=https://host[:port]/...`
+ * или пару `?relayHost=` + `?relayProtocol=http|https`.
+ * Возвращает null, если параметр отсутствует или мусор.
+ *
+ * Безопасность: http разрешён только для loopback/LAN (иначе токены и
+ * E2E-конверты ушли бы открытым текстом через чужую сеть) — публичный
+ * хост насильно переводится на https.
+ */
+export function parseRelayParam(search: string): RelayConfig | null {
+  let params: URLSearchParams
+  try {
+    params = new URLSearchParams(search.startsWith("?") ? search : `?${search}`)
+  } catch {
+    return null
+  }
+  let raw = (params.get("relay") || params.get("relayHost") || "").trim()
+  if (!raw) return null
+
+  let schemeProto: "http" | "https" | null = null
+  const schemeMatch = raw.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/(.+)$/)
+  if (schemeMatch) {
+    const scheme = schemeMatch[1].toLowerCase()
+    if (scheme !== "http" && scheme !== "https") return null
+    schemeProto = scheme
+    raw = schemeMatch[2]
+  }
+  // Отрезаем путь/query/fragment, чистим слэши и пробелы.
+  raw = raw.split(/[/?#]/)[0].trim().replace(/\/+$/, "").toLowerCase()
+  // Запрещаем credentials/userinfo и мусор: только host[:port].
+  if (!raw || raw.includes("@") || !/^[a-z0-9.-]+(?::\d{1,5})?$/.test(raw)) return null
+
+  const hostOnly = raw.split(":")[0]
+  const isLocal =
+    hostOnly === "localhost" ||
+    hostOnly === "127.0.0.1" ||
+    hostOnly === "::1" ||
+    hostOnly.endsWith(".local") ||
+    /^10\./.test(hostOnly) ||
+    /^192\.168\./.test(hostOnly) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostOnly)
+
+  const paramProto = params.get("relayProtocol")
+  let protocol: "http" | "https" =
+    schemeProto ??
+    (paramProto === "http" || paramProto === "https" ? paramProto : "https")
+  if (!isLocal) protocol = "https"
+  return { host: raw, protocol }
+}
+
+/** True, если релей выбран явно (env/?relay=/ручной ввод), а не дефолт. */
+export function isRelayExplicit(): boolean {
+  if (import.meta.env.VITE_API_HOST) return true
+  try {
+    if (localStorage.getItem(RELAY_EXPLICIT_KEY) === "1") return true
+    // Совместимость: старый сохранённый выбор тоже явный.
+    if (localStorage.getItem(RELAY_HOST_KEY)) return true
+  } catch { /* ignore */ }
+  return false
+}
+
+function markRelayExplicit(): void {
+  try {
+    localStorage.setItem(RELAY_EXPLICIT_KEY, "1")
+  } catch { /* ignore */ }
+}
+
+/** ?relay= из адресной строки (ссылка-приглашение). Одноразовый: применили — съели. */
+function consumeRelayParam(): RelayConfig | null {
+  try {
+    if (typeof window === "undefined") return null
+    const parsed = parseRelayParam(window.location.search)
+    if (!parsed) return null
+    // Применили — параметр из URL убираем, чтобы перезагрузка/репост
+    // ссылки не перетирали осознанный выбор в настройках.
+    window.history.replaceState(null, "", window.location.pathname)
+    return parsed
+  } catch {
+    return null
+  }
+}
+
 export function getRelayConfig(): RelayConfig {
+  // Приоритет: ?relay= (ссылка) > сохранённый выбор > env > дефолт.
+  // ?relay= сразу персистим: перезагрузка не должна ронять тестера
+  // обратно на localhost.
+  const fromLink = consumeRelayParam()
+  if (fromLink) {
+    try {
+      localStorage.setItem(RELAY_HOST_KEY, fromLink.host)
+      localStorage.setItem(RELAY_PROTOCOL_KEY, fromLink.protocol)
+      localStorage.removeItem(RELAY_RESOLVED_KEY)
+      localStorage.removeItem(RELAY_RESOLVED_KEY + "_proto")
+    } catch { /* ignore */ }
+    markRelayExplicit()
+    return fromLink
+  }
+  if (import.meta.env.VITE_API_HOST) {
+    markRelayExplicit()
+  }
   let host = import.meta.env.VITE_API_HOST || DEFAULT_API_HOST
   let protocol: "http" | "https" = import.meta.env.VITE_API_PROTOCOL === "https" ? "https" : "http"
   try {
     const savedHost = localStorage.getItem(RELAY_HOST_KEY)
     const savedProtocol = localStorage.getItem(RELAY_PROTOCOL_KEY)
-    if (savedHost) host = savedHost
+    if (savedHost) {
+      host = savedHost
+      markRelayExplicit()
+    }
     if (savedProtocol === "https" || savedProtocol === "http") protocol = savedProtocol
   } catch { /* localStorage недоступен — используем env */ }
   return { host, protocol }
@@ -91,6 +198,7 @@ export function setRelayConfig(config: RelayConfig) {
     localStorage.removeItem(RELAY_RESOLVED_KEY)
     localStorage.removeItem(RELAY_RESOLVED_KEY + "_proto")
   } catch { /* ignore */ }
+  markRelayExplicit()
   apply(config)
 }
 
@@ -100,6 +208,7 @@ export function resetRelayConfig() {
     localStorage.removeItem(RELAY_PROTOCOL_KEY)
     localStorage.removeItem(RELAY_RESOLVED_KEY)
     localStorage.removeItem(RELAY_RESOLVED_KEY + "_proto")
+    localStorage.removeItem(RELAY_EXPLICIT_KEY)
   } catch { /* ignore */ }
   // Re-resolve on next startup; keep current session values until then
 }

@@ -106,6 +106,11 @@ echo [..] Relay foreground, .env as-is. Ctrl+C to stop.
 goto :eof
 
 :act_tunnel
+:: Туннельный quick-URL случаен при каждом рестарте — явно перечислить его
+:: в CORS_ORIGINS нельзя, поэтому сервер пускает *.trycloudflare.com через
+:: regex. Ручную настройку не затираем. Без этого браузер режет /health и
+:: API с Vite (http://127.0.0.1:5173) CORS-блоком.
+if not defined CORS_ORIGIN_REGEX set CORS_ORIGIN_REGEX=https://[a-z0-9-]+\.trycloudflare\.com
 call :ensure_relay_prod
 if %errorlevel% neq 0 goto :eof
 where cloudflared >nul 2>&1

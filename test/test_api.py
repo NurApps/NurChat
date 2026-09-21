@@ -160,6 +160,21 @@ class TestAuth:
         })
         assert r.headers.get("access-control-allow-origin") != "http://evil.com"
 
+    def test_cors_allows_vite_loopback_ip(self):
+        # Vite слушает 127.0.0.1 (не localhost) — без этого в дефолтах
+        # браузер режет даже локальный /health CORS-блоком.
+        r = client.options("/health", headers={
+            "Origin": "http://127.0.0.1:5173",
+            "Access-Control-Request-Method": "GET",
+        })
+        assert r.status_code == 200
+        assert r.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
+
+    def test_cors_simple_get_echoes_loopback(self):
+        r = client.get("/health", headers={"Origin": "http://127.0.0.1:5173"})
+        assert r.status_code == 200
+        assert r.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
+
 
 class TestChat:
     def _auth_header(self) -> dict:

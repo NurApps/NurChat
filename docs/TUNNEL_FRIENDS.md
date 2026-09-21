@@ -55,7 +55,13 @@ https://xxxx-yyy-zzz.trycloudflare.com
 - Host: `xxxx-yyy-zzz.trycloudflare.com` (без https://)
 - Protocol: `https`
 
-Или ты раздаёшь ссылку: `https://xxxx-yyy-zzz.trycloudflare.com/health` — пусть убедятся что `{"status":"healthy"}`.
+Или раздай ссылку-приглашение — она сама выставит релей вместо
+молчаливого localhost (без этого клиент упирается в `127.0.0.1:8000`
+и регистрируется не на том реле):
+`http://127.0.0.1:5173/?relay=https://xxxx-yyy-zzz.trycloudflare.com`
+(для собранного фронта — свой origin + тот же `?relay=`).
+Проверка релея отдельно: `https://xxxx-yyy-zzz.trycloudflare.com/health`
+должен отдать `{"status":"healthy"}`.
 
 Друг регистрируется — аккаунт живёт на твоём реле. Переписка, файлы, голосовые, звонки пойдут через твой ПК (медиа звонков P2P, сигналу нужен только relay).
 

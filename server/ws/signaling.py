@@ -150,6 +150,29 @@ class CallManager:
             })
             return
 
+        # Блокировки: звонок невозможен в любую сторону блокировки.
+        try:
+            from server.core import models as _models
+            from server.core.database import SessionLocal as _SessionLocal
+            _db = _SessionLocal()
+            try:
+                _blocked = _db.query(_models.BlockedUser).filter(
+                    ((_models.BlockedUser.user_id == user_id) & (_models.BlockedUser.blocked_user_id == target_user_id)) |
+                    ((_models.BlockedUser.user_id == target_user_id) & (_models.BlockedUser.blocked_user_id == user_id)),
+                ).first()
+            finally:
+                _db.close()
+            if _blocked:
+                await self._send_to_user(user_id, {
+                    "type": "call-failed",
+                    "call_id": call_id,
+                    "reason": "blocked",
+                    "message": "Пользователь заблокирован"
+                })
+                return
+        except Exception:
+            pass
+
         # Проверяем, что целевой пользователь не в другом звонке
         if target_user_id in self.user_calls:
             await self._send_to_user(user_id, {

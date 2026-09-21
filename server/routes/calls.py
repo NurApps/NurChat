@@ -31,6 +31,15 @@ async def start_call(
             logger.warning(f"User {token['sub']} tried to call non-existent user: {call_data.target_user_id}")
             raise HTTPException(status_code=404, detail="Пользователь не найден")
 
+        # Блокировки: звонок невозможен в любую сторону блокировки.
+        me, peer = token["sub"], call_data.target_user_id
+        blocked = db.query(models.BlockedUser).filter(
+            ((models.BlockedUser.user_id == me) & (models.BlockedUser.blocked_user_id == peer)) |
+            ((models.BlockedUser.user_id == peer) & (models.BlockedUser.blocked_user_id == me)),
+        ).first()
+        if blocked:
+            raise HTTPException(status_code=403, detail="Пользователь заблокирован")
+
         # Проверяем, что пользователи в одном чате (если указан chat_id)
         if call_data.chat_id:
             caller_in_chat = db.query(models.ChatParticipant).filter(

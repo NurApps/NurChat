@@ -278,6 +278,15 @@ async def _verify_ws_token(websocket: WebSocket, token: str | None, client_ip: s
     from server.core.security import security as sec
     try:
         payload = sec.verify_token(token)
+        # WS и файлы — только access-токены: refresh (7 дней) и 2fa_pending
+        # не дают права подключаться к чужим сокетам/скачивать файлы.
+        if payload.get("2fa_pending"):
+            await websocket.close(code=4001, reason="2FA required")
+            return None
+        if "type" in payload and payload.get("type") != "access":
+            logger.warning(f"WS non-access token rejected from {client_ip}")
+            await websocket.close(code=4001, reason="Access token required")
+            return None
         if expected_user_id is not None and payload.get("sub") != expected_user_id:
             logger.warning(f"WS token subject mismatch for {expected_user_id} from {client_ip}")
             await websocket.close(code=4003, reason="Token does not match user")
@@ -336,7 +345,7 @@ async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, t
     if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if not await _verify_ws_token(websocket, token, client_ip):
+    if not await _verify_ws_token(websocket, token, client_ip, user_id):
         await release_ws_connection(client_ip)
         return
     try:

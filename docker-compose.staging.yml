@@ -10,13 +10,15 @@ services:
       - "8000:8000"
     volumes:
       - ./media:/app/media
-      - nurchat_staging_db:/app
+      # Именованный том — только под данные. Монтировать том прямо
+      # в /app НЕЛЬЗЯ: он затеняет код, запечённый в образ (COPY в Dockerfile).
+      - nurchat_staging_db:/app/data
     env_file:
       - .env.staging
     environment:
       - DEBUG=false
       - USE_REDIS=true
-      - REDIS_URL=redis://redis-staging:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.staging}@redis-staging:6379/0
       - ENABLE_METRICS=true
       - LOG_LEVEL=INFO
     depends_on:
@@ -34,7 +36,9 @@ services:
 
   redis-staging:
     image: redis:7-alpine
-    command: redis-server --appendonly yes
+    # Пароль обязателен как в base compose: без него любой в сети
+    # staging-окружения читает/пишет pubsub и WS-присутствие.
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.staging}
     volumes:
       - redis_staging_data:/data
     restart: unless-stopped

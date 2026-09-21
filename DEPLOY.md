@@ -402,7 +402,7 @@ gunzip -c backup/nurchat_pg_YYYYMMDD_HHMMSS.sql.gz | docker compose exec -T db p
 
 ## 5. Обновления без мейнтейнера
 
-1. **Dependabot** (уже настроен) открывает PR с патчами безопасности weekly.
+1. **Dependabot** (уже настроен, интервал `monthly` в `.github/dependabot.yml`) открывает PR с патчами безопасности.
    Любой с write-доступом жмёт merge — CI (тесты + сборка) гоняется автоматически.
 2. **Релиз десктопа:** запушить тег `vX.Y.Z` → GitHub Actions соберёт exe
    и опубликует в Releases, клиенты обновятся сами (Tauri updater).

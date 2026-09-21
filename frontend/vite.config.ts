@@ -17,5 +17,12 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: true,
+    // Туннели для `run.bat tunnel` (Cloudflare): без этого Vite 403-ит
+    // запросы с tunnel-хоста проверкой Host. Только dev-сервер.
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '.trycloudflare.com',
+    ],
   },
 })

@@ -113,6 +113,7 @@
     "participants": "participants",
     "export": "Export",
     "exportCompleted": "Export completed",
+    "exportPlainWarning": "Export saves decrypted texts as a plain file. Continue?",
     "uploading": "Uploading...",
     "replySender": "User",
     "media": "Media",

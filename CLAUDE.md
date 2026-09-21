@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **`AGENTS.md` in the repo root is the authoritative, actively-maintained architecture doc — read it first.** It covers the E2E protocol, WS event formats, quirks proven by code (session ratchet direction, `call-join` auto-accept, X3DH without OPK, etc.), key file map, and conventions. This file only adds what AGENTS.md doesn't spell out: exact test invocation and a couple of stack notes from README.md.
 
-Do not trust `README.md` for architecture — it still describes removed P2P/IPFS features. `AGENTS.md` reflects the current, honest state (P2P core removed 2026-09, see `docs/E2E_AND_TRANSPORT.md` §7).
+`README.md` актуален по архитектуре (P2P/IPFS помечены удалёнными в 2026-09, см. `docs/E2E_AND_TRANSPORT.md` §7). При расхождении с кодом прав `AGENTS.md` + сам код.
 
 ## Commands
 

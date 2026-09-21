@@ -78,7 +78,9 @@ async def upload_signed_prekey(
 
 
 @router.get("/signed-prekey/{user_id}")
+@limiter.limit("30/minute")
 async def get_signed_prekey(
+    request: Request,
     user_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
@@ -170,7 +172,9 @@ def _claim_one_time_prekey(db: Session, user_id: str):
 
 
 @router.get("/one-time/{user_id}")
+@limiter.limit("30/minute")
 async def get_one_time_prekey(
+    request: Request,
     user_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
@@ -185,7 +189,9 @@ async def get_one_time_prekey(
 
 
 @router.get("/one-time-count/{user_id}")
+@limiter.limit("60/minute")
 async def get_one_time_prekey_count(
+    request: Request,
     user_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
@@ -199,7 +205,9 @@ async def get_one_time_prekey_count(
 
 
 @router.get("/bundle/{user_id}")
+@limiter.limit("30/minute")
 async def get_prekey_bundle(
+    request: Request,
     user_id: str,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
@@ -245,7 +253,9 @@ async def get_prekey_bundle(
 
 
 @router.post("/cleanup")
+@limiter.limit("10/minute")
 async def cleanup_used_prekeys(
+    request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
 ):

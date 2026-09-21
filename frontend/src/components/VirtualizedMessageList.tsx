@@ -18,6 +18,8 @@ interface RowProps {
 
 interface Props extends RowProps {
   scrollToMessageId?: string | null
+  /** Дозагрузка истории: внутренний скроллер react-window, а не внешний div. */
+  onNearTop?: () => void
 }
 
 const DEFAULT_ROW_HEIGHT = 80
@@ -49,17 +51,21 @@ const Row = ({
 }
 
 export default function VirtualizedMessageList(props: Props) {
-  const { messages, scrollToMessageId, currentUser, ...rowProps } = props
+  const { messages, scrollToMessageId, currentUser, onNearTop, ...rowProps } = props
   const listRef = useListRef(null)
-  const scrollLockRef = useRef(false)
+  const onNearTopRef = useRef(onNearTop)
+  onNearTopRef.current = onNearTop
+  // Трекаем границы списка, чтобы отличить append (новое сообщение —
+  // можно мотать вниз) от prepend (подгрузка истории — позицию держать).
+  const firstIdRef = useRef<string | null>(null)
+  const lastIdRef = useRef<string | null>(null)
+  const nearBottomRef = useRef(true)
 
   const rowHeight = useDynamicRowHeight({ defaultRowHeight: DEFAULT_ROW_HEIGHT, key: messages.length })
 
   const scrollToBottom = useCallback((behavior: "auto" | "smooth" = "auto") => {
     if (messages.length === 0) return
-    scrollLockRef.current = true
     listRef.current?.scrollToRow({ index: messages.length - 1, align: "end", behavior })
-    window.setTimeout(() => { scrollLockRef.current = false }, 150)
   }, [messages.length, listRef])
 
   const handleScrollToMessage = useCallback(() => {
@@ -68,9 +74,35 @@ export default function VirtualizedMessageList(props: Props) {
     if (idx >= 0) listRef.current?.scrollToRow({ index: idx, align: "center" })
   }, [scrollToMessageId, messages, listRef])
 
-  const handleResize = useCallback(() => {
-    if (!scrollLockRef.current) scrollToBottom()
-  }, [scrollToBottom])
+  const handleListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    // Подгрузка истории жила на внешнем div (scrollTop<80), который при
+    // виртуализации не скроллится — loadMore не срабатывал вообще.
+    if (el.scrollTop < 400) onNearTopRef.current?.()
+  }, [])
+
+  // Раньше onRowsRendered дёргал scrollToBottom при каждом рендере —
+  // подгрузка старых сообщений тут же прыгала вниз. Теперь мотаем
+  // только: первая загрузка чата + новое сообщение, когда юзер и так внизу.
+  useEffect(() => {
+    if (messages.length === 0) {
+      firstIdRef.current = null
+      lastIdRef.current = null
+      return
+    }
+    const first = messages[0].id
+    const last = messages[messages.length - 1].id
+    const prevFirst = firstIdRef.current
+    const prevLast = lastIdRef.current
+    firstIdRef.current = first
+    lastIdRef.current = last
+    if (prevFirst === null) {
+      scrollToBottom()
+    } else if (first === prevFirst && last !== prevLast && nearBottomRef.current) {
+      scrollToBottom("smooth")
+    }
+  }, [messages, scrollToBottom])
 
   useEffect(() => {
     handleScrollToMessage()
@@ -83,7 +115,7 @@ export default function VirtualizedMessageList(props: Props) {
       rowProps={{ ...rowProps, messages, currentUser }}
       rowHeight={rowHeight}
       rowCount={messages.length}
-      onRowsRendered={handleResize}
+      onScroll={handleListScroll}
     />
   )
 }

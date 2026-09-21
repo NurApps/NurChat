@@ -364,7 +364,10 @@ class ChatManager:
 
             # Same link rules as REST: no foreign file_id / cross-chat reply.
             try:
-                from server.routes.chat import _validate_message_links
+                from server.routes.chat import _is_dm_blocked, _validate_message_links
+                if _is_dm_blocked(db, data["chat_id"], user_id):
+                    logger.warning(f"Blocked DM message from {user_id} in {data['chat_id']}")
+                    return
                 _validate_message_links(
                     db, data["chat_id"], user_id,
                     data.get("file_id"), data.get("reply_to_id"),

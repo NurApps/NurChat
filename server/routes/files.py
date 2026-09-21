@@ -224,6 +224,10 @@ async def download_file(
             payload = sec.verify_token(token)
         except AuthenticationError:
             raise HTTPException(status_code=401, detail="Неверный токен")
+        if payload.get("2fa_pending"):
+            raise HTTPException(status_code=401, detail="Требуется завершить двухфакторную аутентификацию")
+        if "type" in payload and payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Требуется access-токен")
         user_id = payload.get("sub")
 
         logger.info(f"File download requested by user: {user_id}, file_id: {file_id}")
@@ -231,6 +235,16 @@ async def download_file(
         file_record = db.query(models.File).filter(models.File.id == file_id).first()
         if not file_record:
             raise HTTPException(status_code=404, detail="Файл не найден")
+
+        # View-once: байты одноразового вложения — только владельцу.
+        # Иначе файл можно скачать напрямую N раз, ни разу не открыв
+        # view-once (обход одноразовости), либо уже после просмотра.
+        vo_msg = db.query(models.Message).filter(
+            models.Message.file_id == file_id,
+            models.Message.is_view_once.is_(True),
+        ).first()
+        if vo_msg is not None and vo_msg.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Одноразовый файл уже недоступен")
 
         if file_record.user_id != user_id:
             message_with_file = db.query(models.Message).filter(

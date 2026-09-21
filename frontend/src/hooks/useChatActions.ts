@@ -113,6 +113,15 @@ export function useChatActions({
       loadChats()
     } catch (e) {
       console.error("Send failed:", e)
+      // Глухой relay отбил plaintext (нет конверта — нет ключей пира):
+      // класть в outbox БЕССМЫСЛЕННО, flush будет так же 400ить до poison
+      // и сообщение «исчезнет». Говорим прямо, в очередь не кладём.
+      const detail = e instanceof Error ? e.message : String(e)
+      if (/глух|deaf|only E2E/i.test(detail)) {
+        setErrorToast(t("errors.e2eKeysMissing"))
+        sendTyping(false)
+        return false
+      }
       // Оффлайн: кладём плейнтекст в локальный outbox — уйдёт само при
       // появлении связи (flushOutbox перешифрует свежими ключами).
       try {

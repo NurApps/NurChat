@@ -86,7 +86,9 @@ export default function MessageBubble({
 
   const senderName = message.user?.username || "User"
   const avatarChar = senderName[0]?.toUpperCase() || "?"
-  const avatarColor = getAvatarColor(senderName)
+  // Цвет — от стабильного user_id, как в списке чатов (см. ChatListItem):
+  // по username один и тот же юзер красился по-разному в разных местах.
+  const avatarColor = getAvatarColor(message.user_id || senderName)
 
   const handleEditSave = () => {
     if (editText.trim() && editText !== message.content) {

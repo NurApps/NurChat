@@ -348,6 +348,10 @@ async def send_message(
         if not message_data.content.strip():
             detail = "Содержимое сообщения не может быть пустым"
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+        # Тот же кап, что в WS _handle_new_message (1..5000): без него
+        # через REST можно залить гигантский JSON при капе тела 50 МБ.
+        if len(message_data.content) > 5000:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Сообщение слишком длинное (максимум 5000 символов)")
         try:
             _validate_message_links(
                 db, chat_id, user_id,

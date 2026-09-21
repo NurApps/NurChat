@@ -5,289 +5,76 @@
 <h1 align="center">NurChat</h1>
 
 <p align="center">
-  Анонимный мессенджер нового поколения с гибридным протоколом<br>
-  <b>Signal + Matrix + Session + Briar + IPFS = NurChat</b>
-</p>
-
-<p align="center">
-  <a href="#features">Фичи</a> •
-  <a href="#installation">Установка</a> •
-  <a href="#development">Разработка</a> •
-  <a href="#federation">Федерация</a> •
-  <a href="#protocol">Протокол</a> •
-  <a href="#license">Лицензия</a>
-
-  Анонимный мессенджер со сквозным шифрованием.<br>
+  Анонимный десктопный мессенджер со сквозным шифрованием.<br>
   Без телефона, без email — только username и пароль.
 </p>
 
 <p align="center">
   <a href="#возможности">Возможности</a> ·
   <a href="#установка">Установка</a> ·
+  <a href="#разработка">Разработка</a> ·
   <a href="#безопасность">Безопасность</a> ·
-  <a href="#docker">Docker</a> ·
-  <a href="#разработка">Разработка</a>
+  <a href="#docker-comparepose">Docker</a> ·
+  <a href="#архитектура">Архитектура</a> ·
+  <a href="#protocol">Протокол</a> ·
+  <a href="#license">Лицензия</a>
 </p>
 
 ---
 
-## Features
+## Возможности
 
 ### 🔐 Безопасность
 
-- **E2E шифрование** — X25519 + NaCl sealed box (как Signal)
-- **Ed25519 подписи** — верификация сообщений и P2P событий
-- **CSRF защита** — HMAC токены для всех POST запросов
+- **E2E шифрование** — X3DH (3 DH, без one-time prekey) + Double Ratchet, обязательные Ed25519-подписи
+- **Групповое E2E** — симметричный ключ группы, обёрнутый per-user через ECDH, rekey при смене состава
+- **E2E-файлы** — байты файлов/голосовых шифруются отдельным per-file ключом, релей хранит только ciphertext
+- **E2E-звонки** — SDP/ICE шифруются (ECDH + secretbox), медиа идёт напрямую по WebRTC (DTLS-SRTP)
 - **TOTP 2FA** — двухфакторная аутентификация с резервными кодами
 - **CAPTCHA** — защита от ботов при регистрации
-- **Вращение ключей** — авто-ротация с уведомлением контактов
-- **Групповое E2E** — зашифрованный group key для групп
-
-### 🌐 Федерация
-
-- **Сервер-к-серверу** — Ed25519 подписанные activity (как Matrix)
-- **Адресация** — `user@host:port` (как email)
-- **Авто-обнаружение** — `/.well-known/nurchat.json`
-- **Самостоятельный хостинг** — один запуск = сервер + мессенджер
+- **Ротация ключей** — с уведомлением контактов
+- **Safety Numbers** — сверка отпечатков ключей для защиты от MITM
 
 ### 🕵️ Приватность
 
-- **Без телефона** — регистрация без номера/email (как Session)
-- **Локальное хранение** — всё на вашем сервере (как Briar)
-- **Эфемерные сообщения** — авто-удаление по таймеру
+- **Без телефона и email** — регистрация только по username/паролю
+- **Глухой relay** — сервер хранит только шифротекст, содержимое сообщений удаляется после доставки (`RELAY_DEAF=true`)
+- **Эфемерные сообщения** — авто-удаление по таймеру, view-once
 - **PIN-код** — блокировка приложения
-
-### 🔗 P2P
-
-- **WebRTC DataChannel** — прямая передача файлов между пользователями
-- **IPFS** — контент-адресация, кеширование, доступность без центрального сервера
-- **WebSocket** — real-time доставка сообщений, typing indicators, online/offline
 
 ### 📺 Медиа
 
 - **Голосовые сообщения** — запись и воспроизведение
-- **Видео-кружки** — короткие видео как в Telegram
-- **Файлы** — загрузка до 50 МБ с прогрессом
-- **Стикеры** — базовый набор + кастомные
+- **Видео-кружки** — короткие видео
+- **Файлы** — загрузка с MIME-проверкой, опциональный ClamAV-скан
 - **Превью ссылок** — превью страниц в сообщениях
 
 ### 👥 Группы
 
 - **Создание групп** — выбор участников, имя группы
-- **Админы** — управление участниками
-- **Приглашения** — инвайт-ссылки
+- **Админы** — управление участниками, инвайт-ссылки
 - **Мут/пин** — отключение уведомлений, закрепление чатов
 
 ### 📞 Звонки
 
-- **Аудио/видео** — WebRTC с TURN/STUN поддержкой
-- **Видеозвонки** — переключение камер, демонстрация экрана
+- **Аудио/видео 1:1** — WebRTC через WebSocket-сигналинг, STUN/TURN
+- **Переключение камер, демонстрация экрана**
 - **ICE restart** — авто-восстановление при обрыве
-- **История звонков** — лог всех звонков
+- **История звонков** (опционально, выключаема флагом `CALLS_MINIMAL_METADATA`)
 
 ### 💾 Бэкапы
 
-- **Зашифрованные бэкапы** — экспорт чатов и ключей в зашифрованном виде
+- **Зашифрованные бэкапы** — экспорт чатов и ключей, защищён паролем (AES-256-GCM)
 - **Восстановление** — импорт данных на другом устройстве
 
 ### ✨ Удобство
 
 - **Тёмная/светлая тема** — авто-определение
 - **Поиск** — глобальный поиск по сообщениям
-- **Закладки** — сохранение важных сообщений
-- **Пересылка** — пересылка сообщений в другие чаты
-- **Редактирование** — inline редактирование сообщений
-- **Реакции** — emoji реакции на сообщения
+- **Закладки, пересылка, inline-редактирование, реакции**
+- **Push-уведомления** (Web Push/VAPID), автообновления (Tauri updater)
 
 ---
-
-## Установка
-
-### Docker (рекомендуется)
-
-```bash
-# 1. Клонируем репозиторий
-git clone https://github.com/NurApps/NurChat_desktop_beta.git
-cd NurChat_desktop
-
-# 2. Настраиваем переменные окружения
-cp .env.example .env
-# Отредактируйте .env и установите:
-# - ENCRYPTION_KEY (32 байта в hex, например: openssl rand -hex 32)
-# - JWT_SECRET_KEY (для сессий)
-
-# 3. Запускаем через Docker Compose
-docker-compose up -d
-
-# 4. Проверяем статус
-docker-compose ps
-
-# Сервер доступен на http://localhost:8000
-# PostgreSQL на localhost:5432
-# Redis на localhost:6379
-
-# Для локальной разработки (без Docker):
-# - SQLite используется по умолчанию (файл nurchat.db)
-# - Redis опционален (USE_REDIS=false по умолчанию)
-```
-
-### Windows
-
-1. Скачайте `NurChat_*_x64-setup.exe` с [Releases](https://github.com/NurApps/NurChat_desktop_beta/releases)
-2. Запустите установщик
-3. Приложение автоматически запустит Python сервер
-
-### macOS / Linux
-
-```bash
-git clone https://github.com/NurApps/NurChat_desktop_beta.git
-cd NurChat_desktop
-./start.sh
-```
-
-### Требования
-
-- **Python 3.10+** (для сервера)
-- **Node.js 22+** (для фронтенда)
-- **Rust** (для сборки Tauri)
-- **WebView2** (Windows, устанавливается автоматически)
-- **Docker & Docker Compose** (для контейнеризации, опционально)
-
-### Стек технологий
-
-**Frontend:**
-- React 19 + TypeScript 6 + Vite 8
-- Zustand — стейт-менеджмент
-- React Router 7 — навигация
-- i18next — интернационализация
-- TweetNaCl — клиентское E2E шифрование
-- React Window — виртуализация списков
-- DOMPurify — санитайзинг HTML
-- Vitest — тесты
-
-**Backend:**
-- FastAPI 0.135 + Uvicorn
-- SQLAlchemy 2.0 + Alembic (миграции)
-- SQLite (дефолт для локалки) / PostgreSQL 15 (Docker)
-- PyNaCl + cryptography — E2E шифрование
-- python-jose — JWT токены
-- Argon2 — хеширование паролей
-- PyOTP — TOTP 2FA
-- SlowAPI — rate limiting
-- Redis (опционально) — кэш, rate-limiting
-
-**Desktop (Tauri 2.11):**
-- Tauri + Rust — нативная оболочка
-- Плагины: notification, shell, log
-- Reqwest — HTTP-запросы из Rust
-- Tokio — async runtime
-
----
-
-## Development
-
-### Быстрый старт
-
-```bash
-# 1. Клонируем
-git clone https://github.com/NurApps/NurChat_desktop_beta.git
-cd NurChat_desktop
-
-# 2. Python venv
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-pip install -r requirements.txt
-
-# 3. Frontend
-cd frontend && npm install && cd ..
-
-# 4. Запуск (сервер + Tauri)
-./run.bat  # Windows: dev | vite | relay | tunnel | build
-# или
-run.bat relay  # сервер отдельно
-npx tauri dev  # Tauri отдельно
-```
-
-### Структура проекта
-
-```
-NurChat_desktop/
-├── frontend/           # React 19 + TypeScript 6 + Vite 8
-│   ├── src/
-│   │   ├── components/ # UI компоненты
-│   │   ├── pages/      # Страницы (Chat, Call, Settings...)
-│   │   ├── services/   # API клиент, E2E, P2P
-│   │   └── hooks/      # React hooks
-│   └── public/
-├── server/             # FastAPI 0.135 + SQLAlchemy 2.0
-│   ├── core/           # Models, security, federation, IPFS
-│   ├── routes/         # API endpoints
-│   ├── ws/             # WebSocket managers
-│   └── utils/          # Helpers
-├── shared/             # Общие конфиги, схемы, константы
-├── src-tauri/          # Tauri 2.11 (Rust shell)
-│   └── src/
-│       ├── lib.rs      # Tauri commands
-│       ├── server.rs   # Auto-start Python server
-│       ├── ipfs.rs     # IPFS client
-│       └── p2p.rs      # P2P networking
-└── alembic/            # DB миграции
-```
-
-### Команды
-
-```bash
-# Сервер
-python -m uvicorn server.main:app --port 8000 --reload
-
-- **Сквозное шифрование (E2E)** — X3DH (3 DH, без one-time prekey) + Double Ratchet,
-  Ed25519-подписи обязательны, safety numbers, ротация ключей с уведомлениями
-- **Личные и групповые чаты** — групповой E2E через обёрнутые симметричные ключи
-- **Сообщения** — ответы, реакции, редактирование, удаление, эфемерные (TTL),
-  view-once, отложенные, экспорт, глобальный поиск
-- **Файлы и голосовые** — загрузка с MIME-проверкой, опциональный ClamAV-скан
-- **Аудио/видеозвонки 1:1** — WebRTC через WebSocket-сигналинг, STUN/TURN, история звонков
-- **Контакты** — заявки в контакты, блокировка, приглашения в группы
-- **2FA (TOTP)** с backup-кодами
-- **PIN-блокировка** приложения, push-уведомления (Web Push/VAPID), автообновления
-
-## Безопасность
-
-Что реализовано:
-
-| Компонент | Реализация |
-|---|---|
-| Протокол | X3DH (3 DH) + Double Ratchet, Ed25519-подписи обязательны |
-| Шифры | XSalsa20-Poly1305 / AES-256-GCM, X25519 ECDH |
-| Примитивы | @noble (аудит cure53), WebCrypto для KDF |
-| Post-compromise security | DH-ratchet самовосстанавливает сессию после компрометации ключа |
-| Replay protection | Отслеживание message ID per session |
-| Аутентификация сервера | Argon2id, JWT c отзывом и ротацией, TOTP 2FA |
-| Хранение ключей | IndexedDB + AES-256-GCM, zeroize, автоочистка через 10 мин |
-
-Чего у нас **нет** — говорим честно:
-
-- **Внешнего аудита.** Код не проверялся независимыми аудиторами. Реализация
-  протокола своя: схема проверена годами в Signal, но в нашей реализации
-  возможны ошибки.
-- **Формальной верификации** протокола (Tamarin/ProVerif).
-- **One-time prekeys в X3DH.** Клиент намеренно использует только 3 DH
-  (в протоколе нет OPK id) — стандартный Signal-fallback, чуть слабее forward
-  secrecy первого сообщения.
-- **Защиты метаданных.** Релей видит, кто с кем и когда общается.
-  Содержимое не хранит: доставленные сообщения удаляются строками
-  (`RELAY_DEAF=true` по умолчанию), история живёт только на устройствах.
-- **Аппаратной защиты ключей** — `device_secret` лежит открытым в IndexedDB
-  (в браузере нет OS keystore). Поднимает планку против кражи localStorage,
-  но дамп IndexedDB всё вскрывает.
-- **Групповой ratchet — свой велосипед** (hash-chain, не Sender Keys):
-  работает, но не рецензирован криптографами.
-
-Если найдёте уязвимость — [сообщите](https://github.com/NurApps/NurChat/security/advisories/new),
-мы исправимся быстро.
-
-> Мы не используем слова «военная криптография». Скептицизм полезнее доверия:
-> читайте код, тестируйте, сообщайте о проблемах.
 
 ## Установка
 
@@ -295,47 +82,35 @@ python -m uvicorn server.main:app --port 8000 --reload
 
 1. Скачайте `NurChat_*_x64-setup.exe` с [Releases](https://github.com/NurApps/NurChat/releases)
 2. Запустите установщик
-3. Укажите адрес релея (свой или публичный) — приложение подключится к нему
+3. Укажите адрес relay (свой или полученный от друга) — приложение подключится к нему
 
-**Системные требования:**
-- Windows 10+ (WebView2 встроен)
-- 200 МБ свободного места
+**Системные требования:** Windows 10+ (WebView2 обычно уже встроен), ~200 МБ свободного места.
 
-### Docker (сервер / production)
+### Relay (сервер) — Docker
 
 ```bash
 git clone https://github.com/NurApps/NurChat.git
 cd NurChat
 cp .env.example .env
-# Отредактируйте .env (POSTGRES_PASSWORD, REDIS_PASSWORD, ключи)
-docker-compose up -d
-# Сервер на http://localhost:8000
+# отредактируйте .env: ENCRYPTION_KEY, JWT_SECRET_KEY, TOTP_MASTER_KEY (см. AGENTS.md)
+docker compose up -d --build
+docker compose exec nurchat alembic upgrade head
+curl -f http://localhost:8000/health
 ```
 
-Для публичного инстанса с HTTPS:
+Публичный инстанс с HTTPS и хардненным конфигом — см. `DEPLOY.md`.
 
-```bash
-# DOMAIN=relay.example.com в .env, затем:
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-```
+---
 
-Режим глухого релея (стирать содержимое после доставки):
-
-```bash
-# в .env:
-RELAY_DEAF=true
-MESSAGE_RETENTION_HOURS=48
-```
-
-### Разработка
+## Разработка
 
 ```bash
 git clone https://github.com/NurApps/NurChat.git
 cd NurChat
 
-# Python
+# Python venv
 python -m venv .venv
-.venv\Scripts\activate  # Windows; macOS/Linux: source .venv/bin/activate
+.venv\Scripts\activate       # Windows; macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 
 # Frontend
@@ -344,281 +119,132 @@ cd frontend && npm install && cd ..
 # Миграции
 .venv\Scripts\python -m alembic upgrade head
 
-# Запуск релея (терминал 1)
+# Терминал 1 — relay (обязательно отдельно, `npx tauri dev` его не поднимает)
+run.bat relay
+# или напрямую:
 .venv\Scripts\python -m uvicorn server.main:app --port 8000 --reload
 
-# Запуск Tauri (терминал 2)
+# Терминал 2 — Tauri
 npx tauri dev
 ```
 
-**Требования для разработки:** Python 3.12, Node.js 22+, Rust, WebView2
+Без запущенного relay фронтенд покажет «Сервер недоступен» — укажите `VITE_API_HOST`/`VITE_API_PROTOCOL` для удалённого relay.
 
-Без запущенного релея фронтенд покажет «Сервер недоступен» — `npx tauri dev`
-релей не стартует, укажите `VITE_API_HOST` для удалённого.
+**Требования:** Python 3.12, Node.js 22+, Rust, WebView2 (Windows).
+
+### Прочие команды
+
+```bash
+# Фронтенд отдельно (без Tauri), порт 5173
+cd frontend && npm run dev
+
+# Сборка installer'а
+npx tauri build
+
+# Тесты
+pytest test/ -v
+cd frontend && npx vitest run
+
+# Линт / типчек
+ruff check . && mypy .
+cd frontend && npm run lint && npx tsc --noEmit
+```
+
+Структура проекта, ключевые файлы и известные особенности кода — см. `AGENTS.md`.
+
+---
+
+## Безопасность
+
+Что реализовано:
+
+| Компонент | Реализация |
+|---|---|
+| Протокол | X3DH (3 DH, без one-time prekey) + Double Ratchet, Ed25519-подписи обязательны |
+| Шифры | XSalsa20-Poly1305 / AES-256-GCM, X25519 ECDH |
+| Примитивы | `@noble/curves` + `@noble/ciphers` (аудит cure53, 09.2024) |
+| Post-compromise security | DH-ратчет самовосстанавливает сессию после компрометации ключа |
+| Аутентификация сервера | Argon2id, JWT с ротацией, TOTP 2FA |
+| Хранение ключей на устройстве | IndexedDB + AES-256-GCM, PBKDF2 100k, автоочистка через 10 мин |
+
+Чего у нас **нет** — говорим честно:
+
+- **Внешнего аудита.** Реализация протокола своя: схема проверена годами в Signal, но в нашей реализации возможны ошибки.
+- **Формальной верификации** протокола (Tamarin/ProVerif).
+- **One-time prekeys в X3DH.** Клиент намеренно использует только 3 DH — стандартный Signal-fallback, чуть слабее forward secrecy первого сообщения.
+- **Защиты метаданных.** Relay видит, кто с кем и когда общается (граф, размер сообщений с точностью до бакета). Содержимое не хранит: доставленные сообщения удаляются строками (`RELAY_DEAF=true` по умолчанию), история живёт только на устройствах.
+- **Аппаратной защиты ключей** — `device_secret` лежит открытым в IndexedDB (в браузере нет OS keystore). Поднимает планку против кражи из localStorage, но полный дамп IndexedDB всё вскрывает.
+- **Групповой ratchet — свой велосипед** (hash-chain, не Sender Keys): работает, но не рецензирован криптографами.
+
+Полная честная картина (что реально E2E, а что нет) — `docs/E2E_AND_TRANSPORT.md`.
+
+Если найдёте уязвимость — [сообщите](https://github.com/NurApps/NurChat/security/advisories/new), см. `SECURITY.md`.
+
+> Мы не используем слова «военная криптография». Скептицизм полезнее доверия: читайте код, тестируйте, сообщайте о проблемах.
+
+---
+
+## Docker Compose
+
+```bash
+docker-compose up -d          # запуск всех сервисов
+docker-compose logs -f nurchat
+docker-compose down           # остановка
+docker-compose down -v        # полная очистка (удалит все данные!)
+```
+
+| Сервис | Порт | Описание |
+|--------|------|----------|
+| `nurchat` | 8000 | FastAPI relay |
+| `db` | 5432 | PostgreSQL 15 |
+| `redis` | 6379 | Redis 7 (rate-limiting, presence, WS pub/sub) |
+
+Ключевые переменные `.env` (полный список — `.env.example`, `shared/config.py`):
+
+```ini
+DATABASE_URL=sqlite:///./nurchat.db   # локально; Docker: postgresql://nurchat:nurchat_pass@db:5432/nurchat
+USE_REDIS=false
+ENCRYPTION_KEY=<hex 64>               # openssl rand -hex 32
+JWT_SECRET_KEY=<hex 64>
+TOTP_MASTER_KEY=<token_urlsafe 32>
+CORS_ORIGINS=http://localhost:5173,tauri://localhost,https://tauri.localhost
+```
+
+Миграции применяются вручную: `docker-compose exec nurchat alembic upgrade head`.
+
+Health check: `curl http://localhost:8000/health` → `{"status":"healthy"}`.
+
+Продакшен-развёртывание, харднинг, бэкапы, TURN, мониторинг — целиком в `DEPLOY.md`.
 
 ---
 
 ## Архитектура
 
 ```
-Tauri (Rust) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI relay ──> SQLite/PostgreSQL
+Tauri (Rust shell) ── wraps ──> React frontend ── HTTP/WS ──> FastAPI relay ──> SQLite/PostgreSQL
 ```
 
-Релей — слепой курьер: передаёт зашифрованные сообщения, но не может их
-прочитать (ключи существуют только на устройствах собеседников).
+Relay — слепой курьер: передаёт зашифрованные сообщения, но прочитать их не может (ключи существуют только на устройствах собеседников).
 
 - **Десктоп:** SQLite (встроенный, без настройки)
 - **Docker/Production:** PostgreSQL + Redis (через docker-compose)
-- **База:** SQLAlchemy ORM, миграции через Alembic (`alembic upgrade head`)
+- **База:** SQLAlchemy ORM, миграции через Alembic
 - **Real-time:** WebSocket — `/ws/chat`, `/ws/calls`, `/ws/signaling`, `/ws/notifications`
 - **Звонки:** WebRTC, сигналинг через WebSocket, NAT — STUN/TURN (coturn в compose)
-- **Файлы:** локальное хранилище в `media/`, TTL-очистка по расписанию
+- **Файлы:** локальное хранилище в `media/`, шифротекст, TTL-очистка по расписанию (по умолчанию 30 дней)
 
----
-
-# Фронтенд (отдельно, если нужно без Tauri)
-cd frontend && npm run dev  # порт 5173
-
-# Tauri dev (запуск десктопного приложения в dev-режиме)
-npx tauri dev
-
-# Tauri build (installer)
-npx tauri build
-
-# Тесты
-pytest test/ -v
-
-# Фронтенд тесты
-cd frontend && npx vitest run
-
-# Фронтенд линтер
-cd frontend && npm run lint
-
-# TypeScript check
-cd frontend && npx tsc --noEmit
-```
-
----
-
-## 🔐 Двухфакторная аутентификация (TOTP 2FA)
-
-NurChat поддерживает TOTP (Time-based One-Time Password) для дополнительной защиты аккаунта.
-
-### Настройка 2FA
-
-1. **Войдите в аккаунт** с логином и паролем
-2. **Откройте Настройки** → раздел "Безопасность"
-3. **Нажмите "Включить 2FA"**
-4. **Отсканируйте QR-код** в приложении аутентификации:
-   - Google Authenticator
-   - Authy
-   - Microsoft Authenticator
-   - Любой другой TOTP-совместимый апп
-5. **Введите 6-значный код** из приложения
-6. **Сохраните резервные коды** в безопасном месте!
-
-```
-⚠️ Важно: Резервные коды можно использовать только один раз каждый.
-Если вы потеряете доступ к TOTP и резервным кодам, восстановление невозможно!
-```
-
-### Вход с 2FA
-
-После включения 2FA при входе потребуется:
-1. Ввести логин и пароль
-2. Ввести 6-значный код из приложения аутентификации
-   **ИЛИ**
-3. Ввести одноразовый резервный код
-
-### Отключение 2FA
-
-1. Войдите в аккаунт (с TOTP кодом)
-2. Откройте Настройки → Безопасность
-3. Нажмите "Отключить 2FA"
-4. Подтвердите текущим TOTP кодом
-
-### Потеряли доступ?
-
-Если вы потеряли телефон с TOTP приложением:
-- Используйте **резервные коды**, которые вы сохранили при настройке
-- Каждый код можно использовать **только один раз**
-- После использования код становится недействительным
-
----
-
-## 💾 Бэкапы и восстановление
-
-### Создание бэкапа
-
-1. Откройте Настройки → "Бэкапы"
-2. Нажмите "Создать бэкап"
-3. Введите пароль для шифрования бэкапа
-4. Скачайте зашифрованный файл `.nurchat-backup`
-
-**Что включается в бэкап:**
-- Все чаты и сообщения
-- Контакты
-- Ключи шифрования E2E
-- Настройки аккаунта
-
-### Восстановление из бэкапа
-
-1. На новом устройстве откройте страницу "/backup"
-2. Выберите "Восстановить из бэкапа"
-3. Загрузите файл `.nurchat-backup`
-4. Введите пароль шифрования
-5. Дождитесь завершения импорта
-
-```
-⚠️ Важно: Бэкапы зашифрованы алгоритмом AES-256-GCM.
-Без пароля восстановить данные невозможно!
-```
-
----
-
-## 🐳 Docker Compose
-
-### Быстрый старт
-
-```bash
-# Запуск всех сервисов
-docker-compose up -d
-
-# Просмотр логов
-docker-compose logs -f nurchat
-
-# Остановка
-docker-compose down
-
-# Полная очистка (удалит все данные!)
-docker-compose down -v
-```
-
-### Сервисы
-
-| Сервис | Порт | Описание |
-|--------|------|----------|
-| `nurchat` | 8000 | FastAPI сервер NurChat |
-| `db` | 5432 | PostgreSQL 15 (база данных) |
-| `redis` | 6379 | Redis 7 (кэш, rate-limiting, WebSocket pub/sub) |
-
-### Переменные окружения
-
-Скопируйте `.env.example` в `.env` и настройте:
-
-```ini
-# База данных
-# Дефолт для локальной разработки: sqlite:///./nurchat.db
-# Docker: postgresql://nurchat:nurchat_pass@db:5432/nurchat
-DATABASE_URL=sqlite:///./nurchat.db
-
-# Redis (опционально, для кэша и rate-limiting)
-USE_REDIS=false
-REDIS_URL=redis://localhost:6379/0
-
-# Секретные ключи
-ENCRYPTION_KEY=ваш_ключ_шифрования_32_байта_hex
-JWT_SECRET_KEY=ваш_ключ_для_сессий_hex
-
-# Федерация (опционально)
-USE_FEDERATION=false
-FEDERATION_SERVER_NAME=localhost:8000
-
-# CORS
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
-```
-
-### Генерация ключей
-
-```bash
-# ENCRYPTION_KEY (32 байта)
-openssl rand -hex 32
-
-# JWT_SECRET_KEY (32 байта)
-openssl rand -hex 32
-```
-
-### Миграции БД
-
-При первом запуске миграции применяются автоматически. Для ручного применения:
-
-```bash
-docker-compose exec nurchat alembic upgrade head
-```
-
-### Health Check
-
-Сервер имеет health check эндпоинт:
-
-```bash
-curl http://localhost:8000/health
-# Ответ: {"status": "healthy"}
-```
-
----
-
-## Federation
-
-NurChat поддерживает федерацию — серверы общаются друг с другом.
-
-### Включение
-
-```bash
-# .env
-USE_FEDERATION=true
-FEDERATION_SERVER_NAME=your-server.com:8000
-```
-
-### Как работает
-
-1. **Discovery** — `GET /.well-known/nurchat.json` (публичный ключ сервера)
-2. **User lookup** — `GET /federation/user/{username}`
-3. **Message relay** — `POST /federation/inbox` (подписанное activity)
-4. **Адресация** — `user@host:port` (как email)
-
-### Протокол
-
-- Каждый сервер генерирует Ed25519 ключ при старте
-- Activity подписываются серверным ключом
-- Получатель верифицирует подпись через `/.well-known/nurchat.json`
-- E2E шифрование сохраняется — сервер видит только зашифрованный контент
+P2P-транспорт (прямая передача сообщений между устройствами) и IPFS в ядре отсутствуют — были удалены в 2026-09 как нерабочий мёртвый код (подробности — `docs/E2E_AND_TRANSPORT.md` §7). Флаг `USE_FEDERATION` в коде есть, но выключен по умолчанию и на сегодня нефункционален (модуль сервер-к-серверу ещё не реализован) — не полагайтесь на него.
 
 ---
 
 ## Protocol
 
-### Гибридный протокол NurChat
+NurChat использует X3DH (3 DH, подписи Ed25519 обязательны) + Double Ratchet для 1:1-чатов — тот же класс протокола, что в Signal, реализованный самостоятельно (без внешнего аудита, см. раздел «Безопасность»). Групповые чаты используют обёрнутый симметричный ключ с собственной hash-chain ratchet-схемой (не Sender Keys).
 
-Мы взяли лучшее из каждого протокола и смешали:
-
-| Протокол | Что взяли | Зачем |
-|----------|-----------|-------|
-| **Signal** | X25519 + NaCl sealed box | Доказанное E2E шифрование |
-| **Matrix** | Federation (inbox/outbox) | Серверы общаются без единой точки отказа |
-| **Session** | Анонимность без телефона | Приватность регистрации |
-| **Briar** | Локальное хранение, P2P | Автономность от облаков |
-| **IPFS** | Content-addressed файлы | Доступность через CID, кеширование |
-| **Telegram** | UX (группы, файлы, стикеры) | Привычный интерфейс |
-
-### Сравнение
-
-| | Signal | Matrix | Session | Briar | **NurChat** |
-|---|---|---|---|---|---|
-| E2E шифрование | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Федерация | ❌ | ✅ | ❌ | ❌ | ✅ |
-| Без телефона | ❌ | ✅ | ✅ | ✅ | ✅ |
-| P2P | ❌ | ⚠️ | ✅ | ✅ | ✅ |
-| IPFS | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Самостоятельный хостинг | ❌ | ✅ | ✅ | ✅ | ✅ |
-| Нативное десктоп приложение | ❌ | ❌ | ❌ | ❌ | ✅ |
+Подробное, доказанное кодом описание протокола, транспорта и того, что relay видит/не видит — `docs/E2E_AND_TRANSPORT.md`.
 
 ---
 
 ## License
-
-[GNU AGPL v3](LICENSE) — NurApps 2026
-
----
-
 
 [GNU AGPL v3](LICENSE) © NurApps 2026

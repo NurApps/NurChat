@@ -16,5 +16,4 @@ NurApps не несет ответственности за содержание
 
 ## 5. Контакты
 @salikh_suyundikov Telegram
-salixsuyundikov@gmail.com 
-            """
+salixsuyundikov@gmail.com

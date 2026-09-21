@@ -10,7 +10,6 @@ mobile/
 ├── ios/              ← Tauri v2 iOS (Swift)
 ├── docs/             ← Документация по mobile
 ├── scripts/          ← Скрипты сборки
-├── MOBILE_PLAN.md    ← План мобильного приложения
 └── README.md         ← Этот файл
 ```
 

@@ -367,9 +367,12 @@ async def get_all_users(
         current_user_id = token["sub"]
         query = db.query(models.User).filter(models.User.id != current_user_id)
         if q:
+            # LIKE-wildcards (% _) и бэкслэш экранируем, иначе запрос
+            # с % мачит всех пользователей (см. _escape_like в chat.py).
+            eq = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             query = query.filter(
-                models.User.username.ilike(f"%{q}%") |
-                models.User.first_name.ilike(f"%{q}%")
+                models.User.username.ilike(f"%{eq}%", escape="\\") |
+                models.User.first_name.ilike(f"%{eq}%", escape="\\")
             )
         users = query.offset(offset).limit(min(limit, 100)).all()
         return [schemas.UserResponse.model_validate(user) for user in users]

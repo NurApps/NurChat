@@ -39,7 +39,11 @@ async def get_user_chats(
 
     query = db.query(models.Chat).join(models.ChatParticipant).filter(models.ChatParticipant.user_id == user_id)
     if search:
-        query = query.filter(or_(models.Chat.name.ilike(f"%{search}%"), models.Chat.id.ilike(f"%{search}%")))
+        s = _escape_like(search)
+        query = query.filter(or_(
+            models.Chat.name.ilike(f"%{s}%", escape="\\"),
+            models.Chat.id.ilike(f"%{s}%", escape="\\"),
+        ))
     user_chats = query.all()
     chat_ids = [c.id for c in user_chats]
 

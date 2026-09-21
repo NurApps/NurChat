@@ -1,14 +1,45 @@
 # shared/schemas.py
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # Базовая схема
 class BaseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _assume_utc_for_naive_datetimes(self):
+        """SQLite возвращает naive datetimes (func.now() = UTC без tzinfo),
+        а Pydantic сериализует их без смещения — браузер парсит как ЛОКАЛЬНОЕ
+        время: часы съезжают на TZ-офсет, а ephemeral-сообщения (expires_at)
+        «исчезают» сразу (наивный UTC-дедлайн уже в прошлом по местному).
+        Штампуем naive как UTC. Вложенные dict/ORM валидируются рекурсивно
+        сами; готовые инстансы Pydantic не ревалидирует (revalidate_instances
+        по умолчанию never) — их обходим вручную."""
+        for name in self.__class__.model_fields:
+            try:
+                v = getattr(self, name, None)
+            except Exception:
+                continue
+            if isinstance(v, datetime):
+                if v.tzinfo is None:
+                    try:
+                        setattr(self, name, v.replace(tzinfo=timezone.utc))
+                    except Exception:
+                        pass
+            elif isinstance(v, BaseSchema):
+                v._assume_utc_for_naive_datetimes()
+            elif isinstance(v, (list, tuple)):
+                for item in v:
+                    if isinstance(item, BaseSchema):
+                        try:
+                            item._assume_utc_for_naive_datetimes()
+                        except Exception:
+                            pass
+        return self
 
 # User
 class UserBase(BaseSchema):

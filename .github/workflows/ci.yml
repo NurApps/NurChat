@@ -30,7 +30,10 @@ jobs:
       - name: Lint
         run: ruff check . --ignore E501
       - name: Typecheck
-        # Strict since 2026-09: mypy is clean (0 errors), failures must break CI.
+        # Scoped since 2026-09: 0 errors on the checked subset.
+        # server/ws, server/middleware, models/database/storage и часть
+        # роутов исключены в pyproject.toml (исторический долг) — их
+        # возврат в тайпчек отслеживается отдельно, не этим джобом.
         run: mypy server shared --ignore-missing-imports
       - name: Run tests
         run: pytest test/ -q --timeout=60 --ignore=test/load_test_websocket.py --ignore=test/load_test_ws.py

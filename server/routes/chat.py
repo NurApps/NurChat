@@ -1158,7 +1158,9 @@ async def set_group_key(
 ):
     """Store encrypted group key for E2E group chat.
 
-    payload: {encrypted_keys: {user_id: sealed_box_b64}, creator_id?: str}
+    payload: {encrypted_keys: {user_id: sealed_box_b64}}
+    Создатель ключа определяется сервером (первый установивший),
+    поле creator_id от клиента игнорируется.
     """
     user_id = token["sub"]
     participant = db.query(models.ChatParticipant).filter(
@@ -1178,9 +1180,10 @@ async def set_group_key(
 
     import json
     chat.group_key = json.dumps(payload.get("encrypted_keys", {}))
-    if "creator_id" in payload:
-        chat.group_key_creator_id = payload["creator_id"]
-    elif not chat.group_key_creator_id:
+    # creator_id от клиента игнорируем: создатель — аутентифицированный
+    # пользователь, первым установивший ключ. Иначе любой участник мог
+    # назначить себя/соседа создателем и заблокировать ротацию.
+    if not chat.group_key_creator_id:
         chat.group_key_creator_id = user_id
     db.commit()
     return {"message": "Group key updated"}

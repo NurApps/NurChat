@@ -39,6 +39,20 @@ export default function LoginPage() {
   const [captchaQuestion, setCaptchaQuestion] = useState("")
   const [captchaAnswer, setCaptchaAnswer] = useState("")
 
+  const checkServerHealth = () => {
+    setChecking(true)
+    setServerUnavailable(false)
+    fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(5000) })
+      .then((r) => {
+        if (!r.ok) setServerUnavailable(true)
+        setChecking(false)
+      })
+      .catch(() => {
+        setServerUnavailable(true)
+        setChecking(false)
+      })
+  }
+
   // Auto-login or check server health
   useEffect(() => {
     const token = localStorage.getItem("token")
@@ -57,15 +71,7 @@ export default function LoginPage() {
       return
     }
     // No token — check if server is reachable before showing register/login
-    fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(5000) })
-      .then((r) => {
-        if (!r.ok) setServerUnavailable(true)
-        setChecking(false)
-      })
-      .catch(() => {
-        setServerUnavailable(true)
-        setChecking(false)
-      })
+    checkServerHealth()
   }, [navigate])
 
   // Load CAPTCHA when tab is register
@@ -240,8 +246,8 @@ export default function LoginPage() {
             <p className="login-subtitle">{t("auth.subtitle")}</p>
           </div>
           <div className="auth-error-box">
-            <p>{t("errors.serverUnavailable")}: {BASE_URL}</p>
-            <button className="auth-btn" onClick={() => window.location.reload()}>
+            <p>{t("errors.network")}: {BASE_URL}</p>
+            <button className="auth-btn" onClick={checkServerHealth}>
               {t("common.retry")}
             </button>
           </div>

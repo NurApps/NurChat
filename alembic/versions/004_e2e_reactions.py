@@ -10,9 +10,9 @@ Guarded with inspector checks so create_all DBs and re-runs are safe.
 """
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = '004'
 down_revision: str | None = '003'

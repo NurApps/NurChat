@@ -5,6 +5,7 @@ apscheduler==3.11.2
 cryptography==46.0.6
 fastapi==0.135.3
 httpx>=0.28.0
+hypothesis>=6.100.0
 Pillow==12.3.0
 prometheus-client==0.21.1
 psutil==7.2.2

@@ -99,7 +99,17 @@ export default function ServerBootOverlay({ onReady }: Props) {
 
   return (
     <div className="server-boot-overlay">
-      <div className="server-boot-card" style={{ maxWidth: 440 }}>
+      <div className="server-boot-side">
+        <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18.36 5.64a9 9 0 1 1-12.73 0" />
+          <line x1="12" y1="2" x2="12" y2="12" />
+        </svg>
+        <p className="server-boot-side-text">
+          {phase === "checking" ? "Подключение к NurChat" : "Нет связи с сервером"}
+        </p>
+      </div>
+      <div className="server-boot-main">
+      <div className={`server-boot-card${phase === "failed" ? " server-boot-card-wide" : ""}`}>
         {phase === "checking" && (
           <>
             <div className="spinner" />
@@ -122,11 +132,11 @@ export default function ServerBootOverlay({ onReady }: Props) {
               Точный HTTP-код (например, Cloudflare 5xx) браузер может скрывать здесь из-за CORS — смотрите вкладку Network в devtools для деталей.
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+            <div className="server-boot-options">
               {/* Try public relays */}
               {PUBLIC_RELAYS.length > 0 && (
-                <div style={{ padding: 12, borderRadius: 8, background: "var(--input-bg)", border: "1px solid var(--border)" }}>
-                  <p style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, opacity: 0.7 }}>PUBLIC RELAY</p>
+                <div className="server-boot-option server-boot-option-wide">
+                  <p className="server-boot-option-label">PUBLIC RELAY</p>
                   {PUBLIC_RELAYS.map((r) => (
                     <button
                       key={r.host}
@@ -141,9 +151,9 @@ export default function ServerBootOverlay({ onReady }: Props) {
               )}
 
               {/* Connect to friend's relay */}
-              <div style={{ padding: 12, borderRadius: 8, background: "var(--input-bg)", border: "1px solid var(--border)" }}>
-                <p style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, opacity: 0.7 }}>FRIEND'S RELAY</p>
-                <p style={{ fontSize: 12, marginBottom: 8, opacity: 0.6 }}>
+              <div className="server-boot-option">
+                <p className="server-boot-option-label">FRIEND'S RELAY</p>
+                <p className="server-boot-option-desc">
                   Ask your friend for their relay address
                 </p>
                 <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
@@ -178,9 +188,9 @@ export default function ServerBootOverlay({ onReady }: Props) {
               </div>
 
               {/* Start local server */}
-              <div style={{ padding: 12, borderRadius: 8, background: "var(--input-bg)", border: "1px solid var(--border)" }}>
-                <p style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, opacity: 0.7 }}>YOUR OWN SERVER</p>
-                <p style={{ fontSize: 12, marginBottom: 8, opacity: 0.6 }}>
+              <div className="server-boot-option">
+                <p className="server-boot-option-label">YOUR OWN SERVER</p>
+                <p className="server-boot-option-desc">
                   Run your own relay for full control
                 </p>
                 <button
@@ -242,6 +252,7 @@ docker-compose up -d
             </button>
           </>
         )}
+      </div>
       </div>
     </div>
   )

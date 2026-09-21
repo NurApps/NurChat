@@ -135,16 +135,25 @@ if _cors_origins_env:
 else:
     _cors_origins = [
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
         "http://localhost:8000",
+        "http://127.0.0.1:8000",
         "tauri://localhost",
         "https://tauri.localhost",
     ]
+# Туннели (run.bat tunnel): quick-URL случаен при каждом рестарте, заранее
+# перечислить его в CORS_ORIGINS нельзя, а "*" с allow_credentials=True
+# браузер игнорирует. Поэтому regex — только для https-поддоменов
+# trycloudflare. Прод: именованный туннель + явный CORS_ORIGINS, regex
+# не задавать (любой trycloudflare-поддомен — чужой, ключ всё равно JWT).
+_cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip() or None
 if settings.DEBUG:
-    logger.info("Allowed origins: %s", _cors_origins)
+    logger.info("Allowed origins: %s (regex: %s)", _cors_origins, _cors_origin_regex)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-Password-Confirmation", "Accept"],
@@ -213,11 +222,16 @@ async def add_security_headers(request: Request, call_next):
             for o in _cors_origins
         )
         _http_origins = " ".join(_cors_origins)
+        # Туннельный хост случаен — в CSP его не перечислить (regex в CSP
+        # нет). Когда включён CORS_ORIGIN_REGEX, разрешаем схемы https:/wss:
+        # для сети/медиа; без regex прод остаётся строгим.
+        _tunnel_net = " https: wss:" if _cors_origin_regex else ""
+        _tunnel_media = " https:" if _cors_origin_regex else ""
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            f"connect-src 'self' {_http_origins} {_ws_origins} https://api.qrserver.com; "
-            f"img-src 'self' data: blob: {_http_origins}; "
-            f"media-src 'self' blob: {_http_origins}; "
+            f"connect-src 'self' {_http_origins} {_ws_origins} https://api.qrserver.com{_tunnel_net}; "
+            f"img-src 'self' data: blob: {_http_origins}{_tunnel_media}; "
+            f"media-src 'self' blob: {_http_origins}{_tunnel_media}; "
             "style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; "
             "frame-ancestors 'none'; "

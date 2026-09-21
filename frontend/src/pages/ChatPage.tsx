@@ -183,7 +183,26 @@ export default function ChatPage() {
         chatId: data.chat_id,
       })
     }, [setToast]),
-    onReactions: useCallback(() => undefined, []),
+    // Живые реакции по WS: раньше заглушка отбрасывала reaction_update
+    // до перезагрузки истории. Мержим сгруппированные legacy-строки в
+    // message.reactions; E2E-строки (tag + enc_emoji) сокет пропускает
+    // осознанно — их добирает decryptMessages при перезагрузке истории.
+    onReactions: useCallback((fn: (prev: Record<string, Record<string, string[]>>) => Record<string, Record<string, string[]>>) => {
+      setMessages((prev) => {
+        const prevRec: Record<string, Record<string, string[]>> = {}
+        for (const m of prev) {
+          if (m.reactions && !Array.isArray(m.reactions)) prevRec[m.id] = m.reactions as Record<string, string[]>
+        }
+        const next = fn(prevRec)
+        let changed = false
+        const out = prev.map((m) => {
+          const nr = next[m.id]
+          if (nr && nr !== prevRec[m.id]) { changed = true; return { ...m, reactions: nr } }
+          return m
+        })
+        return changed ? out : prev
+      })
+    }, [setMessages]),
     onNavigate: navigate,
     onReconnect: useCallback(() => { flushOutboxRef.current() }, []),
   })
@@ -278,11 +297,29 @@ export default function ChatPage() {
     return () => document.removeEventListener("mousedown", handleClick)
   }, [showEphemeralMenu])
 
+  // Якорь низа: мотаем только первую загрузку и новые сообщения,
+  // подгрузка истории (prepend) позицию не трогает. Дублирует логику
+  // VirtualizedMessageList для невьюализированных случаев (поиск).
+  const histFirstIdRef = useRef<string | null>(null)
+  const histLastIdRef = useRef<string | null>(null)
   useEffect(() => {
     const container = messagesContainerRef.current
-    if (!container) return
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150
-    if (isNearBottom) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (!container || messages.length === 0) {
+      if (messages.length === 0) { histFirstIdRef.current = null; histLastIdRef.current = null }
+      return
+    }
+    const first = messages[0].id
+    const last = messages[messages.length - 1].id
+    const prevFirst = histFirstIdRef.current
+    const prevLast = histLastIdRef.current
+    histFirstIdRef.current = first
+    histLastIdRef.current = last
+    if (prevFirst === null) {
+      messagesEndRef.current?.scrollIntoView()
+    } else if (first === prevFirst && last !== prevLast) {
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150
+      if (isNearBottom) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
   }, [messages, messagesContainerRef, messagesEndRef])
 
   useEffect(() => {
@@ -330,15 +367,12 @@ export default function ChatPage() {
     loadMessages(chat)
   }, [currentUser, loadChats, loadMessages, setMessages, setReplyTo, setHasMore, setSelectedChat, setShowEmoji, setInput, t, filteredChats])
 
-  useEffect(() => {
-    const container = messagesContainerRef.current
-    if (!container) return
-    const handleScroll = () => {
-      if (container.scrollTop < 80 && !loadingMore && hasMore && selectedChat) loadMore(selectedChat)
-    }
-    container.addEventListener("scroll", handleScroll, { passive: true })
-    return () => container.removeEventListener("scroll", handleScroll)
-  }, [loadingMore, hasMore, selectedChat, loadMore, messagesContainerRef])
+  // Подгрузка истории через внутренний скроллер виртуализации
+  // (onNearTop): слушатель на внешнем div удалён — при виртуализации
+  // скроллится внутренний List react-window, внешний scrollTop мёртв.
+  const handleNearTop = useCallback(() => {
+    if (!loadingMore && hasMore && selectedChat) loadMore(selectedChat)
+  }, [loadingMore, hasMore, selectedChat, loadMore])
 
   useEffect(() => {
     const handleUnload = () => {
@@ -872,6 +906,7 @@ export default function ChatPage() {
                     messages={messages}
                     currentUser={currentUser}
                     reactions={messages.reduce((acc, m) => { if (m.reactions && !Array.isArray(m.reactions)) acc[m.id] = m.reactions; return acc }, {} as Record<string, Record<string, string[]>>)}
+                    onNearTop={handleNearTop}
                     onReply={(id) => handleReply(id, messages)}
                     onDelete={handleDeleteMessage}
                     onReaction={handleReaction}

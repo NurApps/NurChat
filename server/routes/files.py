@@ -236,6 +236,16 @@ async def download_file(
         if not file_record:
             raise HTTPException(status_code=404, detail="Файл не найден")
 
+        # View-once: байты одноразового вложения — только владельцу.
+        # Иначе файл можно скачать напрямую N раз, ни разу не открыв
+        # view-once (обход одноразовости), либо уже после просмотра.
+        vo_msg = db.query(models.Message).filter(
+            models.Message.file_id == file_id,
+            models.Message.is_view_once.is_(True),
+        ).first()
+        if vo_msg is not None and vo_msg.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Одноразовый файл уже недоступен")
+
         if file_record.user_id != user_id:
             message_with_file = db.query(models.Message).filter(
                 models.Message.file_id == file_id,

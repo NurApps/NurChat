@@ -61,7 +61,7 @@ Tauri (Rust shell) ── wraps ──> React frontend ── HTTP/WS ──> Fa
 - **Relay:** FastAPI + SQLAlchemy + SQLite (`nurchat.db`), глухой режим `RELAY_DEAF=true`
 - **Desktop:** Tauri v2 (Rust, WebView2 на Windows)
 - **Migrations:** Alembic (fallback на `create_all`)
-- **Файлы:** локальный `media/`, байты ОТКРЫТО (не E2E; случайные имена, EXIF счищается, TTL 30 дней), но caption вложения шифруется E2E (`handleSendAttachment` в `useChatActions.ts`)
+- **Файлы:** локальный `media/` (случайные имена, EXIF счищается, TTL 30 дней). Байты — E2E-фрейм `NCF1` при `is_encrypted=true` (`fileE2E.ts`, пропуск MIME-чеков в `files.py:94`), caption вложения шифруется E2E (`handleSendAttachment` в `useChatActions.ts`). View-once вложения качает только владелец (`files.py:download_file`)
 - **Звонки:** сигналинг через relay WS, медиа — WebRTC напрямую между устройствами (настоящий P2P, сервер медиа не касается)
 
 Полная честная картина: `docs/E2E_AND_TRANSPORT.md`.
@@ -72,7 +72,7 @@ Tauri (Rust shell) ── wraps ──> React frontend ── HTTP/WS ──> Fa
 2. **WS-эндпоинты (4 штуки):** `/ws/chat/{user_id}` — сообщения (`{"event": ...}`), `/ws/calls/{user_id}` и `/ws/signaling/{user_id}` — синонимы сигналинга (`{"type": ...}`), `/ws/notifications/{user_id}` — уведомления. Лимит 10 соединений/IP, 1 МБ/сообщение, ping при простое 120с, разрыв после 300с тишины.
 3. **Форматы событий разные — это нормально:** chat-WS шлёт `{"event": ...}`, signaling-WS — `{"type": ...}`. Не «унифицировать» без обновления обоих клиентов (`useChatSocket.ts`, `CallPage.tsx`).
 4. **Python imports — абсолютные от корня репо.** `from shared.config import settings`, `from server.core.models import User`.
-5. **`shared/config.py` — без P2P-флагов.** `USE_P2P`, `P2P_*`, `USE_IPFS`, `USE_FEDERATED_BACKUP` удалены 2026-09 (код их не читал). Живой флаг федерации — `USE_FEDERATION`. Дубли `SERVER_HOST/DEBUG/CLIENT_HOST` вычищены.
+5. **`shared/config.py` — без P2P-флагов.** `USE_P2P`, `P2P_*`, `USE_IPFS`, `USE_FEDERATED_BACKUP` удалены 2026-09 (код их не читал). Живой флаг федерации — `USE_FEDERATION`. Внимание: `SERVER_HOST`/`CLIENT_HOST`/`CLIENT_PORT` в `config.py` и `.env.example` живы — утверждение об их удалении было ошибкой.
 6. **CORS — whitelist, CSP — из него же.** Даже в DEBUG нет `*`.
 7. **Frontend env — только `VITE_` префикс** (shell/корневой `.env`, не `frontend/.env`). Ключи: `VITE_API_HOST`, `VITE_API_PROTOCOL`. `BASE_URL/WS_BASE` заморожены на старте модуля — смена релея требует перезагрузки.
 8. **Supabase/Firebase удалены полностью.** Только локальное хранение.

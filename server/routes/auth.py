@@ -312,7 +312,9 @@ async def get_current_user(
 
 
 @router.delete("/account")
+@limiter.limit("5/hour")
 async def delete_account(
+    request: Request,
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db)
 ):

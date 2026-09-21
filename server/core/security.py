@@ -170,6 +170,13 @@ async def verify_token_dependency(credentials: HTTPAuthorizationCredentials = De
                 detail="Требуется завершить двухфакторную аутентификацию",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        # Refresh-токены — только для /refresh, не для API.
+        if "type" in payload and payload.get("type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Требуется access-токен",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         return cast(dict, payload)
     except jwt.PyJWTError:
         raise HTTPException(

@@ -224,6 +224,10 @@ async def download_file(
             payload = sec.verify_token(token)
         except AuthenticationError:
             raise HTTPException(status_code=401, detail="Неверный токен")
+        if payload.get("2fa_pending"):
+            raise HTTPException(status_code=401, detail="Требуется завершить двухфакторную аутентификацию")
+        if "type" in payload and payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Требуется access-токен")
         user_id = payload.get("sub")
 
         logger.info(f"File download requested by user: {user_id}, file_id: {file_id}")

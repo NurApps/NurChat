@@ -271,6 +271,27 @@ def _escape_like(q: str) -> str:
     return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _is_dm_blocked(db, chat_id: str, sender_id: str) -> bool:
+    """True если в личке (is_group=False) есть блок-отношение между
+    отправителем и любым другим участником — в любую сторону.
+    Групповые чаты блокировками не ограничиваем."""
+    chat = db.query(models.Chat).filter(models.Chat.id == chat_id).first()
+    if not chat or chat.is_group:
+        return False
+    others = db.query(models.ChatParticipant.user_id).filter(
+        models.ChatParticipant.chat_id == chat_id,
+        models.ChatParticipant.user_id != sender_id,
+    ).all()
+    other_ids = [r[0] for r in others]
+    if not other_ids:
+        return False
+    hit = db.query(models.BlockedUser).filter(
+        ((models.BlockedUser.user_id == sender_id) & (models.BlockedUser.blocked_user_id.in_(other_ids))) |
+        ((models.BlockedUser.user_id.in_(other_ids)) & (models.BlockedUser.blocked_user_id == sender_id)),
+    ).first()
+    return hit is not None
+
+
 def _validate_message_links(
     db, chat_id: str, user_id: str,
     file_id: str | None, reply_to_id: str | None,
@@ -322,6 +343,8 @@ async def send_message(
         if not participant:
             logger.warning(f"User {user_id} tried to send message to chat {chat_id} without permission")
             raise ChatNotFoundError("Чат не найден или доступ запрещен")
+        if _is_dm_blocked(db, chat_id, user_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Пользователь заблокирован")
         if not message_data.content.strip():
             detail = "Содержимое сообщения не может быть пустым"
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)

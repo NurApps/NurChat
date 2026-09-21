@@ -41,6 +41,50 @@ export function playMessageSound(): void {
   }
 }
 
+let ringTimer: ReturnType<typeof setInterval> | null = null
+
+function playRingOnce(): void {
+  const ctx = ensureAudioContext()
+  if (!ctx) return
+  try {
+    // Двухтональный «ту-ту»: было одноразовое пиликанье — входящий
+    // пропускался, если не смотрел в экран в первую секунду.
+    for (const [freq, at] of [[660, 0], [520, 0.35]] as const) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = "sine"
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + at)
+      gain.gain.exponentialRampToValueAtTime(0.14, ctx.currentTime + at + 0.03)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.3)
+      osc.connect(gain).connect(ctx.destination)
+      osc.onended = () => {
+        osc.disconnect()
+        gain.disconnect()
+      }
+      osc.start(ctx.currentTime + at)
+      osc.stop(ctx.currentTime + at + 0.32)
+    }
+  } catch {
+    /* ignore audio errors */
+  }
+}
+
+/** Зацикленный рингтон входящего — остановить через stopCallRingtone. */
+export function startCallRingtone(): void {
+  if (ringTimer) return
+  if (!getSettings().messageSound) return
+  playRingOnce()
+  ringTimer = setInterval(playRingOnce, 2000)
+}
+
+export function stopCallRingtone(): void {
+  if (ringTimer) {
+    clearInterval(ringTimer)
+    ringTimer = null
+  }
+}
+
 export async function initNotifications(): Promise<boolean> {
   const granted = await requestNotificationPermission()
   // Initialize Web Push in background (non-blocking)

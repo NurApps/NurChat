@@ -2,7 +2,32 @@ import { useEffect, useState } from "react"
 import type { MessageResponse } from "../types"
 import { loadKeys as loadE2EKeys } from "../services/e2e"
 
+const EXT_MIME: Record<string, string> = {
+  gif: "image/gif",
+  png: "image/png",
+  webp: "image/webp",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  bmp: "image/bmp",
+  svg: "image/svg+xml",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  m4a: "audio/mp4",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  opus: "audio/ogg",
+}
+
 function guessMime(message: MessageResponse): string {
+  // Реальный тип — по расширению имени файла с сервера: раньше все image
+  // типизировались как image/jpeg — гифки и webp отдавались с чужим MIME
+  // (анимки/превью ломались там, где браузер не сниффит).
+  const filename = message.file?.filename || ""
+  const ext = filename.split(".").pop()?.toLowerCase() || ""
+  if (ext && EXT_MIME[ext]) return EXT_MIME[ext]
   const mt = message.message_type
   if (mt === "image") return "image/jpeg"
   if (mt === "video") return "video/mp4"

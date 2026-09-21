@@ -18,7 +18,9 @@ export default function VoiceMessage({ src }: Props) {
     const audio = audioRef.current
     if (!audio) return
 
-    const onLoaded = () => setDuration(audio.duration)
+    // audio.duration бывает NaN/Infinity (метаданные webm-блоба не
+    // прочитались) — без гарда в UI светится "NaN:NaN".
+    const onLoaded = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
     const onEnded = () => { setPlaying(false); progressRef.current = 0; setProgress(0) }
     audio.addEventListener("loadedmetadata", onLoaded)
     audio.addEventListener("ended", onEnded)
@@ -89,6 +91,7 @@ export default function VoiceMessage({ src }: Props) {
   }
 
   const formatTime = (s: number) => {
+    if (!Number.isFinite(s) || s < 0) return "0:00"
     const m = Math.floor(s / 60)
     const sec = Math.floor(s % 60)
     return `${m}:${String(sec).padStart(2, "0")}`

@@ -6,39 +6,49 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+def _stamp_naive_utc(obj: "BaseSchema") -> None:
+    """Рекурсивно штампует naive datetimes как UTC.
+
+    Отдельная функция, а не прямой вызов метода-валидатора: mypy считает
+    декорированный model_validator «not callable» (PydanticDescriptorProxy).
+    Вложенные dict/ORM Pydantic валидирует рекурсивно сам; готовые инстансы
+    не ревалидирует (revalidate_instances по умолчанию never) — их обходим
+    вручную здесь.
+    """
+    for name in obj.__class__.model_fields:
+        try:
+            v = getattr(obj, name, None)
+        except Exception:
+            continue
+        if isinstance(v, datetime):
+            if v.tzinfo is None:
+                try:
+                    setattr(obj, name, v.replace(tzinfo=timezone.utc))
+                except Exception:
+                    pass
+        elif isinstance(v, BaseSchema):
+            _stamp_naive_utc(v)
+        elif isinstance(v, (list, tuple)):
+            for item in v:
+                if isinstance(item, BaseSchema):
+                    try:
+                        _stamp_naive_utc(item)
+                    except Exception:
+                        pass
+
+
 # Базовая схема
 class BaseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     @model_validator(mode="after")
-    def _assume_utc_for_naive_datetimes(self):
+    def _assume_utc_for_naive_datetimes(self) -> "BaseSchema":
         """SQLite возвращает naive datetimes (func.now() = UTC без tzinfo),
         а Pydantic сериализует их без смещения — браузер парсит как ЛОКАЛЬНОЕ
         время: часы съезжают на TZ-офсет, а ephemeral-сообщения (expires_at)
         «исчезают» сразу (наивный UTC-дедлайн уже в прошлом по местному).
-        Штампуем naive как UTC. Вложенные dict/ORM валидируются рекурсивно
-        сами; готовые инстансы Pydantic не ревалидирует (revalidate_instances
-        по умолчанию never) — их обходим вручную."""
-        for name in self.__class__.model_fields:
-            try:
-                v = getattr(self, name, None)
-            except Exception:
-                continue
-            if isinstance(v, datetime):
-                if v.tzinfo is None:
-                    try:
-                        setattr(self, name, v.replace(tzinfo=timezone.utc))
-                    except Exception:
-                        pass
-            elif isinstance(v, BaseSchema):
-                v._assume_utc_for_naive_datetimes()
-            elif isinstance(v, (list, tuple)):
-                for item in v:
-                    if isinstance(item, BaseSchema):
-                        try:
-                            item._assume_utc_for_naive_datetimes()
-                        except Exception:
-                            pass
+        Штампуем naive как UTC (см. _stamp_naive_utc)."""
+        _stamp_naive_utc(self)
         return self
 
 # User

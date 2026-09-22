@@ -386,6 +386,7 @@ export default function SettingsPage() {
   ]
 
   const formatSize = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes < 0) return "—"
     if (bytes < 1024) return `${bytes} ${t("files.sizeB")}`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${t("files.sizeKB")}`
     return `${(bytes / (1024 * 1024)).toFixed(1)} ${t("files.sizeMB")}`

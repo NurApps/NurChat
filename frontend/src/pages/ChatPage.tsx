@@ -40,6 +40,22 @@ function hexToBytesLocal(hex: string): Uint8Array {
   return bytes
 }
 
+/** Зацикленный рингтон, пока висит баннер входящего. Ничего не рендерит. */
+function IncomingRinger({ active }: { active: boolean }) {
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    import("../services/notifications").then((m) => {
+      if (!cancelled) m.startCallRingtone()
+    }).catch(() => {})
+    return () => {
+      cancelled = true
+      import("../services/notifications").then((m) => m.stopCallRingtone()).catch(() => {})
+    }
+  }, [active])
+  return null
+}
+
 export default function ChatPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -719,6 +735,7 @@ export default function ChatPage() {
       {/* Второй баннер офлайна удалён: OfflineBanner выше уже показывает
           offlineMode при !isOnline — дубль двоил строку при мёртвом NIC. */}
 
+      {incomingCall && <IncomingRinger active={!!incomingCall} />}
       {incomingCall && (
         <div className="incoming-call-banner">
           <div className="incoming-call-info">

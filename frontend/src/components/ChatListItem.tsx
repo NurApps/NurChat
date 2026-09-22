@@ -28,6 +28,8 @@ function getLastMessageTime(chat: ChatResponse): string {
 function getLastMessagePreview(chat: ChatResponse, t: (key: string) => string): string {
   if (!chat.last_message?.content) return t("chat.noMessages")
   const c = chat.last_message.content
+  // Сервер хранит content="[encrypted]" — сырой маркер в превью не показываем.
+  if (c === "[encrypted]") return `🔒 ${t("chat.encryptedMessage")}`
   return c.length > 35 ? c.slice(0, 35) + "..." : c
 }
 
@@ -35,7 +37,10 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
   const { t } = useTranslation()
   const displayName = getDisplayName(chat, currentUser, t)
   const avatarChar = displayName[0]?.toUpperCase() || "?"
-  const avatarColor = getAvatarColor(displayName)
+  // Цвет — от стабильного id (пир или чат), а не от отображаемого имени:
+  // иначе один и тот же юзер красится по-разному в списке, чате и звонках.
+  const otherPeer = chat.participants.find((p) => p.id !== currentUser.id)
+  const avatarColor = getAvatarColor(otherPeer?.id || chat.id)
   const lastTime = getLastMessageTime(chat)
   const [draft] = useState(() => getDraftForChat(chat.id))
   const lastPreview = draft || getLastMessagePreview(chat, t)

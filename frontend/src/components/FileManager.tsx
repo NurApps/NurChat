@@ -40,6 +40,7 @@ export default function FileManager({ onClose }: Props) {
   const filtered = filter === "all" ? files : files.filter(f => f.file_type === filter)
 
   const formatSize = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes < 0) return "—"
     if (bytes < 1024) return `${bytes} ${t("files.sizeB")}`
     if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} ${t("files.sizeKB")}`
     return `${(bytes / 1048576).toFixed(1)} ${t("files.sizeMB")}`

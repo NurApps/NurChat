@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { BASE_URL, setRelayConfig, PUBLIC_RELAYS } from "../config"
 
@@ -16,9 +16,17 @@ export default function ServerBootOverlay({ onReady }: Props) {
   // Relay setup state
   const [relayHost, setRelayHost] = useState("")
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("https")
+  // URL actually being probed right now — shown on the "checking" screen.
+  // Separate from BASE_URL (frozen at module load) so a manual/custom
+  // connect attempt displays its own target instead of the stale default.
+  const [attemptUrl, setAttemptUrl] = useState(BASE_URL)
+  // Guards the background poll below from clobbering a manual attempt's
+  // phase/errorMsg with a stale BASE_URL result while it's in flight.
+  const manualAttemptRef = useRef(false)
 
   const checkHealth = useCallback(async (url?: string): Promise<boolean> => {
     const target = url || BASE_URL
+    setAttemptUrl(target)
     try {
       const res = await fetch(`${target}/health`, { signal: AbortSignal.timeout(5000) })
       if (res.ok) {
@@ -37,10 +45,13 @@ export default function ServerBootOverlay({ onReady }: Props) {
     }
   }, [t])
 
-  // Poll relay health until reachable
+  // Poll relay health until reachable. Skipped while a manual/custom
+  // connect attempt is in flight, so it can't overwrite that attempt's
+  // phase/errorMsg with a stale result for the old default host.
   useEffect(() => {
     checkHealth().then((ok) => { if (ok) onReady() })
     const interval = setInterval(() => {
+      if (manualAttemptRef.current) return
       checkHealth().then((ok) => { if (ok) onReady() })
     }, 5000)
     return () => clearInterval(interval)
@@ -74,22 +85,26 @@ export default function ServerBootOverlay({ onReady }: Props) {
   // NOTE: BASE_URL/WS_BASE are frozen at module load, so after switching
   // relay we must reload — otherwise api.* keeps hitting the old host.
   const handleTryPublic = async (host: string, protocol: "http" | "https") => {
+    manualAttemptRef.current = true
     setPhase("checking")
     setErrorMsg("")
     setElapsed(0)
     setRelayConfig({ host, protocol })
     const ok = await checkHealth(`${protocol}://${host}`)
+    manualAttemptRef.current = false
     if (ok) window.location.reload()
   }
 
   const handleTryCustom = async () => {
     if (!relayHost.trim()) return
+    manualAttemptRef.current = true
     setPhase("checking")
     setErrorMsg("")
     setElapsed(0)
     const host = relayHost.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
     setRelayConfig({ host, protocol: relayProtocol })
     const ok = await checkHealth(`${relayProtocol}://${host}`)
+    manualAttemptRef.current = false
     if (ok) window.location.reload()
   }
 
@@ -116,7 +131,7 @@ export default function ServerBootOverlay({ onReady }: Props) {
             <h2>{t("serverBoot.connectingToRelay", { dots })}</h2>
             <p>{t("serverBoot.pleaseWait", { elapsed })}</p>
             <p className="server-boot-hint">
-              <code>{BASE_URL}</code>
+              <code>{attemptUrl}</code>
             </p>
           </>
         )}

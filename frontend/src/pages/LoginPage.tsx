@@ -26,6 +26,73 @@ function ThemeToggle() {
 
 const TG_BLUE = "#2AABEE"
 
+function LoginBrand() {
+  const { t } = useTranslation()
+  const highlights: { icon: JSX.Element; titleKey: string; descKey: string }[] = [
+    {
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      ),
+      titleKey: "auth.highlightE2ETitle",
+      descKey: "auth.highlightE2EDesc",
+    },
+    {
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      ),
+      titleKey: "auth.highlightGroupsTitle",
+      descKey: "auth.highlightGroupsDesc",
+    },
+    {
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+        </svg>
+      ),
+      titleKey: "auth.highlightCallsTitle",
+      descKey: "auth.highlightCallsDesc",
+    },
+    {
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+        </svg>
+      ),
+      titleKey: "auth.highlightEphemeralTitle",
+      descKey: "auth.highlightEphemeralDesc",
+    },
+  ]
+
+  return (
+    <div className="login-brand">
+      <div className="login-brand-header">
+        <div className="logo-circle logo-circle-lg">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke={TG_BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+        </div>
+        <h1 className="login-title login-brand-title">NurChat</h1>
+        <p className="login-subtitle login-brand-subtitle">{t("auth.subtitle")}</p>
+      </div>
+      <ul className="login-highlights">
+        {highlights.map((h) => (
+          <li key={h.titleKey}>
+            <span className="login-highlight-icon">{h.icon}</span>
+            <div>
+              <strong>{t(h.titleKey)}</strong>
+              <p>{t(h.descKey)}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 type Tab = "register" | "login"
 
 export default function LoginPage() {
@@ -255,21 +322,24 @@ export default function LoginPage() {
     return (
       <div className="login-page">
         <ThemeToggle />
-        <div className="login-container">
-          <div className="login-logo">
-            <div className="logo-circle">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={TG_BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
+        <div className="login-shell">
+          <LoginBrand />
+          <div className="login-container">
+            <div className="login-logo">
+              <div className="logo-circle">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={TG_BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              </div>
+              <h1 className="login-title">NurChat</h1>
+              <p className="login-subtitle">{t("auth.subtitle")}</p>
             </div>
-            <h1 className="login-title">NurChat</h1>
-            <p className="login-subtitle">{t("auth.subtitle")}</p>
-          </div>
-          <div className="auth-error-box">
-            <p>{t("errors.network")}: {BASE_URL}</p>
-            <button className="auth-btn" onClick={checkServerHealth}>
-              {t("common.retry")}
-            </button>
+            <div className="auth-error-box">
+              <p>{t("errors.network")}: {BASE_URL}</p>
+              <button className="auth-btn" onClick={checkServerHealth}>
+                {t("common.retry")}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -279,7 +349,9 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <ThemeToggle />
-      <div className="login-container">
+      <div className="login-shell">
+        <LoginBrand />
+        <div className="login-container">
         <div className="login-logo">
           <div className="logo-circle">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={TG_BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -491,6 +563,7 @@ export default function LoginPage() {
           <div className="links-row secondary">
             <span style={{ fontSize: 12, opacity: 0.7 }}>Relay: {BASE_URL}</span>
           </div>
+        </div>
         </div>
       </div>
     </div>

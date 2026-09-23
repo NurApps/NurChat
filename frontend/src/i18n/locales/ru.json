@@ -76,7 +76,15 @@
     "wrong2faCode": "Неверный код 2FA",
     "code2faPlaceholder": "Код из приложения-аутентификатора",
     "backToLogin": "← Вернуться ко входу",
-    "confirm2faBtn": "Подтвердить"
+    "confirm2faBtn": "Подтвердить",
+    "highlightE2ETitle": "Сквозное шифрование",
+    "highlightE2EDesc": "Сообщения читаете только вы и собеседник — сервер их не видит",
+    "highlightGroupsTitle": "Групповые чаты",
+    "highlightGroupsDesc": "Общий ключ шифруется отдельно для каждого участника",
+    "highlightCallsTitle": "Звонки и видео",
+    "highlightCallsDesc": "Голосовые и видеозвонки прямо в чате",
+    "highlightEphemeralTitle": "Исчезающие сообщения",
+    "highlightEphemeralDesc": "Задайте время жизни — переписка удалится сама"
   },
   "chat": {
     "chats": "Чаты",

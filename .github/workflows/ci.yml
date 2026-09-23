@@ -67,6 +67,20 @@ jobs:
       - name: Build
         run: npm run build
 
+  rust-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --locked
+
   docker-build:
     runs-on: ubuntu-latest
     needs: [python-tests, frontend-tests]

@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 
 from shared.config import settings
 
@@ -11,8 +10,10 @@ _redis_client = None
 
 
 def _redis_enabled() -> bool:
-    """Explicit switch: honor USE_REDIS env (pydantic types bool defaults as Literal)."""
-    return os.getenv("USE_REDIS", "true").strip().lower() not in ("0", "false", "no")
+    """Explicit switch from settings (pydantic уже распарсил USE_REDIS из env).
+    Раньше здесь был захардкожен os.getenv(..., "true") — дефолт True
+    переживал даже выключенный флаг в конфиге и долбил localhost:6379."""
+    return bool(settings.USE_REDIS)
 
 
 def get_redis():

@@ -285,6 +285,12 @@ export function useChatSocket({
       ws.onclose = async (event) => {
         if (stopped) return
         setWsUp(false)
+        // Диагностика туннеля: 1006 = сеть/прокси рвал молча (cloudflared),
+        // 4001/4003/4008 = сервер отбил осознанно. Без кода в логе все
+        // обрывы выглядят одинаково («closed before established»).
+        if (event.code !== 1000) {
+          console.warn(`WS closed: code=${event.code} reason=${event.reason || "-"} attempt=${reconnectAttempts}`)
+        }
         // 4001 = token rejected/expired (server rechecks JWT every 10s,
         // access TTL is 30 min). Retrying with the same token is futile —
         // refresh once and reconnect; only give up when refresh is dead.

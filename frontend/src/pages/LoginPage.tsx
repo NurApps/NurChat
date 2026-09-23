@@ -3,7 +3,16 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { BASE_URL } from "../config"
-import { generateKeys, loadKeys, saveKeys, setupPreKeys } from "../services/e2e"
+import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
+
+// Свои prekeys должны лежать на реле — иначе собеседники получают
+// «нет ключей шифрования» при создании чата. setupPreKeys чинит локал,
+// ensure — сервер (404 bundle → догрузка). Неблокирующе: вход не висит,
+// если relay чихнул; догрузка повторится при следующем входе в чат.
+function healPreKeys(keys: E2EKeys, userId: string, where: string): void {
+  setupPreKeys(keys).catch((e) => console.warn(`[E2E] setupPreKeys (${where}) failed:`, e))
+  ensurePreKeysUploaded(keys, userId).catch((e) => console.warn(`[E2E] ensurePreKeys (${where}) failed:`, e))
+}
 import { useTheme } from "../context/useTheme"
 
 function ThemeToggle() {
@@ -147,7 +156,7 @@ export default function LoginPage() {
         .then(async (user) => {
           localStorage.setItem("user", JSON.stringify(user))
           const keys = await loadKeys()
-          if (keys) setupPreKeys(keys).catch((e) => console.warn("[E2E] setupPreKeys (auto-login) failed:", e))
+          if (keys) healPreKeys(keys, user.id, "auto-login")
           navigate("/chat", { replace: true })
         })
         .catch(() => {
@@ -231,7 +240,7 @@ export default function LoginPage() {
 
       // Persist identity keys locally (encrypted at rest)
       await saveKeys(e2eKeys)
-      setupPreKeys(e2eKeys).catch((e) => console.warn("[E2E] setupPreKeys (register) failed:", e))
+      healPreKeys(e2eKeys, res.user.id, "register")
 
       navigate("/chat", { replace: true })
     } catch (err: any) {
@@ -272,7 +281,7 @@ export default function LoginPage() {
       api.setToken(res.access_token, res.refresh_token)
       localStorage.setItem("user", JSON.stringify(res.user))
       const keys = await loadKeys()
-      if (keys) setupPreKeys(keys).catch((e) => console.warn("[E2E] setupPreKeys (login) failed:", e))
+      if (keys) healPreKeys(keys, res.user.id, "login")
       navigate("/chat", { replace: true })
     } catch (err: any) {
       const msg = err?.message || err?.toString() || ""
@@ -298,7 +307,7 @@ export default function LoginPage() {
       api.setToken(res.access_token, res.refresh_token)
       localStorage.setItem("user", JSON.stringify(res.user))
       const keys = await loadKeys()
-      if (keys) setupPreKeys(keys).catch((e) => console.warn("[E2E] setupPreKeys (2fa) failed:", e))
+      if (keys) healPreKeys(keys, res.user.id, "2fa")
       setAwaiting2fa(false)
       setTwoFactorCode("")
       navigate("/chat", { replace: true })

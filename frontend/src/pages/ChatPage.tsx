@@ -111,6 +111,8 @@ export default function ChatPage() {
   const setUploading = useChatStore((s) => s.setUploading)
   const setUploadProgress = useChatStore((s) => s.setUploadProgress)
   const loadChats = useChatStore((s) => s.loadChats)
+  const chatsLoaded = useChatStore((s) => s.chatsLoaded)
+  const chatsError = useChatStore((s) => s.chatsError)
   const loadContacts = useChatStore((s) => s.loadContacts)
   const loadInvites = useChatStore((s) => s.loadInvites)
 
@@ -133,6 +135,8 @@ export default function ChatPage() {
   const [ephemeralSeconds, setEphemeralSeconds] = useState<number | null>(null)
   const [showEphemeralMenu, setShowEphemeralMenu] = useState(false)
 
+  // Чаты, для которых уже показывали «нет ключей пира» (раз за сессию).
+  const peerWarnedRef = useRef<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -368,6 +372,15 @@ export default function ChatPage() {
         const status = checkKeyStatus(peer.id, peer.public_key)
         if (status === "changed") setKeyWarning(t("chat.keyChanged", { name: peer.username || peer.first_name }))
         else if (status === "new") setKeyWarning(t("chat.keyNew", { name: peer.username || peer.first_name }))
+      }
+      // У пира нет серверных prekeys (не заходил после регистрации) —
+      // предупреждаем СРАЗУ при открытии, а не 400й при отправке.
+      // GET signed-prekey без побочек (bundle сжигал бы OPK). Раз за сессию.
+      if (peer && !peerWarnedRef.current.has(chat.id)) {
+        peerWarnedRef.current.add(chat.id)
+        api.getSignedPrekey(peer.id).catch(() =>
+          setErrorToast(t("errors.e2eKeysMissing"))
+        )
       }
     }
 
@@ -776,6 +789,7 @@ export default function ChatPage() {
           handleMute={handleMute} handleDeleteChat={handleDeleteChat}
           handleRemoveContact={handleRemoveContact} handleStartChat={handleStartChat}
           handleAcceptInvite={handleAcceptInvite} handleDeclineInvite={handleDeclineInvite}
+          chatsLoaded={chatsLoaded} chatsError={chatsError} onRetryChats={loadChats}
         />
         )}
 

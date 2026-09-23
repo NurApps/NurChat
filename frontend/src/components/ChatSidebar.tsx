@@ -31,6 +31,9 @@ interface Props {
   handleStartChat: (userId: string) => void
   handleAcceptInvite: (id: string) => void
   handleDeclineInvite: (id: string) => void
+  chatsLoaded: boolean
+  chatsError: string | null
+  onRetryChats: () => void
 }
 
 const TABS = [
@@ -46,6 +49,7 @@ export default function ChatSidebar({
   setSelectedChat, setShowCreateChat, setShowAddContact,
   handleSelectChat, handlePin, handleMute, handleDeleteChat,
   handleRemoveContact, handleStartChat, handleAcceptInvite, handleDeclineInvite,
+  chatsLoaded, chatsError, onRetryChats,
 }: Props) {
   const { t } = useTranslation()
 
@@ -87,8 +91,18 @@ export default function ChatSidebar({
       <div className="sidebar-list">
         {tab === "chats" && (
           <div className="list-scroll" ref={chatListRef}>
-            {filteredChats.length === 0 && !search && <ChatListSkeleton />}
-            {filteredChats.length === 0 && search && <p className="list-empty">{t("chat.noChats")}</p>}
+            {!chatsLoaded && <ChatListSkeleton />}
+            {chatsLoaded && chatsError && filteredChats.length === 0 && (
+              <div className="list-empty" role="alert">
+                <p>{t("chat.chatsLoadFailed")}</p>
+                <button className="settings-action-btn" onClick={onRetryChats}>
+                  {t("common.retry")}
+                </button>
+              </div>
+            )}
+            {chatsLoaded && !chatsError && filteredChats.length === 0 && (
+              <p className="list-empty">{t("chat.noChats")}</p>
+            )}
             {filteredChats.map((chat) => (
               <ChatListItem key={chat.id} chat={chat} currentUser={currentUser}
                 onClick={handleSelectChat} onPin={handlePin}

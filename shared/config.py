@@ -153,7 +153,11 @@ class Settings(BaseSettings):
     BACKGROUND_LOOP_SECONDS: int = 30
     EPHEMERAL_CLEANUP_SECONDS: int = 60
     REDIS_URL: str = "redis://localhost:6379/0"
-    USE_REDIS: bool = True
+    # Redis нужен только мульти-инстансу (docker-compose ставит true явно).
+    # Дефолт false: на dev/туннеле Redis-сервера обычно нет, а старый дефолт
+    # true заставлял каждый процесс упираться в localhost:6379 и деградировать
+    # presence/online-трекинг с ошибкой в логе.
+    USE_REDIS: bool = False
     ENABLE_METRICS: bool = False
     LOG_LEVEL: str = "INFO"
     LOG_TO_FILE: bool = True

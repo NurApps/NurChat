@@ -69,6 +69,10 @@ interface ChatState {
   loadContacts: () => Promise<void>
   loadInvites: () => Promise<void>
   refreshCurrentUser: () => void
+  /** Первая загрузка завершена (успех или итоговая ошибка) — до этого скелетон. */
+  chatsLoaded: boolean
+  /** Текст ошибки последней загрузки (null = ок). */
+  chatsError: string | null
 }
 
 function getCurrentUser(): UserResponse {
@@ -124,13 +128,27 @@ export const useChatStore = create<ChatState>((set) => ({
   setUploading: (uploading) => set({ uploading }),
   setUploadProgress: (progress) => set({ uploadProgress: progress }),
 
+  chatsLoaded: false,
+  chatsError: null,
+
   loadChats: async () => {
-    try {
-      const data = await api.getChats()
-      set({ chats: data || [] })
-    } catch (err) {
-      console.error("[chatStore] loadChats failed:", err)
+    // Ретраи с бэкоффом: через туннель первый запрос часто падает
+    // (холодный старт релея/QUIC), а молчаливый провал = вечный скелетон.
+    set({ chatsError: null })
+    let lastErr: unknown = null
+    for (const waitMs of [0, 1000, 3000]) {
+      if (waitMs) await new Promise((r) => setTimeout(r, waitMs))
+      try {
+        const data = await api.getChats()
+        set({ chats: data || [], chatsLoaded: true, chatsError: null })
+        return
+      } catch (err) {
+        lastErr = err
+        console.error("[chatStore] loadChats failed:", err)
+      }
     }
+    const detail = lastErr instanceof Error ? lastErr.message : String(lastErr)
+    set({ chatsLoaded: true, chatsError: detail || "load failed" })
   },
 
   loadContacts: async () => {

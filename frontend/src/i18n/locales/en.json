@@ -76,7 +76,15 @@
     "wrong2faCode": "Wrong 2FA code",
     "code2faPlaceholder": "Code from authenticator app",
     "backToLogin": "← Back to login",
-    "confirm2faBtn": "Confirm"
+    "confirm2faBtn": "Confirm",
+    "highlightE2ETitle": "End-to-end encryption",
+    "highlightE2EDesc": "Only you and the other person can read your messages — the server never sees them",
+    "highlightGroupsTitle": "Group chats",
+    "highlightGroupsDesc": "The shared key is wrapped separately for every member",
+    "highlightCallsTitle": "Calls & video",
+    "highlightCallsDesc": "Voice and video calls right inside the chat",
+    "highlightEphemeralTitle": "Self-destructing messages",
+    "highlightEphemeralDesc": "Set a lifetime and the conversation erases itself"
   },
   "chat": {
     "chats": "Chats",

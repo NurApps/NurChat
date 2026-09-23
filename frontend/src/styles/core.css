@@ -166,12 +166,21 @@
   padding: 0;
 }
 
+/* Kill rubber-band/overscroll bounce and glow: it is the single fastest
+   tell that this is a web view, not a native app. Inner scroll containers
+   that legitimately scroll (chat list, sidebars, modals) opt back in with
+   overscroll-behavior: contain where needed. */
+html, body {
+  overscroll-behavior: none;
+}
+
 body { margin: 0; }
 
 #root {
   min-height: 100svh;
   display: flex;
   flex-direction: column;
+  overscroll-behavior: none;
 }
 
 .msg-content, .cli-preview, .sticker-btn, .chat-input, .reply-text, .gs-text, .notification-toast, .call-name, .msg-ephemeral {

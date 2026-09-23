@@ -30,6 +30,13 @@
   color: var(--text-primary);
 }
 
+.login-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
 .login-container {
   display: flex;
   flex-direction: column;
@@ -51,11 +58,17 @@
   width: 100px;
   height: 100px;
   border-radius: 50%;
-  background: #e8f4fc;
+  background: rgba(var(--accent-rgb), 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
+
+/* Brand panel — shown beside the auth card once the window is wide enough
+   to fit it (see the min-width: 860px block below); hidden on narrow
+   viewports where it would just push the form off-screen. */
+.login-brand { display: none; }
 
 .login-title {
   font-size: 32px;
@@ -335,4 +348,106 @@
 .captcha-refresh {
   padding: 6px;
   flex-shrink: 0;
+}
+
+/* ─── Wide window: split brand panel + card instead of one lonely
+   centered column in a sea of empty background. ─── */
+@media (min-width: 860px) {
+  .login-page { padding: 48px; }
+
+  .login-shell {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 96px;
+    width: 100%;
+    max-width: 1080px;
+  }
+
+  .login-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 44px;
+    flex: 1 1 0;
+    max-width: 440px;
+  }
+
+  .login-brand-header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+  }
+
+  .logo-circle-lg {
+    width: 84px;
+    height: 84px;
+  }
+
+  .login-brand-title {
+    font-size: 40px;
+    text-align: left;
+  }
+
+  .login-brand-subtitle {
+    font-size: 16px;
+    text-align: left;
+    max-width: 360px;
+  }
+
+  .login-highlights {
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+    list-style: none;
+  }
+
+  .login-highlights li {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .login-highlight-icon {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    background: rgba(var(--accent-rgb), 0.1);
+    color: var(--tg-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .login-highlights strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+  }
+
+  .login-highlights p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    max-width: 320px;
+  }
+
+  .login-container {
+    flex: 0 0 380px;
+    max-width: 380px;
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 36px 36px 32px;
+    box-shadow: 0 24px 48px -24px rgba(0, 0, 0, 0.28), var(--shadow);
+  }
+
+  /* The card keeps its own compact identity mark; the full logo and
+     tagline already live in the brand panel next to it. */
+  .login-container .login-logo { display: none; }
+  .login-container .auth-tabs { margin-top: 0; }
 }

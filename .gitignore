@@ -58,6 +58,7 @@ reports/
 # Generated/cache directories
 .nurchat_cache/
 .ruff_cache/
+graphify-out/
 logs/
 media/
 server/logs/

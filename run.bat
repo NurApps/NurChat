@@ -32,8 +32,8 @@ echo ========================================
 echo   NurChat вЂ” launcher
 echo ========================================
 echo.
-echo   1^) Dev full       relay (SQLite) + Tauri app
-echo   2^) Frontend       relay (SQLite) + Vite (browser :5173)
+echo   1^) Dev full       relay (.env DB, else SQLite) + Tauri app
+echo   2^) Frontend       relay (.env DB, else SQLite) + Vite (browser :5173)
 echo   3^) Relay only     foreground, .env as-is
 echo   4^) Relay + tunnel relay (bg) + cloudflared -^> internet
 echo   5^) Build          Tauri installer (.exe)
@@ -80,7 +80,7 @@ exit /b 0
 :: ============ actions ============
 
 :act_dev
-set DATABASE_URL=sqlite:///./nurchat.db
+call :ensure_pg_default
 set RELAY_FLAGS=--reload
 call :ensure_relay
 if %errorlevel% neq 0 goto :eof
@@ -90,7 +90,7 @@ call :stop_relay_if_mine
 goto :eof
 
 :act_vite
-set DATABASE_URL=sqlite:///./nurchat.db
+call :ensure_pg_default
 set RELAY_FLAGS=--reload
 call :ensure_relay
 if %errorlevel% neq 0 goto :eof
@@ -157,6 +157,21 @@ echo [..] pytest (fast subset)...
 goto :eof
 
 :: ============ helpers ============
+
+:ensure_pg_default
+:: Postgres (.env DATABASE_URL, напр. Supabase) имеет приоритет: dev-режимы
+:: больше не форсят SQLite. SQLite — только фолбэк, если DATABASE_URL нет
+:: ни в окружении, ни в .env (чистый клон без настройки).
+:: ВАЖНО: переменную именно НЕ задаём (не пустую!), иначе pydantic возьмёт
+:: пустое значение вместо .env.
+if defined DATABASE_URL goto :eof
+if exist .env (
+  findstr /B /C:"DATABASE_URL=" .env >nul 2>&1
+  if %errorlevel% equ 0 goto :eof
+)
+set DATABASE_URL=sqlite:///./nurchat.db
+echo [..] No DATABASE_URL found - using local SQLite fallback.
+goto :eof
 
 :ensure_relay
 curl -s -m 2 http://127.0.0.1:8000/health >nul 2>&1

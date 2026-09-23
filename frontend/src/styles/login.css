@@ -1,10 +1,33 @@
 .login-page {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   flex: 1;
   background: var(--bg);
   padding: 24px 16px;
+}
+
+.login-theme-toggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.login-theme-toggle:hover {
+  background: var(--surface-variant);
+  color: var(--text-primary);
 }
 
 .login-container {
@@ -121,14 +144,14 @@
   border: none;
   border-radius: 12px;
   background: var(--tg-blue);
-  color: #ffffff;
+  color: var(--on-accent, #ffffff);
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 4px rgba(42, 171, 238, 0.3);
+  box-shadow: 0 2px 4px rgba(var(--accent-rgb), 0.3);
   transition: opacity 0.2s;
 }
 
@@ -280,7 +303,7 @@
   border: none;
   border-radius: 12px;
   background: var(--tg-blue);
-  color: #ffffff;
+  color: var(--on-accent, #ffffff);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;

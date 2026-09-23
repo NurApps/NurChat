@@ -84,8 +84,8 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
           <button
             onClick={handleCopy}
             style={{
-              flex: 1, padding: "12px 16px", background: copied ? "#238636" : "var(--hover, #21262d)",
-              color: "#fff", border: "1px solid var(--border-color, #30363d)", borderRadius: 6,
+              flex: 1, padding: "12px 16px", background: copied ? "var(--success, #3c843b)" : "var(--surface-variant, #21262d)",
+              color: copied ? "var(--on-success, #fff)" : "var(--text-primary, #c9d1d9)", border: "1px solid var(--border-color, #30363d)", borderRadius: 6,
               cursor: "pointer", fontSize: 14, fontWeight: 500,
             }}
           >
@@ -95,7 +95,7 @@ export default function InviteModal({ isOpen, onClose }: InviteModalProps) {
           <button
             onClick={handleShare}
             style={{
-              flex: 1, padding: "12px 16px", background: "#1f6feb", color: "#fff",
+              flex: 1, padding: "12px 16px", background: "var(--tg-blue, #1f6feb)", color: "var(--on-accent, #fff)",
               border: "none", borderRadius: 6, cursor: "pointer",
               fontSize: 14, fontWeight: 500,
             }}

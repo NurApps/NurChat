@@ -37,7 +37,7 @@ export default function ProfilePage() {
 
       <div className="settings-body">
         <div className="settings-avatar-section">
-          <div className="settings-avatar" style={{ background: avatarSrc ? "transparent" : "#2AABEE" }}>
+          <div className="settings-avatar" style={{ background: avatarSrc ? "transparent" : "#0e7cb4" }}>
             {avatarSrc ? (
               <img src={avatarSrc} alt="avatar" className="settings-avatar-img" />
             ) : (

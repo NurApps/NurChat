@@ -74,7 +74,7 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
                   className={`modal-user-item ${selectedId === user.id ? "selected" : ""}`}
                   onClick={() => setSelectedId(user.id)}
                 >
-                  <div className="modal-user-avatar" style={{ background: "#2AABEE" }}>
+                  <div className="modal-user-avatar" style={{ background: "#0e7cb4" }}>
                     <span>{user.username[0]?.toUpperCase() || "?"}</span>
                   </div>
                   <div className="modal-user-info">

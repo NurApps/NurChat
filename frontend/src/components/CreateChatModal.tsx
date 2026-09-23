@@ -125,12 +125,12 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
                 >
                   <div className="modal-checkbox">
                     {selectedIds.includes(user.id) && (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="3">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0e7cb4" strokeWidth="3">
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
                     )}
                   </div>
-                  <div className="modal-user-avatar" style={{ background: "#4ECDC4" }}>
+                  <div className="modal-user-avatar" style={{ background: "#25827c" }}>
                     <span>{user.username[0]?.toUpperCase() || "?"}</span>
                   </div>
                   <div className="modal-user-info">

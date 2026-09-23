@@ -1,21 +1,22 @@
 @echo off
+chcp 65001 >nul 2>&1 & rem UTF-8 консоль для кириллицы
 title NurChat
 cd /d "%~dp0"
 set PYTHONUTF8=1
 
-:: Единый лаунчер NurChat (Windows).
-:: Без аргументов — интерактивное меню. С аргументом — прямой режим
-:: (для скриптов, Tauri beforeDev, Планировщика):
+:: Р•РґРёРЅС‹Р№ Р»Р°СѓРЅС‡РµСЂ NurChat (Windows).
+:: Р‘РµР· Р°СЂРіСѓРјРµРЅС‚РѕРІ вЂ” РёРЅС‚РµСЂР°РєС‚РёРІРЅРѕРµ РјРµРЅСЋ. РЎ Р°СЂРіСѓРјРµРЅС‚РѕРј вЂ” РїСЂСЏРјРѕР№ СЂРµР¶РёРј
+:: (РґР»СЏ СЃРєСЂРёРїС‚РѕРІ, Tauri beforeDev, РџР»Р°РЅРёСЂРѕРІС‰РёРєР°):
 ::   run.bat dev      - relay (SQLite) + Tauri
-::   run.bat vite     - relay (SQLite) + Vite (браузер :5173)
-::   run.bat relay    - только relay, foreground, .env как есть
-::   run.bat tunnel   - relay (фон, .env как есть) + cloudflared
-::   run.bat build    - сборка Tauri-инсталлера (.exe)
-::   run.bat checks   - быстрые проверки (ruff + pytest-подмножество)
+::   run.bat vite     - relay (SQLite) + Vite (Р±СЂР°СѓР·РµСЂ :5173)
+::   run.bat relay    - С‚РѕР»СЊРєРѕ relay, foreground, .env РєР°Рє РµСЃС‚СЊ
+::   run.bat tunnel   - relay (С„РѕРЅ, .env РєР°Рє РµСЃС‚СЊ) + cloudflared
+::   run.bat build    - СЃР±РѕСЂРєР° Tauri-РёРЅСЃС‚Р°Р»Р»РµСЂР° (.exe)
+::   run.bat checks   - Р±С‹СЃС‚СЂС‹Рµ РїСЂРѕРІРµСЂРєРё (ruff + pytest-РїРѕРґРјРЅРѕР¶РµСЃС‚РІРѕ)
 ::
-:: dev/vite форсируют SQLite, чтобы локальная разработка не упиралась
-:: в Supabase из .env. relay/tunnel .env НЕ трогают: аккаунты живут
-:: в настроенной БД, смена БД = потеря аккаунтов.
+:: dev/vite С„РѕСЂСЃРёСЂСѓСЋС‚ SQLite, С‡С‚РѕР±С‹ Р»РѕРєР°Р»СЊРЅР°СЏ СЂР°Р·СЂР°Р±РѕС‚РєР° РЅРµ СѓРїРёСЂР°Р»Р°СЃСЊ
+:: РІ Supabase РёР· .env. relay/tunnel .env РќР• С‚СЂРѕРіР°СЋС‚: Р°РєРєР°СѓРЅС‚С‹ Р¶РёРІСѓС‚
+:: РІ РЅР°СЃС‚СЂРѕРµРЅРЅРѕР№ Р‘Р”, СЃРјРµРЅР° Р‘Р” = РїРѕС‚РµСЂСЏ Р°РєРєР°СѓРЅС‚РѕРІ.
 
 set MODE=%~1
 if "%MODE%"=="" (
@@ -28,7 +29,7 @@ goto dispatch
 :menu
 cls
 echo ========================================
-echo   NurChat — launcher
+echo   NurChat вЂ” launcher
 echo ========================================
 echo.
 echo   1^) Dev full       relay (SQLite) + Tauri app
@@ -106,10 +107,10 @@ echo [..] Relay foreground, .env as-is. Ctrl+C to stop.
 goto :eof
 
 :act_tunnel
-:: Туннельный quick-URL случаен при каждом рестарте — явно перечислить его
-:: в CORS_ORIGINS нельзя, поэтому сервер пускает *.trycloudflare.com через
-:: regex. Ручную настройку не затираем. Без этого браузер режет /health и
-:: API с Vite (http://127.0.0.1:5173) CORS-блоком.
+:: РўСѓРЅРЅРµР»СЊРЅС‹Р№ quick-URL СЃР»СѓС‡Р°РµРЅ РїСЂРё РєР°Р¶РґРѕРј СЂРµСЃС‚Р°СЂС‚Рµ вЂ” СЏРІРЅРѕ РїРµСЂРµС‡РёСЃР»РёС‚СЊ РµРіРѕ
+:: РІ CORS_ORIGINS РЅРµР»СЊР·СЏ, РїРѕСЌС‚РѕРјСѓ СЃРµСЂРІРµСЂ РїСѓСЃРєР°РµС‚ *.trycloudflare.com С‡РµСЂРµР·
+:: regex. Р СѓС‡РЅСѓСЋ РЅР°СЃС‚СЂРѕР№РєСѓ РЅРµ Р·Р°С‚РёСЂР°РµРј. Р‘РµР· СЌС‚РѕРіРѕ Р±СЂР°СѓР·РµСЂ СЂРµР¶РµС‚ /health Рё
+:: API СЃ Vite (http://127.0.0.1:5173) CORS-Р±Р»РѕРєРѕРј.
 if not defined CORS_ORIGIN_REGEX set CORS_ORIGIN_REGEX=https://[a-z0-9-]+\.trycloudflare\.com
 call :ensure_relay_prod
 if %errorlevel% neq 0 goto :eof
@@ -120,8 +121,8 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 echo [..] NOTE: quick-tunnel URL changes on every restart. Stable address = named tunnel.
-:: http2 (TCP 443) вместо QUIC (UDP 7844): QUIC часто режется провайдером
-:: и плохо проходит через VPN в TUN-режиме.
+:: http2 (TCP 443) РІРјРµСЃС‚Рѕ QUIC (UDP 7844): QUIC С‡Р°СЃС‚Рѕ СЂРµР¶РµС‚СЃСЏ РїСЂРѕРІР°Р№РґРµСЂРѕРј
+:: Рё РїР»РѕС…Рѕ РїСЂРѕС…РѕРґРёС‚ С‡РµСЂРµР· VPN РІ TUN-СЂРµР¶РёРјРµ.
 cloudflared tunnel --protocol http2 --url http://localhost:8000
 call :stop_relay_if_mine
 goto :eof
@@ -163,12 +164,12 @@ if %errorlevel% equ 0 (
   echo [OK] Relay already on :8000
   exit /b 0
 )
-:: Порт может быть занят "зависшим" процессом с прошлого неудачного запуска
-:: (health не отвечает, но порт всё ещё держится) - освобождаем, иначе
-:: uvicorn не сможет забиндиться и wait_relay зависнет навсегда.
-:: /T обязателен: --reload поднимает reloader + отдельный дочерний
-:: server-процесс, PID в netstat - это reloader, kill без /T убивает
-:: только его, а дочерний процесс остаётся висеть на порту.
+:: РџРѕСЂС‚ РјРѕР¶РµС‚ Р±С‹С‚СЊ Р·Р°РЅСЏС‚ "Р·Р°РІРёСЃС€РёРј" РїСЂРѕС†РµСЃСЃРѕРј СЃ РїСЂРѕС€Р»РѕРіРѕ РЅРµСѓРґР°С‡РЅРѕРіРѕ Р·Р°РїСѓСЃРєР°
+:: (health РЅРµ РѕС‚РІРµС‡Р°РµС‚, РЅРѕ РїРѕСЂС‚ РІСЃС‘ РµС‰С‘ РґРµСЂР¶РёС‚СЃСЏ) - РѕСЃРІРѕР±РѕР¶РґР°РµРј, РёРЅР°С‡Рµ
+:: uvicorn РЅРµ СЃРјРѕР¶РµС‚ Р·Р°Р±РёРЅРґРёС‚СЊСЃСЏ Рё wait_relay Р·Р°РІРёСЃРЅРµС‚ РЅР°РІСЃРµРіРґР°.
+:: /T РѕР±СЏР·Р°С‚РµР»РµРЅ: --reload РїРѕРґРЅРёРјР°РµС‚ reloader + РѕС‚РґРµР»СЊРЅС‹Р№ РґРѕС‡РµСЂРЅРёР№
+:: server-РїСЂРѕС†РµСЃСЃ, PID РІ netstat - СЌС‚Рѕ reloader, kill Р±РµР· /T СѓР±РёРІР°РµС‚
+:: С‚РѕР»СЊРєРѕ РµРіРѕ, Р° РґРѕС‡РµСЂРЅРёР№ РїСЂРѕС†РµСЃСЃ РѕСЃС‚Р°С‘С‚СЃСЏ РІРёСЃРµС‚СЊ РЅР° РїРѕСЂС‚Сѓ.
 for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /T /PID %%p >nul 2>&1
 echo [..] Starting relay in background...
 start "NurChat Relay" /B .venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 %RELAY_FLAGS% --no-access-log

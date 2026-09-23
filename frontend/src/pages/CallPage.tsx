@@ -48,7 +48,9 @@ export default function CallPage() {
   const cameraTrackRef = useRef<MediaStreamTrack | null>(null)
   const statusRef = useRef<CallStatus>("connecting")
   const connectedRef = useRef(false)
-  const pendingSignalsRef = useRef<{ type: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }[]>([])
+  // Широкий тип осознанно: в очереди лежат сырые (ещё не unseal'нутые)
+  // кадры, форму проверяем в processPendingSignals перед применением.
+  const pendingSignalsRef = useRef<{ type: string; enc?: string; sdp?: unknown; candidate?: unknown; [k: string]: unknown }[]>([])
   const callIdRef = useRef(incomingCallId || "")
   const wsReconnectRef = useRef<{ attempt: number; timer: ReturnType<typeof setTimeout> | null }>({ attempt: 0, timer: null })
   // Актуальные ICE-серверы без stale-closure: PC может создаться раньше,
@@ -128,28 +130,58 @@ export default function CallPage() {
     return () => { cancelled = true }
   }, [targetUserId])
 
+  // Расшифровка отложенного кадра: ключи могли подтянуться, пока кадр
+  // лежал в очереди (peerPub грузится асинхронно при монтировании).
+  const unsealQueued = useCallback(async (msg: { type: string; enc?: string; sdp?: unknown; candidate?: unknown; [k: string]: unknown }) => {
+    if (typeof msg.enc === "string" && msg.sdp == null && msg.candidate == null) {
+      const { mySecretHex, peerPubHex } = callE2ERef.current
+      if (mySecretHex && peerPubHex) {
+        const { unsealSignalingMessage } = await import("../services/callE2E")
+        return unsealSignalingMessage(msg as { type: string; enc?: string }, mySecretHex, peerPubHex)
+      }
+    }
+    return msg
+  }, [])
+
+  function isValidSdp(sdp: unknown, want: "offer" | "answer"): sdp is RTCSessionDescriptionInit {
+    return !!sdp && typeof sdp === "object"
+      && (sdp as { type?: unknown }).type === want
+      && typeof (sdp as { sdp?: unknown }).sdp === "string"
+  }
+
   const processPendingSignals = useCallback(async () => {
     const pc = pcRef.current
     if (!pc) return
     const pending = pendingSignalsRef.current
     pendingSignalsRef.current = []
 
-    for (const msg of pending) {
+    for (let msg of pending) {
       try {
+        msg = await unsealQueued(msg)
         switch (msg.type) {
           case "offer": {
-            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp!))
+            // Битый/нерасшифрованный offer раньше ронял звонок крашем
+            // setRemoteDescription({type: null}) — дропаем с варном.
+            if (!isValidSdp(msg.sdp, "offer")) {
+              console.warn("[CALL] Dropping malformed offer (unseal failed or bad shape)")
+              break
+            }
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
             const answer = await pc.createAnswer()
             await pc.setLocalDescription(answer)
             sendSignaling({ type: "answer", sdp: answer })
             break
           }
           case "answer":
-            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp!))
+            if (!isValidSdp(msg.sdp, "answer")) {
+              console.warn("[CALL] Dropping malformed answer (unseal failed or bad shape)")
+              break
+            }
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
             break
           case "ice-candidate":
-            if (msg.candidate) {
-              await pc.addIceCandidate(new RTCIceCandidate(msg.candidate))
+            if (msg.candidate && typeof msg.candidate === "object") {
+              await pc.addIceCandidate(new RTCIceCandidate(msg.candidate as RTCIceCandidateInit))
             }
             break
         }
@@ -157,7 +189,7 @@ export default function CallPage() {
         console.error("[CALL] Error processing pending signal:", err)
       }
     }
-  }, [sendSignaling])
+  }, [sendSignaling, unsealQueued])
 
   const createPeerConnection = useCallback((isInitiator: boolean) => {
     if (pcRef.current) return pcRef.current
@@ -487,6 +519,17 @@ export default function CallPage() {
             const { mySecretHex, peerPubHex } = callE2ERef.current
             if (mySecretHex && peerPubHex && typeof msg.enc === "string") {
               msg = unsealSignalingMessage(msg, mySecretHex, peerPubHex)
+              // Расшифровать не вышло (чужой/битый enc), а плейнтекста нет:
+              // дальше валидаторы дропнут кадр с варном, а не крашем.
+              // Повторный unseal попробуется в processPendingSignals,
+              // если ключи подтянутся позже.
+              if (msg.sdp == null && msg.candidate == null) {
+                console.warn("[CALL] E2E unseal produced no body for", msg.type)
+              }
+            } else if (typeof msg.enc === "string" && msg.sdp == null && msg.candidate == null) {
+              // Ключей пока нет (peerPub грузится асинхронно) — unseal
+              // отложен до processPendingSignals, кадр идёт в очередь как есть.
+              console.warn("[CALL] Keys not ready, deferring unseal for", msg.type)
             }
           }
           // Never log SDP/candidate bodies (may contain IPs when legacy plaintext).
@@ -576,6 +619,10 @@ export default function CallPage() {
             case "offer": {
               const pc = pcRef.current
               if (pc) {
+                if (!isValidSdp(msg.sdp, "offer")) {
+                  console.warn("[CALL] Dropping malformed offer (unseal failed or bad shape)")
+                  break
+                }
                 await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
                 const answer = await pc.createAnswer()
                 await pc.setLocalDescription(answer)
@@ -590,6 +637,10 @@ export default function CallPage() {
             case "answer": {
               const pc = pcRef.current
               if (pc) {
+                if (!isValidSdp(msg.sdp, "answer")) {
+                  console.warn("[CALL] Dropping malformed answer (unseal failed or bad shape)")
+                  break
+                }
                 await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
               } else {
                 pendingSignalsRef.current.push(msg)
@@ -599,8 +650,8 @@ export default function CallPage() {
 
             case "ice-candidate": {
               const pc = pcRef.current
-              if (pc && msg.candidate) {
-                await pc.addIceCandidate(new RTCIceCandidate(msg.candidate))
+              if (pc && msg.candidate && typeof msg.candidate === "object") {
+                await pc.addIceCandidate(new RTCIceCandidate(msg.candidate as RTCIceCandidateInit))
               } else if (msg.candidate) {
                 pendingSignalsRef.current.push(msg)
               }

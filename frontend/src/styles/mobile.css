@@ -62,19 +62,23 @@
   --z-toast: 500;
   --z-bottom-nav: 600;
 
-  /* Mobile theme tokens (fallbacks so UI is never transparent even if
-     prefers-color-scheme is 'no-preference'; overridden by the media
-     queries below). */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f2f2f7;
-  --bg-active: #e5e5ea;
-  --text-primary: #000000;
-  --text-secondary: #8e8e93;
-  --border-color: #c6c6c8;
-  --accent-color: #007aff;
-  --danger-color: #ff3b30;
-  --warning-color: #ff9500;
-  --success-color: #34c759;
+  /* Mobile theme tokens. --text-primary/--text-secondary/--border-color are
+     intentionally NOT redeclared here: those names belong to the core theme
+     system (core.css [data-theme]), and redefining them on this unguarded
+     :root would win the cascade (equal specificity, declared later) and
+     permanently pin them to light-mode values in every theme — which is
+     exactly the "black text on dark background" bug this comment now
+     prevents. --bg-primary/--bg-secondary/--bg-active map onto the same
+     theme so mobile-only rules stay in sync with the active theme too. */
+  --bg-primary: var(--bg, #ffffff);
+  --bg-secondary: var(--surface-variant, #f2f2f7);
+  --bg-active: var(--hover, #e5e5ea);
+  /* Darkened from Apple's system colors so white text/icons placed on
+     these solid fills keep WCAG AA contrast (>=4.5:1). */
+  --accent-color: #0071eb;
+  --danger-color: #ea0c00;
+  --warning-color: #ab6400;
+  --success-color: #23863c;
 }
 
 /* ========================================
@@ -712,10 +716,10 @@
     --text-primary: #ffffff;
     --text-secondary: #8e8e93;
     --border-color: #2c2c2e;
-    --accent-color: #0a84ff;
-    --danger-color: #ff453a;
-    --warning-color: #ff9f0a;
-    --success-color: #30d158;
+    --accent-color: #0072e6;
+    --danger-color: #ea0d00;
+    --warning-color: #a76600;
+    --success-color: #1e8638;
   }
 }
 
@@ -731,10 +735,10 @@
     --text-primary: #000000;
     --text-secondary: #8e8e93;
     --border-color: #c6c6c8;
-    --accent-color: #007aff;
-    --danger-color: #ff3b30;
-    --warning-color: #ff9500;
-    --success-color: #34c759;
+    --accent-color: #0071eb;
+    --danger-color: #ea0c00;
+    --warning-color: #ab6400;
+    --success-color: #23863c;
   }
 }
 

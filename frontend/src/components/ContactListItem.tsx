@@ -15,7 +15,7 @@ export default function ContactListItem({ contact, onRemove, onStartChat }: Prop
   return (
     <div className="contact-list-item">
       <div className="cli-avatar">
-        <div className="cli-avatar-circle" style={{ background: "#2AABEE" }}>
+        <div className="cli-avatar-circle" style={{ background: "#0e7cb4" }}>
           <span>{initial}</span>
         </div>
       </div>

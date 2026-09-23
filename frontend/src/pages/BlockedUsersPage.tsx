@@ -118,7 +118,7 @@ export default function BlockedUsersPage() {
                 <button
                   className="avatar-btn"
                   onClick={() => handleUnblock(entry.blocked_user_id)}
-                  style={{ fontSize: 12, padding: "4px 8px", background: "var(--tg-blue)", color: "#fff" }}
+                  style={{ fontSize: 12, padding: "4px 8px", background: "var(--tg-blue)", color: "var(--on-accent, #fff)" }}
                 >
                   {t("blocked.unblock")}
                 </button>

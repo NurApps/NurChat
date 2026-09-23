@@ -381,7 +381,7 @@
   border: none;
   border-radius: 50%;
   background: var(--tg-blue);
-  color: #fff;
+  color: var(--on-accent, #fff);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -428,7 +428,7 @@
 
 .input-btn.record-stop {
   background: var(--error);
-  color: #fff;
+  color: var(--on-error, #fff);
   border-radius: 50%;
 }
 
@@ -521,7 +521,7 @@
   border: none;
   border-radius: 6px;
   background: var(--tg-blue);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 12px;
   cursor: pointer;
 }
@@ -592,8 +592,8 @@
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: #e53935;
-  color: #fff;
+  background: var(--error, #e22622);
+  color: var(--on-error, #fff);
   padding: 10px 18px;
   border-radius: 8px;
   font-size: 13px;
@@ -682,7 +682,7 @@
 
 .poll-vote-btn {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent, #fff);
   border: none;
   border-radius: 6px;
   padding: 4px 12px;
@@ -796,7 +796,7 @@
   cursor: pointer;
 }
 
-.cr-accept { background: var(--accent); color: white; }
+.cr-accept { background: var(--accent); color: var(--on-accent, #fff); }
 .cr-reject { background: var(--hover); color: var(--text-secondary); }
 
 .cr-status { font-size: 12px; }

@@ -55,8 +55,8 @@
 
 .settings-tab.active {
   background: var(--tg-blue);
-  color: white;
-  box-shadow: 0 2px 8px rgba(42, 171, 238, 0.3);
+  color: var(--on-accent, #fff);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
 }
 
 .settings-tab-icon { display: flex; align-items: center; opacity: 0.85; }
@@ -288,7 +288,7 @@
   border: none;
   border-radius: 12px;
   background: var(--tg-blue);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;

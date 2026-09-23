@@ -78,7 +78,7 @@
 
 .tab-badge {
   background: var(--tg-blue);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 11px;
   font-weight: 700;
   border-radius: 10px;
@@ -327,7 +327,7 @@
 
 .cli-badge {
   background: var(--tg-blue);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 12px;
   font-weight: 700;
   border-radius: 10px;
@@ -437,7 +437,7 @@
 
 .invite-btn:hover { opacity: 0.85; }
 
-.invite-btn.accept { background: var(--tg-blue); color: #fff; }
+.invite-btn.accept { background: var(--tg-blue); color: var(--on-accent, #fff); }
 .invite-btn.decline { background: transparent; color: var(--error); border: 1px solid var(--error); }
 
 /* Draft */
@@ -506,7 +506,7 @@
   transition: all 0.15s;
 }
 
-.fm-filter-btn.active { background: var(--tg-blue); color: #fff; }
+.fm-filter-btn.active { background: var(--tg-blue); color: var(--on-accent, #fff); }
 .fm-filter-btn:hover:not(.active) { background: var(--hover); }
 
 .fm-inline-list { flex: 1; overflow-y: auto; }
@@ -569,7 +569,7 @@
   border: none;
   border-radius: 8px;
   background: var(--tg-blue);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;

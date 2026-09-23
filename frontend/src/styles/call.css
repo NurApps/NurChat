@@ -43,7 +43,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 48px;
   font-weight: 700;
 }
@@ -118,10 +118,10 @@
 .call-btn:hover { opacity: 0.85; transform: scale(1.05); }
 .call-btn:active { transform: scale(0.97); }
 
-.call-btn.end, .call-btn.decline { background: #e53935; width: 64px; height: 64px; }
-.call-btn.accept { background: #43a047; width: 64px; height: 64px; }
+.call-btn.end, .call-btn.decline { background: var(--error, #e22622); color: var(--on-error, #fff); width: 64px; height: 64px; }
+.call-btn.accept { background: var(--success, #3c843b); color: var(--on-success, #fff); width: 64px; height: 64px; }
 .call-btn.control { background: #546e7a; width: 52px; height: 52px; }
-.call-btn.control.off { background: #e53935; }
+.call-btn.control.off { background: var(--error, #e22622); color: var(--on-error, #fff); }
 
 
 /* ─── Call Overlay (in-chat) ─── */
@@ -220,7 +220,7 @@
 .call-control-btn.hangup {
   width: 64px;
   height: 64px;
-  background: #e53935;
+  background: #e22622;
 }
 .call-control-btn.hangup:hover { background: #c62828; }
 

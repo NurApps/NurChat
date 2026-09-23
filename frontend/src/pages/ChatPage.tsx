@@ -973,7 +973,7 @@ export default function ChatPage() {
                     </svg>
                     {ephemeralSeconds && <span className="ephemeral-badge" style={{
                       position: "absolute", top: -4, right: -4, width: 16, height: 16,
-                      borderRadius: "50%", background: "var(--tg-blue)", color: "#fff",
+                      borderRadius: "50%", background: "var(--tg-blue)", color: "var(--on-accent, #fff)",
                       fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700,
                     }}>{ephemeralSeconds >= 60 ? `${ephemeralSeconds / 60}m` : `${ephemeralSeconds}s`}</span>}
                   </button>

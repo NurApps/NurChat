@@ -423,7 +423,7 @@ export default function SettingsPage() {
           {tab === "profile" && (
             <>
               <div className="settings-avatar-section">
-                <div className="settings-avatar" style={{ background: avatarSrc ? "transparent" : "#2AABEE" }}>
+                <div className="settings-avatar" style={{ background: avatarSrc ? "transparent" : "#0e7cb4" }}>
                   {avatarSrc ? (
                     <img src={avatarSrc} alt="avatar" className="settings-avatar-img" />
                   ) : (
@@ -675,7 +675,7 @@ export default function SettingsPage() {
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 4, fontSize: 11 }}>
                           {totpBackupCodes.map((code, i) => (
-                            <div key={i} style={{ fontFamily: "monospace", background: "#fff", padding: "2px 6px", borderRadius: 4 }}>
+                            <div key={i} style={{ fontFamily: "monospace", background: "#fff", color: "#000", padding: "2px 6px", borderRadius: 4 }}>
                               {code}
                             </div>
                           ))}

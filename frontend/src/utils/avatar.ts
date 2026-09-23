@@ -1,6 +1,8 @@
+// Darkened from the original pastel palette so white avatar initials keep
+// WCAG AA contrast (>=4.5:1) against every swatch.
 const AVATAR_COLORS = [
-  "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4",
-  "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F",
+  "#eb0000", "#25827c", "#257f94", "#3c8262",
+  "#937000", "#b942b9", "#31826e", "#8d7208",
 ]
 
 export function getAvatarColor(name: string): string {

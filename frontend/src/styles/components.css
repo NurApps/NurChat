@@ -37,7 +37,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
@@ -121,7 +121,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 16px;
   font-weight: 700;
   flex-shrink: 0;
@@ -286,7 +286,7 @@
     justify-content: center;
     gap: 20px;
     flex: 1;
-    background: linear-gradient(160deg, var(--accent, #2563eb), #1a7fc4);
+    background: linear-gradient(160deg, #0b5f92, #0a4570);
   }
 
   .server-boot-side-text {
@@ -398,7 +398,7 @@
 }
 
 .server-boot-actions button:hover { background: var(--surface-alt); border-color: var(--primary); }
-.server-boot-actions button:first-child { background: var(--primary); color: #fff; border-color: var(--primary); }
+.server-boot-actions button:first-child { background: var(--primary); color: var(--on-accent, #fff); border-color: var(--primary); }
 
 /* Incoming call */
 .incoming-call-banner {
@@ -446,8 +446,8 @@
 }
 
 .incoming-call-btn:active { transform: scale(0.9); }
-.incoming-call-btn.reject { background: #f44336; color: white; }
-.incoming-call-btn.accept { background: #4CAF50; color: white; animation: pulse 1.5s infinite; }
+.incoming-call-btn.reject { background: var(--error, #e22622); color: var(--on-error, #fff); }
+.incoming-call-btn.accept { background: var(--success, #3c843b); color: var(--on-success, #fff); animation: pulse 1.5s infinite; }
 
 /* Notifications */
 .toast-notification {
@@ -510,7 +510,7 @@
   border-radius: 50%;
   border: none;
   background: var(--tg-blue);
-  color: #fff;
+  color: var(--on-accent, #fff);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -705,8 +705,8 @@
   height: 18px;
   border-radius: 50%;
   border: none;
-  background: #e53935;
-  color: #fff;
+  background: var(--error, #e22622);
+  color: var(--on-error, #fff);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -740,7 +740,7 @@
   padding: 4px 10px;
   border: none;
   background: var(--tg-blue);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
@@ -756,8 +756,8 @@
 .sticker-pack-delete {
   padding: 4px 10px;
   border: none;
-  background: rgba(229, 57, 53, 0.1);
-  color: #e53935;
+  background: var(--danger-bg);
+  color: var(--error, #e22622);
   border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
@@ -786,7 +786,7 @@
   gap: 12px;
   padding: 10px 16px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 14px;
   animation: slideDown 0.3s ease;
 }
@@ -805,7 +805,7 @@
   padding: 4px 12px;
   border: 1px solid rgba(255,255,255,0.5);
   background: transparent;
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
@@ -846,7 +846,7 @@
 
 .update-banner-error {
   font-size: 12px;
-  color: #ffe0e0;
+  color: var(--on-accent, #ffe0e0);
 }
 
 /* Offline banner */
@@ -857,7 +857,7 @@
   gap: 8px;
   padding: 8px 16px;
   background: var(--error);
-  color: #fff;
+  color: var(--on-error, #fff);
   font-size: 13px;
   font-weight: 500;
   animation: fadeIn 0.2s ease-out;

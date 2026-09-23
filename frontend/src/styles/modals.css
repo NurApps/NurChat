@@ -186,7 +186,7 @@
 }
 
 .modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.modal-btn.primary { background: var(--tg-blue); color: #fff; }
+.modal-btn.primary { background: var(--tg-blue); color: var(--on-accent, #fff); }
 .modal-btn.primary:hover:not(:disabled) { opacity: 0.85; }
 .modal-btn.cancel { background: transparent; color: var(--text-secondary); }
 .modal-btn.cancel:hover { background: var(--surface-variant); }
@@ -253,7 +253,7 @@
   border: none;
   border-radius: 10px;
   background: var(--tg-blue);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
@@ -355,7 +355,7 @@
 }
 
 .upm-action-btn:hover { background: var(--divider); }
-.upm-action-btn.primary { background: var(--tg-blue); color: white; border-color: var(--tg-blue); }
+.upm-action-btn.primary { background: var(--tg-blue); color: var(--on-accent, #fff); border-color: var(--tg-blue); }
 .upm-action-btn.primary:hover { background: #1e96d1; }
 
 /* Group Settings Modal */
@@ -440,7 +440,7 @@
 }
 
 .group-settings-btn:hover { background: var(--hover, #3a3a4a); }
-.group-settings-btn.primary { background: var(--tg-blue, #2AABEE); color: white; border-color: var(--tg-blue, #2AABEE); }
+.group-settings-btn.primary { background: var(--tg-blue, #2AABEE); color: var(--on-accent, #fff); border-color: var(--tg-blue, #2AABEE); }
 .group-settings-btn.small { padding: 4px 10px; font-size: 12px; }
 .group-settings-btn.tiny { padding: 4px 8px; font-size: 14px; line-height: 1; }
 .group-settings-btn.danger { color: #ff6b6b; border-color: #ff6b6b33; }
@@ -486,7 +486,7 @@
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--tg-blue, #2AABEE);
-  color: white;
+  color: var(--on-accent, #fff);
   font-size: 10px;
   font-weight: 600;
   vertical-align: middle;
@@ -620,7 +620,7 @@
 }
 
 .media-viewer-btn:hover { background: var(--hover, #3a3a4a); }
-.media-viewer-btn.primary { background: var(--tg-blue, #2AABEE); color: white; border-color: var(--tg-blue, #2AABEE); }
+.media-viewer-btn.primary { background: var(--tg-blue, #2AABEE); color: var(--on-accent, #fff); border-color: var(--tg-blue, #2AABEE); }
 .media-viewer-btn.primary:hover { background: #1e96d1; }
 .media-viewer-doc-error { color: #ff6b6b; font-size: 13px; margin-top: 12px; }
 
@@ -864,7 +864,7 @@
 
 .ob-next {
   background: var(--tg-blue);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border: none;
   border-radius: 10px;
   padding: 10px 24px;

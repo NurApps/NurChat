@@ -120,7 +120,9 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 echo [..] NOTE: quick-tunnel URL changes on every restart. Stable address = named tunnel.
-cloudflared tunnel --url http://localhost:8000
+:: http2 (TCP 443) вместо QUIC (UDP 7844): QUIC часто режется провайдером
+:: и плохо проходит через VPN в TUN-режиме.
+cloudflared tunnel --protocol http2 --url http://localhost:8000
 call :stop_relay_if_mine
 goto :eof
 
@@ -194,7 +196,7 @@ goto :eof
 
 :stop_relay_if_mine
 if not "%RELAY_STARTED_BY_ME%"=="1" (
-  echo [..] Relay left running (was already up).
+  echo [..] Relay left running ^(was already up^).
   exit /b 0
 )
 echo [..] Stopping relay on :8000...

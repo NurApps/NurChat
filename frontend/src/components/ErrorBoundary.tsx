@@ -33,7 +33,7 @@ class ErrorBoundaryInner extends Component<Props, State> {
           <h2 style={{ margin: "16px 0 8px" }}>{this.props.t("errors.somethingWentWrong")}</h2>
           <p style={{ color: "var(--text-secondary, #6b7280)", margin: "0 0 24px" }}>{this.state.error?.message}</p>
           <button onClick={() => window.location.reload()} style={{
-            background: "var(--accent, #2563eb)", color: "white", border: "none", borderRadius: 8,
+            background: "var(--accent, #2563eb)", color: "var(--on-accent, white)", border: "none", borderRadius: 8,
             padding: "12px 24px", fontSize: 14, cursor: "pointer", fontWeight: 600,
           }}>{this.props.t("errors.reload")}</button>
         </div>

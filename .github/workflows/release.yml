@@ -1,15 +1,29 @@
 name: Release
 
+# Только ручной запуск: Actions -> Release -> Run workflow.
+# tag — тег релиза (напр. v0.16.3); версия в tauri.conf.json и Cargo.toml должна совпадать.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Тег релиза (напр. v0.16.3)"
+        required: true
+        type: string
+      windows:
+        description: "Собрать Windows (NSIS)"
+        type: boolean
+        default: true
+      linux:
+        description: "Собрать Linux (.deb + .AppImage)"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
 
 jobs:
   release:
+    if: ${{ inputs.windows }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -71,13 +85,15 @@ jobs:
       - name: Get version
         id: version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+        run: echo "VERSION=${TAG#v}" >> $GITHUB_ENV
+        env:
+          TAG: ${{ inputs.tag }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: NurChat ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
+          name: NurChat ${{ inputs.tag }}
+          tag_name: ${{ inputs.tag }}
           body_path: release-notes.md
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
@@ -97,9 +113,89 @@ jobs:
           VITE_API_HOST: ${{ vars.NURCHAT_RELAY_HOST }}
           VITE_API_PROTOCOL: ${{ vars.NURCHAT_RELAY_PROTOCOL }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "NurChat ${{ github.ref_name }}"
+          tagName: ${{ inputs.tag }}
+          releaseName: "NurChat ${{ inputs.tag }}"
           releaseBody: "См. вложения для скачивания."
           releaseDraft: false
           prerelease: false
           args: "--config src-tauri/tauri.conf.json"
+
+  # Linux (.deb + .AppImage). Идёт после Windows-джоба (если тот выбран), чтобы не гоняться за создание релиза.
+  # Таргеты и Linux-специфика — в src-tauri/tauri.linux.conf.json (мержится автоматически).
+  release-linux:
+    needs: release
+    if: ${{ !cancelled() && inputs.linux && needs.release.result != 'failure' }}
+    runs-on: ubuntu-22.04 # старый glibc => AppImage запускается на более широком круге дистрибутивов
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Tauri system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt pyinstaller
+
+      # Имя = SIDECAR_BIN из src-tauri/src/server.rs: файл можно положить рядом с приложением
+      - name: Build server binary
+        run: |
+          pyinstaller --onefile --name server-x86_64-unknown-linux-gnu \
+            --hidden-import "uvicorn.logging" \
+            --hidden-import "uvicorn.loops.auto" \
+            --hidden-import "uvicorn.protocols.http.auto" \
+            --hidden-import "uvicorn.lifespan.on" \
+            --add-data "shared:shared" \
+            --collect-all "multipart" \
+            server/main.py \
+            --noconfirm
+
+      - name: Upload server binary to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.tag }}" dist/server-x86_64-unknown-linux-gnu --clobber
+
+      - name: Build & Release (Linux)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_API_HOST: ${{ vars.NURCHAT_RELAY_HOST }}
+          VITE_API_PROTOCOL: ${{ vars.NURCHAT_RELAY_PROTOCOL }}
+        with:
+          tagName: ${{ inputs.tag }}
+          releaseName: "NurChat ${{ inputs.tag }}"
+          releaseBody: "См. вложения для скачивания."
+          releaseDraft: false
+          prerelease: false
+          args: "--bundles deb,appimage"

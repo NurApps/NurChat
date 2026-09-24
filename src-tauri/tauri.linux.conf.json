@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "targets": ["deb", "appimage"],
+    "category": "SocialNetworking",
+    "shortDescription": "NurChat — end-to-end encrypted messenger",
+    "linux": {
+      "deb": {
+        "depends": ["libayatana-appindicator3-1"]
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    }
+  }
+}

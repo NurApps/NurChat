@@ -17,7 +17,7 @@ import { initGroupKey, fetchGroupKey, decryptGroupMessageRatcheted } from "../se
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications } from "../services/notifications"
 import { clearPin } from "../services/pinLock"
-import { avatarUrl } from "../config"
+import { avatarUrl, BASE_URL } from "../config"
 import { useChatStore } from "../store/chatStore"
 import TopBar from "../components/TopBar"
 import MessageBubble from "../components/MessageBubble"
@@ -226,6 +226,68 @@ export default function ChatPage() {
     onNavigate: navigate,
     onReconnect: useCallback(() => { flushOutboxRef.current() }, []),
   })
+
+  // Открытие view-once: mark на сервере (контент возвращается один раз),
+  // затем расшифровка конверта (E2E) и скачивание вложения (деструктивное
+  // чтение на сервере — повторный GET уже 404). Показ — только из локального
+  // стейта бабла, в историю/кэш не пишем.
+  const handleOpenViewOnce = useCallback(async (
+    msg: MessageResponse,
+  ): Promise<{ text?: string; fileUrl?: string } | null> => {
+    const chat = useChatStore.getState().selectedChat
+    if (!chat) return null
+    let opened: Awaited<ReturnType<typeof api.openViewOnce>>
+    try {
+      opened = await api.openViewOnce(msg.id)
+    } catch {
+      return null
+    }
+    if (opened.already_viewed) {
+      updateMessage(msg.id, { viewed_at: new Date().toISOString() } as Partial<MessageResponse>)
+      return null
+    }
+    updateMessage(msg.id, {
+      is_deleted: true, deleted_for_all: true,
+      viewed_at: new Date().toISOString(),
+    } as Partial<MessageResponse>)
+    // Текст: плейнтекст или E2E-конверт.
+    if (opened.message_type === "text") {
+      if (opened.encrypted_content && e2eKeys) {
+        try {
+          const envelope = JSON.parse(opened.encrypted_content)
+          if (envelope.group_encrypted && chat.is_group) {
+            const groupKey = await fetchGroupKey(chat.id, hexToBytesLocal(e2eKeys.privateKeyHex))
+            if (groupKey) {
+              const plain = await decryptGroupMessageRatcheted(envelope.group_encrypted, groupKey, chat.id)
+              if (plain) return { text: plain }
+            }
+          } else {
+            const peer = chat.participants.find((p: any) => p.id !== currentUser.id)
+            if (peer?.public_key) {
+              const plain = await decryptMessage(envelope, e2eKeys, peer.public_key, chat.id, msg.id)
+              if (plain) return { text: plain }
+            }
+          }
+        } catch { /* fallthrough */ }
+      }
+      return opened.content ? { text: opened.content } : null
+    }
+    // Медиа: одно скачивание (сервер сотрёт байты после отдачи).
+    if (opened.file_id) {
+      try {
+        const token = localStorage.getItem("token") || ""
+        const res = await fetch(
+          `${BASE_URL}/api/files/download/${encodeURIComponent(opened.file_id)}?token=${encodeURIComponent(token)}`,
+        )
+        if (!res.ok) return null
+        const url = URL.createObjectURL(await res.blob())
+        return { fileUrl: url }
+      } catch {
+        return null
+      }
+    }
+    return null
+  }, [e2eKeys, currentUser, updateMessage])
 
   const sendWs = useCallback((data: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(data))
@@ -914,7 +976,8 @@ export default function ChatPage() {
                         reactions={msg.reactions} onReply={(id) => handleReply(id, messages)} onDelete={handleDeleteMessage}
                         onReaction={handleReaction} onEdit={handleEditMessage}
                         onViewProfile={handleViewProfile}
-                        highlightQuery={searchQuery} onShowInfo={setShowMessageInfo} />
+                        highlightQuery={searchQuery} onShowInfo={setShowMessageInfo}
+                        onOpenViewOnce={handleOpenViewOnce} />
                     ))}
                   </div>
                 )}
@@ -941,6 +1004,7 @@ export default function ChatPage() {
                     onEdit={handleEditMessage}
                     onViewProfile={handleViewProfile}
                     onShowInfo={setShowMessageInfo}
+                    onOpenViewOnce={handleOpenViewOnce}
                   />
                 )}
                 <div ref={messagesEndRef} />

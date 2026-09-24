@@ -24,9 +24,15 @@ import pytest
 
 @pytest.fixture(scope="session", autouse=True)
 def _prepare_test_db():
-    """Create all tables in the throwaway test DB before any test runs."""
+    """Rebuild the throwaway test DB before any test runs.
+
+    drop_all + create_all: create_all не добавляет колонки в существующие
+    таблицы, поэтому переиспользованный test.db протухал после каждой
+    миграции (напр. viewed_by) и тесты падали с no such column локально.
+    """
     from server.core import models  # noqa: F401 — register models on Base
     from server.core.database import Base, engine
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
 

@@ -4,6 +4,8 @@ Handles signed pre-keys, one-time pre-keys, and bundle publishing.
 """
 
 import hashlib
+import threading as _th
+import time as _time
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from nacl.signing import VerifyKey
@@ -19,6 +21,27 @@ from shared.rate_limiter import limiter
 router = APIRouter(tags=["keys"])
 
 ONE_TIME_PREKEY_BATCH = 100
+
+# Per-(caller, target) троттлинг OPK-потребляющих геттеров. Каждый вызов
+# bundle/one-time СЖИГАЕТ чужой OPK: без этого любой аутентифицированный
+# юзер циклом держит жертву без OPK (даунгрейд X3DH до «без OPK», урон
+# forward secrecy). Per-IP limiter'а мало — душат по вызывающему, а не по
+# жертве. Честная оговорка: in-memory per-process, как весь slowapi здесь.
+_OPK_THROTTLE_N = 20
+_OPK_THROTTLE_WINDOW_S = 60.0
+_opk_hits: dict[tuple[str, str], list[float]] = {}
+_opk_lock = _th.Lock()
+
+
+def _check_opk_throttle(caller_id: str, target_id: str) -> None:
+    now = _time.monotonic()
+    key = (caller_id, target_id)
+    with _opk_lock:
+        hits = [t for t in _opk_hits.get(key, []) if now - t < _OPK_THROTTLE_WINDOW_S]
+        if len(hits) >= _OPK_THROTTLE_N:
+            raise HTTPException(status_code=429, detail="Слишком частые запросы ключей")
+        hits.append(now)
+        _opk_hits[key] = hits
 
 
 def _verify_spk_signature(identity_key_hex: str, spk_hex: str, signature_hex: str) -> bool:
@@ -180,6 +203,7 @@ async def get_one_time_prekey(
     token: dict = Depends(verify_token_dependency),
 ):
     """Get one unused one-time pre-key for a user and mark it as used."""
+    _check_opk_throttle(token["sub"], user_id)
     otpk = _claim_one_time_prekey(db, user_id)
 
     if not otpk:
@@ -216,6 +240,7 @@ async def get_prekey_bundle(
     Get a pre-key bundle for X3DH session establishment.
     Returns identity key, signed pre-key, and one one-time pre-key.
     """
+    _check_opk_throttle(token["sub"], user_id)
     cache_key = f"bundle:{user_id}"
     cached = prekey_cache.get(cache_key)
     if cached is not None:

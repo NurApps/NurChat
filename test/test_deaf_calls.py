@@ -119,6 +119,24 @@ class TestDeafEditEndpoint:
         }, headers=ha)
         assert r.status_code == 200, r.text
 
+    def test_edit_over_5000_rejected(self):
+        a, ha = _auth(f"deafedit3_a_{uuid.uuid4().hex[:8]}")
+        b, _ = _auth(f"deafedit3_b_{uuid.uuid4().hex[:8]}")
+        chat_id = _make_chat(ha, b["user"]["id"])
+        msg_id = _send_e2e(ha, chat_id)
+        r = client.put(f"/api/chat/messages/{msg_id}/edit", json={
+            "content": "[encrypted]",
+            "encrypted_content": '{"edited": "' + "x" * 6000 + '"}',
+            "signature": "sig2",
+        }, headers=ha)
+        # Кап применяется к content; конверт больше капа тела не лимитируем.
+        assert r.status_code in (200, 400)
+        r = client.put(
+            f"/api/chat/messages/{msg_id}/edit?new_content={'y' * 5001}",
+            headers=ha,
+        )
+        assert r.status_code == 400
+
 
 class TestDeafEphemeralEndpoint:
     def test_ephemeral_plaintext_rejected_when_deaf(self):

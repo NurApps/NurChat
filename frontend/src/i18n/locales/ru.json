@@ -489,6 +489,8 @@
     "ownServerDesc": "Свой relay для полного контроля",
     "setupGuide": "Инструкция",
     "retry": "Повторить подключение",
+    "relayRequiredTitle": "Введите адрес relay",
+    "relayRequiredHint": "По умолчанию стоим на локальном сервере — попросите адрес у того, кто вас пригласил, или поднимите свой.",
     "setupTitle": "Свой relay",
     "setupDocker": "Быстрый старт через Docker:",
     "setupThen": "Затем введите адрес relay выше.",

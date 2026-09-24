@@ -379,6 +379,18 @@ export default function ChatPage() {
     return () => document.removeEventListener("mousedown", handleClick)
   }, [showEphemeralMenu])
 
+  // Входящий без таймаута висел бы вечно при потерянном call-ended.
+  // Как в CallPage (30с): сбрасываем баннер, рингтон гаснет вместе с ним.
+  useEffect(() => {
+    if (!incomingCall) return
+    const id = setTimeout(() => {
+      if (useChatStore.getState().incomingCall) {
+        useChatStore.getState().setIncomingCall(null)
+      }
+    }, 30000)
+    return () => clearTimeout(id)
+  }, [incomingCall])
+
   // Якорь низа: мотаем только первую загрузку и новые сообщения,
   // подгрузка истории (prepend) позицию не трогает. Дублирует логику
   // VirtualizedMessageList для невьюализированных случаев (поиск).

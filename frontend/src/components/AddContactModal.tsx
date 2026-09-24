@@ -17,6 +17,8 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Дабл-клик слал заявку дважды — блочим повтор, успех закроет модалку.
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     api.getAllUsers()
@@ -91,13 +93,15 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
           <button className="modal-btn cancel" onClick={onClose}>{t("common.cancel")}</button>
           <button
             className="modal-btn primary"
-            disabled={!selectedId}
+            disabled={!selectedId || submitting}
             onClick={() => {
-              if (!selectedId) return
+              if (!selectedId || submitting) return
+              setSubmitting(true)
+              setTimeout(() => setSubmitting(false), 3000)
               onAdd(selectedId)
             }}
           >
-            {t("common.add")}
+            {submitting ? t("common.loading") : t("common.add")}
           </button>
         </div>
       </div>

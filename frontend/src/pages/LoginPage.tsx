@@ -388,7 +388,10 @@ export default function LoginPage() {
         </div>
 
         {tab === "register" ? (
-          <div className="login-fields">
+          <form
+            className="login-fields"
+            onSubmit={(e) => { e.preventDefault(); if (!loading) handleRegister() }}
+          >
             <div className="field-wrapper">
               <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
@@ -476,7 +479,7 @@ export default function LoginPage() {
                 </button>
               </div>
             )}
-          </div>
+          </form>
         ) : awaiting2fa ? (
           <div className="login-fields">
             <div className="field-wrapper">
@@ -505,7 +508,15 @@ export default function LoginPage() {
             </button>
           </div>
         ) : (
-          <div className="login-fields">
+          <form
+            className="login-fields"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (loading) return
+              if (awaiting2fa) handleVerify2fa()
+              else handleLogin()
+            }}
+          >
             <div className="field-wrapper">
               <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" />
@@ -513,7 +524,7 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type="text"
-                placeholder="Username"
+                placeholder={t("auth.usernamePlaceholder")}
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
               />
@@ -538,7 +549,7 @@ export default function LoginPage() {
                 </svg>
               </button>
             </div>
-          </div>
+          </form>
         )}
 
         {error && <p className="login-error">{error}</p>}

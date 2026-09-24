@@ -205,7 +205,7 @@ class TestDeleteMessageOwnership:
             })
 
         # Should not raise
-        asyncio.get_event_loop().run_until_complete(_test())
+        asyncio.run(_test())
 
 
 # ─── Call Request Validation (W2) ───
@@ -224,7 +224,7 @@ class TestCallRequestValidation:
                 # missing target_user_id
             })
 
-        asyncio.get_event_loop().run_until_complete(_test())
+        asyncio.run(_test())
 
     def test_call_request_missing_call_id(self):
         """W2: Call request without call_id should not crash."""
@@ -238,7 +238,7 @@ class TestCallRequestValidation:
                 # missing call_id
             })
 
-        asyncio.get_event_loop().run_until_complete(_test())
+        asyncio.run(_test())
 
 
 # ─── Pending Messages TTL (W3) ───

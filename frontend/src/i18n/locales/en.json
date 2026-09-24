@@ -489,6 +489,8 @@
     "ownServerDesc": "Run your own relay for full control",
     "setupGuide": "Setup guide",
     "retry": "Retry connection",
+    "relayRequiredTitle": "Enter the relay address",
+    "relayRequiredHint": "We default to a local server — ask whoever invited you for the address, or run your own.",
     "setupTitle": "Setup your own relay",
     "setupDocker": "Quick start with Docker:",
     "setupThen": "Then enter your relay address above.",

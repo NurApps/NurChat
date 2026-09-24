@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { BASE_URL, setRelayConfig, PUBLIC_RELAYS } from "../config"
+import { BASE_URL, setRelayConfig, PUBLIC_RELAYS, isRelayExplicit } from "../config"
 
 interface Props {
   onReady: () => void
@@ -16,6 +16,10 @@ export default function ServerBootOverlay({ onReady }: Props) {
   // Relay setup state
   const [relayHost, setRelayHost] = useState("")
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("https")
+  // Неявный localhost-дефолт никого никуда не ведёт: если релей не выбран
+  // явно (?relay/env/ручной ввод) и недоступен — требуем адрес прямо
+  // заголовком, а не generic «недоступен».
+  const [relayRequired] = useState(() => !isRelayExplicit())
   // URL actually being probed right now — shown on the "checking" screen.
   // Separate from BASE_URL (frozen at module load) so a manual/custom
   // connect attempt displays its own target instead of the stale default.
@@ -96,8 +100,7 @@ export default function ServerBootOverlay({ onReady }: Props) {
   }
 
   const handleTryCustom = async () => {
-    if (!relayHost.trim()) return
-    manualAttemptRef.current = true
+    if (!relayHost.trim() || phase === "checking") return
     setPhase("checking")
     setErrorMsg("")
     setElapsed(0)
@@ -139,7 +142,14 @@ export default function ServerBootOverlay({ onReady }: Props) {
         {phase === "failed" && (
           <>
             <div className="server-boot-icon error" style={{ fontSize: 48, marginBottom: 12 }}>⚠</div>
-            <h2 style={{ marginBottom: 8 }}>{t("serverBoot.relayUnavailable")}</h2>
+            <h2 style={{ marginBottom: 8 }}>
+              {relayRequired ? t("serverBoot.relayRequiredTitle") : t("serverBoot.relayUnavailable")}
+            </h2>
+            {relayRequired && (
+              <p style={{ opacity: 0.7, fontSize: 13, marginBottom: 12 }}>
+                {t("serverBoot.relayRequiredHint")}
+              </p>
+            )}
             <p style={{ opacity: 0.7, fontSize: 13, marginBottom: 4, fontFamily: "monospace", wordBreak: "break-word" }}>
               {errorMsg}
             </p>

@@ -31,7 +31,7 @@ class TestCallJoinAutoAccept:
             await call_manager._handle_call_join(callee, {"call_id": call_id})
 
         try:
-            asyncio.get_event_loop().run_until_complete(_run())
+            asyncio.run(_run())
             assert call_manager.active_calls[call_id]["status"] == CALL_STATUS["ACTIVE"]
             caller_msgs = [e["msg"] for e in call_manager.pending_messages.get(caller, [])]
             callee_msgs = [e["msg"] for e in call_manager.pending_messages.get(callee, [])]
@@ -51,7 +51,7 @@ class TestCallJoinAutoAccept:
             await call_manager._handle_call_join(user, {"call_id": "call_no_such"})
 
         try:
-            asyncio.get_event_loop().run_until_complete(_run())
+            asyncio.run(_run())
             msgs = [e["msg"] for e in call_manager.pending_messages.get(user, [])]
             failed = [m for m in msgs if m.get("type") == "call-failed"]
             assert failed and failed[-1].get("reason") == "call_not_found"

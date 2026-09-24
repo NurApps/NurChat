@@ -180,6 +180,7 @@ class MessageResponse(MessageBase):
     scheduled_at: datetime | None = None
     is_view_once: bool = False
     viewed_at: datetime | None = None
+    viewed_by: str | None = None
     created_at: datetime
     # Raw reaction rows (E2E: tag + enc_emoji; legacy rows carry emoji).
     # Grouping by emoji happens client-side AFTER decrypting enc_emoji.

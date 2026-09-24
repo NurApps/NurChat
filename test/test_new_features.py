@@ -335,6 +335,100 @@ class TestViewOnce:
         assert resp.status_code in (403, 404)
 
 
+class TestViewOnceHonest:
+    """Одноразовость по-честному: флаг, бланкинг истории, один зритель."""
+
+    def _send_vo(self, client, chat_id, token, msg_type="text"):
+        resp = client.post(
+            f"/api/chat/chats/{chat_id}/messages",
+            json={
+                "chat_id": chat_id,
+                "content": "[encrypted]",
+                "message_type": msg_type,
+                "is_view_once": True,
+                "encrypted_content": "dGVzdA==",
+                "signature": "c2ln",
+            },
+            headers=auth(token),
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()["id"]
+
+    def _create_chat(self, client, user_a, user_b) -> str:
+        resp = client.post(
+            "/api/chat/chats",
+            json={"participant_ids": [user_b["id"]]},
+            headers=auth(user_a["token"]),
+        )
+        return resp.json()["id"]
+
+    def test_mark_rejects_non_view_once(self, client, user_a, user_b):
+        chat_id = self._create_chat(client, user_a, user_b)
+        resp = client.post(
+            f"/api/chat/chats/{chat_id}/messages",
+            json={"chat_id": chat_id, "content": "[encrypted]",
+                  "message_type": "text",
+                  "encrypted_content": "dGVzdA==", "signature": "c2ln"},
+            headers=auth(user_a["token"]),
+        )
+        msg_id = resp.json()["id"]
+        resp = client.post(
+            f"/api/chat/messages/{msg_id}/view-once",
+            headers=auth(user_b["token"]),
+        )
+        assert resp.status_code == 400
+
+    def test_history_hides_unviewed_content_from_recipient(self, client, user_a, user_b):
+        chat_id = self._create_chat(client, user_a, user_b)
+        self._send_vo(client, chat_id, user_a["token"])
+        # Получатель: контент забланкан, флаг на месте.
+        hist = client.get(
+            f"/api/chat/chats/{chat_id}/messages",
+            headers=auth(user_b["token"]),
+        ).json()
+        vo = [m for m in hist if m["is_view_once"]]
+        assert vo, "view-once missing from history"
+        assert vo[0]["content"] == ""
+        assert vo[0]["encrypted_content"] is None
+        # Отправитель видит своё.
+        hist_a = client.get(
+            f"/api/chat/chats/{chat_id}/messages",
+            headers=auth(user_a["token"]),
+        ).json()
+        vo_a = [m for m in hist_a if m["is_view_once"]]
+        assert vo_a[0]["content"] == "[encrypted]"
+
+    def test_double_mark_second_gets_nothing(self, client, user_a, user_b):
+        chat_id = self._create_chat(client, user_a, user_b)
+        msg_id = self._send_vo(client, chat_id, user_a["token"])
+        first = client.post(
+            f"/api/chat/messages/{msg_id}/view-once",
+            headers=auth(user_b["token"]),
+        ).json()
+        assert first["already_viewed"] is False
+        assert first["content"] == "[encrypted]"
+        assert first["encrypted_content"] == "dGVzdA=="
+        second = client.post(
+            f"/api/chat/messages/{msg_id}/view-once",
+            headers=auth(user_b["token"]),
+        ).json()
+        assert second["already_viewed"] is True
+        assert second["content"] is None
+
+    def test_viewed_message_gone_from_history(self, client, user_a, user_b):
+        chat_id = self._create_chat(client, user_a, user_b)
+        msg_id = self._send_vo(client, chat_id, user_a["token"])
+        client.post(
+            f"/api/chat/messages/{msg_id}/view-once",
+            headers=auth(user_b["token"]),
+        )
+        hist = client.get(
+            f"/api/chat/chats/{chat_id}/messages",
+            headers=auth(user_b["token"]),
+        ).json()
+        assert all(m["id"] != msg_id for m in hist)
+
+
 @pytest.fixture
 def user_a(client):
     return _register(client, "aa" * 32)

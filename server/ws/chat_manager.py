@@ -639,6 +639,11 @@ class ChatManager:
         """
         if not all(k in data for k in ["message_id", "chat_id", "new_content"]):
             return
+        # Кап 1..5000 как в REST и при создании: иначе правки — обход лимита.
+        _nc = data.get("new_content")
+        if not isinstance(_nc, str) or not (1 <= len(_nc) <= 5000):
+            logger.warning(f"Invalid WS edit length from {user_id}")
+            return
 
         from shared.config import settings as _settings
         new_encrypted = data.get("encrypted_content")

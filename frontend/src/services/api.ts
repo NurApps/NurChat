@@ -186,6 +186,13 @@ export const api = {
   editMessage: (messageId: string, body: { content: string; encrypted_content?: string; signature?: string }) =>
     request<{ message: string }>("PUT", `/api/chat/messages/${messageId}/edit`, body),
 
+  openViewOnce: (messageId: string) =>
+    request<{
+      message_id: string; content: string | null; encrypted_content: string | null;
+      signature?: string | null; message_type: string; file_id: string | null;
+      already_viewed: boolean;
+    }>("POST", `/api/chat/messages/${messageId}/view-once`),
+
   deleteAccount: () =>
     request<{ message: string }>("DELETE", "/api/auth/account"),
 

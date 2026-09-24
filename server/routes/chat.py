@@ -243,6 +243,15 @@ async def get_chat_messages(
             reactions = reactions_map.get(msg.id) if messages else None
             if reactions:
                 processed_msg.reactions = reactions
+            # View-once: чужой неоткрытый контент в истории не отдаём —
+            # иначе одноразовый текст читается многократно мимо mark-эндпоинта.
+            # Свои отправитель видит (оригинал у него); открытое уже
+            # is_deleted и сюда не попадает. Флаг/тип/file_id оставляем,
+            # чтобы клиент нарисовал «открыть один раз».
+            if msg.is_view_once and msg.user_id != user_id:
+                processed_msg.content = ""
+                processed_msg.encrypted_content = None
+                processed_msg.signature = None
             processed_messages.append(processed_msg)
         except Exception as e:
             logger.error(f"Error processing message {msg.id}: {e}")
@@ -623,6 +632,13 @@ async def edit_message(
         signature = body.get("signature")
         if not content:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Пустое содержимое")
+        # Тот же кап 5000, что у создания: без него правки — обход лимита
+        # длины (гигантские edit_event всем участникам).
+        if len(content) > 5000:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Правка слишком длинная (максимум 5000 символов)",
+            )
         if settings.RELAY_DEAF and not encrypted_content:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -737,11 +753,27 @@ async def mark_view_once_viewed(
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
 ):
-    """Mark a view-once message as viewed. Returns the content once, then deletes it."""
+    """Mark a view-once message as viewed. Returns the content once, then deletes it.
+
+    Одноразовость честная: только is_view_once-сообщения (иначе 400 —
+    раньше эндпоинт отдавал content ЛЮБОГО сообщения), строка лочится
+    FOR UPDATE против двойного раскрытия параллельными запросами, зритель
+    фиксируется в viewed_by (нужен destructive-скачиванию вложения).
+    Конверт (encrypted_content/signature) возвращаем — без него E2E-текст
+    после mark не расшифровать, а история его уже не отдаёт.
+    """
     user_id = token["sub"]
-    message = db.query(models.Message).filter(models.Message.id == message_id).first()
+    message = (
+        db.query(models.Message)
+        .filter(models.Message.id == message_id)
+        .with_for_update()
+        .first()
+    )
     if not message:
         raise MessageNotFoundError("Сообщение не найдено")
+
+    if not message.is_view_once:
+        raise HTTPException(status_code=400, detail="Сообщение не одноразовое")
 
     participant = db.query(models.ChatParticipant).filter(
         models.ChatParticipant.chat_id == message.chat_id,
@@ -754,6 +786,8 @@ async def mark_view_once_viewed(
         return {
             "message_id": message_id,
             "content": message.content,
+            "encrypted_content": message.encrypted_content,
+            "signature": message.signature,
             "message_type": message.message_type,
             "file_id": message.file_id,
             "already_viewed": message.viewed_at is not None,
@@ -763,16 +797,21 @@ async def mark_view_once_viewed(
         return {
             "message_id": message_id,
             "content": None,
+            "encrypted_content": None,
+            "signature": None,
             "message_type": message.message_type,
             "file_id": None,
             "already_viewed": True,
         }
 
     content = message.content
+    encrypted_content = message.encrypted_content
+    signature = message.signature
     file_id = message.file_id
     msg_type = message.message_type
 
     message.viewed_at = datetime.now(timezone.utc)
+    message.viewed_by = user_id
     message.is_deleted = True
     message.deleted_for_all = True
     db.commit()
@@ -789,6 +828,8 @@ async def mark_view_once_viewed(
     return {
         "message_id": message_id,
         "content": content,
+        "encrypted_content": encrypted_content,
+        "signature": signature,
         "message_type": msg_type,
         "file_id": file_id,
         "already_viewed": False,

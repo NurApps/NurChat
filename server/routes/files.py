@@ -236,15 +236,20 @@ async def download_file(
         if not file_record:
             raise HTTPException(status_code=404, detail="Файл не найден")
 
-        # View-once: байты одноразового вложения — только владельцу.
-        # Иначе файл можно скачать напрямую N раз, ни разу не открыв
-        # view-once (обход одноразовости), либо уже после просмотра.
+        # View-once: деструктивное чтение. Скачать может отправитель
+        # (оригинал у него, не деструктивно) и ТОЛЬКО тот, кто открыл
+        # сообщение через mark-эндпоинт (viewed_by) — один раз: после отдачи
+        # байты и запись стираются BackgroundTask'ом. Остальным участникам —
+        # 403: иначе файл качается напрямую N раз мимо одноразовости.
         vo_msg = db.query(models.Message).filter(
             models.Message.file_id == file_id,
             models.Message.is_view_once.is_(True),
         ).first()
+        destructive_read = False
         if vo_msg is not None and vo_msg.user_id != user_id:
-            raise HTTPException(status_code=403, detail="Одноразовый файл уже недоступен")
+            if vo_msg.viewed_by != user_id:
+                raise HTTPException(status_code=403, detail="Одноразовый файл уже недоступен")
+            destructive_read = True
 
         if file_record.user_id != user_id:
             message_with_file = db.query(models.Message).filter(
@@ -278,11 +283,41 @@ async def download_file(
         # (svg/html/js) зарезан ещё на аплоаде, nosniff ставит глобальный
         # middleware. Cache — только приватный: прокси не должны хранить
         # чужие файлы, а shared-устройства — переживать сессию в общем кэше.
+        # View-once: одноразовое вложение после отдачи стираем (файл + запись
+        # в БД) — повторный GET уже 404. Удаление в BackgroundTask: FileResponse
+        # стримит файл с диска, стирать до отправки нельзя.
+        background = None
+        if destructive_read:
+            from starlette.background import BackgroundTask
+
+            doomed_path = str(file_path)
+            doomed_id = file_record.id
+
+            def _burn_view_once(path: str = doomed_path, fid: str = doomed_id) -> None:
+                try:
+                    Path(path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                try:
+                    from server.core.database import SessionLocal
+                    s = SessionLocal()
+                    try:
+                        rec = s.query(models.File).filter(models.File.id == fid).first()
+                        if rec:
+                            s.delete(rec)
+                            s.commit()
+                    finally:
+                        s.close()
+                except Exception as e:
+                    logger.warning(f"View-once burn failed for {fid}: {e}")
+
+            background = BackgroundTask(_burn_view_once)
         return FileResponse(
             path=file_path,
             filename=file_record.filename,
             media_type=mime_type,
             headers={"Cache-Control": "private, max-age=86400"},
+            background=background,
         )
     except HTTPException:
         raise

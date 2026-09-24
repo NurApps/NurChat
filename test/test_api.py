@@ -408,3 +408,33 @@ class TestKeys:
         h, _, _ = self._auth_header()
         r = client.post("/api/keys/cleanup", headers=h)
         assert r.status_code == 200
+
+    def test_bundle_drain_throttled_per_target(self):
+        # Жертва с OPK: атакующий циклом жжёт чужие ключи. Per-(caller,target)
+        # троттлинг обязан отбить 429 раньше, чем OPK кончатся все.
+        h_victim, victim_id, sign_sk = self._auth_header()
+        pub, sig = self._generate_signed_prekey(sign_sk)
+        client.post("/api/keys/signed-prekey", params={
+            "public_key": pub, "signature": sig,
+        }, headers=h_victim)
+
+        from nacl.public import PrivateKey
+        pubs = []
+        for _ in range(30):
+            kp = PrivateKey.generate()
+            pubs.append(kp.public_key.encode(encoder=HexEncoder).decode())
+        client.post("/api/keys/one-time", json={"public_keys": pubs}, headers=h_victim)
+
+        pub_key, sign_pub, _ = self._identity()
+        atk_data = _register_user("keyattacker", "KeyTest123", "KeyAttacker",
+                                  public_key=pub_key, signing_public_key=sign_pub)
+        csrf = _csrf_headers()
+        h_attacker = {"Authorization": f"Bearer {atk_data['access_token']}", **csrf}
+        statuses = []
+        for _ in range(25):
+            r = client.get(f"/api/keys/bundle/{victim_id}", headers=h_attacker)
+            statuses.append(r.status_code)
+        assert 429 in statuses, f"no throttle, got: {set(statuses)}"
+        # Троттлинг сработал до полного выжигания: OPK ещё остались.
+        r = client.get(f"/api/keys/one-time-count/{victim_id}", headers=h_victim)
+        assert r.json()["count"] > 0

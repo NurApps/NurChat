@@ -38,7 +38,10 @@ class User(Base):
     is_online = Column(Boolean, default=False)
     is_2fa_enabled = Column(Boolean, default=False)
 
-    messages = relationship("Message", back_populates="user")
+    # FK messages.viewed_by даёт второй путь users↔messages — фиксируем,
+    # что это отношение идёт по авторству (Message.user_id), иначе маппер
+    # не инициализируется (multiple foreign key paths).
+    messages = relationship("Message", back_populates="user", foreign_keys="Message.user_id")
     files = relationship("File", back_populates="user")
     chats = relationship("ChatParticipant", back_populates="user")
     contacts_added = relationship("Contact", foreign_keys="Contact.user_id", back_populates="user")
@@ -103,10 +106,14 @@ class Message(Base):
     scheduled_at = Column(DateTime(timezone=True), nullable=True)
     is_view_once = Column(Boolean, default=False)
     viewed_at = Column(DateTime(timezone=True), nullable=True)
+    # Кто открыл view-once через mark-эндпоинт. Только ему разрешено
+    # одно destructive-скачивание вложения; отправителю файл не нужен
+    # (оригинал у него), остальным участникам — недоступен.
+    viewed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     delivered_at = Column(DateTime(timezone=True), nullable=True)  # глухой relay: получатель забрал историю
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    user = relationship("User", back_populates="messages")
+    user = relationship("User", back_populates="messages", foreign_keys="Message.user_id")
     chat = relationship("Chat", back_populates="messages")
     file = relationship("File", back_populates="message")
     reply_to = relationship("Message", remote_side=[id], backref="replies")

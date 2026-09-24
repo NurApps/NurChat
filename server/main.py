@@ -334,7 +334,7 @@ async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: st
         await release_ws_connection(client_ip)
         return
     try:
-        await call_manager.handle_signaling(websocket, user_id)
+        await call_manager.handle_signaling(websocket, user_id, token)
     finally:
         await release_ws_connection(client_ip)
 
@@ -349,7 +349,7 @@ async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token
         return
     try:
         from server.ws.signaling import call_manager as signaling_call_manager
-        await signaling_call_manager.handle_signaling(websocket, user_id)
+        await signaling_call_manager.handle_signaling(websocket, user_id, token)
     finally:
         await release_ws_connection(client_ip)
 

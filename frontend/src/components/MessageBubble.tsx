@@ -23,6 +23,8 @@ interface Props {
   onViewProfile?: (user: UserResponse) => void
   onShowInfo?: (id: string) => void
   highlightQuery?: string
+  /** Открытие view-once: mark на сервере + расшифровка/скачивание. Реализует ChatPage (есть ключи и чат). */
+  onOpenViewOnce?: (m: MessageResponse) => Promise<{ text?: string; fileUrl?: string } | null>
 }
 
 const REACTION_LIST = ["👍", "❤️", "😂", "😮", "😢", "😡"]
@@ -40,7 +42,7 @@ function renderHighlightedMarkdown(text: string, query: string): React.ReactNode
 export default function MessageBubble({
   message, currentUser, isMyMessage, isRead = false, status,
   reactions = {}, onDelete, onReply, onEdit, onReaction, onViewProfile,
-  highlightQuery, onShowInfo,
+  highlightQuery, onShowInfo, onOpenViewOnce,
 }: Props) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -137,8 +139,14 @@ export default function MessageBubble({
     )
   }
 
+  // Одноразовый просмотр: открывается тапом (mark на сервере), показывается
+  // один раз из локального стейта — в историю/перерендер не персистим.
+  const [openedText, setOpenedText] = useState<string | null>(null)
+  const [openedUrl, setOpenedUrl] = useState<string | null>(null)
+  const [opening, setOpening] = useState(false)
+
   const renderContent = () => {
-    if (message.is_view_once && message.message_type !== "text") {
+    if (message.is_view_once && !isMyMessage) {
       if (message.viewed_at || (message.is_deleted && message.deleted_for_all)) {
         return (
           <div className="viewonce-overlay viewonce-viewed">
@@ -147,10 +155,44 @@ export default function MessageBubble({
           </div>
         )
       }
+      if (openedText !== null) {
+        return <p className="msg-text">{renderMarkdown(openedText)}</p>
+      }
+      if (openedUrl !== null) {
+        if (message.message_type === "video") {
+          return <video src={openedUrl} className="msg-video" controls autoPlay />
+        }
+        if (message.message_type === "voice") {
+          return <VoiceMessage src={openedUrl} />
+        }
+        if (message.message_type === "audio") {
+          return <audio controls src={openedUrl} className="msg-audio" autoPlay />
+        }
+        return <img src={openedUrl} alt="" className="msg-image" />
+      }
       return (
-        <div className="viewonce-overlay">
+        <div
+          className="viewonce-overlay"
+          role="button"
+          tabIndex={0}
+          aria-label={t("chat.viewOnceHint")}
+          onClick={async () => {
+            if (opening || !onOpenViewOnce) return
+            setOpening(true)
+            try {
+              const opened = await onOpenViewOnce(message)
+              if (opened?.text) setOpenedText(opened.text)
+              else if (opened?.fileUrl) setOpenedUrl(opened.fileUrl)
+            } finally {
+              setOpening(false)
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") (e.target as HTMLElement).click()
+          }}
+        >
           <div className="viewonce-icon">&#128274;</div>
-          <div className="viewonce-text">{t("chat.viewOnce")}</div>
+          <div className="viewonce-text">{opening ? t("chat.loading") : t("chat.viewOnceHint")}</div>
         </div>
       )
     }

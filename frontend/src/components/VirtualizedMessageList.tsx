@@ -14,6 +14,7 @@ interface RowProps {
   onEdit: (id: string, content: string) => void
   onViewProfile: (user: UserResponse) => void
   onShowInfo: (id: string) => void
+  onOpenViewOnce?: (m: MessageResponse) => Promise<{ text?: string; fileUrl?: string } | null>
 }
 
 interface Props extends RowProps {
@@ -26,7 +27,7 @@ const DEFAULT_ROW_HEIGHT = 80
 
 const Row = ({
   index, style, messages, currentUser, reactions = {}, searchQuery,
-  onReply, onDelete, onReaction, onEdit, onViewProfile, onShowInfo,
+  onReply, onDelete, onReaction, onEdit, onViewProfile, onShowInfo, onOpenViewOnce,
 }: RowProps & { index: number; style: React.CSSProperties }) => {
   const msg = messages[index]
   if (!msg) return null
@@ -45,6 +46,7 @@ const Row = ({
         onViewProfile={onViewProfile}
         highlightQuery={searchQuery}
         onShowInfo={onShowInfo}
+        onOpenViewOnce={onOpenViewOnce}
       />
     </div>
   )

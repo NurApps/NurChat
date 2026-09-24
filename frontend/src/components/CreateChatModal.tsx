@@ -40,12 +40,17 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
     )
   }
 
+  // Дабл-клик плодил чаты: onCreate асинхронен в родителе, модалка не знает
+  // о завершении. Блочим повтор на 3с — успех закроет модалку раньше.
+  const [submitting, setSubmitting] = useState(false)
   function handleSubmit() {
-    if (selectedIds.length === 0) return
+    if (selectedIds.length === 0 || submitting) return
     if (selectedIds.length > 1 && !showNameInput) {
       setShowNameInput(true)
       return
     }
+    setSubmitting(true)
+    setTimeout(() => setSubmitting(false), 3000)
     const name = selectedIds.length > 1 ? groupName.trim() || null : null
     onCreate(selectedIds, name, isSecret, secretTtl)
   }
@@ -73,9 +78,9 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
             />
           </div>
           <div className="modal-footer">
-            <button className="modal-btn cancel" onClick={() => setShowNameInput(false)}>{t("chat.next")}</button>
-            <button className="modal-btn primary" onClick={handleSubmit}>
-              {t("chat.createChatBtn")}
+            <button className="modal-btn cancel" onClick={() => setShowNameInput(false)}>{t("common.back")}</button>
+            <button className="modal-btn primary" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? t("common.loading") : t("chat.createChatBtn")}
             </button>
           </div>
         </div>
@@ -169,10 +174,10 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
           <button className="modal-btn cancel" onClick={onClose}>{t("common.cancel")}</button>
           <button
             className="modal-btn primary"
-            disabled={selectedIds.length === 0}
+            disabled={selectedIds.length === 0 || submitting}
             onClick={handleSubmit}
           >
-            {selectedIds.length > 1 ? t("chat.next") : t("chat.createChatBtn")}
+            {submitting ? t("common.loading") : (selectedIds.length > 1 ? t("chat.next") : t("chat.createChatBtn"))}
           </button>
         </div>
       </div>

@@ -1,3 +1,5 @@
+import asyncio
+import json as json_lib
 import logging
 import time
 from datetime import datetime, timezone
@@ -26,8 +28,13 @@ class CallManager:
         self.pending_messages: dict[str, list[dict]] = {}  # {user_id: [{"msg": ..., "ts": ...}]}
         self.MAX_PENDING_PER_USER = 50  # Cap to prevent memory exhaustion
 
-    async def handle_signaling(self, websocket: WebSocket, user_id: str):
-        """Обработка WebRTC сигналов"""
+    async def handle_signaling(self, websocket: WebSocket, user_id: str, token: str | None = None):
+        """Обработка WebRTC сигналов.
+
+        Те же защиты, что у chat WS: кап размера кадра, idle/dead-таймауты,
+        периодическая ре-верификация токена (отозванный JWT раньше жил
+        в звонках вечно).
+        """
         await websocket.accept()
         self.call_websockets[user_id] = websocket
 
@@ -35,9 +42,59 @@ class CallManager:
 
         logger.info(f"User {user_id} connected to signaling WebSocket")
 
+        last_alive = time.monotonic()
+        idle_timeout = 120
+        dead_after = 300
+        last_token_check = 0.0
+        token_check_interval = 10
+
         try:
             while True:
-                data = await websocket.receive_json()
+                try:
+                    raw = await asyncio.wait_for(websocket.receive_text(), timeout=idle_timeout)
+                except asyncio.TimeoutError:
+                    now = time.monotonic()
+                    if now - last_alive > dead_after:
+                        logger.info(f"Dropping dead signaling WS for {user_id}")
+                        break
+                    try:
+                        await websocket.send_json({"type": "ping"})
+                    except Exception:
+                        break
+                    continue
+
+                last_alive = time.monotonic()
+
+                if len(raw) > 1024 * 1024:
+                    logger.warning(f"Oversized signaling frame from {user_id}: {len(raw)} bytes")
+                    try:
+                        await websocket.send_json({"type": "error", "message": "Кадр слишком большой"})
+                    except Exception:
+                        break
+                    continue
+
+                try:
+                    data = json_lib.loads(raw)
+                except (json_lib.JSONDecodeError, ValueError):
+                    logger.warning(f"Invalid signaling JSON from {user_id}")
+                    continue
+                if not isinstance(data, dict):
+                    continue
+
+                if token and time.monotonic() - last_token_check > token_check_interval:
+                    last_token_check = time.monotonic()
+                    from server.core.security import AuthenticationError
+                    from server.core.security import security as sec
+                    try:
+                        sec.verify_token(token)
+                    except AuthenticationError:
+                        logger.info(f"Closing signaling WS for {user_id}: token no longer valid")
+                        try:
+                            await websocket.close(code=4001, reason="Token expired")
+                        except Exception:
+                            pass
+                        break
+
                 message_type = data.get("type")
 
                 logger.debug(f"Signaling message from {user_id}: {message_type}")

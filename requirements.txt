@@ -1,5 +1,6 @@
 # requirements.txt
 aiofiles==25.1.0
+alembic==1.18.5
 argon2-cffi==25.1.0
 apscheduler==3.11.3
 cryptography==50.0.1

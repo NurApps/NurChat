@@ -43,11 +43,10 @@ npx tauri dev
 ## Known Issues & Workarounds
 
 1. **ENCRYPTION_KEY / JWT_SECRET_KEY / TOTP_MASTER_KEY not set.** Автогенерятся при пустом `.env`, но временные ключи = потеря данных / разлогин всех при рестарте. Для продакшена — стабильные значения в `.env`.
-2. **UnicodeEncodeError in Windows console.** Fixed: `sys.stdout/stderr.reconfigure(errors='replace')` в `shared/config.py`.
-3. **CORS origins.** По умолчанию `localhost:5173, localhost:8000, tauri://localhost, https://tauri.localhost`. Прод-домен — через `CORS_ORIGINS` (comma-separated). Wildcard `*` нет даже в DEBUG. CSP собирается из того же whitelist — см. `server/main.py: add_security_headers`.
-4. **Server dies when terminal closes.** `run.bat` держит сервер через `start /B` и ждёт `/health`. Остановка только своего релея: по порту `:8000` (внутри `run.bat`).
-5. **Звонки за NAT не соединяются без TURN.** По умолчанию только Google STUN. Прод: coturn (`infra/coturn.conf`) + `TURN_USERNAME`/`TURN_CREDENTIAL` в `.env`. Сервер пишет warning в лог, если TURN не настроен.
-6. **`PUBLIC_RELAYS` пуст.** `frontend/src/config.ts` — некуда резолвиться, клиенты default'ят на `127.0.0.1:8000`. Вписать свой relay при деплое.
+2. **CORS origins.** По умолчанию `localhost:5173, localhost:8000, tauri://localhost, https://tauri.localhost`. Прод-домен — через `CORS_ORIGINS` (comma-separated). Wildcard `*` нет даже в DEBUG. CSP собирается из того же whitelist — см. `server/main.py: add_security_headers`.
+3. **Server dies when terminal closes.** `run.bat` держит сервер через `start /B` и ждёт `/health`. Остановка только своего релея: по порту `:8000` (внутри `run.bat`).
+4. **Звонки за NAT не соединяются без TURN.** По умолчанию только Google STUN. Прод: coturn (`infra/coturn.conf`) + `TURN_USERNAME`/`TURN_CREDENTIAL` в `.env`. Сервер пишет warning в лог, если TURN не настроен.
+5. **`PUBLIC_RELAYS` пуст.** `frontend/src/config.ts` — некуда резолвиться, клиенты default'ят на `127.0.0.1:8000`. Вписать свой relay при деплое.
 
 ## Architecture
 
@@ -72,7 +71,7 @@ Tauri (Rust shell) ── wraps ──> React frontend ── HTTP/WS ──> Fa
 2. **WS-эндпоинты (4 штуки):** `/ws/chat/{user_id}` — сообщения (`{"event": ...}`), `/ws/calls/{user_id}` и `/ws/signaling/{user_id}` — синонимы сигналинга (`{"type": ...}`), `/ws/notifications/{user_id}` — уведомления. Лимит 10 соединений/IP, 1 МБ/сообщение, ping при простое 120с, разрыв после 300с тишины.
 3. **Форматы событий разные — это нормально:** chat-WS шлёт `{"event": ...}`, signaling-WS — `{"type": ...}`. Не «унифицировать» без обновления обоих клиентов (`useChatSocket.ts`, `CallPage.tsx`).
 4. **Python imports — абсолютные от корня репо.** `from shared.config import settings`, `from server.core.models import User`.
-5. **`shared/config.py` — без P2P-флагов.** `USE_P2P`, `P2P_*`, `USE_IPFS`, `USE_FEDERATED_BACKUP` удалены 2026-09 (код их не читал). Живой флаг федерации — `USE_FEDERATION`. Внимание: `SERVER_HOST`/`CLIENT_HOST`/`CLIENT_PORT` в `config.py` и `.env.example` живы — утверждение об их удалении было ошибкой.
+5. **`shared/config.py` — без P2P-флагов.** `USE_P2P`, `P2P_*`, `USE_IPFS`, `USE_FEDERATED_BACKUP` удалены 2026-09 (код их не читал). Живой флаг федерации — `USE_FEDERATION`. `SERVER_HOST`/`CLIENT_HOST`/`CLIENT_PORT` в `config.py` и `.env.example` используются, не удалять.
 6. **CORS — whitelist, CSP — из него же.** Даже в DEBUG нет `*`.
 7. **Frontend env — только `VITE_` префикс** (shell/корневой `.env`, не `frontend/.env`). Ключи: `VITE_API_HOST`, `VITE_API_PROTOCOL`. `BASE_URL/WS_BASE` заморожены на старте модуля — смена релея требует перезагрузки.
 8. **Supabase/Firebase удалены полностью.** Только локальное хранение.
@@ -83,7 +82,7 @@ Tauri (Rust shell) ── wraps ──> React frontend ── HTTP/WS ──> Fa
 13. **Сессии — в IndexedDB (`nurchat-secure`), НЕ в localStorage.** AES-256-GCM, PBKDF2 100k, автоочистка кэша через 10 мин неактивности.
 14. **Onboarding wizard.** 4 шага, гасится `localStorage.onboarding_seen`.
 15. **ErrorBoundary.** Ловит ошибки рендера React, показывает страницу с кнопкой reload.
-16. **P2P НЕ возвращать.** TCP-нода (`src-tauri/src/p2p.rs`), LAN discovery, `nurchat://`, `USE_P2P`, прототип `p2pchat/` — удалены как нерабочие. Остатки: таблицы `p2p_*` в миграции 001 (история), `src-tauri/src/ipfs.rs` (мёртвый импорт). Рабочий P2P остался только в WebRTC-медиа звонков.
+16. **P2P НЕ возвращать.** TCP-нода (`src-tauri/src/p2p.rs`), LAN discovery, `nurchat://`, `USE_P2P`, прототип `p2pchat/` — удалены как нерабочие. Остатки: таблицы `p2p_*` в миграции 001 (история). Рабочий P2P остался только в WebRTC-медиа звонков.
 17. **Свои сообщения не расшифровывать.** Double Ratchet: sending ≠ receiving, свои из истории нечитаемы криптографически. `decryptMessages`/`handleWsMessage` свои скипают, текст — из `plaintextCache.ts`. Чужие в кэш не писать.
 18. **Звонок: `call-join` авто-принимает.** `call_accept` по chat WS гоняется с навигацией на CallPage и может потеряться — `_handle_call_join` принимает RINGING-звонок от callee сам (`test/test_call_join_accept.py`). Промах join/accept логируется (`call-join for unknown call`, `call-accept rejected`). `CallPage`: `connectedRef` сбрасывается в cleanup (StrictMode-remount), `cleanup()` гасит `onclose` до `close()` (иначе ghost-reconnect).
 

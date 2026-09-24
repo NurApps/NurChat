@@ -122,6 +122,10 @@ async def _deliver(connection_manager, channel: str, payload: dict) -> None:
 
 def start_bus(loop: asyncio.AbstractEventLoop, connection_manager) -> None:
     """Вызывать из lifespan. Без Redis — поток сразу гаснет с warning."""
+    from shared.config import settings
+    if not settings.USE_REDIS:
+        logger.info("Bus subscriber skipped (USE_REDIS=false, single instance)")
+        return
     global _sub_thread
     if _sub_thread is not None and _sub_thread.is_alive():
         return

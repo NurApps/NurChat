@@ -355,7 +355,10 @@ async def send_message(
         # Тот же кап, что в WS _handle_new_message (1..5000): без него
         # через REST можно залить гигантский JSON при капе тела 50 МБ.
         if len(message_data.content) > 5000:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Сообщение слишком длинное (максимум 5000 символов)")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Сообщение слишком длинное (максимум 5000 символов)",
+            )
         try:
             _validate_message_links(
                 db, chat_id, user_id,
@@ -404,7 +407,10 @@ async def send_message(
         ).filter(models.Message.id == message_id).first()
         if not message_full:
             logger.error(f"Message {message_id} vanished right after commit in chat {chat_id}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось сохранить сообщение")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Не удалось сохранить сообщение",
+            )
         if message_full:
             participants = db.query(models.ChatParticipant).filter(
                 models.ChatParticipant.chat_id == chat_id,

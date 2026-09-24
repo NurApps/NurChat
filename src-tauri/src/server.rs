@@ -33,9 +33,9 @@ impl ServerManager {
         // Generate .env if missing (keys persist across restarts)
         ensure_env(app_dir);
 
-        // Strategy 1: bundled server.exe (PyInstaller)
+        // Strategy 1: bundled server binary (PyInstaller)
         if let Some(exe) = find_server_exe(app_dir, res_dir) {
-            info!("Found bundled server.exe: {:?}", exe);
+            info!("Found bundled server binary: {:?}", exe);
             let mut cmd = Command::new(&exe);
             cmd.current_dir(app_dir)
                 .stdout(Stdio::piped())
@@ -47,7 +47,7 @@ impl ServerManager {
                 cmd.creation_flags(CREATE_NO_WINDOW);
             }
 
-            let process = cmd.spawn().map_err(|e| format!("Failed to start server.exe: {e}"))?;
+            let process = cmd.spawn().map_err(|e| format!("Failed to start server: {e}"))?;
             Self::setup_logging(process, &mut child);
             return Ok(());
         }
@@ -65,7 +65,10 @@ impl ServerManager {
             return self.start_with_python(&python_path, app_dir, &mut child);
         }
 
-        // Strategy 4: Download embeddable Python
+        // Strategy 4: Download embeddable Python (Windows only)
+        if !cfg!(windows) {
+            return Err("Python not found. Install Python 3.10+ (python3) or place the server binary next to the app.".to_string());
+        }
         info!("No Python found, attempting to download embeddable Python...");
         let python_dir = app_dir.join("python_embed");
         let python_exe = python_dir.join("python.exe");
@@ -205,44 +208,49 @@ impl Drop for ServerManager {
 
 // ── Finders ──
 
+#[cfg(windows)]
+const SERVER_BIN: &str = "server.exe";
+#[cfg(windows)]
+const SIDECAR_BIN: &str = "server-x86_64-pc-windows-msvc.exe";
+#[cfg(not(windows))]
+const SERVER_BIN: &str = "server";
+#[cfg(not(windows))]
+const SIDECAR_BIN: &str = "server-x86_64-unknown-linux-gnu";
+
 fn find_server_exe(app_dir: &Path, res_dir: Option<&Path>) -> Option<PathBuf> {
     // Candidates to check, in order
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    // 1. Sidecar next to the Tauri .exe (NSIS installer)
+    // 1. Sidecar next to the Tauri executable (installer)
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(dir) = exe_path.parent() {
-            candidates.push(dir.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
-            candidates.push(dir.join("server-x86_64-pc-windows-msvc.exe"));
-            candidates.push(dir.join("server.exe"));
+            candidates.push(dir.join("binaries").join(SIDECAR_BIN));
+            candidates.push(dir.join(SIDECAR_BIN));
+            candidates.push(dir.join(SERVER_BIN));
         }
     }
 
     // 2. Tauri resource dir (where externalBin is extracted)
     if let Some(rd) = res_dir {
-        candidates.push(rd.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
-        candidates.push(rd.join("server.exe"));
+        candidates.push(rd.join("binaries").join(SIDECAR_BIN));
+        candidates.push(rd.join(SERVER_BIN));
     }
 
     // 3. app_data_dir and subdirs
-    candidates.push(app_dir.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
-    candidates.push(app_dir.join("server.exe"));
-    candidates.push(app_dir.join("dist").join("server").join("server.exe"));
+    candidates.push(app_dir.join("binaries").join(SIDECAR_BIN));
+    candidates.push(app_dir.join(SERVER_BIN));
+    candidates.push(app_dir.join("dist").join("server").join(SERVER_BIN));
 
     // 4. current working directory
     if let Ok(cwd) = std::env::current_dir() {
-        candidates.push(cwd.join("binaries").join("server-x86_64-pc-windows-msvc.exe"));
-        candidates.push(cwd.join("server-x86_64-pc-windows-msvc.exe"));
-        candidates.push(cwd.join("server.exe"));
+        candidates.push(cwd.join("binaries").join(SIDECAR_BIN));
+        candidates.push(cwd.join(SIDECAR_BIN));
+        candidates.push(cwd.join(SERVER_BIN));
     }
 
-    for p in &candidates {
-        if p.exists() {
-            return Some(p.clone());
-        }
-    }
-
-    None
+    // is_file(): on Linux the binary is called plain "server", which also
+    // matches the Python package directory server/ in the repo root.
+    candidates.into_iter().find(|p| p.is_file())
 }
 
 fn is_server_running() -> bool {

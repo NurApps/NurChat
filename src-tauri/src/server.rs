@@ -295,11 +295,11 @@ fn ensure_env(app_dir: &Path) {
     }
 
     use std::io::Write;
-    use rand::Rng;
+    use rand::RngExt;
 
-    let mut rng = rand::thread_rng();
-    let enc_key: String = (0..64).map(|_| format!("{:02x}", rng.gen::<u8>())).collect();
-    let jwt_key: String = (0..64).map(|_| format!("{:02x}", rng.gen::<u8>())).collect();
+    let mut rng = rand::rng();
+    let enc_key: String = (0..64).map(|_| format!("{:02x}", rng.random::<u8>())).collect();
+    let jwt_key: String = (0..64).map(|_| format!("{:02x}", rng.random::<u8>())).collect();
 
     let content = format!(
         "ENCRYPTION_KEY={}\nJWT_SECRET_KEY={}\n",

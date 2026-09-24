@@ -90,8 +90,12 @@ async def _deaf_relay_purge():
     """Глухой relay = проводник, а не склад: удалять СТРОКИ сообщений.
 
     Строка удаляется, когда:
-    - 1:1: получатель забрал историю (delivered_at установлен), или
-    - группы: у сообщения есть статусы доставки и ни одного непрочитанного, или
+    - 1:1: получатель забрал историю (delivered_at старше DELIVERED_GRACE —
+      grace нужен второму устройству и клиенту, упавшему до рендера,
+      иначе сообщения «исчезают»), или
+    - группы: у сообщения есть статусы доставки, ни одного непрочитанного
+      И нет участников, вошедших позже создания (у них нет строк статусов
+      по старым сообщениям — их purge считал бы «прочитавшими»), или
     - возраст старше MESSAGE_RETENTION_HOURS (бэкстоп для любого мусора).
     Исключения (не трогаем): ещё не отправленные (scheduled_at),
     непросмотренные view-once, свежие сообщения вообще без статусов
@@ -106,8 +110,11 @@ async def _deaf_relay_purge():
         if not settings.RELAY_DEAF:
             return
 
+        from server.core.models import ChatParticipant
+
         now = datetime.now(timezone.utc)
         retention_cutoff = now - timedelta(hours=settings.MESSAGE_RETENTION_HOURS)
+        delivered_cutoff = now - timedelta(hours=settings.DELIVERED_GRACE_HOURS)
 
         from sqlalchemy import and_, or_, select
 
@@ -119,15 +126,26 @@ async def _deaf_relay_purge():
             select(MessageReadStatus.message_id)
             .distinct()
         )
+        # Участник, вошедший после создания сообщения: строк статусов
+        # по нему нет, считать сообщение прочитанным нельзя.
+        late_joiner = (
+            select(ChatParticipant.chat_id)
+            .where(
+                ChatParticipant.chat_id == Message.chat_id,
+                ChatParticipant.joined_at > Message.created_at,
+            )
+            .exists()
+        )
         targets = db.query(Message.id).filter(
             Message.scheduled_at.is_(None),
             ~Message.is_deleted,
             or_(
-                Message.delivered_at.isnot(None),
+                Message.delivered_at < delivered_cutoff,
                 Message.created_at < retention_cutoff,
                 and_(
                     Message.id.in_(has_any_status),
                     ~Message.id.in_(unread),
+                    ~late_joiner,
                     or_(
                         ~Message.is_view_once,
                         Message.viewed_at.isnot(None),

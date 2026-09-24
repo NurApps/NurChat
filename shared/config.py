@@ -137,6 +137,10 @@ class Settings(BaseSettings):
     # True by default — storing other people's plaintext is not our job.
     RELAY_DEAF: bool = True
     MESSAGE_RETENTION_HOURS: int = 48
+    # Grace между «получатель забрал» и стиранием строки. Без неё второе
+    # устройство того же юзера и клиент, упавший до рендера, теряют
+    # сообщение навсегда («исчезновение»). Глухота сохраняется — лишь позже.
+    DELIVERED_GRACE_HOURS: int = 24
     CLIENT_PORT: int = 8001
     MEDIA_ROOT: str = "media"
     MAX_FILE_SIZE: int = 50 * 1024 * 1024

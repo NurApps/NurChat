@@ -29,7 +29,7 @@ tauri-plugin-process = "2"
 reqwest = { version = "0.13", features = ["json", "multipart", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 open = "5"
-zip = "4.6"
+zip = "8.6"
 rand = "0.10"
 
 

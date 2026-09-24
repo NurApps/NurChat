@@ -72,35 +72,7 @@ jobs:
             server\main.py `
             --noconfirm
 
-      - name: Install frontend deps
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install root deps
-        run: npm install
-
-      - name: Build app (Tauri)
-        run: npx --yes tauri build --config src-tauri/tauri.conf.json
-
-      - name: Get version
-        id: version
-        shell: bash
-        run: echo "VERSION=${TAG#v}" >> $GITHUB_ENV
-        env:
-          TAG: ${{ inputs.tag }}
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: NurChat ${{ inputs.tag }}
-          tag_name: ${{ inputs.tag }}
-          body_path: release-notes.md
-          files: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            dist/server.exe
-          fail_on_unmatched_files: true
-
-      - name: Build & Release
+      - name: Build & Release (Windows)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -115,10 +87,22 @@ jobs:
         with:
           tagName: ${{ inputs.tag }}
           releaseName: "NurChat ${{ inputs.tag }}"
-          releaseBody: "См. вложения для скачивания."
           releaseDraft: false
           prerelease: false
           args: "--config src-tauri/tauri.conf.json"
+
+      # Релиз к этому моменту создан tauri-action'ом
+      - name: Upload server.exe to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.tag }}" dist/server.exe --clobber
+
+      - name: Set release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ inputs.tag }}" --title "NurChat ${{ inputs.tag }}" --notes-file release-notes.md
 
   # Linux (.deb + .AppImage). Идёт после Windows-джоба (если тот выбран), чтобы не гоняться за создание релиза.
   # Таргеты и Linux-специфика — в src-tauri/tauri.linux.conf.json (мержится автоматически).
@@ -179,11 +163,6 @@ jobs:
             server/main.py \
             --noconfirm
 
-      - name: Upload server binary to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ inputs.tag }}" dist/server-x86_64-unknown-linux-gnu --clobber
-
       - name: Build & Release (Linux)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -195,7 +174,17 @@ jobs:
         with:
           tagName: ${{ inputs.tag }}
           releaseName: "NurChat ${{ inputs.tag }}"
-          releaseBody: "См. вложения для скачивания."
           releaseDraft: false
           prerelease: false
           args: "--bundles deb,appimage"
+
+      # Релиз к этому моменту создан (этим или Windows-джобом)
+      - name: Upload server binary to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.tag }}" dist/server-x86_64-unknown-linux-gnu --clobber
+
+      - name: Set release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ inputs.tag }}" --title "NurChat ${{ inputs.tag }}" --notes-file release-notes.md

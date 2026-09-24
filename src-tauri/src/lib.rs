@@ -130,7 +130,7 @@ async fn download_cloudflared(dest: &std::path::Path) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(dest, Permissions::from_mode(0o755))
+        tokio::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))
             .await
             .ok();
     }

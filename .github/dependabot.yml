@@ -17,6 +17,11 @@ updates:
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 5
+    # Мажорные версии — вручную и по одной: typescript 7 ломает typescript-eslint
+    # (он явно не поддерживает TS 7), а группа с 8 мажорами падает на npm ci целиком.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       frontend-deps:
         patterns: ["*"]

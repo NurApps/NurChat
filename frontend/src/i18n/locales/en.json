@@ -84,7 +84,11 @@
     "highlightCallsTitle": "Calls & video",
     "highlightCallsDesc": "Voice and video calls right inside the chat",
     "highlightEphemeralTitle": "Self-destructing messages",
-    "highlightEphemeralDesc": "Set a lifetime and the conversation erases itself"
+    "highlightEphemeralDesc": "Set a lifetime and the conversation erases itself",
+    "relayChange": "Change",
+    "relayApply": "Connect",
+    "relayChecking": "Checking...",
+    "relayCheckFailed": "Relay unreachable — check the address"
   },
   "chat": {
     "chats": "Chats",

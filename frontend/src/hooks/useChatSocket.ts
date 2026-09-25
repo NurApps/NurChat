@@ -25,6 +25,31 @@ try {
   lastMessageAt = localStorage.getItem("ws_last_message_at")
 } catch { /* ignore */ }
 
+// Троттлинг onChatUpdate (= полный loadChats до 3 попыток) на потоке
+// message/new_message: в активном чате события сыплются пачками, а каждый
+// вызов — GET /api/chat/chats. Без троттлинга: шторм запросов через туннель
+// (часть падает с обрывом — Chrome маскирует под CORS) + упёртость в
+// серверный лимит 30/мин, общий для всех за одним IP туннеля.
+// Схема: первое событие — сразу, дальше не чаще 1 раза в 2.5с (trailing).
+let chatUpdateCooldownUntil = 0
+let chatUpdateTrailingTimer: ReturnType<typeof setTimeout> | null = null
+const CHAT_UPDATE_THROTTLE_MS = 2500
+function throttledChatUpdate(call: () => void): void {
+  const now = Date.now()
+  if (now >= chatUpdateCooldownUntil) {
+    chatUpdateCooldownUntil = now + CHAT_UPDATE_THROTTLE_MS
+    call()
+    return
+  }
+  if (!chatUpdateTrailingTimer) {
+    chatUpdateTrailingTimer = setTimeout(() => {
+      chatUpdateTrailingTimer = null
+      chatUpdateCooldownUntil = Date.now() + CHAT_UPDATE_THROTTLE_MS
+      call()
+    }, chatUpdateCooldownUntil - now)
+  }
+}
+
 interface UseChatSocketOptions {
   currentUser: UserResponse
   selectedChat: ChatResponse | null
@@ -104,7 +129,7 @@ export function useChatSocket({
         if (data.chat_id === chatIdRef.current && data.user_id !== currentUserId) {
           onMessage(data)
         }
-        onChatUpdate()
+        throttledChatUpdate(() => handlersRef.current.onChatUpdate())
         // WS шлёт timestamp, REST — created_at; трекаем оба для ?since=
         const stamp: string | undefined = data.created_at || data.timestamp
         if (typeof stamp === "string" && stamp) {
@@ -128,7 +153,7 @@ export function useChatSocket({
         if (data.chat_id === chatIdRef.current && data.user_id !== currentUserId) {
           onMessage(data)
         }
-        onChatUpdate()
+        throttledChatUpdate(() => handlersRef.current.onChatUpdate())
         // Track last message timestamp for offline sync
         if (typeof data.created_at === "string" && data.created_at) {
           const stamp: string = data.created_at

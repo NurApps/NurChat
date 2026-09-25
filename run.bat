@@ -200,7 +200,11 @@ set WAIT_RELAY_TRIES=0
 goto wait_relay
 
 :ensure_relay_prod
-set RELAY_FLAGS=
+:: Tunnel-only: доверяем X-Forwarded-For от cloudflared (peer всегда
+:: localhost). Без этого request.client.host у всех один и тот же и
+:: slowapi-лимиты (30/мин на /chats) становятся ГЛОБАЛЬНЫМИ на всех
+:: тестеров за туннелем. Только 127.0.0.1 — XFF-спуфинг извне невозможен.
+set RELAY_FLAGS=--proxy-headers --forwarded-allow-ips=127.0.0.1
 call :ensure_relay
 goto :eof
 

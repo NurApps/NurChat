@@ -271,8 +271,11 @@ export function useChatSocket({
         reconnectAttempts = 0
         console.log("WS connected")
         setWsUp(true)
-        // Refetch missed data after a reconnect gap
-        handlersRef.current.onChatUpdate()
+        // Refetch missed data only after a reconnect gap. On the FIRST
+        // connect ChatPage-mount уже грузит чаты сам — лишний onChatUpdate
+        // здесь удваивал шторм fetch через рваный туннель (см. loadChats
+        // single-flight): каждое открытие сокета = до 3 попыток getChats.
+        if (hadGap) handlersRef.current.onChatUpdate()
         // Sync messages received while offline
         if (hadGap && lastMessageAt) {
           syncMissedMessages(lastMessageAt).catch(() => {})

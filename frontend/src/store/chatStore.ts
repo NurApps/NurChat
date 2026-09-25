@@ -4,6 +4,9 @@ import type {
 } from "../types"
 import { api } from "../services/api"
 
+// Дедup параллельных loadChats (см. комментарий внутри loadChats).
+let loadChatsInflight: Promise<void> | null = null
+
 interface Toast {
   id: string
   title: string
@@ -132,23 +135,36 @@ export const useChatStore = create<ChatState>((set) => ({
   chatsError: null,
 
   loadChats: async () => {
-    // Ретраи с бэкоффом: через туннель первый запрос часто падает
-    // (холодный старт релея/QUIC), а молчаливый провал = вечный скелетон.
-    set({ chatsError: null })
-    let lastErr: unknown = null
-    for (const waitMs of [0, 1000, 3000]) {
-      if (waitMs) await new Promise((r) => setTimeout(r, waitMs))
-      try {
-        const data = await api.getChats()
-        set({ chats: data || [], chatsLoaded: true, chatsError: null })
-        return
-      } catch (err) {
-        lastErr = err
-        console.error("[chatStore] loadChats failed:", err)
+    // Single-flight: ChatPage-mount и каждый WS-(re)connect зовут loadChats,
+    // а внутри до 3 попыток. Без дедупа через рваный туннель летит шторм
+    // параллельных fetch, каждый обрывается клиентом — в логах cloudflared
+    // это «context canceled», а в консоли десятки Failed to fetch.
+    // Параллельные вызовы делят один in-flight промис вместо нового шторма.
+    if (loadChatsInflight) return loadChatsInflight
+    loadChatsInflight = (async () => {
+      // Ретраи с бэкоффом: через туннель первый запрос часто падает
+      // (холодный старт релея/QUIC), а молчаливый провал = вечный скелетон.
+      set({ chatsError: null })
+      let lastErr: unknown = null
+      for (const waitMs of [0, 1000, 3000]) {
+        if (waitMs) await new Promise((r) => setTimeout(r, waitMs))
+        try {
+          const data = await api.getChats()
+          set({ chats: data || [], chatsLoaded: true, chatsError: null })
+          return
+        } catch (err) {
+          lastErr = err
+          console.error("[chatStore] loadChats failed:", err)
+        }
       }
+      const detail = lastErr instanceof Error ? lastErr.message : String(lastErr)
+      set({ chatsLoaded: true, chatsError: detail || "load failed" })
+    })()
+    try {
+      await loadChatsInflight
+    } finally {
+      loadChatsInflight = null
     }
-    const detail = lastErr instanceof Error ? lastErr.message : String(lastErr)
-    set({ chatsLoaded: true, chatsError: detail || "load failed" })
   },
 
   loadContacts: async () => {

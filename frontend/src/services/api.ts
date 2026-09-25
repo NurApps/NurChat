@@ -98,6 +98,10 @@ async function request<T>(
   // дольше 15с. Ранний аборт = «context canceled» в логах cloudflared и
   // каскад ретраев, который только хуже забивает туннель.
   const timeout = setTimeout(() => controller.abort(), 30000)
+  // Диагностика туннеля: замер каждого запроса. В консоли тестера видно,
+  // умер запрос на таймауте (30с, AbortError) или упал сразу (сеть/CORS),
+  // и сколько реально отвечал релей — без этого чинить вслепую.
+  const startedAt = performance.now()
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
       method,
@@ -109,6 +113,10 @@ async function request<T>(
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     })
+    const elapsed = Math.round(performance.now() - startedAt)
+    if (elapsed > 3000) {
+      console.warn(`[api] slow ${method} ${path}: ${elapsed}ms (status ${res.status})`)
+    }
     const headerToken = res.headers.get("X-CSRF-Token")
     if (headerToken) csrfTokenCache = headerToken
     if (!res.ok) {
@@ -124,6 +132,14 @@ async function request<T>(
     }
     if (res.status === 204) return undefined as T
     return res.json()
+  } catch (err) {
+    // Имя + время: AbortError на ~30с = релей не ответил (сеть/туннель/БД),
+    // мгновенный TypeError = обрыв/CORS. Текст ошибки НЕ меняем (на него
+    // завязаны проверки вызывателей), только дописываем в консоль.
+    const elapsed = Math.round(performance.now() - startedAt)
+    const kind = err instanceof DOMException && err.name === "AbortError" ? "timeout-abort" : "network-error"
+    console.error(`[api] ${kind} ${method} ${path} after ${elapsed}ms:`, err)
+    throw err
   } finally {
     clearTimeout(timeout)
   }

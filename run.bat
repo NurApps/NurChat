@@ -103,7 +103,8 @@ goto :eof
 
 :act_relay
 echo [..] Relay foreground, .env as-is. Ctrl+C to stop.
-.venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --no-access-log
+:: keep-alive 30s (default 5s): tunnel clients re-handshake expensively, idle conns died mid-burst.
+.venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --no-access-log --timeout-keep-alive 30
 goto :eof
 
 :act_tunnel
@@ -187,7 +188,7 @@ if %errorlevel% equ 0 (
 :: С‚РѕР»СЊРєРѕ РµРіРѕ, Р° РґРѕС‡РµСЂРЅРёР№ РїСЂРѕС†РµСЃСЃ РѕСЃС‚Р°С‘С‚СЃСЏ РІРёСЃРµС‚СЊ РЅР° РїРѕСЂС‚Сѓ.
 for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /T /PID %%p >nul 2>&1
 echo [..] Starting relay in background...
-start "NurChat Relay" /B .venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 %RELAY_FLAGS% --no-access-log
+start "NurChat Relay" /B .venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 %RELAY_FLAGS% --no-access-log --timeout-keep-alive 30
 set RELAY_STARTED_BY_ME=1
 set WAIT_RELAY_TRIES=0
 goto wait_relay

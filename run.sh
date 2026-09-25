@@ -74,7 +74,7 @@ ensure_relay() {
   echo "[..] Starting relay in background..."
   # setsid: relay в своей группе процессов, чтобы одним kill убить reloader + child
   setsid "$PY" -m uvicorn server.main:app --host 0.0.0.0 --port 8000 \
-    ${RELAY_FLAGS[@]+"${RELAY_FLAGS[@]}"} --no-access-log &
+    ${RELAY_FLAGS[@]+"${RELAY_FLAGS[@]}"} --no-access-log --timeout-keep-alive 30 &
   RELAY_PID=$!
   local i
   for i in $(seq 1 20); do
@@ -134,7 +134,7 @@ act_vite() {
 act_relay() {
   need_python || return 1
   echo "[..] Relay foreground, .env as-is. Ctrl+C to stop."
-  "$PY" -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --no-access-log
+  "$PY" -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --no-access-log --timeout-keep-alive 30
 }
 
 act_tunnel() {

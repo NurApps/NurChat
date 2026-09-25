@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import { BASE_URL } from "../config"
+import { BASE_URL, getRelayConfig, setRelayConfig } from "../config"
 import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
 
 // Свои prekeys должны лежать на реле — иначе собеседники получают
@@ -133,6 +133,32 @@ export default function LoginPage() {
   const [captchaId, setCaptchaId] = useState("")
   const [captchaQuestion, setCaptchaQuestion] = useState("")
   const [captchaAnswer, setCaptchaAnswer] = useState("")
+
+  // Смена релея прямо с экрана входа: тестер получает ссылку/адрес релея
+  // и не должен лезть в настройки или ?relay=. После смены — reload,
+  // т.к. BASE_URL/WS_BASE заморожены на старте модуля (см. config.ts).
+  const [relayEditing, setRelayEditing] = useState(false)
+  const [relayHost, setRelayHost] = useState(() => getRelayConfig().host)
+  const [relayProtocol, setRelayProtocol] = useState<"http" | "https">(() => getRelayConfig().protocol)
+  const [relayApplying, setRelayApplying] = useState(false)
+  const [relayError, setRelayError] = useState("")
+
+  const handleApplyRelay = async () => {
+    const host = relayHost.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
+    if (!host || relayApplying) return
+    setRelayApplying(true)
+    setRelayError("")
+    try {
+      const res = await fetch(`${relayProtocol}://${host}/health`, { signal: AbortSignal.timeout(8000) })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setRelayConfig({ host, protocol: relayProtocol })
+      window.location.reload()
+    } catch {
+      setRelayError(t("auth.relayCheckFailed"))
+    } finally {
+      setRelayApplying(false)
+    }
+  }
 
   const checkServerHealth = () => {
     setChecking(true)
@@ -580,8 +606,53 @@ export default function LoginPage() {
         </div>
 
         <div className="login-links">
-          <div className="links-row secondary">
-            <span style={{ fontSize: 12, opacity: 0.7 }}>Relay: {BASE_URL}</span>
+          <div className="links-row secondary" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+            {!relayEditing ? (
+              <span style={{ fontSize: 12, opacity: 0.7 }}>
+                Relay: {BASE_URL}{" "}
+                <button className="link-btn" type="button" style={{ fontSize: 12 }}
+                  onClick={() => { setRelayEditing(true); setRelayError("") }}>
+                  {t("auth.relayChange")}
+                </button>
+              </span>
+            ) : (
+              <>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <select
+                    value={relayProtocol}
+                    onChange={(e) => setRelayProtocol(e.target.value as "http" | "https")}
+                    className="login-input"
+                    style={{ width: "auto", padding: "6px 8px", fontSize: 13 }}
+                    aria-label={t("settings.relayProtocol")}
+                  >
+                    <option value="https">https</option>
+                    <option value="http">http</option>
+                  </select>
+                  <input
+                    className="login-input"
+                    style={{ flex: 1, fontSize: 13 }}
+                    placeholder={t("settings.relayHost")}
+                    value={relayHost}
+                    onChange={(e) => setRelayHost(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleApplyRelay() }}
+                    autoFocus
+                    aria-label={t("settings.relayHost")}
+                  />
+                </div>
+                {relayError && <span style={{ fontSize: 12, color: "var(--error, #f44336)" }}>{relayError}</span>}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="login-btn" type="button" style={{ flex: 1, padding: "8px" }}
+                    disabled={relayApplying || !relayHost.trim()}
+                    onClick={handleApplyRelay}>
+                    {relayApplying ? t("auth.relayChecking") : t("auth.relayApply")}
+                  </button>
+                  <button className="link-btn" type="button" style={{ fontSize: 12 }}
+                    onClick={() => { setRelayEditing(false); setRelayError(""); setRelayHost(getRelayConfig().host) }}>
+                    {t("common.cancel")}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
         </div>

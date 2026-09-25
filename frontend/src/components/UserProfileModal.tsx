@@ -34,7 +34,7 @@ export default function UserProfileModal({ user, onClose }: Props) {
   const name = user.first_name || user.username || t("profile.unknownUser")
   const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username
   const avatarChar = name[0]?.toUpperCase() || "?"
-  const avatarColor = getAvatarColor(name)
+  const avatarColor = getAvatarColor(user.id)
   const avatar = avatarUrl(user.avatar_path)
 
   return (
@@ -50,6 +50,7 @@ export default function UserProfileModal({ user, onClose }: Props) {
 
         <div className="upm-avatar-section">
           {avatar ? (
+            // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
             <img src={avatar} alt={name} className="upm-avatar-img" />
           ) : (
             <div className="upm-avatar-circle" style={{ background: avatarColor }}>

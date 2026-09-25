@@ -32,6 +32,7 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
         <div className="topbar-avatar-wrapper" onClick={() => setMenuOpen(!menuOpen)}>
           <div className="topbar-avatar" title={t("settings.profile")} role="button" aria-label={t("settings.profile")} tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setMenuOpen(!menuOpen) }}>
             {avatarUrl ? (
+              // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
               <img src={avatarUrl} alt={username} className="topbar-avatar-img" />
             ) : (
               <span aria-hidden="true">{avatarChar}</span>

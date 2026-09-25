@@ -48,7 +48,7 @@ export function refreshAccessToken(): Promise<boolean> {
       const rt = localStorage.getItem("refresh_token")
       if (!rt) return false
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 15000)
+      const timer = setTimeout(() => controller.abort(), 30000)
       try {
         const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
           method: "POST",
@@ -93,7 +93,11 @@ async function request<T>(
   const token = getToken()
   const csrfToken = csrfTokenCache || getCsrfToken()
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15000)
+  // 30с: через cloudflare-туннель (QUIC, холодный старт, возможный
+  // антивирус-прокси типа fetchCallImpl у тестера) ответы регулярно идут
+  // дольше 15с. Ранний аборт = «context canceled» в логах cloudflared и
+  // каскад ретраев, который только хуже забивает туннель.
+  const timeout = setTimeout(() => controller.abort(), 30000)
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
       method,

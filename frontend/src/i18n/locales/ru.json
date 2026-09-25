@@ -84,7 +84,11 @@
     "highlightCallsTitle": "Звонки и видео",
     "highlightCallsDesc": "Голосовые и видеозвонки прямо в чате",
     "highlightEphemeralTitle": "Исчезающие сообщения",
-    "highlightEphemeralDesc": "Задайте время жизни — переписка удалится сама"
+    "highlightEphemeralDesc": "Задайте время жизни — переписка удалится сама",
+    "relayChange": "Изменить",
+    "relayApply": "Подключить",
+    "relayChecking": "Проверка...",
+    "relayCheckFailed": "Relay недоступен — проверьте адрес"
   },
   "chat": {
     "chats": "Чаты",

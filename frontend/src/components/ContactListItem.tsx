@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next"
+import { getAvatarColor } from "../utils/avatar"
 import type { ContactResponse } from "../types"
 
 interface Props {
@@ -15,7 +16,7 @@ export default function ContactListItem({ contact, onRemove, onStartChat }: Prop
   return (
     <div className="contact-list-item">
       <div className="cli-avatar">
-        <div className="cli-avatar-circle" style={{ background: "#0e7cb4" }}>
+        <div className="cli-avatar-circle" style={{ background: getAvatarColor(contact.contact_user.id) }}>
           <span>{initial}</span>
         </div>
       </div>

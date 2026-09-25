@@ -425,6 +425,7 @@ export default function SettingsPage() {
               <div className="settings-avatar-section">
                 <div className="settings-avatar" style={{ background: avatarSrc ? "transparent" : "#0e7cb4" }}>
                   {avatarSrc ? (
+                    // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
                     <img src={avatarSrc} alt="avatar" className="settings-avatar-img" />
                   ) : (
                     <span>{initial}</span>

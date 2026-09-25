@@ -371,7 +371,7 @@ pub fn run() {
 
             if !cfg!(debug_assertions) {
                 let handle = app.handle().clone();
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     use std::time::Duration;
                     for _ in 0..30 {
                         tokio::time::sleep(Duration::from_millis(500)).await;

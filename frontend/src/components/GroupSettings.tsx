@@ -176,7 +176,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
               {members.map((member) => (
                 <div key={member.id} className="group-settings-member">
                   <div className="group-settings-member-info">
-                    <div className="group-settings-avatar" style={{ background: getAvatarColor(member.username) }}>
+                    <div className="group-settings-avatar" style={{ background: getAvatarColor(member.id) }}>
                       {member.first_name?.[0] || member.username[0]}
                     </div>
                     <div>
@@ -233,7 +233,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
               <div className="group-settings-user-list">
                 {filteredUsers.map((u: any) => (
                   <div key={u.id} className="group-settings-user-item" onClick={() => handleAddMember(u.id)}>
-                    <div className="group-settings-avatar" style={{ background: getAvatarColor(u.username) }}>
+                    <div className="group-settings-avatar" style={{ background: getAvatarColor(u.id) }}>
                       {u.first_name?.[0] || u.username[0]}
                     </div>
                     <span>{u.first_name || u.username} (@{u.username})</span>

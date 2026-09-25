@@ -5,8 +5,12 @@ const AVATAR_COLORS = [
   "#937000", "#b942b9", "#31826e", "#8d7208",
 ]
 
-export function getAvatarColor(name: string): string {
+// Ключ ОБЯЗАН быть стабильным id пользователя (user.id / chat.id для ЛС),
+// а не отображаемым именем: имя меняется и разнится по местам (username vs
+// first_name), из-за чего один и тот же человек светился разными цветами
+// в списке чатов, сообщениях и настройках группы.
+export function getAvatarColor(key: string): string {
   let hash = 0
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  for (let i = 0; i < key.length; i++) hash = key.charCodeAt(i) + ((hash << 5) - hash)
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }

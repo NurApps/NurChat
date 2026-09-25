@@ -34,7 +34,7 @@ export default function UserProfileModal({ user, onClose }: Props) {
   const name = user.first_name || user.username || t("profile.unknownUser")
   const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username
   const avatarChar = name[0]?.toUpperCase() || "?"
-  const avatarColor = getAvatarColor(name)
+  const avatarColor = getAvatarColor(user.id)
   const avatar = avatarUrl(user.avatar_path)
 
   return (

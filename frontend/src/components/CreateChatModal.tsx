@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
+import { getAvatarColor } from "../utils/avatar"
 import type { UserResponse } from "../types"
 
 interface Props {
@@ -135,7 +136,7 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
                       </svg>
                     )}
                   </div>
-                  <div className="modal-user-avatar" style={{ background: "#25827c" }}>
+                  <div className="modal-user-avatar" style={{ background: getAvatarColor(user.id) }}>
                     <span>{user.username[0]?.toUpperCase() || "?"}</span>
                   </div>
                   <div className="modal-user-info">

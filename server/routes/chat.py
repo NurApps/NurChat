@@ -29,7 +29,12 @@ router = APIRouter()
 
 @router.get("/chats", response_model=list[schemas.ChatResponse])
 @limiter.limit("30/minute")
-async def get_user_chats(
+# NOTE: sync def — осознанно, не async. FastAPI выполняет sync-эндпоинты в
+# threadpool: каждый запрос к удалённому Supabase идёт параллельно, а не
+# блокирует единственный event loop (там же живут WS-сокеты). async def
+# с синхронным SQLAlchemy сериализует ВЕСЬ трафик на RTT Supabase —
+# через туннель это таймауты и «context canceled» в cloudflared.
+def get_user_chats(
     request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
@@ -179,7 +184,9 @@ async def create_chat(
 
 @router.get("/chats/{chat_id}/messages", response_model=list[schemas.MessageResponse])
 @limiter.limit("60/minute")
-async def get_chat_messages(
+# NOTE: sync def — см. get_user_chats: threadpool-конкуренция против
+# сериализации на event loop при удалённом Supabase.
+def get_chat_messages(
     request: Request,
     chat_id: str,
     skip: int = 0,

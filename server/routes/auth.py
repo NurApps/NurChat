@@ -285,7 +285,9 @@ async def login(
 
 @router.get("/me", response_model=schemas.UserResponse)
 @limiter.limit("30/minute")
-async def get_current_user(
+# NOTE: sync def — FastAPI выполняет в threadpool (см. chat.py:get_user_chats):
+# параллельные запросы к удалённому Supabase, без блокировки event loop с WS.
+def get_current_user(
     request: Request,
     token: dict = Depends(verify_token_dependency),
     db: Session = Depends(get_db)
@@ -401,7 +403,8 @@ async def get_user(
 
 @router.get("/user/{user_id}/identity-keys")
 @limiter.limit("10/minute")
-async def get_identity_keys(
+# NOTE: sync def — threadpool, см. get_current_user выше.
+def get_identity_keys(
     request: Request,
     user_id: str,
     db: Session = Depends(get_db),

@@ -1,3 +1,4 @@
+import threading
 import time
 from collections.abc import Callable
 from typing import Any, TypeVar, cast
@@ -9,31 +10,40 @@ class TTLCache:
     def __init__(self, default_ttl: int = 60):
         self._default_ttl = default_ttl
         self._store: dict[str, tuple[float, Any]] = {}
+        # Горячие GET-эндпоинты — sync def (FastAPI гоняет их в threadpool,
+        # иначе один event loop сериализует все запросы к удалённому Supabase
+        # и туннель умирает по таймаутам). Кэш делят треды — нужен лок.
+        self._lock = threading.Lock()
 
     def get(self, key: str) -> Any | None:
-        data = self._store.get(key)
-        if data is None:
-            return None
-        expires, value = data
-        if time.monotonic() > expires:
-            del self._store[key]
-            return None
-        return value
+        with self._lock:
+            data = self._store.get(key)
+            if data is None:
+                return None
+            expires, value = data
+            if time.monotonic() > expires:
+                del self._store[key]
+                return None
+            return value
 
     def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         expires = time.monotonic() + (ttl if ttl is not None else self._default_ttl)
-        self._store[key] = (expires, value)
+        with self._lock:
+            self._store[key] = (expires, value)
 
     def invalidate(self, key: str) -> None:
-        self._store.pop(key, None)
+        with self._lock:
+            self._store.pop(key, None)
 
     def invalidate_pattern(self, prefix: str) -> None:
-        keys = [k for k in self._store if k.startswith(prefix)]
-        for k in keys:
-            del self._store[k]
+        with self._lock:
+            keys = [k for k in self._store if k.startswith(prefix)]
+            for k in keys:
+                del self._store[k]
 
     def clear(self) -> None:
-        self._store.clear()
+        with self._lock:
+            self._store.clear()
 
     def memoize(self, ttl: int | None = None) -> Callable[[Callable[..., T]], Callable[..., T]]:
         def decorator(fn: Callable[..., T]) -> Callable[..., T]:

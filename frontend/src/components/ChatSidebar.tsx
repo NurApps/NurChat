@@ -34,6 +34,7 @@ interface Props {
   chatsLoaded: boolean
   chatsError: string | null
   onRetryChats: () => void
+  onGlobalSearch: () => void
 }
 
 const TABS = [
@@ -49,7 +50,7 @@ export default function ChatSidebar({
   setSelectedChat, setShowCreateChat, setShowAddContact,
   handleSelectChat, handlePin, handleMute, handleDeleteChat,
   handleRemoveContact, handleStartChat, handleAcceptInvite, handleDeclineInvite,
-  chatsLoaded, chatsError, onRetryChats,
+  chatsLoaded, chatsError, onRetryChats, onGlobalSearch,
 }: Props) {
   const { t } = useTranslation()
 
@@ -77,6 +78,14 @@ export default function ChatSidebar({
         <span className="sidebar-list-title">
           {tab === "chats" ? t("chat.chats") : tab === "contacts" ? t("chat.contacts") : tab === "files" ? t("chat.files") : t("chat.invitations")}
         </span>
+        <button className="sidebar-add-btn"
+          title={t("common.globalSearch")}
+          aria-label={t("common.globalSearch")}
+          onClick={onGlobalSearch}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+        </button>
         {(tab === "chats" || tab === "contacts") && (
           <button className="sidebar-add-btn"
             title={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}

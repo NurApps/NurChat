@@ -115,7 +115,10 @@ async function request<T>(
     })
     const elapsed = Math.round(performance.now() - startedAt)
     if (elapsed > 3000) {
-      console.warn(`[api] slow ${method} ${path}: ${elapsed}ms (status ${res.status})`)
+      // Константная формат-строка первым аргументом: method/path — данные
+      // (путь запроса), их интерполяция в шаблон триггерит CodeQL
+      // «format string depends on user-provided value». Передаём отдельно.
+      console.warn("[api] slow request:", method, path, `${elapsed}ms`, `status ${res.status}`)
     }
     const headerToken = res.headers.get("X-CSRF-Token")
     if (headerToken) csrfTokenCache = headerToken
@@ -138,7 +141,7 @@ async function request<T>(
     // завязаны проверки вызывателей), только дописываем в консоль.
     const elapsed = Math.round(performance.now() - startedAt)
     const kind = err instanceof DOMException && err.name === "AbortError" ? "timeout-abort" : "network-error"
-    console.error(`[api] ${kind} ${method} ${path} after ${elapsed}ms:`, err)
+    console.error("[api] request failed:", kind, method, path, `after ${elapsed}ms`, err)
     throw err
   } finally {
     clearTimeout(timeout)

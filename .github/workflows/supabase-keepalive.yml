@@ -27,8 +27,10 @@ jobs:
           DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::Repo secret SUPABASE_DATABASE_URL is not set (Settings → Secrets → Actions)"
-            exit 1
+            # Без секрета — молча зелёный: иначе у каждого форка без Supabase
+            # вечно красный бейдж, хотя коду там нечего проверять.
+            echo "::warning::Repo secret SUPABASE_DATABASE_URL is not set — nothing to ping (Settings → Secrets → Actions to enable)"
+            exit 0
           fi
           pip install -q "psycopg2-binary>=2.9"
           python -c "import psycopg2, os; c = psycopg2.connect(os.environ['DATABASE_URL']); c.cursor().execute('SELECT 1'); print('Supabase alive'); c.close()"

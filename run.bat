@@ -168,10 +168,13 @@ goto :eof
 :: ВАЖНО: переменную именно НЕ задаём (не пустую!), иначе pydantic возьмёт
 :: пустое значение вместо .env.
 if defined DATABASE_URL goto :eof
-if exist .env (
-  findstr /B /C:"DATABASE_URL=" .env >nul 2>&1
-  if %errorlevel% equ 0 goto :eof
-)
+:: NB: no parenthesized block here on purpose: %errorlevel% inside (...)
+:: expands at PARSE time (stale value, e.g. leftover choice code 1-6),
+:: so the findstr result was never actually tested and SQLite was forced.
+if not exist .env goto force_sqlite
+findstr /B /C:"DATABASE_URL=" .env >nul 2>&1
+if not errorlevel 1 goto :eof
+:force_sqlite
 set DATABASE_URL=sqlite:///./nurchat.db
 echo [..] No DATABASE_URL found - using local SQLite fallback.
 goto :eof

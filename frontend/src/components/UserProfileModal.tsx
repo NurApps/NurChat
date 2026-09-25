@@ -50,6 +50,7 @@ export default function UserProfileModal({ user, onClose }: Props) {
 
         <div className="upm-avatar-section">
           {avatar ? (
+            // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
             <img src={avatar} alt={name} className="upm-avatar-img" />
           ) : (
             <div className="upm-avatar-circle" style={{ background: avatarColor }}>

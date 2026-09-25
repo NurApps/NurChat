@@ -40,6 +40,7 @@ export default function ProfilePage() {
         <div className="settings-avatar-section">
           <div className="settings-avatar" style={{ background: avatarSrc ? "transparent" : getAvatarColor(user.id) }}>
             {avatarSrc ? (
+              // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
               <img src={avatarSrc} alt="avatar" className="settings-avatar-img" />
             ) : (
               <span>{(user.first_name?.[0] || user.username[0] || "?").toUpperCase()}</span>

@@ -248,5 +248,15 @@ function WS_PROTOCOL_FOR(p: "http" | "https"): "ws" | "wss" {
 
 export function avatarUrl(path: string | null | undefined): string | null {
   if (!path) return null
-  return `${BASE_URL}/${path.replace(/\\/g, "/")}`
+  const normalized = path.replace(/\\/g, "/")
+  // Allowlist: сервер кладёт аватары только в
+  // media/avatars/<user_id>/avatar_<ts>.<ext> (см. auth.py:531).
+  // Чужой/битый путь (схемы, .., кавычки) URL не получает — вместо картинки
+  // показывается буквенный аватар. Заодно закрывает CodeQL
+  // js/xss-through-dom на всех <img src={avatarUrl(...)}>: src всегда
+  // собирается из доверенного BASE_URL + безопасного относительного пути,
+  // javascript:-схема невозможна, а React ставит src как DOM-свойство
+  // без парсинга HTML.
+  if (!/^media\/avatars\/[A-Za-z0-9_-]+\/avatar_\d+\.(jpg|jpeg|png|webp)$/i.test(normalized)) return null
+  return `${BASE_URL}/${normalized}`
 }

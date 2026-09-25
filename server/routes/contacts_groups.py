@@ -15,7 +15,9 @@ router = APIRouter()
 
 @router.get("/contacts", response_model=list[schemas.ContactResponse])
 @limiter.limit("30/minute")
-async def get_contacts(
+# NOTE: sync def — FastAPI выполняет в threadpool (см. chat.py:get_user_chats):
+# параллельные запросы к удалённому Supabase, без блокировки event loop с WS.
+def get_contacts(
     request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)
@@ -222,7 +224,8 @@ async def invite_to_group(
 
 
 @router.get("/groups/invites", response_model=list[schemas.GroupInviteResponse])
-async def get_group_invites(
+# NOTE: sync def — threadpool, см. get_contacts выше.
+def get_group_invites(
     status_filter: str = "pending",
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency)

@@ -103,7 +103,10 @@ goto :eof
 
 :act_relay
 echo [..] Relay foreground, .env as-is. Ctrl+C to stop.
-.venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --no-access-log
+:: Show resolved DB (pydantic: environment shadows .env). A stale system-wide
+:: DATABASE_URL=sqlite looks exactly like "run.bat ignores .env".
+if exist .venv\Scripts\python.exe .venv\Scripts\python.exe scripts\db_info.py
+.venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --no-access-log --timeout-keep-alive 30
 goto :eof
 
 :act_tunnel
@@ -165,10 +168,13 @@ goto :eof
 :: ВАЖНО: переменную именно НЕ задаём (не пустую!), иначе pydantic возьмёт
 :: пустое значение вместо .env.
 if defined DATABASE_URL goto :eof
-if exist .env (
-  findstr /B /C:"DATABASE_URL=" .env >nul 2>&1
-  if %errorlevel% equ 0 goto :eof
-)
+:: NB: no parenthesized block here on purpose: %errorlevel% inside (...)
+:: expands at PARSE time (stale value, e.g. leftover choice code 1-6),
+:: so the findstr result was never actually tested and SQLite was forced.
+if not exist .env goto force_sqlite
+findstr /B /C:"DATABASE_URL=" .env >nul 2>&1
+if not errorlevel 1 goto :eof
+:force_sqlite
 set DATABASE_URL=sqlite:///./nurchat.db
 echo [..] No DATABASE_URL found - using local SQLite fallback.
 goto :eof
@@ -187,13 +193,18 @@ if %errorlevel% equ 0 (
 :: С‚РѕР»СЊРєРѕ РµРіРѕ, Р° РґРѕС‡РµСЂРЅРёР№ РїСЂРѕС†РµСЃСЃ РѕСЃС‚Р°С‘С‚СЃСЏ РІРёСЃРµС‚СЊ РЅР° РїРѕСЂС‚Сѓ.
 for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /T /PID %%p >nul 2>&1
 echo [..] Starting relay in background...
-start "NurChat Relay" /B .venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 %RELAY_FLAGS% --no-access-log
+if exist .venv\Scripts\python.exe .venv\Scripts\python.exe scripts\db_info.py
+start "NurChat Relay" /B .venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 %RELAY_FLAGS% --no-access-log --timeout-keep-alive 30
 set RELAY_STARTED_BY_ME=1
 set WAIT_RELAY_TRIES=0
 goto wait_relay
 
 :ensure_relay_prod
-set RELAY_FLAGS=
+:: Tunnel-only: доверяем X-Forwarded-For от cloudflared (peer всегда
+:: localhost). Без этого request.client.host у всех один и тот же и
+:: slowapi-лимиты (30/мин на /chats) становятся ГЛОБАЛЬНЫМИ на всех
+:: тестеров за туннелем. Только 127.0.0.1 — XFF-спуфинг извне невозможен.
+set RELAY_FLAGS=--proxy-headers --forwarded-allow-ips=127.0.0.1
 call :ensure_relay
 goto :eof
 

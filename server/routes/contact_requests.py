@@ -71,7 +71,9 @@ async def send_contact_request(
 
 @router.get("/requests/incoming", response_model=list[schemas.ContactRequestResponse])
 @limiter.limit("10/minute")
-async def get_incoming_requests(
+# NOTE: sync def — FastAPI выполняет в threadpool (см. chat.py:get_user_chats):
+# параллельные запросы к удалённому Supabase, без блокировки event loop с WS.
+def get_incoming_requests(
     request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),
@@ -108,7 +110,8 @@ async def get_incoming_requests(
 
 @router.get("/requests/sent", response_model=list[schemas.ContactRequestResponse])
 @limiter.limit("10/minute")
-async def get_sent_requests(
+# NOTE: sync def — threadpool, см. get_incoming_requests выше.
+def get_sent_requests(
     request: Request,
     db: Session = Depends(get_db),
     token: dict = Depends(verify_token_dependency),

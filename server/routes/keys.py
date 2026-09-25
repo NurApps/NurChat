@@ -102,7 +102,9 @@ async def upload_signed_prekey(
 
 @router.get("/signed-prekey/{user_id}")
 @limiter.limit("30/minute")
-async def get_signed_prekey(
+# NOTE: sync def — FastAPI выполняет в threadpool (см. chat.py:get_user_chats):
+# параллельные запросы к удалённому Supabase, без блокировки event loop с WS.
+def get_signed_prekey(
     request: Request,
     user_id: str,
     db: Session = Depends(get_db),
@@ -196,7 +198,8 @@ def _claim_one_time_prekey(db: Session, user_id: str):
 
 @router.get("/one-time/{user_id}")
 @limiter.limit("30/minute")
-async def get_one_time_prekey(
+# NOTE: sync def — threadpool, см. get_signed_prekey выше.
+def get_one_time_prekey(
     request: Request,
     user_id: str,
     db: Session = Depends(get_db),
@@ -214,7 +217,8 @@ async def get_one_time_prekey(
 
 @router.get("/one-time-count/{user_id}")
 @limiter.limit("60/minute")
-async def get_one_time_prekey_count(
+# NOTE: sync def — threadpool, см. get_signed_prekey выше.
+def get_one_time_prekey_count(
     request: Request,
     user_id: str,
     db: Session = Depends(get_db),
@@ -230,7 +234,8 @@ async def get_one_time_prekey_count(
 
 @router.get("/bundle/{user_id}")
 @limiter.limit("30/minute")
-async def get_prekey_bundle(
+# NOTE: sync def — threadpool, см. get_signed_prekey выше.
+def get_prekey_bundle(
     request: Request,
     user_id: str,
     db: Session = Depends(get_db),

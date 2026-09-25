@@ -14,7 +14,7 @@ User=nurchat
 Group=nurchat
 WorkingDirectory=/opt/NurChat
 EnvironmentFile=/opt/NurChat/.env
-ExecStart=/opt/NurChat/.venv/bin/python -m uvicorn server.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+ExecStart=/opt/NurChat/.venv/bin/python -m uvicorn server.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --timeout-keep-alive 30
 # Wait for DB/alembic on boot is handled by create_all fallback; for
 # PostgreSQL deployments run `alembic upgrade head` manually after deploy.
 Restart=always

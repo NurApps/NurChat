@@ -2,87 +2,29 @@ import { platform } from "./platform"
 import { getSettings } from "./userSettings"
 import { initPushNotifications } from "./push"
 
-let audioCtx: AudioContext | null = null
+const messageAudio = new Audio(`${import.meta.env.BASE_URL}sounds/notify.ogg`)
+const ringtoneAudio = new Audio(`${import.meta.env.BASE_URL}sounds/wave.ogg`)
+ringtoneAudio.loop = true
 
-function ensureAudioContext(): AudioContext | null {
-  try {
-    if (!audioCtx) {
-      const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-      if (!Ctor) return null
-      audioCtx = new Ctor()
-    }
-    if (audioCtx.state === "suspended") void audioCtx.resume()
-    return audioCtx
-  } catch {
-    return null
-  }
+function playAudio(audio: HTMLAudioElement): void {
+  audio.currentTime = 0
+  audio.play().catch(() => {})
 }
 
 export function playMessageSound(): void {
   if (!getSettings().messageSound) return
-  const ctx = ensureAudioContext()
-  if (!ctx) return
-  try {
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = "sine"
-    osc.frequency.value = 880
-    gain.gain.setValueAtTime(0.12, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.2)
-    osc.connect(gain).connect(ctx.destination)
-    osc.onended = () => {
-      osc.disconnect()
-      gain.disconnect()
-    }
-    osc.start()
-    osc.stop(ctx.currentTime + 0.2)
-  } catch {
-    /* ignore audio errors */
-  }
-}
-
-let ringTimer: ReturnType<typeof setInterval> | null = null
-
-function playRingOnce(): void {
-  const ctx = ensureAudioContext()
-  if (!ctx) return
-  try {
-    // Двухтональный «ту-ту»: было одноразовое пиликанье — входящий
-    // пропускался, если не смотрел в экран в первую секунду.
-    for (const [freq, at] of [[660, 0], [520, 0.35]] as const) {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = "sine"
-      osc.frequency.value = freq
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime + at)
-      gain.gain.exponentialRampToValueAtTime(0.14, ctx.currentTime + at + 0.03)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.3)
-      osc.connect(gain).connect(ctx.destination)
-      osc.onended = () => {
-        osc.disconnect()
-        gain.disconnect()
-      }
-      osc.start(ctx.currentTime + at)
-      osc.stop(ctx.currentTime + at + 0.32)
-    }
-  } catch {
-    /* ignore audio errors */
-  }
+  playAudio(messageAudio)
 }
 
 /** Зацикленный рингтон входящего — остановить через stopCallRingtone. */
 export function startCallRingtone(): void {
-  if (ringTimer) return
-  if (!getSettings().messageSound) return
-  playRingOnce()
-  ringTimer = setInterval(playRingOnce, 2000)
+  if (!getSettings().callSound || !ringtoneAudio.paused) return
+  ringtoneAudio.play().catch(() => {})
 }
 
 export function stopCallRingtone(): void {
-  if (ringTimer) {
-    clearInterval(ringTimer)
-    ringTimer = null
-  }
+  ringtoneAudio.pause()
+  ringtoneAudio.currentTime = 0
 }
 
 export async function initNotifications(): Promise<boolean> {

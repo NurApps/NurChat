@@ -26,7 +26,24 @@
   gap: 8px;
 }
 
-.topbar-username { font-size: 14px; color: var(--text-secondary); }
+.topbar-profile-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.topbar-profile-trigger:hover { background: var(--surface-variant); }
+.topbar-profile-trigger:active { transform: scale(0.98); }
+
+.topbar-username { font-size: 14px; color: var(--text-secondary); transition: color 0.18s ease; }
+.topbar-profile-trigger:hover .topbar-username { color: var(--text-primary); }
 
 .topbar-avatar {
   width: 32px;
@@ -39,8 +56,13 @@
   color: var(--on-accent, #fff);
   font-size: 14px;
   font-weight: 700;
-  cursor: pointer;
   overflow: hidden;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.topbar-profile-trigger:hover .topbar-avatar {
+  transform: scale(1.06);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tg-blue) 22%, transparent);
 }
 
 .topbar-avatar-img {
@@ -84,6 +106,13 @@
   z-index: 100;
   min-width: 200px;
   padding: 6px;
+  transform-origin: top center;
+  animation: profile-menu-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes profile-menu-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(0.97); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
 
 .topbar-dropdown button {

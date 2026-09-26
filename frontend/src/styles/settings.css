@@ -59,6 +59,8 @@
   box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
 }
 
+.settings-choice.active { color: var(--text); }
+
 .settings-tab-icon { display: flex; align-items: center; opacity: 0.85; }
 .settings-tab.active .settings-tab-icon { opacity: 1; }
 .settings-tab-label { font-size: 13px; }

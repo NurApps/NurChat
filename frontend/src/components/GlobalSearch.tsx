@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import type { MessageResponse, ChatResponse } from "../types"
 import { formatTime } from "../utils/format"
+import { Search, X } from "lucide-react"
 
 interface Props {
   chats?: ChatResponse[]
@@ -68,9 +69,7 @@ export default function GlobalSearch({ chats = [], onSelect, onSelectMessage, on
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label={t("chat.searchAllChats")}>
       <div className="global-search-modal" onClick={(e) => e.stopPropagation()}>
         <div className="global-search-header">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2">
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
+          <Search size={18} strokeWidth={2} color="var(--text-secondary)" aria-hidden="true" />
           <input
             ref={inputRef}
             className="global-search-input"
@@ -81,9 +80,7 @@ export default function GlobalSearch({ chats = [], onSelect, onSelectMessage, on
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
           />
           <button className="global-search-close" onClick={onClose}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <X size={16} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
         <div className="global-search-results">

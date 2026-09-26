@@ -81,7 +81,7 @@
 }
 
 @keyframes chatFadeIn {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -99,7 +99,7 @@
 /* One authored entrance per message row: .msg-row alone. The old stack ran
    msg-in on .my-row/.other-row AND chatFadeIn on .msg-row — every message
    animated twice (.message-bubble targeted no live element at all). */
-.msg-row { animation: chatFadeIn 0.2s ease-out; }
+.msg-row { animation: chatFadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
 .notification-toast { animation: slideInRight 0.3s ease-out; }
 
 .login-btn, .send-btn, .call-btn {

@@ -1,5 +1,6 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { ArrowUpToLine, LogOut, MessageCircle, Moon, Settings, Sun, Users } from "lucide-react"
 import { useTheme } from "../context/useTheme"
 import { platform } from "../services/platform"
 
@@ -17,81 +18,60 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
   const { t } = useTranslation()
   const { theme, toggle } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false)
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown)
+    return () => document.removeEventListener("pointerdown", handlePointerDown)
+  }, [menuOpen])
 
   return (
     <div className="topbar">
       <div className="topbar-left">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="#2AABEE" stroke="none">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
+        <MessageCircle size={22} color="#2AABEE" strokeWidth={2} aria-hidden="true" />
         <span className="topbar-title">NurChat</span>
       </div>
-
       <div className="topbar-center">
-        <span className="topbar-username">{username}</span>
-        <div className="topbar-avatar-wrapper" onClick={() => setMenuOpen(!menuOpen)}>
-          <div className="topbar-avatar" title={t("settings.profile")} role="button" aria-label={t("settings.profile")} tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setMenuOpen(!menuOpen) }}>
+        <div ref={menuRef} className="topbar-avatar-wrapper">
+          <button
+            type="button"
+            className="topbar-profile-trigger"
+            title={t("settings.profile")}
+            aria-label={t("settings.profile")}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <span className="topbar-username">{username}</span>
+            <span className="topbar-avatar">
             {avatarUrl ? (
               // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
               <img src={avatarUrl} alt={username} className="topbar-avatar-img" />
-            ) : (
-              <span aria-hidden="true">{avatarChar}</span>
-            )}
-          </div>
+            ) : <span aria-hidden="true">{avatarChar}</span>}
+            </span>
+          </button>
           {menuOpen && (
             <div className="topbar-dropdown">
-              <button onClick={() => { setMenuOpen(false); onProfile?.() }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                </svg>
-                {t("settings.profile")}
-              </button>
-              <button onClick={() => { setMenuOpen(false); onSwitchAccount?.() }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-                {t("common.switchAccount")}
-              </button>
+              <button onClick={() => { setMenuOpen(false); onProfile?.() }}><Settings size={16} strokeWidth={2} aria-hidden="true" />{t("settings.profile")}</button>
+              <button onClick={() => { setMenuOpen(false); onSwitchAccount?.() }}><Users size={16} strokeWidth={2} aria-hidden="true" />{t("common.switchAccount")}</button>
               <hr className="dropdown-divider" />
-              <button className="danger" onClick={() => { setMenuOpen(false); onLogout?.() }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-                {t("common.logout")}
-              </button>
+              <button className="danger" onClick={() => { setMenuOpen(false); onLogout?.() }}><LogOut size={16} strokeWidth={2} aria-hidden="true" />{t("common.logout")}</button>
             </div>
           )}
         </div>
       </div>
-
       <div className="topbar-right">
-        <button className="topbar-btn" title={t("settings.title")} aria-label={t("settings.title")} onClick={onSettings}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
+        <button className="topbar-btn" title={t("settings.title")} aria-label={t("settings.title")} onClick={onSettings}><Settings size={20} strokeWidth={2} aria-hidden="true" /></button>
         <button className="topbar-btn" title={t("common.theme")} aria-label={t("common.theme")} onClick={toggle}>
-          {theme === "light" ? (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-            </svg>
-          )}
+          {theme === "light" ? <Moon size={20} strokeWidth={2} aria-hidden="true" /> : <Sun size={20} strokeWidth={2} aria-hidden="true" />}
         </button>
-        <button className="topbar-btn" title={t("common.minimizeToTray")} aria-label={t("common.minimizeToTray")} onClick={() => platform.minimizeToTray()}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="5" y1="19" x2="19" y2="19" />
-            <polyline points="5 14 12 7 19 14" />
-          </svg>
-        </button>
-        <button className="topbar-btn danger" title={t("common.logout")} aria-label={t("common.logout")} onClick={onLogout}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-        </button>
+        <button className="topbar-btn" title={t("common.minimizeToTray")} aria-label={t("common.minimizeToTray")} onClick={() => platform.minimizeToTray()}><ArrowUpToLine size={20} strokeWidth={2} aria-hidden="true" /></button>
+        <button className="topbar-btn danger" title={t("common.logout")} aria-label={t("common.logout")} onClick={onLogout}><LogOut size={20} strokeWidth={2} aria-hidden="true" /></button>
       </div>
     </div>
   )

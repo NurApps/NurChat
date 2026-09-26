@@ -152,3 +152,7 @@ lib64/
 DEVELOPMENT_PLAN.md
 CRYPTO_MILITARY_PLAN.md
 P2P_MIGRATION_PLAN.md
+
+# Brag artifacts
+brag/
+brag-output*/

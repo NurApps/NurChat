@@ -22,7 +22,6 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"))
 const CallHistoryPage = lazy(() => import("./pages/CallHistoryPage"))
 const BlockedUsersPage = lazy(() => import("./pages/BlockedUsersPage"))
 
-const MobileChatPage = lazy(() => import("./pages/MobileChatPage"))
 
 function PageLoader() {
   return (
@@ -93,11 +92,11 @@ function App() {
             
             {isMobile ? (
               <>
-                <Route path="/chat" element={<AuthGuard><MobileChatPage /></AuthGuard>} />
-                <Route path="/chat/:chatId" element={<AuthGuard><MobileChatPage /></AuthGuard>} />
+                <Route path="/chat" element={<AuthGuard><ChatPage /></AuthGuard>} />
+                <Route path="/chat/:chatId" element={<AuthGuard><ChatPage /></AuthGuard>} />
                 <Route path="/call/:userId/:type" element={<AuthGuard><CallPage /></AuthGuard>} />
-                <Route path="/calls" element={<AuthGuard><MobileChatPage /></AuthGuard>} />
-                <Route path="/contacts" element={<AuthGuard><MobileChatPage /></AuthGuard>} />
+                <Route path="/calls" element={<AuthGuard><CallHistoryPage /></AuthGuard>} />
+                <Route path="/contacts" element={<AuthGuard><ChatPage /></AuthGuard>} />
                 <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
               </>
             ) : (

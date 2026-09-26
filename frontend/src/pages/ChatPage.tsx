@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 
@@ -58,7 +58,9 @@ function IncomingRinger({ active }: { active: boolean }) {
 
 export default function ChatPage() {
   const { t } = useTranslation()
+  const location = useLocation()
   const navigate = useNavigate()
+  const { chatId: routeChatId } = useParams<{ chatId?: string }>()
   const { isMobile } = useMobile()
 
   const currentUser = useChatStore((s) => s.currentUser)
@@ -354,6 +356,10 @@ export default function ChatPage() {
   }, [loadChats, loadContacts, loadInvites])
 
   useEffect(() => {
+    setTab(location.pathname === "/contacts" ? "contacts" : "chats")
+  }, [location.pathname, setTab])
+
+  useEffect(() => {
     const handleOnline = () => setIsOnline(true)
     const handleOffline = () => setIsOnline(false)
     const handleWsState = (e: Event) => setWsUp((e as CustomEvent<boolean>).detail !== false)
@@ -469,6 +475,10 @@ export default function ChatPage() {
     loadChats()
     loadMessages(chat)
   }, [currentUser, loadChats, loadMessages, setMessages, setReplyTo, setHasMore, setSelectedChat, setShowEmoji, setInput, t, filteredChats])
+
+  useEffect(() => {
+    if (routeChatId && chatsLoaded && !selectedChat) handleSelectChat(routeChatId)
+  }, [routeChatId, chatsLoaded, selectedChat, handleSelectChat])
 
   // Подгрузка истории через внутренний скроллер виртуализации
   // (onNearTop): слушатель на внешнем div удалён — при виртуализации

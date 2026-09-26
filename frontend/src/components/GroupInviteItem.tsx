@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next"
 import type { GroupInviteResponse } from "../types"
+import { Check, UserPlus, X } from "lucide-react"
 
 interface Props {
   invite: GroupInviteResponse
@@ -12,9 +13,7 @@ export default function GroupInviteItem({ invite, onAccept, onDecline }: Props) 
   return (
     <div className="invite-item">
       <div className="invite-body">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="2">
-          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" />
-        </svg>
+        <UserPlus size={24} color="#2AABEE" strokeWidth={2} aria-hidden="true" />
         <div className="invite-text">
           <span className="invite-title">{t("chat.groupInviteTo", { name: invite.group.name })}</span>
           <span className="invite-from">{t("chat.fromUser", { username: invite.inviter.username })}</span>
@@ -22,15 +21,11 @@ export default function GroupInviteItem({ invite, onAccept, onDecline }: Props) 
       </div>
       <div className="invite-actions">
         <button className="invite-btn accept" onClick={() => onAccept?.(invite.id)}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
+          <Check size={16} strokeWidth={2} aria-hidden="true" />
            {t("chat.accept")}
         </button>
         <button className="invite-btn decline" onClick={() => onDecline?.(invite.id)}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
+          <X size={16} strokeWidth={2} aria-hidden="true" />
            {t("chat.decline")}
         </button>
       </div>

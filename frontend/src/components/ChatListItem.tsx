@@ -4,6 +4,7 @@ import type { ChatResponse, UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
 import { getDraftForChat } from "../utils/drafts"
 import { formatFull, formatRelativeTime } from "../utils/format"
+import { LockKeyhole, MoreVertical, Pin, Users, VolumeX } from "lucide-react"
 
 interface Props {
   chat: ChatResponse
@@ -78,24 +79,16 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
         <div className="cli-top-row">
           <div className="cli-name-row">
             {isPinned && (
-              <svg className="cli-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z" />
-              </svg>
+              <Pin className="cli-icon" size={14} strokeWidth={2} aria-hidden="true" />
             )}
             {isMuted && (
-              <svg className="cli-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M11 5L6 9H2v6h4l5 4V5z" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" />
-              </svg>
+              <VolumeX className="cli-icon" size={14} strokeWidth={2} aria-hidden="true" />
             )}
             {chat.is_group && (
-              <svg className="cli-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
+              <Users className="cli-icon" size={14} strokeWidth={2} aria-hidden="true" />
             )}
             {chat.is_secret && (
-              <svg className="cli-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
+              <LockKeyhole className="cli-icon" size={14} strokeWidth={2} aria-hidden="true" />
             )}
             <span className="cli-name">{displayName}</span>
           </div>
@@ -105,7 +98,7 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
               className="cli-menu-btn"
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" /></svg>
+              <MoreVertical size={16} strokeWidth={2} aria-hidden="true" />
             </button>
             {menuOpen && (
               <div className="cli-dropdown">

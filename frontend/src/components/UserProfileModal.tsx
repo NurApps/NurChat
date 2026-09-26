@@ -6,6 +6,7 @@ import type { UserResponse } from "../types"
 import { formatDateShort, formatFull } from "../utils/format"
 import { getAvatarColor } from "../utils/avatar"
 import SafetyNumberModal from "./SafetyNumberModal"
+import { LockKeyhole, MessageCircle, Phone, X } from "lucide-react"
 
 interface Props {
   user: UserResponse
@@ -42,9 +43,7 @@ export default function UserProfileModal({ user, onClose }: Props) {
       <div className="user-profile-modal" onClick={(e) => e.stopPropagation()}>
         <div className="upm-header">
           <button className="upm-close" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <X size={20} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
 
@@ -91,23 +90,16 @@ export default function UserProfileModal({ user, onClose }: Props) {
 
         <div className="upm-actions">
           <button className="upm-action-btn" onClick={() => { onClose(); navigate(`/call/${user.id}/audio`) }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-            </svg>
+            <Phone size={18} strokeWidth={2} aria-hidden="true" />
             {t("userProfile.call")}
           </button>
           <button className="upm-action-btn primary" onClick={() => { onClose(); navigate("/chat") }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
+            <MessageCircle size={18} strokeWidth={2} aria-hidden="true" />
             {t("userProfile.write")}
           </button>
           {user.public_key && (
             <button className="upm-action-btn" onClick={() => setShowSafetyNumber(true)}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
+              <LockKeyhole size={18} strokeWidth={2} aria-hidden="true" />
               {t("userProfile.checkKey")}
             </button>
           )}

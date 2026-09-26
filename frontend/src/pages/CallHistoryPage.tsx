@@ -5,6 +5,7 @@ import { api } from "../services/api"
 import type { UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
 import { formatTime, formatDateShort } from "../utils/format"
+import { ArrowLeft } from "lucide-react"
 
 interface CallLog {
   id: number
@@ -83,9 +84,7 @@ export default function CallHistoryPage() {
       <div className="settings-page">
         <div className="settings-header">
           <button className="settings-back" onClick={() => navigate("/chat")}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
+            <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
           </button>
           <h1>{t("call.history")}</h1>
         </div>
@@ -98,9 +97,7 @@ export default function CallHistoryPage() {
     <div className="settings-page">
       <div className="settings-header">
         <button className="settings-back" onClick={() => navigate("/chat")}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
+          <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
         </button>
           <h1>{t("call.history")}</h1>
         </div>

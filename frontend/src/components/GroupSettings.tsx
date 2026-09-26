@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
 import type { ChatResponse, UserResponse } from "../types"
+import { Star, User, X } from "lucide-react"
 
 interface GroupMember {
   id: string
@@ -128,9 +129,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
         <div className="group-settings-header">
           <h2>{t("common.groupSettings")}</h2>
           <button className="media-viewer-close" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <X size={20} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
 
@@ -196,13 +195,9 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
                         aria-label={member.is_admin ? t("chat.removeAdmin") : t("chat.setAdmin")}
                       >
                         {member.is_admin ? (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-                          </svg>
+                          <User size={14} strokeWidth={2} aria-hidden="true" />
                         ) : (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                          </svg>
+                          <Star size={14} strokeWidth={2} aria-hidden="true" />
                         )}
                       </button>
                       <button
@@ -211,9 +206,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
                         title={t("chat.removeFromGroup")}
                         aria-label={t("chat.removeFromGroup")}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
+                        <X size={14} strokeWidth={2} aria-hidden="true" />
                       </button>
                     </div>
                   )}

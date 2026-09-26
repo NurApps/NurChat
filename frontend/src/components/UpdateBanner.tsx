@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { check } from "@tauri-apps/plugin-updater"
 import { platform } from "../services/platform"
+import { X } from "lucide-react"
 
 interface UpdateProgress {
   downloaded: number
@@ -85,9 +86,7 @@ export default function UpdateBanner() {
           <div className="update-banner-actions">
             <button onClick={handleInstall}>{t("updates.install")}</button>
             <button onClick={() => setDismissed(true)} aria-label={t("updates.close")}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <X size={14} strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
         </>

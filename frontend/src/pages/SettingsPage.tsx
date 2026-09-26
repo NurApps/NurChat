@@ -11,41 +11,23 @@ import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
 import { useTheme, THEMES } from "../context/ThemeContext"
+import { AlertTriangle, ArrowLeft, Bell, Database, LockKeyhole, Settings, Shield, User } from "lucide-react"
 import type { UserResponse } from "../types"
 
 type SettingsTab = "profile" | "notifications" | "privacy" | "storage" | "security" | "account"
 
 const TabIcons = {
-  profile: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-    </svg>
-  ),
-  notifications: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  ),
-  privacy: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  ),
-  storage: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-    </svg>
-  ),
-  security: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  ),
-  account: (
+  profile: <User size={18} strokeWidth={2} aria-hidden="true" />,
+  notifications: <Bell size={18} strokeWidth={2} aria-hidden="true" />,
+  privacy: <LockKeyhole size={18} strokeWidth={2} aria-hidden="true" />,
+  storage: <Database size={18} strokeWidth={2} aria-hidden="true" />,
+  security: <Shield size={18} strokeWidth={2} aria-hidden="true" />,
+  account: <Settings size={18} strokeWidth={2} aria-hidden="true" />,
+  /*
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
-  ),
+  ),*/
 }
 
 export default function SettingsPage() {
@@ -396,9 +378,7 @@ export default function SettingsPage() {
     <div className="settings-page">
       <div className="settings-header">
         <button className="settings-back" onClick={() => navigate("/chat")}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
+          <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
         </button>
         <h2>{t("settings.title")}</h2>
       </div>
@@ -477,7 +457,7 @@ export default function SettingsPage() {
                   {THEMES.map((t) => (
                     <button
                       key={t.id}
-                      className={`settings-tab ${theme === t.id ? "active" : ""}`}
+                      className={`settings-tab settings-choice ${theme === t.id ? "active" : ""}`}
                       onClick={() => setTheme(t.id)}
                       style={{
                         padding: "8px 16px",
@@ -500,7 +480,7 @@ export default function SettingsPage() {
                   {(["ru", "en"] as const).map((lng) => (
                     <button
                       key={lng}
-                      className={`settings-tab ${lang === lng ? "active" : ""}`}
+                      className={`settings-tab settings-choice ${lang === lng ? "active" : ""}`}
                       onClick={() => { i18n.changeLanguage(lng); setLang(lng) }}
                       style={{
                         padding: "8px 16px",
@@ -671,7 +651,7 @@ export default function SettingsPage() {
                     {totpBackupCodes.length > 0 && (
                       <div style={{ marginTop: 16, padding: 12, background: "rgba(76,175,80,0.1)", borderRadius: 6 }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: "#4CAF50", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          <AlertTriangle size={14} strokeWidth={2} aria-hidden="true" />
                           <span>{t("settings.totpSaveBackup")}</span>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 4, fontSize: 11 }}>

@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+import { X } from "lucide-react"
 
 interface ToastData {
   id: string
@@ -29,9 +30,7 @@ export default function NotificationToast({ toast, onClose, onClick }: Props) {
         <span className="toast-body">{toast.body}</span>
       </div>
       <button className="toast-close" onClick={(e) => { e.stopPropagation(); onClose() }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
+        <X size={14} strokeWidth={2} aria-hidden="true" />
       </button>
     </div>
   )

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
 import type { UserResponse } from "../types"
+import { Check, Search, X } from "lucide-react"
 
 interface Props {
   currentUserId: string
@@ -63,9 +64,7 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
           <div className="modal-header">
             <h3>{t("chat.enterGroupName")}</h3>
             <button className="modal-close" onClick={onClose}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <X size={20} strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
           <div className="modal-body">
@@ -95,17 +94,13 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
         <div className="modal-header">
           <h3>{t("chat.newChat")}</h3>
           <button className="modal-close" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <X size={20} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
 
         <div className="modal-body">
           <div className="modal-search">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+            <Search size={16} strokeWidth={2} aria-hidden="true" />
             <input
               type="text"
               placeholder={t("chat.searchUsers")}
@@ -131,9 +126,7 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
                 >
                   <div className="modal-checkbox">
                     {selectedIds.includes(user.id) && (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0e7cb4" strokeWidth="3">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
+                      <Check size={14} color="#0e7cb4" strokeWidth={3} aria-hidden="true" />
                     )}
                   </div>
                   <div className="modal-user-avatar" style={{ background: getAvatarColor(user.id) }}>

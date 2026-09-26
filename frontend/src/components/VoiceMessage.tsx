@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { Pause, Play } from "lucide-react"
 
 interface Props {
   src: string
@@ -101,9 +102,9 @@ export default function VoiceMessage({ src }: Props) {
     <div className="voice-message">
       <button className="voice-play-btn" onClick={togglePlay}>
         {playing ? (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+          <Pause size={18} fill="currentColor" strokeWidth={0} aria-hidden="true" />
         ) : (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+          <Play size={18} fill="currentColor" strokeWidth={0} aria-hidden="true" />
         )}
       </button>
       <canvas ref={canvasRef} width={160} height={32} className="voice-waveform" onClick={togglePlay} />

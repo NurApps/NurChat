@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
 import { formatDateShort } from "../utils/format"
+import { ArrowLeft, Ban } from "lucide-react"
 
 interface BlockedUser {
   id: number
@@ -47,9 +48,7 @@ export default function BlockedUsersPage() {
     <div className="settings-page">
       <div className="settings-header">
         <button className="settings-back" onClick={() => navigate("/settings")}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
+          <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
         </button>
         <h1>{t("blocked.title")}</h1>
       </div>
@@ -72,10 +71,7 @@ export default function BlockedUsersPage() {
           <div style={{ padding: 40, textAlign: "center", color: "#888" }}>{t("blocked.loading")}</div>
         ) : blocked.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: "#888" }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.5" style={{ margin: "0 auto 16px" }}>
-              <circle cx="12" cy="12" r="10" />
-              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-            </svg>
+            <Ban size={48} strokeWidth={1.5} color="#666" style={{ margin: "0 auto 16px" }} aria-hidden="true" />
             <p>{t("blocked.empty")}</p>
           </div>
         ) : (

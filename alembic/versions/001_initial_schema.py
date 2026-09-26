@@ -17,6 +17,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # БД, созданная через create_all (без alembic_version), уже содержит схему:
+    # пропускаем — дрейф добирают идемпотентные миграции 003+.
+    if 'users' in sa.inspect(op.get_bind()).get_table_names():
+        return
+
     # Users
     op.create_table(
         'users',

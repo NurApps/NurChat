@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowUpToLine, LogOut, MessageCircle, Moon, Settings, Sun, Users } from "lucide-react"
+import { ArrowUpToLine, LogOut, MessageCircle, Moon, Settings, Sun, User, Users } from "lucide-react"
 import { useTheme } from "../context/useTheme"
 import { platform } from "../services/platform"
 
@@ -19,6 +19,7 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
   const { theme, toggle } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -27,8 +28,16 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false)
     }
 
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setMenuOpen(false); triggerRef.current?.focus() }
+    }
+
     document.addEventListener("pointerdown", handlePointerDown)
-    return () => document.removeEventListener("pointerdown", handlePointerDown)
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown)
+      document.removeEventListener("keydown", handleKeyDown)
+    }
   }, [menuOpen])
 
   return (
@@ -40,11 +49,13 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
       <div className="topbar-center">
         <div ref={menuRef} className="topbar-avatar-wrapper">
           <button
+            ref={triggerRef}
             type="button"
             className="topbar-profile-trigger"
             title={t("settings.profile")}
             aria-label={t("settings.profile")}
             aria-expanded={menuOpen}
+            aria-haspopup="menu"
             onClick={() => setMenuOpen((open) => !open)}
           >
             <span className="topbar-username">{username}</span>
@@ -56,11 +67,11 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
             </span>
           </button>
           {menuOpen && (
-            <div className="topbar-dropdown">
-              <button onClick={() => { setMenuOpen(false); onProfile?.() }}><Settings size={16} strokeWidth={2} aria-hidden="true" />{t("settings.profile")}</button>
-              <button onClick={() => { setMenuOpen(false); onSwitchAccount?.() }}><Users size={16} strokeWidth={2} aria-hidden="true" />{t("common.switchAccount")}</button>
+            <div className="topbar-dropdown" role="menu">
+              <button role="menuitem" onClick={() => { setMenuOpen(false); onProfile?.() }}><User size={16} strokeWidth={2} aria-hidden="true" />{t("settings.profile")}</button>
+              <button role="menuitem" onClick={() => { setMenuOpen(false); onSwitchAccount?.() }}><Users size={16} strokeWidth={2} aria-hidden="true" />{t("common.switchAccount")}</button>
               <hr className="dropdown-divider" />
-              <button className="danger" onClick={() => { setMenuOpen(false); onLogout?.() }}><LogOut size={16} strokeWidth={2} aria-hidden="true" />{t("common.logout")}</button>
+              <button role="menuitem" className="danger" onClick={() => { setMenuOpen(false); onLogout?.() }}><LogOut size={16} strokeWidth={2} aria-hidden="true" />{t("common.logout")}</button>
             </div>
           )}
         </div>

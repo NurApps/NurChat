@@ -408,3 +408,18 @@
 .pinlock-key:disabled { opacity: 0.4; cursor: not-allowed; }
 .pinlock-key.empty { background: none; cursor: default; }
 .settings-pin-setup { margin-top: 8px; }
+
+.profile-edit-actions { display: flex; gap: 8px; align-items: stretch; margin-top: 12px; }
+.profile-edit-actions .settings-save-btn { flex: 1; }
+.profile-edit-actions .avatar-btn { padding: 0 18px; height: 48px; border-radius: 12px; font-size: 15px; }
+.settings-input[aria-invalid="true"] { border-color: var(--error); }
+.settings-choices { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.settings-choice {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background: var(--card-bg);
+  cursor: pointer;
+  font-size: 13px;
+}
+.settings-choice.active { border-color: var(--accent); background: var(--surface-variant); }

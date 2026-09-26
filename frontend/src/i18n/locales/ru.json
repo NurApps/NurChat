@@ -394,6 +394,8 @@
     "sessions": "Сессии",
     "sessionDesc": "Вы вошли как @{{username}} на этом устройстве.",
     "logoutAllDevices": "Выйти из всех устройств",
+    "logoutAllDesc": "Завершает все сессии этого аккаунта на всех устройствах, включая это. Потребуется войти заново.",
+    "confirmLogoutAll": "Выйти на всех устройствах? Сессии на других устройствах завершатся.",
     "advanced": "Дополнительно",
     "backups": "Бэкапы и восстановление",
     "callHistory": "История звонков",
@@ -443,7 +445,14 @@
     "avatarDeleted": "Аватар удалён",
     "avatarDeleteError": "Ошибка удаления",
     "userProfile": "Профиль пользователя",
-    "unknownUser": "Пользователь"
+    "unknownUser": "Пользователь",
+    "avatarAlt": "Аватар",
+    "avatarBadType": "Подходят только JPG, PNG и WebP",
+    "avatarTooLarge": "Файл больше 5 МБ",
+    "confirmRemoveAvatar": "Удалить аватар?",
+    "discardChanges": "Отменить несохранённые изменения?",
+    "firstNameTooShort": "Имя должно содержать минимум {{min}} символа",
+    "openProfile": "Открыть профиль"
   },
   "errors": {
     "general": "Произошла ошибка",

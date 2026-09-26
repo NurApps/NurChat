@@ -1170,7 +1170,7 @@ export default function ChatPage() {
         onAddContact={handleAddContact} onCloseAddContact={() => setShowAddContact(false)}
         showCreateChat={showCreateChat} onCreateChat={handleCreateChat}
         onCloseCreateChat={() => setShowCreateChat(false)}
-        profileUser={profileUser} onCloseProfile={() => setProfileUser(null)}
+        profileUser={profileUser} onCloseProfile={() => setProfileUser(null)} onWriteToUser={handleStartChat}
         showGroupSettings={showGroupSettings} selectedChat={selectedChat}
         onCloseGroupSettings={() => setShowGroupSettings(false)} onGroupUpdated={loadChats}
         showGlobalSearch={showGlobalSearch} chats={chats}

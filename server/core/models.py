@@ -37,6 +37,8 @@ class User(Base):
     last_seen = Column(DateTime(timezone=True), server_default=func.now())
     is_online = Column(Boolean, default=False)
     is_2fa_enabled = Column(Boolean, default=False)
+    # Unix-секунды: токены с iat <= этого значения недействительны («выйти со всех устройств»).
+    tokens_valid_after = Column(Integer, nullable=True)
 
     # FK messages.viewed_by даёт второй путь users↔messages — фиксируем,
     # что это отношение идёт по авторству (Message.user_id), иначе маппер

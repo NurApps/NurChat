@@ -18,6 +18,7 @@ interface Props {
   onCloseCreateChat: () => void
   profileUser: UserResponse | null
   onCloseProfile: () => void
+  onWriteToUser?: (userId: string) => void
   showGroupSettings: boolean
   selectedChat: ChatResponse | null
   onCloseGroupSettings: () => void
@@ -35,7 +36,7 @@ interface Props {
 export default function ChatModals({
   showAddContact, contacts, currentUser, onAddContact, onCloseAddContact,
   showCreateChat, onCreateChat, onCloseCreateChat,
-  profileUser, onCloseProfile,
+  profileUser, onCloseProfile, onWriteToUser,
   showGroupSettings, selectedChat, onCloseGroupSettings, onGroupUpdated,
   showGlobalSearch, chats, onSelectGlobalSearch, onCloseGlobalSearch,
   showMessageInfo, onCloseMessageInfo,
@@ -59,7 +60,7 @@ export default function ChatModals({
         />
       )}
       {profileUser && (
-        <UserProfileModal user={profileUser} onClose={onCloseProfile} />
+        <UserProfileModal user={profileUser} currentUserId={currentUser.id} onClose={onCloseProfile} onWrite={onWriteToUser} />
       )}
       {showGroupSettings && selectedChat?.is_group && (
         <GroupSettings chat={selectedChat} currentUser={currentUser} onClose={onCloseGroupSettings} onUpdated={onGroupUpdated} />

@@ -394,6 +394,8 @@
     "sessions": "Sessions",
     "sessionDesc": "You are signed in as @{{username}} on this device.",
     "logoutAllDevices": "Log out of all devices",
+    "logoutAllDesc": "Ends every session of this account on all devices, including this one. You will need to sign in again.",
+    "confirmLogoutAll": "Log out on all devices? Sessions on other devices will end.",
     "advanced": "Advanced",
     "backups": "Backups & Recovery",
     "callHistory": "Call History",
@@ -443,7 +445,14 @@
     "avatarDeleted": "Avatar deleted",
     "avatarDeleteError": "Delete failed",
     "userProfile": "User profile",
-    "unknownUser": "User"
+    "unknownUser": "User",
+    "avatarAlt": "Avatar",
+    "avatarBadType": "Only JPG, PNG and WebP are supported",
+    "avatarTooLarge": "File is larger than 5 MB",
+    "confirmRemoveAvatar": "Remove avatar?",
+    "discardChanges": "Discard unsaved changes?",
+    "firstNameTooShort": "First name must be at least {{min}} characters",
+    "openProfile": "Open profile"
   },
   "errors": {
     "general": "Something went wrong",

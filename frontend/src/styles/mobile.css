@@ -165,8 +165,8 @@
     display: flex;
     align-items: center;
     justify-content: space-around;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    /* No backdrop-filter here: the background above is opaque in every
+       theme, so blur rendered nothing — decoration without an effect. */
   }
 }
 

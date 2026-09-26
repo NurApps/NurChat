@@ -22,11 +22,9 @@
   100% { background-position: -200% 0; }
 }
 
-@keyframes slideDown {
-  from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
-  to { transform: translateX(-50%) translateY(0); opacity: 1; }
-}
-
+/* NOTE: no slideDown here on purpose — components.css owns a translateY-only
+   slideDown for full-width banners. A second same-named keyframes block with
+   translateX(-50%) used to sit here; whichever loaded last won silently. */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -98,10 +96,9 @@
 .animate-slide-right { animation: slideInRight 0.25s ease-out; }
 .animate-pop-in { animation: popIn 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
 
-.message-bubble { animation: msg-in 0.15s ease-out; }
-.my-row { animation: msg-in 0.15s ease-out; }
-.other-row { animation: msg-in 0.15s ease-out; }
-
+/* One authored entrance per message row: .msg-row alone. The old stack ran
+   msg-in on .my-row/.other-row AND chatFadeIn on .msg-row — every message
+   animated twice (.message-bubble targeted no live element at all). */
 .msg-row { animation: chatFadeIn 0.2s ease-out; }
 .notification-toast { animation: slideInRight 0.3s ease-out; }
 

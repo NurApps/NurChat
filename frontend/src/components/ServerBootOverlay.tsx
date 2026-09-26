@@ -118,7 +118,7 @@ export default function ServerBootOverlay({ onReady }: Props) {
   return (
     <div className="server-boot-overlay">
       <div className="server-boot-side">
-        <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18.36 5.64a9 9 0 1 1-12.73 0" />
           <line x1="12" y1="2" x2="12" y2="12" />
         </svg>
@@ -141,7 +141,12 @@ export default function ServerBootOverlay({ onReady }: Props) {
 
         {phase === "failed" && (
           <>
-            <div className="server-boot-icon error" style={{ fontSize: 48, marginBottom: 12 }}>⚠</div>
+            <div className="server-boot-icon error" style={{ marginBottom: 12 }} aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
             <h2 style={{ marginBottom: 8 }}>
               {relayRequired ? t("serverBoot.relayRequiredTitle") : t("serverBoot.relayUnavailable")}
             </h2>

@@ -234,6 +234,27 @@ body { margin: 0; }
   outline-offset: 2px;
 }
 
+/* ─── Browser surfaces: unthemed defaults read as "assembled, not built" ─── */
+
+::selection {
+  background: rgba(var(--accent-rgb), 0.28);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+input, textarea, [contenteditable="true"] {
+  caret-color: var(--accent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

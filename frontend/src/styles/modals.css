@@ -442,7 +442,15 @@
 .group-settings-btn:hover { background: var(--hover, #3a3a4a); }
 .group-settings-btn.primary { background: var(--tg-blue, #2AABEE); color: var(--on-accent, #fff); border-color: var(--tg-blue, #2AABEE); }
 .group-settings-btn.small { padding: 4px 10px; font-size: 12px; }
-.group-settings-btn.tiny { padding: 4px 8px; font-size: 14px; line-height: 1; }
+.group-settings-btn.tiny {
+  padding: 4px 8px;
+  font-size: 14px;
+  line-height: 1;
+  /* Icon-only buttons: keep drawn SVGs optically centered. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .group-settings-btn.danger { color: #ff6b6b; border-color: #ff6b6b33; }
 .group-settings-btn.danger:hover { background: #ff6b6b22; }
 .group-settings-btn.full { width: 100%; text-align: center; padding: 10px; }

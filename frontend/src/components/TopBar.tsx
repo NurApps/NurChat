@@ -71,7 +71,6 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
           {theme === "light" ? <Moon size={20} strokeWidth={2} aria-hidden="true" /> : <Sun size={20} strokeWidth={2} aria-hidden="true" />}
         </button>
         <button className="topbar-btn" title={t("common.minimizeToTray")} aria-label={t("common.minimizeToTray")} onClick={() => platform.minimizeToTray()}><ArrowUpToLine size={20} strokeWidth={2} aria-hidden="true" /></button>
-        <button className="topbar-btn danger" title={t("common.logout")} aria-label={t("common.logout")} onClick={onLogout}><LogOut size={20} strokeWidth={2} aria-hidden="true" /></button>
       </div>
     </div>
   )

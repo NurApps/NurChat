@@ -40,14 +40,17 @@ echo   5^) Build          Tauri installer (.exe)
 echo   6^) Checks         ruff + fast pytest subset
 echo   0^) Exit
 echo.
-choice /c 1234560 /n /m "  Select [1-6,0]: "
-if %errorlevel%==7 goto bye
-if %errorlevel%==6 set MODE=checks
-if %errorlevel%==5 set MODE=build
-if %errorlevel%==4 set MODE=tunnel
-if %errorlevel%==3 set MODE=relay
-if %errorlevel%==2 set MODE=vite
-if %errorlevel%==1 set MODE=dev
+set "SEL="
+set "MODE="
+set /p "SEL=  Select [1-6,0] and press Enter: "
+if "%SEL%"=="0" goto bye
+if "%SEL%"=="1" set MODE=dev
+if "%SEL%"=="2" set MODE=vite
+if "%SEL%"=="3" set MODE=relay
+if "%SEL%"=="4" set MODE=tunnel
+if "%SEL%"=="5" set MODE=build
+if "%SEL%"=="6" set MODE=checks
+if "%MODE%"=="" goto menu
 
 :dispatch
 if /i "%MODE%"=="dev" call :act_dev

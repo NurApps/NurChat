@@ -388,14 +388,18 @@ pub fn run() {
             }
 
             let show_label = "Показать NurChat";
-            let quit_label = "Выйти";
+            let quit_label = "Закрыть NurChat";
 
             let tray_menu = MenuBuilder::new(app)
                 .item(&tauri::menu::MenuItemBuilder::with_id("show", show_label).build(app)?)
                 .item(&tauri::menu::MenuItemBuilder::with_id("quit", quit_label).build(app)?)
                 .build()?;
 
-            let _tray = TrayIconBuilder::new()
+            let mut tray_builder = TrayIconBuilder::new();
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+            let _tray = tray_builder
                 .menu(&tray_menu)
                 .tooltip("NurChat")
                 .on_menu_event(move |app, event| {
@@ -438,7 +442,8 @@ pub fn run() {
 
             match event {
                 tauri::RunEvent::WindowEvent { label, event: win_event, .. } => {
-                    if let tauri::WindowEvent::CloseRequested { .. } = win_event {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = win_event {
+                        api.prevent_close();
                         if let Some(window) = app_handle.get_webview_window(&label) {
                             let _ = window.hide();
                         }

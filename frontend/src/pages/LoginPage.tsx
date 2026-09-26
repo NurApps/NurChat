@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
+import { claimLocalKeys } from "../services/localSession"
 import { BASE_URL, getRelayConfig, setRelayConfig } from "../config"
 import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
 
@@ -264,7 +265,8 @@ export default function LoginPage() {
       api.setToken(res.access_token, res.refresh_token)
       localStorage.setItem("user", JSON.stringify(res.user))
 
-      // Persist identity keys locally (encrypted at rest)
+      // Persist identity keys locally (encrypted at rest); drop leftovers of a previous account first
+      await claimLocalKeys(res.user.id)
       await saveKeys(e2eKeys)
       healPreKeys(e2eKeys, res.user.id, "register")
 
@@ -306,6 +308,7 @@ export default function LoginPage() {
 
       api.setToken(res.access_token, res.refresh_token)
       localStorage.setItem("user", JSON.stringify(res.user))
+      await claimLocalKeys(res.user.id)
       const keys = await loadKeys()
       if (keys) healPreKeys(keys, res.user.id, "login")
       navigate("/chat", { replace: true })
@@ -332,6 +335,7 @@ export default function LoginPage() {
       const res = await api.verify2faLogin(code)
       api.setToken(res.access_token, res.refresh_token)
       localStorage.setItem("user", JSON.stringify(res.user))
+      await claimLocalKeys(res.user.id)
       const keys = await loadKeys()
       if (keys) healPreKeys(keys, res.user.id, "2fa")
       setAwaiting2fa(false)

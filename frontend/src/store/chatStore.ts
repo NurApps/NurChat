@@ -68,6 +68,8 @@ interface ChatState {
   setUploading: (uploading: boolean) => void
   setUploadProgress: (progress: number) => void
 
+  /** Сброс всего пользовательского состояния (выход / смена аккаунта). */
+  reset: () => void
   loadChats: () => Promise<void>
   loadContacts: () => Promise<void>
   loadInvites: () => Promise<void>
@@ -86,12 +88,11 @@ function getCurrentUser(): UserResponse {
   }
 }
 
-export const useChatStore = create<ChatState>((set) => ({
-  currentUser: getCurrentUser(),
-  tab: "chats",
-  chats: [],
-  contacts: [],
-  invites: [],
+const initialUiState = () => ({
+  tab: "chats" as Tab,
+  chats: [] as ChatResponse[],
+  contacts: [] as ContactResponse[],
+  invites: [] as GroupInviteResponse[],
   search: "",
   selectedChat: null,
   onlineUsers: {},
@@ -110,6 +111,18 @@ export const useChatStore = create<ChatState>((set) => ({
   showEmoji: false,
   uploading: false,
   uploadProgress: 0,
+  chatsLoaded: false,
+  chatsError: null,
+})
+
+export const useChatStore = create<ChatState>((set) => ({
+  currentUser: getCurrentUser(),
+  ...initialUiState(),
+
+  reset: () => {
+    loadChatsInflight = null
+    set({ ...initialUiState(), currentUser: getCurrentUser() })
+  },
 
   setTab: (tab) => set({ tab }),
   setSearch: (search) => set({ search }),
@@ -130,9 +143,6 @@ export const useChatStore = create<ChatState>((set) => ({
   setShowEmoji: (show) => set({ showEmoji: show }),
   setUploading: (uploading) => set({ uploading }),
   setUploadProgress: (progress) => set({ uploadProgress: progress }),
-
-  chatsLoaded: false,
-  chatsError: null,
 
   loadChats: async () => {
     // Single-flight: ChatPage-mount и каждый WS-(re)connect зовут loadChats,

@@ -7,6 +7,7 @@ import { BASE_URL, avatarUrl, getRelayConfig, setRelayConfig, resetRelayConfig }
 import { useAvatar } from "../hooks/useAvatar"
 import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
+import { performLogout, releaseLocalKeys } from "../services/localSession"
 import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
@@ -316,8 +317,7 @@ export default function SettingsPage() {
 
   const handleLogout = () => {
     if (!confirm(t("settings.confirmLogout"))) return
-    api.clearToken()
-    clearPin()
+    performLogout()
     navigate("/login", { replace: true })
   }
 
@@ -339,10 +339,10 @@ export default function SettingsPage() {
     if (!confirm(t("settings.confirmDeleteAccountSecond"))) return
     try {
       await api.deleteAccount()
-      clearKeys()
+      await clearKeys()
+      releaseLocalKeys()
       clearSettings()
-      api.clearToken()
-      clearPin()
+      performLogout()
       navigate("/login", { replace: true })
     } catch {
       setMsg(t("settings.deleteError"))

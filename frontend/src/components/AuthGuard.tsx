@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
 import { isPinEnabled } from "../services/pinLock"
+import { performLogout } from "../services/localSession"
 import { useChatStore } from "../store/chatStore"
 import PinLock from "./PinLock"
 
@@ -43,7 +44,7 @@ export default function AuthGuard({ children }: Props) {
           setChecking(false)
         } else {
           // Auth error (401, 403, etc.) — token is invalid
-          api.clearToken()
+          performLogout()
           navigate("/login", { replace: true })
         }
       })

@@ -16,7 +16,7 @@ import { loadKeys as loadE2EKeys, decryptMessage, ensurePreKeysUploaded, type E2
 import { initGroupKey, fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications } from "../services/notifications"
-import { clearPin } from "../services/pinLock"
+import { performLogout } from "../services/localSession"
 import { avatarUrl, BASE_URL } from "../config"
 import { useChatStore } from "../store/chatStore"
 import TopBar from "../components/TopBar"
@@ -782,7 +782,7 @@ export default function ChatPage() {
   const handleViewProfile = useCallback((user: UserResponse) => setProfileUser(user), [setProfileUser])
 
   const handleProfile = useCallback(() => navigate("/profile"), [navigate])
-  const handleLogout = useCallback(() => { api.clearToken(); clearPin(); navigate("/login", { replace: true }) }, [navigate])
+  const handleLogout = useCallback(() => { performLogout(); navigate("/login", { replace: true }) }, [navigate])
   const handleSettings = useCallback(() => navigate("/settings"), [navigate])
 
   const mentionCandidates = mentionQuery && selectedChat

@@ -2,11 +2,7 @@ import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import type { FileUploadResponse } from "../types"
-import { ArrowLeft, FileText, Folder, Image, Mic, Music2, Video } from "lucide-react"
-
-interface Props {
-  onClose: () => void
-}
+import { FileText, Folder, Image, Mic, Music2, Video } from "lucide-react"
 
 const FILE_ICONS = {
   image: Image,
@@ -22,7 +18,7 @@ const FileIcon = ({ type }: { type: string }) => {
   return <Icon size={18} strokeWidth={2} aria-hidden="true" />
 }
 
-export default function FileManager({ onClose }: Props) {
+export default function FileManager() {
   const { t } = useTranslation()
   const [files, setFiles] = useState<FileUploadResponse[]>([])
   const [loading, setLoading] = useState(true)
@@ -63,12 +59,6 @@ export default function FileManager({ onClose }: Props) {
 
   return (
     <div className="file-manager-inline">
-      <div className="fm-inline-header">
-        <button className="fm-back-btn" onClick={onClose} title={t("common.back")}>
-          <ArrowLeft size={18} strokeWidth={2} aria-hidden="true" />
-        </button>
-        <span className="fm-inline-title">{t("chat.files")}</span>
-      </div>
       <div className="fm-inline-filters">
         {fileTypes.map((ft) => (
           <button

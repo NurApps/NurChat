@@ -292,7 +292,7 @@ export default function ChatSidebar({
         )}
         {tab === "files" && (
           <div className="list-scroll" role="tabpanel" id="sidebar-panel-files" aria-labelledby="sidebar-tab-files">
-            <FileManager onClose={() => setTab("chats")} />
+            <FileManager />
           </div>
         )}
       </div>

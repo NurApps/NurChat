@@ -263,29 +263,6 @@ export default function ChatSidebar({
             {chatsLoaded && !chatsError && filteredChats.length === 0 && !search && (
               <p className="list-empty">{t("chat.noChats")}</p>
             )}
-            {(!search || t("chat.bookmarks").toLowerCase().includes(search.toLowerCase())) && (
-              <div
-                className={`chat-list-item favorites-entry${isFavoritesOpen ? " active" : ""}`}
-                onClick={onOpenFavorites} role="button" tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter") onOpenFavorites() }}
-              >
-                <div className="cli-avatar">
-                  <div className="cli-avatar-circle favorites-avatar-circle">
-                    <Bookmark size={18} strokeWidth={2} aria-hidden="true" />
-                  </div>
-                </div>
-                <div className="cli-info">
-                  <div className="cli-top-row">
-                    <div className="cli-name-row">
-                      <span className="cli-name">{t("chat.bookmarks")}</span>
-                    </div>
-                  </div>
-                  <div className="cli-bottom-row">
-                    <span className="cli-preview">{lastFavorite ? lastFavorite.content : t("bookmarks.empty")}</span>
-                  </div>
-                </div>
-              </div>
-            )}
             {filteredChats.map((chat) => (
               <ChatListItem key={chat.id} chat={chat} currentUser={currentUser}
                 selected={chat.id === selectedChatId}

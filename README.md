@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/icon.png" width="120" alt="NurChat Logo">
+  <img src="frontend/public/icons.svg" width="120" alt="NurChat Logo">
 </p>
 
 <h1 align="center">NurChat</h1>

@@ -229,6 +229,29 @@ export default function ChatSidebar({
         {tab === "chats" && (
           <div className="list-scroll" ref={chatListRef} role="tabpanel" id="sidebar-panel-chats" aria-labelledby="sidebar-tab-chats">
             {!chatsLoaded && <ChatListSkeleton />}
+            {chatsLoaded && (!search || t("chat.bookmarks").toLowerCase().includes(search.toLowerCase())) && (
+              <div
+                className={`chat-list-item favorites-entry${isFavoritesOpen ? " active" : ""}`}
+                onClick={onOpenFavorites} role="button" tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter") onOpenFavorites() }}
+              >
+                <div className="cli-avatar">
+                  <div className="cli-avatar-circle favorites-avatar-circle">
+                    <Bookmark size={18} strokeWidth={2} aria-hidden="true" />
+                  </div>
+                </div>
+                <div className="cli-info">
+                  <div className="cli-top-row">
+                    <div className="cli-name-row">
+                      <span className="cli-name">{t("chat.bookmarks")}</span>
+                    </div>
+                  </div>
+                  <div className="cli-bottom-row">
+                    <span className="cli-preview">{lastFavorite ? lastFavorite.content : t("bookmarks.empty")}</span>
+                  </div>
+                </div>
+              </div>
+            )}
             {chatsLoaded && chatsError && filteredChats.length === 0 && (
               <div className="list-empty" role="alert">
                 <p>{t("chat.chatsLoadFailed")}</p>

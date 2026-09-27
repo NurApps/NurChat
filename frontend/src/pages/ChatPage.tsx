@@ -82,6 +82,20 @@ export default function ChatPage() {
     })
   }, [chats, search, currentUser.id])
 
+  // Поиск в шапке сайдбара фильтрует не только чаты, но и контакты/приглашения —
+  // раньше поле молча ничего не делало на вкладках "Контакты" и "Приглашения".
+  const filteredContacts = useMemo(() => {
+    if (!search) return contacts
+    const q = search.toLowerCase()
+    return contacts.filter((c) => c.contact_user.username.toLowerCase().includes(q))
+  }, [contacts, search])
+
+  const filteredInvites = useMemo(() => {
+    if (!search) return invites
+    const q = search.toLowerCase()
+    return invites.filter((i) => i.group.name.toLowerCase().includes(q) || i.inviter.username.toLowerCase().includes(q))
+  }, [invites, search])
+
   const input = useChatStore((s) => s.input)
   const showEmoji = useChatStore((s) => s.showEmoji)
   const uploading = useChatStore((s) => s.uploading)
@@ -864,10 +878,11 @@ export default function ChatPage() {
         {!(isMobile && selectedChat) && (
         <ChatSidebar
           tab={tab} setTab={setTab} search={search} setSearch={setSearch}
-          chats={chats} filteredChats={filteredChats} contacts={contacts} invites={invites}
-          currentUser={currentUser} chatListRef={chatListRef}
-          scrollToMessageId={scrollToMessageId} setScrollToMessageId={setScrollToMessageId}
-          setSelectedChat={setSelectedChat} setShowCreateChat={setShowCreateChat}
+          filteredChats={filteredChats} filteredContacts={filteredContacts}
+          invites={invites} filteredInvites={filteredInvites}
+          currentUser={currentUser} selectedChatId={selectedChat?.id ?? null} isMobile={isMobile}
+          chatListRef={chatListRef}
+          setShowCreateChat={setShowCreateChat}
           setShowAddContact={setShowAddContact}
           handleSelectChat={handleSelectChat} handlePin={handlePin}
           handleMute={handleMute} handleDeleteChat={handleDeleteChat}

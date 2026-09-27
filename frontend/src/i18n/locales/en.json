@@ -91,6 +91,7 @@
     "relayCheckFailed": "Relay unreachable — check the address"
   },
   "chat": {
+    "sidebar": "Sidebar",
     "chats": "Chats",
     "contacts": "Contacts",
     "bookmarks": "Bookmarks",
@@ -146,6 +147,11 @@
     "unpin": "Unpin",
     "muteNotifications": "Mute notifications",
     "unmuteNotifications": "Unmute notifications",
+    "deleteChat": "Delete chat",
+    "chatMenu": "Chat menu",
+    "resizeSidebar": "Resize sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
     "messageMenu": "Message menu",
     "copy": "Copy",
     "reply": "Reply",
@@ -451,8 +457,7 @@
     "avatarTooLarge": "File is larger than 5 MB",
     "confirmRemoveAvatar": "Remove avatar?",
     "discardChanges": "Discard unsaved changes?",
-    "firstNameTooShort": "First name must be at least {{min}} characters",
-    "openProfile": "Open profile"
+    "firstNameTooShort": "First name must be at least {{min}} characters"
   },
   "errors": {
     "general": "Something went wrong",

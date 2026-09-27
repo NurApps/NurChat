@@ -12,12 +12,33 @@
 }
 
 .chat-sidebar {
+  position: relative;
   width: 320px;
   min-width: 320px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--divider);
   background: var(--surface);
+}
+
+/* Ручка для изменения ширины сайдбара мышью или клавиатурой (Arrow/Home/End),
+   двойной клик сбрасывает к ширине по умолчанию. Скрыта на мобильной раскладке. */
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+  touch-action: none;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:focus-visible {
+  background: rgba(var(--accent-rgb), 0.4);
+  outline: none;
 }
 
 .chat-main {
@@ -46,10 +67,36 @@
 .chat-placeholder p { font-size: 14px; margin: 0; }
 
 /* Sidebar */
+.sidebar-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px 0;
+}
+
 .sidebar-tabs {
   display: flex;
-  padding: 8px 12px 0;
+  flex: 1;
+  min-width: 0;
   gap: 4px;
+}
+
+.sidebar-collapse-btn { flex-shrink: 0; }
+
+/* Свёрнутая панель — узкая полоса иконок вкладок, клик по любой разворачивает
+   панель обратно и переключает вкладку (не тупиковое состояние). */
+.chat-sidebar.collapsed .sidebar-tabs-row {
+  flex-direction: column;
+  padding: 8px 4px 0;
+}
+
+.chat-sidebar.collapsed .sidebar-tabs {
+  flex-direction: column;
+  width: 100%;
+}
+
+.chat-sidebar.collapsed .sidebar-tab {
+  border-radius: 8px;
 }
 
 .sidebar-tab {
@@ -85,7 +132,9 @@
   padding: 1px 6px;
   min-width: 18px;
   text-align: center;
-  animation: pulse 2s infinite;
+  /* Конечная анимация: привлекает внимание пару раз и успокаивается —
+     бесконечный pulse на непрочитанных приглашениях отвлекал постоянно. */
+  animation: pulse 1.4s ease-out 2;
 }
 
 .sidebar-search {
@@ -195,6 +244,13 @@
 }
 
 .chat-list-item:hover { background: var(--surface-variant); }
+
+/* Выделение открытого чата — раньше в списке ничем не отличался от остальных. */
+.chat-list-item.active {
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.chat-list-item.active:hover { background: rgba(var(--accent-rgb), 0.18); }
 
 .cli-avatar {
   position: relative;

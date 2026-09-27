@@ -28,6 +28,7 @@ import NotificationToast from "../components/NotificationToast"
 import { MessageListSkeleton } from "../components/Skeleton"
 import type { UserResponse, MessageResponse } from "../types"
 import ChatSidebar from "../components/ChatSidebar"
+import FavoritesChatWindow from "../components/FavoritesChatWindow"
 import ChatModals from "../components/ChatModals"
 
 import { getDraft, saveDraft, removeDraft } from "../utils/drafts"
@@ -137,6 +138,7 @@ export default function ChatPage() {
   const [e2eKeys, setE2eKeys] = useState<E2EKeys | null>(null)
   const [keyWarning, setKeyWarning] = useState<string | null>(null)
   const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null)
+  const [showFavoritesChat, setShowFavoritesChat] = useState(false)
   const [recording, setRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
@@ -652,7 +654,7 @@ export default function ChatPage() {
   const handleStartChat = useCallback(async (userId: string) => {
     try {
       const chat = await api.createChat("", [userId], false)
-      loadChats(); setSelectedChat(chat); setTab("chats"); setMessages([])
+      loadChats(); setShowFavoritesChat(false); setSelectedChat(chat); setTab("chats"); setMessages([])
     } catch { setErrorToast(t("errors.createChat")) }
   }, [loadChats, setSelectedChat, setTab, setMessages, setErrorToast, t])
 
@@ -672,7 +674,7 @@ export default function ChatPage() {
     try {
       const isGroup = participantIds.length > 1
       const chat = await api.createChat(name || "", participantIds, isGroup, isSecret || false, secretTtl || 0)
-      setShowCreateChat(false); loadChats(); setSelectedChat(chat); setTab("chats"); setMessages([])
+      setShowCreateChat(false); loadChats(); setShowFavoritesChat(false); setSelectedChat(chat); setTab("chats"); setMessages([])
 
       // Initialize group E2E key for new group chats
       if (isGroup && e2eKeys) {
@@ -875,7 +877,7 @@ export default function ChatPage() {
 
       <div className="chat-body">
         {/* Sidebar — hidden on mobile when chat selected */}
-        {!(isMobile && selectedChat) && (
+        {!(isMobile && (selectedChat || showFavoritesChat)) && (
         <ChatSidebar
           tab={tab} setTab={setTab} search={search} setSearch={setSearch}
           filteredChats={filteredChats} filteredContacts={filteredContacts}
@@ -884,18 +886,23 @@ export default function ChatPage() {
           chatListRef={chatListRef}
           setShowCreateChat={setShowCreateChat}
           setShowAddContact={setShowAddContact}
-          handleSelectChat={handleSelectChat} handlePin={handlePin}
+          handleSelectChat={(chatId) => { setShowFavoritesChat(false); handleSelectChat(chatId) }}
+          handlePin={handlePin}
           handleMute={handleMute} handleDeleteChat={handleDeleteChat}
           handleRemoveContact={handleRemoveContact} handleStartChat={handleStartChat}
           handleAcceptInvite={handleAcceptInvite} handleDeclineInvite={handleDeclineInvite}
           chatsLoaded={chatsLoaded} chatsError={chatsError} onRetryChats={loadChats}
           onGlobalSearch={() => setShowGlobalSearch(true)}
+          onOpenFavorites={() => { setSelectedChat(null); setShowFavoritesChat(true) }}
+          isFavoritesOpen={showFavoritesChat}
         />
         )}
 
         {/* Main */}
         <div className="chat-main" role="main" id="main-content">
-          {!selectedChat ? (
+          {showFavoritesChat ? (
+            <FavoritesChatWindow isMobile={isMobile} onClose={() => setShowFavoritesChat(false)} />
+          ) : !selectedChat ? (
             <div className="chat-placeholder" role="status">
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="1.5" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
               <h3>NurChat</h3>
@@ -1191,7 +1198,7 @@ export default function ChatPage() {
         showGlobalSearch={showGlobalSearch} chats={chats}
         onSelectGlobalSearch={(chatId, messageId) => {
           const chat = chats.find(c => c.id === chatId)
-          if (chat) { setSelectedChat(chat); setTab("chats") }
+          if (chat) { setShowFavoritesChat(false); setSelectedChat(chat); setTab("chats") }
           if (messageId) setScrollToMessageId(messageId)
           setShowGlobalSearch(false)
         }}

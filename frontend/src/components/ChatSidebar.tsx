@@ -5,9 +5,10 @@ import ContactListItem from "./ContactListItem"
 import GroupInviteItem from "./GroupInviteItem"
 import { ChatListSkeleton } from "./Skeleton"
 import FileManager from "./FileManager"
+import { useFavoritesStore } from "../store/favoritesStore"
 import type { UserResponse, ChatResponse, ContactResponse, GroupInviteResponse } from "../types"
 import type { Tab } from "../store/chatStore"
-import { ChevronLeft, ChevronRight, File, Globe, MessageCircle, Search, UserPlus, Users, Plus } from "lucide-react"
+import { Bookmark, ChevronLeft, ChevronRight, File, Globe, MessageCircle, Search, UserPlus, Users, Plus } from "lucide-react"
 
 const SIDEBAR_WIDTH_KEY = "nurchat_sidebar_width"
 const SIDEBAR_COLLAPSED_KEY = "nurchat_sidebar_collapsed"
@@ -65,6 +66,8 @@ interface Props {
   chatsError: string | null
   onRetryChats: () => void
   onGlobalSearch: () => void
+  onOpenFavorites: () => void
+  isFavoritesOpen: boolean
 }
 
 const TABS = [
@@ -80,10 +83,12 @@ export default function ChatSidebar({
   setShowCreateChat, setShowAddContact,
   handleSelectChat, handlePin, handleMute, handleDeleteChat,
   handleRemoveContact, handleStartChat, handleAcceptInvite, handleDeclineInvite,
-  chatsLoaded, chatsError, onRetryChats, onGlobalSearch,
+  chatsLoaded, chatsError, onRetryChats, onGlobalSearch, onOpenFavorites, isFavoritesOpen,
 }: Props) {
   const { t } = useTranslation()
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const favoritesItems = useFavoritesStore((s) => s.items)
+  const lastFavorite = favoritesItems[favoritesItems.length - 1]
 
   const [width, setWidth] = useState(loadStoredWidth)
   const [collapsed, setCollapsed] = useState(loadStoredCollapsed)
@@ -232,8 +237,31 @@ export default function ChatSidebar({
                 </button>
               </div>
             )}
-            {chatsLoaded && !chatsError && filteredChats.length === 0 && (
+            {chatsLoaded && !chatsError && filteredChats.length === 0 && !search && (
               <p className="list-empty">{t("chat.noChats")}</p>
+            )}
+            {(!search || t("chat.bookmarks").toLowerCase().includes(search.toLowerCase())) && (
+              <div
+                className={`chat-list-item favorites-entry${isFavoritesOpen ? " active" : ""}`}
+                onClick={onOpenFavorites} role="button" tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter") onOpenFavorites() }}
+              >
+                <div className="cli-avatar">
+                  <div className="cli-avatar-circle favorites-avatar-circle">
+                    <Bookmark size={18} strokeWidth={2} aria-hidden="true" />
+                  </div>
+                </div>
+                <div className="cli-info">
+                  <div className="cli-top-row">
+                    <div className="cli-name-row">
+                      <span className="cli-name">{t("chat.bookmarks")}</span>
+                    </div>
+                  </div>
+                  <div className="cli-bottom-row">
+                    <span className="cli-preview">{lastFavorite ? lastFavorite.content : t("bookmarks.empty")}</span>
+                  </div>
+                </div>
+              </div>
             )}
             {filteredChats.map((chat) => (
               <ChatListItem key={chat.id} chat={chat} currentUser={currentUser}

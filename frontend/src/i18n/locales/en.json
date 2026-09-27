@@ -249,8 +249,12 @@
     "allowMultiple": "Multiple choices"
   },
   "bookmarks": {
-    "empty": "No bookmarks",
-    "remove": "Remove from bookmarks"
+    "empty": "No messages in Favorites",
+    "remove": "Remove from bookmarks",
+    "notePlaceholder": "Note to self...",
+    "clearAll": "Clear",
+    "clearConfirmText": "Are you sure you want to delete all messages saved to Favorites?",
+    "clearWarning": "This action cannot be undone."
   },
   "updates": {
     "downloading": "Downloading update {{version}}…",

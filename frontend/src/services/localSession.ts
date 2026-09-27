@@ -10,6 +10,7 @@ import { api } from "./api"
 import { clearPin } from "./pinLock"
 import { clearKeys, resetMemoryCaches } from "./e2e"
 import { clearPlaintextCache } from "./plaintextCache"
+import { useFavoritesStore } from "../store/favoritesStore"
 import { useChatStore } from "../store/chatStore"
 
 const KEYS_OWNER_KEY = "e2e_keys_owner"
@@ -35,6 +36,7 @@ export async function claimLocalKeys(userId: string): Promise<boolean> {
   if (owner && owner !== userId) {
     await clearKeys()
     clearPlaintextCache()
+    useFavoritesStore.getState().clear()
     wiped = true
   }
   try { localStorage.setItem(KEYS_OWNER_KEY, userId) } catch { /* ignore */ }
@@ -45,4 +47,5 @@ export async function claimLocalKeys(userId: string): Promise<boolean> {
 export function releaseLocalKeys(): void {
   try { localStorage.removeItem(KEYS_OWNER_KEY) } catch { /* ignore */ }
   clearPlaintextCache()
+  useFavoritesStore.getState().clear()
 }

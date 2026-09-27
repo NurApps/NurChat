@@ -35,7 +35,8 @@ class CallManager:
         периодическая ре-верификация токена (отозванный JWT раньше жил
         в звонках вечно).
         """
-        await websocket.accept()
+        from server.ws.subprotocol import accept_ws
+        await accept_ws(websocket)
         self.call_websockets[user_id] = websocket
 
         await self._flush_pending_messages(user_id)

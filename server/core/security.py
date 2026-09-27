@@ -43,6 +43,40 @@ class SecurityManager:
         return cast(str, jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM))
 
     @staticmethod
+    def create_file_token(user_id: str, file_id: str, ttl_seconds: int = 60) -> str:
+        """Короткоживущий scoped-токен на скачивание ОДНОГО файла.
+
+        Замена полному JWT в `?token=`: утечка такого токена (логи прокси,
+        история) даёт максимум 60 секунд доступа к одному файлу, а не
+        30 минут полного доступа к API. К API/WS/файлам чужим он не подходит
+        (type=file_token, scope=file:<id>).
+        """
+        to_encode = {
+            "sub": user_id,
+            "type": "file_token",
+            "scope": f"file:{file_id}",
+            "jti": secrets.token_hex(16),
+            "exp": datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+        }
+        return cast(str, jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM))
+
+    @staticmethod
+    def verify_file_token(token: str, file_id: str) -> dict:
+        """Верификация scoped-токена строго под запрошенный file_id."""
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        except jwt.PyJWTError:
+            raise AuthenticationError("Невалидный токен")
+        if payload.get("type") != "file_token":
+            raise AuthenticationError("Требуется file-токен")
+        if payload.get("scope") != f"file:{file_id}":
+            raise AuthenticationError("Токен выпущен для другого файла")
+        jti = payload.get("jti")
+        if jti and is_token_revoked(jti):
+            raise AuthenticationError("Токен отозван")
+        return cast(dict, payload)
+
+    @staticmethod
     def revoke(token_str: str) -> None:
         """Revoke a token by adding its jti to blacklist (until its natural expiry)."""
         try:

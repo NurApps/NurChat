@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
+import { getAccessToken } from "../services/tokenVault"
 import { platform } from "../services/platform"
 
 interface MediaViewerProps {
@@ -31,7 +32,7 @@ export default function MediaViewer({ type, url, filename, fileId, onClose }: Me
   }
 
   const handleOpenExternal = async () => {
-    const token = localStorage.getItem("token")
+    const token = getAccessToken()
     if (!token) { setDocError(true); return }
     setOpening(true)
     try {

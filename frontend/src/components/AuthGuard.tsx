@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { api } from "../services/api"
+import { hasSession } from "../services/tokenVault"
 import { isPinEnabled } from "../services/pinLock"
 import { useChatStore } from "../store/chatStore"
 import PinLock from "./PinLock"
@@ -15,8 +16,7 @@ export default function AuthGuard({ children }: Props) {
   const [locked, setLocked] = useState(false)
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    if (!token) {
+    if (!hasSession()) {
       navigate("/login", { replace: true })
       return
     }

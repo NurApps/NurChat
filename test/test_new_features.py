@@ -113,9 +113,13 @@ def _solve_captcha(client) -> tuple[str, str]:
     data = r.json()
     q = data["question"]
     nums = [int(n) for n in re.findall(r"\d+", q)]
-    if "×" in q or "x" in q:
+    if "÷" in q:
+        answer = nums[0] // nums[1]
+    elif len(nums) >= 3:
+        answer = nums[0] + nums[1] - nums[2]
+    elif "×" in q or "x" in q:
         answer = nums[0] * nums[1]
-    elif "-" in q:
+    elif "-" in q or "−" in q:
         answer = nums[0] - nums[1]
     else:
         answer = nums[0] + nums[1]

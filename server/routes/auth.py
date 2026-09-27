@@ -12,7 +12,7 @@ from server.core import models, schemas
 from server.core.audit import client_ip, log_audit
 from server.core.database import get_db
 from server.core.security import security, verify_pending_2fa_dependency, verify_token_dependency
-from server.utils.captcha import generate_captcha, validate_captcha
+from server.utils.captcha import captcha_manager, generate_captcha, validate_captcha
 from server.utils.logger import logger
 from server.utils.security import (
     decrypt_totp_secret,
@@ -35,6 +35,22 @@ from shared.exceptions import AuthenticationError
 from shared.rate_limiter import limiter
 
 router = APIRouter()
+
+
+def _lock_ip(request: Request) -> str:
+    """IP-ключ для lockout'ов (только in-memory, никуда не пишется).
+
+    client_ip() при LOG_IPS=False возвращает None (deaf relay не хранит IP
+    даже в audit-лог) — для lockout-ключа это давало бы один глобальный
+    ключ на всех. Здесь IP нужен лишь как ключ счётчика в памяти.
+    Оговорка: XFF за недоверенным прокси подделывается — поэтому IP-lockout
+    лишь первый рубеж; перебор логина дополнительно душится lockout'ом
+    по username (от XFF не зависит) и slowapi-лимитами.
+    """
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 @router.get("/captcha")
@@ -70,13 +86,22 @@ async def register(
     db: Session = Depends(get_db)
 ):
     """Регистрация пользователя с именем и фамилией"""
+    # Капча-спам с одного IP душится lockout'ом (pentest #5).
+    reg_lock_key = f"register:{_lock_ip(request)}"
+    if captcha_manager.is_locked_out(reg_lock_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Слишком много попыток. Повторите через несколько минут",
+        )
     # Validate CAPTCHA first
     if not validate_captcha(captcha_id, captcha_code):
+        captcha_manager.record_failure(reg_lock_key)
         logger.warning(f"Registration: invalid CAPTCHA from {client_ip(request)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Неверная CAPTCHA"
         )
+    captcha_manager.record_success(reg_lock_key)
 
     if not first_name or len(first_name.strip()) < 2:
         raise HTTPException(
@@ -193,12 +218,24 @@ async def login(
 ):
     """Вход пользователя с проверкой пароля и 2FA"""
     try:
+        # Account lockout (pentest #6): перебор пароля к конкретному
+        # username за IP-лимитом не спрячешь (атакующий ротирует IP) —
+        # после 10 неверных попыток за 15 минут аккаунт молчит 5 минут.
+        # Цена: злоумышленник может временно заблокировать чужой логин;
+        # порог высокий, ошибка — generic, без подсказок о существовании.
+        lock_key = f"login:{user_data.username.strip().lower()}"
+        if captcha_manager.is_locked_out(lock_key):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Слишком много попыток. Повторите через несколько минут",
+            )
         user = db.query(models.User).filter(
             models.User.username == user_data.username
         ).first()
 
         if not user:
             logger.warning(f"Login attempt with non-existent username: {user_data.username}")
+            captcha_manager.record_failure(lock_key)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Неверные учетные данные"
@@ -206,10 +243,13 @@ async def login(
 
         if not verify_password_argon2(user_data.password, user.hashed_password):
             logger.warning(f"Login attempt with wrong password for username: {user_data.username}")
+            captcha_manager.record_failure(lock_key)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Неверные учетные данные"
             )
+
+        captcha_manager.record_success(lock_key)
 
         if user.is_2fa_enabled:
             access_token = security.create_access_token(

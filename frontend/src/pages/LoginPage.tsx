@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
+import { hasSession } from "../services/tokenVault"
 import { BASE_URL, getRelayConfig, setRelayConfig } from "../config"
 import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
 
@@ -176,8 +177,9 @@ export default function LoginPage() {
 
   // Auto-login or check server health
   useEffect(() => {
-    const token = localStorage.getItem("token")
-    if (token) {
+    // tokenVault: access живёт в памяти — после reload его нет, но есть
+    // refresh: getCurrentUser → 401 → silent refresh → вход без логина.
+    if (hasSession()) {
       api.getCurrentUser()
         .then(async (user) => {
           localStorage.setItem("user", JSON.stringify(user))

@@ -149,11 +149,6 @@ class CSRFMiddleware:
             if not hmac.compare_digest(signature, expected_signature):
                 return False
 
-
-
-            if not hmac.compare_digest(signature, expected_signature):
-                return False
-
             # Check token expiration
             try:
                 timestamp = datetime.fromisoformat(timestamp_str)
@@ -166,60 +161,12 @@ class CSRFMiddleware:
         except Exception:
             return False
 
-
-
-            return True
-        except Exception:
-            return False
-
     def _is_exempt_path(self, path: str) -> bool:
         """Check if path is exempt from CSRF protection"""
         for exempt in self.exempt_paths:
             if path.startswith(exempt):
                 return True
         return False
-
-    async def dispatch(self, request: Request, call_next):
-        from starlette.responses import Response
-
-        # Generate a new CSRF token for all requests
-        new_token = self._generate_token()
-
-        # Process the request
-        response = await call_next(request)
-
-        # Set CSRF token in cookie (non-HttpOnly so JS can read it for X-CSRF-Token header)
-        if isinstance(response, Response):
-            response.set_cookie(
-                key=self.cookie_name,
-                value=new_token,
-                max_age=int(self.token_lifetime.total_seconds()),
-                httponly=False,
-                secure=not settings.DEBUG,
-                samesite="lax",
-                path="/",
-            )
-
-        # Only validate state-changing methods
-        if request.method in ["POST", "PUT", "PATCH", "DELETE"]:
-            if not self._is_exempt_path(request.url.path):
-                csrf_token = request.headers.get(self.header_name)
-
-                if not csrf_token:
-                    return JSONResponse(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        content={"detail": "CSRF token missing"}
-                    )
-
-                if not self._validate_token(csrf_token):
-                    return JSONResponse(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        content={"detail": "CSRF token missing or invalid"}
-                    )
-
-        return response
-
-
 
 def generate_csrf_token() -> str:
     """Utility function to generate CSRF token"""

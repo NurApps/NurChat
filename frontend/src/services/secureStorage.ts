@@ -17,6 +17,11 @@
  *   localStorage (origin-isolated, not exfiltrated by simple XSS string
  *   theft of localStorage), but a full IndexedDB dump still defeats it.
  *   Documented honestly — do not claim otherwise.
+ * - HARDENING: setDevicePassphrase(pw) mixes a memory-only per-session
+ *   secret into the wrapping-key derivation. With it set, an at-rest dump
+ *   alone is insufficient (attacker also needs live JS memory). UI wiring
+ *   is opt-in (e.g. PIN-unlock screen); without it the limitation above
+ *   applies.
  */
 
 import { openDB, type IDBPDatabase } from "idb"
@@ -100,17 +105,40 @@ async function getDB(): Promise<IDBPDatabase> {
 /**
  * Derive a non-extractable AES-256-GCM CryptoKey from device_secret.
  * This key encrypts all data before writing to IndexedDB.
+ *
+ * Pentest #2: optionally mixed with a per-session passphrase
+ * (setDevicePassphrase, memory-only, never persisted). With a passphrase
+ * set, a bare IndexedDB dump is NOT sufficient to decrypt — the attacker
+ * needs the live-session secret too. Without it, the documented browser
+ * limitation stands (no OS keystore in a web app).
  */
 let wrappingKeyCache: CryptoKey | null = null
+let devicePassphrase: string | null = null
+
+/** Set (or clear, with null) the session passphrase. Drops cached key. */
+export function setDevicePassphrase(passphrase: string | null): void {
+  devicePassphrase = passphrase || null
+  wrappingKeyCache = null
+}
+
+export function isPassphraseSet(): boolean {
+  return devicePassphrase !== null
+}
+
+/** Drop the derived wrapping key from memory (re-derived on next use). */
+export function lockSecureStorage(): void {
+  wrappingKeyCache = null
+}
 
 async function getWrappingKey(): Promise<CryptoKey> {
   if (wrappingKeyCache) return wrappingKeyCache
 
   const deviceSecret = await getDeviceSecret()
+  const ikm = devicePassphrase ? `${deviceSecret}::${devicePassphrase}` : deviceSecret
 
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(deviceSecret),
+    new TextEncoder().encode(ikm),
     { name: "PBKDF2" },
     false,
     ["deriveKey"],
@@ -384,6 +412,7 @@ export async function clearAll(): Promise<void> {
   await txMeta.done
 
   wrappingKeyCache = null
+  devicePassphrase = null
 }
 
 // ─── Device Secret ───

@@ -91,29 +91,23 @@ def get_captcha():
 
 
 def solve_captcha(question: str) -> str:
-    """Решить простую математическую CAPTCHA."""
-    question = question.strip().lower().replace("?", "").replace(" ", "")
-    if "+" in question:
-        parts = question.split("+")
-        try:
-            return str(int(parts[0]) + int(parts[1]))
-        except (ValueError, IndexError):
-            pass
-    return "0"
-
-
-
-    """Решить математическую CAPTCHA (поддерживает +, -, ×)."""
+    """Решить математическую CAPTCHA (поддерживает +, -, ×, ÷ и a+b−c)."""
     import re
     if not question:
         return "0"
-    m = re.search(r"(\d+)\s*([+\-×x*])\s*(\d+)", question)
+    q = question.replace("−", "-").replace("×", "*").replace("÷", "/")
+    nums = [int(n) for n in re.findall(r"\d+", q)]
+    if "/" in q and len(nums) >= 2:
+        return str(nums[0] // nums[1])
+    if len(nums) >= 3:
+        return str(nums[0] + nums[1] - nums[2])
+    m = re.search(r"(\d+)\s*([+\-*x])\s*(\d+)", q)
     if not m:
         return "0"
     num1, op, num2 = int(m.group(1)), m.group(2), int(m.group(3))
-    if op in ("-", "−"):
+    if op == "-":
         return str(num1 - num2)
-    if op in ("×", "x", "*"):
+    if op in ("x", "*"):
         return str(num1 * num2)
     return str(num1 + num2)
 

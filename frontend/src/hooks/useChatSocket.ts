@@ -1,5 +1,6 @@
 import { useCallback, useRef, useEffect } from "react"
-import { WS_BASE } from "../config"
+import { getAccessToken, hasSession } from "../services/tokenVault"
+import { openAuthedSocket } from "../services/wsAuth"
 import { showNotification, playMessageSound } from "../services/notifications"
 import type { MessageResponse, UserResponse, ChatResponse } from "../types"
 
@@ -280,18 +281,25 @@ export function useChatSocket({
     const userId = currentUser.id
     let stopped = false
     if (userId === "self") return
-    if (!localStorage.getItem("token")) return
+    if (!hasSession()) return
 
     let reconnectTimer: ReturnType<typeof setTimeout>
     let reconnectAttempts = 0
     const MAX_RECONNECT = 10
+    // Старый relay (без subprotocol-auth): запоминаем после первого 1006,
+    // дальше реконнектимся сразу legacy-путём.
+    let legacyWs = false
 
-    function connect() {
-      const token = localStorage.getItem("token")
-      if (!token || stopped) return
-      const ws = new WebSocket(`${WS_BASE}/chat/${userId}?token=${encodeURIComponent(token)}`)
+    function connect(forceLegacy?: boolean) {
+      const queryFallback = forceLegacy ?? legacyWs
+      if (stopped) return
+      // Pentest #3: JWT via Sec-WebSocket-Protocol, not ?token= in the URL.
+      const ws = openAuthedSocket(`/chat/${userId}`, queryFallback)
+      if (!ws) return
       wsRef.current = ws
+      let opened = false
       ws.onopen = () => {
+        opened = true
         const hadGap = reconnectAttempts > 0
         reconnectAttempts = 0
         console.log("WS connected")
@@ -313,6 +321,14 @@ export function useChatSocket({
       ws.onclose = async (event) => {
         if (stopped) return
         setWsUp(false)
+        // Pre-fix relay + subprotocol attempt: handshake fails with 1006
+        // before ever opening (server demands ?token=). One legacy retry.
+        if (!opened && !queryFallback && event.code === 1006) {
+          console.warn("WS subprotocol handshake failed — retrying with legacy ?token=")
+          legacyWs = true
+          connect(true)
+          return
+        }
         // Диагностика туннеля: 1006 = сеть/прокси рвал молча (cloudflared),
         // 4001/4003/4008 = сервер отбил осознанно. Без кода в логе все
         // обрывы выглядят одинаково («closed before established»).
@@ -354,7 +370,20 @@ export function useChatSocket({
     const handleOnline = () => { reconnectAttempts = 0; connect() }
     window.addEventListener("online", handleOnline)
 
-    connect()
+    // tokenVault: access живёт только в памяти — после reload тянем его
+    // silent-refresh'ем до первого коннекта (иначе сокет мёртв до ремаунта).
+    if (!getAccessToken()) {
+      import("../services/api").then(({ refreshAccessToken }) =>
+        refreshAccessToken().then((ok) => {
+          if (stopped) return
+          if (ok) connect()
+          // dead refresh: AuthGuard прибьёт сессию через getCurrentUser;
+          // сокет не открываем, чтобы не loops 4001.
+        }).catch(() => {}),
+      ).catch(() => {})
+    } else {
+      connect()
+    }
     return () => {
       stopped = true
       clearTimeout(reconnectTimer)

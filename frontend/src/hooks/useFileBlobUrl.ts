@@ -104,10 +104,11 @@ export function useFileBlobUrl(message: MessageResponse | null): string | null {
         objectUrl = await getOrCreateBlobUrl(message!.file_id!)
         if (!cancelled) setUrl(objectUrl)
       } catch {
-        // Last resort: direct token URL (leaks token in src but works for plain files)
-        const token = localStorage.getItem("token") || ""
-        const base = (await import("../config")).BASE_URL
-        if (!cancelled) setUrl(`${base}/api/files/download/${encodeURIComponent(message!.file_id!)}?token=${encodeURIComponent(token)}`)
+        // Last resort: scoped single-file URL (60s file_token, no full JWT).
+        try {
+          const { api } = await import("../services/api")
+          if (!cancelled) setUrl(await api.getScopedFileUrl(message!.file_id!))
+        } catch { /* show broken-media state */ }
       }
     }
 

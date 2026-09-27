@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { csrfHeader } from "../services/api"
+import { getAccessToken } from "../services/tokenVault"
 import { BASE_URL, avatarUrl, getRelayConfig, setRelayConfig, resetRelayConfig } from "../config"
 import { useAvatar } from "../hooks/useAvatar"
 import { hasKeys, clearKeys } from "../services/e2e"
@@ -117,7 +118,7 @@ export default function SettingsPage() {
   const loadTotpStatus = async () => {
     try {
       const res = await fetch(`${BASE_URL}/api/auth/2fa/status`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        headers: { Authorization: `Bearer ${getAccessToken()}` },
       })
       if (res.ok) {
         const data = await res.json()
@@ -137,7 +138,7 @@ export default function SettingsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${getAccessToken()}`,
           ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: JSON.stringify({ password: totpPassword }),
@@ -170,7 +171,7 @@ export default function SettingsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${getAccessToken()}`,
           ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: JSON.stringify({ code: totpCode }),
@@ -203,7 +204,7 @@ export default function SettingsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${getAccessToken()}`,
           ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: JSON.stringify({ code: totpCode }),
@@ -236,7 +237,7 @@ export default function SettingsPage() {
       const res = await fetch(`${BASE_URL}/api/auth/profile/update`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${getAccessToken()}`,
           ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: form,

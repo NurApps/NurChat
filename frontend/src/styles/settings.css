@@ -423,3 +423,11 @@
   font-size: 13px;
 }
 .settings-choice.active { border-color: var(--accent); background: var(--surface-variant); }
+
+/* Профиль: длинные значения не распирают страницу, многострочное «о себе» сохраняет переносы */
+.settings-user-meta { min-width: 0; }
+.settings-username, .settings-userid { overflow-wrap: anywhere; }
+.settings-avatar-section { flex-wrap: wrap; }
+.profile-field-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+.profile-bio-counter { align-self: flex-end; }
+.profile-edit-btn { margin-top: 12px; }

@@ -1,17 +1,17 @@
-﻿import { useState, useEffect } from "react"
+﻿import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api, csrfHeader, apiErrorMessage } from "../services/api"
-import { BASE_URL, avatarUrl, getRelayConfig, setRelayConfig, resetRelayConfig } from "../config"
+import { BASE_URL, getRelayConfig, setRelayConfig, resetRelayConfig } from "../config"
 import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
 import { performLogout, releaseLocalKeys } from "../services/localSession"
 import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
-import { getAvatarColor } from "../utils/avatar"
 import { useTheme, THEMES } from "../context/ThemeContext"
 import { AlertTriangle, ArrowLeft, Bell, Database, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
+import ProfileEditor from "../components/ProfileEditor"
 import type { UserResponse } from "../types"
 
 type SettingsTab = "profile" | "appearance" | "notifications" | "privacy" | "storage" | "security" | "account"
@@ -64,6 +64,7 @@ export default function SettingsPage() {
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("http")
   const [relaySaved, setRelaySaved] = useState(false)
   const [settings, setSettings] = useState(getSettings)
+  const profileDirtyRef = useRef(false)
 
   useEffect(() => {
     const cfg = getRelayConfig()
@@ -332,9 +333,14 @@ export default function SettingsPage() {
   }
   if (!user) return <div className="auth-loading"><div className="spinner" /></div>
 
-  const avatarSrc = avatarUrl(user.avatar_path)
-  const initial = (user.first_name?.[0] || user.username[0] || "?").toUpperCase()
-  const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username
+  // Вкладка «Профиль» редактируется на месте — не теряем правки при уходе с неё.
+  const confirmDiscardProfile = () => {
+    if (!profileDirtyRef.current || confirm(t("profile.discardChanges"))) {
+      profileDirtyRef.current = false
+      return true
+    }
+    return false
+  }
 
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: "profile", label: t("settings.profile"), icon: TabIcons.profile },
@@ -356,7 +362,7 @@ export default function SettingsPage() {
   return (
     <div className="settings-page">
       <div className="settings-header">
-        <button type="button" className="settings-back" onClick={() => navigate("/chat")} aria-label={t("common.back")}>
+        <button type="button" className="settings-back" onClick={() => { if (confirmDiscardProfile()) navigate("/chat") }} aria-label={t("common.back")}>
           <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
         </button>
         <h2>{t("settings.title")}</h2>
@@ -372,7 +378,11 @@ export default function SettingsPage() {
               role="tab"
               aria-selected={tab === it.id}
               className={`settings-tab ${tab === it.id ? "active" : ""}`}
-              onClick={() => { setTab(it.id); setMsg("") }}
+              onClick={() => {
+                if (it.id === tab || !confirmDiscardProfile()) return
+                setTab(it.id)
+                setMsg("")
+              }}
             >
               <span className="settings-tab-icon">{it.icon}</span>
               <span className="settings-tab-label">{it.label}</span>
@@ -385,25 +395,7 @@ export default function SettingsPage() {
 
           {/* ─── Profile ─── */}
           {tab === "profile" && (
-            <div className="settings-sections">
-              <div className="settings-avatar-section">
-                <div className="settings-avatar" style={{ background: avatarSrc ? "transparent" : getAvatarColor(user.id) }}>
-                  {avatarSrc ? (
-                    // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
-                    <img src={avatarSrc} alt={t("profile.avatarAlt")} width={80} height={80} className="settings-avatar-img" />
-                  ) : (
-                    <span aria-hidden="true">{initial}</span>
-                  )}
-                </div>
-                <div className="settings-user-meta">
-                  <span className="settings-username">{fullName}</span>
-                  <span className="settings-userid">@{user.username}</span>
-                </div>
-              </div>
-              <button type="button" className="settings-save-btn" onClick={() => navigate("/profile")}>
-                {t("profile.openProfile")}
-              </button>
-            </div>
+            <ProfileEditor user={user} onUserChange={setUser} onDirtyChange={(d) => { profileDirtyRef.current = d }} />
           )}
 
           {/* ─── Appearance ─── */}

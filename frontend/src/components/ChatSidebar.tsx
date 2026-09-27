@@ -229,18 +229,7 @@ export default function ChatSidebar({
         {tab === "chats" && (
           <div className="list-scroll" ref={chatListRef} role="tabpanel" id="sidebar-panel-chats" aria-labelledby="sidebar-tab-chats">
             {!chatsLoaded && <ChatListSkeleton />}
-            {chatsLoaded && chatsError && filteredChats.length === 0 && (
-              <div className="list-empty" role="alert">
-                <p>{t("chat.chatsLoadFailed")}</p>
-                <button className="settings-action-btn" onClick={onRetryChats}>
-                  {t("common.retry")}
-                </button>
-              </div>
-            )}
-            {chatsLoaded && !chatsError && filteredChats.length === 0 && !search && (
-              <p className="list-empty">{t("chat.noChats")}</p>
-            )}
-            {(!search || t("chat.bookmarks").toLowerCase().includes(search.toLowerCase())) && (
+            {chatsLoaded && (!search || t("chat.bookmarks").toLowerCase().includes(search.toLowerCase())) && (
               <div
                 className={`chat-list-item favorites-entry${isFavoritesOpen ? " active" : ""}`}
                 onClick={onOpenFavorites} role="button" tabIndex={0}
@@ -262,6 +251,17 @@ export default function ChatSidebar({
                   </div>
                 </div>
               </div>
+            )}
+            {chatsLoaded && chatsError && filteredChats.length === 0 && (
+              <div className="list-empty" role="alert">
+                <p>{t("chat.chatsLoadFailed")}</p>
+                <button className="settings-action-btn" onClick={onRetryChats}>
+                  {t("common.retry")}
+                </button>
+              </div>
+            )}
+            {chatsLoaded && !chatsError && filteredChats.length === 0 && !search && (
+              <p className="list-empty">{t("chat.noChats")}</p>
             )}
             {filteredChats.map((chat) => (
               <ChatListItem key={chat.id} chat={chat} currentUser={currentUser}

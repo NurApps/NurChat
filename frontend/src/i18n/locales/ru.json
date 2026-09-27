@@ -91,6 +91,7 @@
     "relayCheckFailed": "Relay недоступен — проверьте адрес"
   },
   "chat": {
+    "sidebar": "Боковая панель",
     "chats": "Чаты",
     "contacts": "Контакты",
     "bookmarks": "Избранное",
@@ -146,6 +147,11 @@
     "unpin": "Открепить",
     "muteNotifications": "Отключить уведомления",
     "unmuteNotifications": "Включить уведомления",
+    "deleteChat": "Удалить чат",
+    "chatMenu": "Меню чата",
+    "resizeSidebar": "Изменить ширину панели",
+    "collapseSidebar": "Свернуть панель",
+    "expandSidebar": "Развернуть панель",
     "messageMenu": "Меню сообщения",
     "copy": "Копировать",
     "reply": "Ответить",
@@ -451,8 +457,7 @@
     "avatarTooLarge": "Файл больше 5 МБ",
     "confirmRemoveAvatar": "Удалить аватар?",
     "discardChanges": "Отменить несохранённые изменения?",
-    "firstNameTooShort": "Имя должно содержать минимум {{min}} символа",
-    "openProfile": "Открыть профиль"
+    "firstNameTooShort": "Имя должно содержать минимум {{min}} символа"
   },
   "errors": {
     "general": "Произошла ошибка",

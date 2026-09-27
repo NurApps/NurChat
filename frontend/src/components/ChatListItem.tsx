@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import type { ChatResponse, UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
-import { getDraftForChat } from "../utils/drafts"
+import { getDraftForChat, subscribeDrafts } from "../utils/drafts"
 import { formatFull, formatRelativeTime } from "../utils/format"
 import { LockKeyhole, MoreVertical, Pin, Users, VolumeX } from "lucide-react"
 
 interface Props {
   chat: ChatResponse
   currentUser: UserResponse
+  selected?: boolean
   onClick: (chatId: string) => void
   onPin?: (chatId: string, isPinned: boolean) => void
   onMute?: (chatId: string, isMuted: boolean) => void
@@ -31,10 +32,12 @@ function getLastMessagePreview(chat: ChatResponse, t: (key: string) => string): 
   const c = chat.last_message.content
   // Сервер хранит content="[encrypted]" — сырой маркер в превью не показываем.
   if (c === "[encrypted]") return `🔒 ${t("chat.encryptedMessage")}`
-  return c.length > 35 ? c.slice(0, 35) + "..." : c
+  // Обрезку делает CSS (text-overflow: ellipsis на .cli-preview) — здесь текст не режем,
+  // чтобы не дублировать логику и не терять символы раньше, чем реально нужно.
+  return c
 }
 
-export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute, onDelete }: Props) {
+export default function ChatListItem({ chat, currentUser, selected = false, onClick, onPin, onMute, onDelete }: Props) {
   const { t } = useTranslation()
   const displayName = getDisplayName(chat, currentUser, t)
   const avatarChar = displayName[0]?.toUpperCase() || "?"
@@ -43,7 +46,15 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
   const otherPeer = chat.participants.find((p) => p.id !== currentUser.id)
   const avatarColor = getAvatarColor(otherPeer?.id || chat.id)
   const lastTime = getLastMessageTime(chat)
-  const [draft] = useState(() => getDraftForChat(chat.id))
+  const [draft, setDraft] = useState(() => getDraftForChat(chat.id))
+  // Черновик может измениться, пока этот пункт списка уже смонтирован (юзер печатает
+  // в открытом чате) — подписываемся, чтобы превью не устаревало.
+  useEffect(() => {
+    setDraft(getDraftForChat(chat.id))
+    return subscribeDrafts((changedChatId) => {
+      if (changedChatId === chat.id) setDraft(getDraftForChat(chat.id))
+    })
+  }, [chat.id])
   const lastPreview = draft || getLastMessagePreview(chat, t)
 
   const other = chat.participants.find((p) => p.id !== currentUser.id)
@@ -54,6 +65,8 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const menuBtnRef = useRef<HTMLButtonElement>(null)
+  const firstMenuItemRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -63,11 +76,29 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
+    firstMenuItemRef.current?.focus()
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [menuOpen])
 
+  const closeMenu = (returnFocus: boolean) => {
+    setMenuOpen(false)
+    if (returnFocus) menuBtnRef.current?.focus()
+  }
+
+  const handleActivate = () => onClick(chat.id)
+
   return (
-    <div className="chat-list-item" onClick={() => onClick(chat.id)}>
+    <div
+      className={`chat-list-item${selected ? " active" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-current={selected ? "true" : undefined}
+      onClick={handleActivate}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleActivate() }
+      }}
+    >
       <div className="cli-avatar">
         <div className="cli-avatar-circle" style={{ background: avatarColor }}>
           <span>{avatarChar}</span>
@@ -95,26 +126,35 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
           <span className="cli-time" title={chat.last_message?.created_at ? formatFull(chat.last_message.created_at) : ""}>{lastTime}</span>
           <div className="cli-menu-wrapper" ref={menuRef}>
             <button
+              ref={menuBtnRef}
               className="cli-menu-btn"
+              aria-label={t("chat.chatMenu")}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
+              onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) closeMenu(true) }}
             >
               <MoreVertical size={16} strokeWidth={2} aria-hidden="true" />
             </button>
             {menuOpen && (
-              <div className="cli-dropdown">
+              <div
+                className="cli-dropdown"
+                role="menu"
+                onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); closeMenu(true) } }}
+              >
                 {onPin && (
-                  <button onClick={(e) => { e.stopPropagation(); onPin(chat.id, isPinned); setMenuOpen(false) }}>
+                  <button ref={firstMenuItemRef} role="menuitem" onClick={(e) => { e.stopPropagation(); onPin(chat.id, isPinned); closeMenu(false) }}>
                     {isPinned ? t("chat.unpin") : t("chat.pin")}
                   </button>
                 )}
                 {onMute && (
-                  <button onClick={(e) => { e.stopPropagation(); onMute(chat.id, isMuted); setMenuOpen(false) }}>
+                  <button role="menuitem" onClick={(e) => { e.stopPropagation(); onMute(chat.id, isMuted); closeMenu(false) }}>
                     {isMuted ? t("chat.unmuteNotifications") : t("chat.muteNotifications")}
                   </button>
                 )}
                 {onDelete && (
-                  <button className="cli-danger" onClick={(e) => { e.stopPropagation(); onDelete(chat.id); setMenuOpen(false) }}>
-                    {t("common.delete")} {t("chat.chats")}
+                  <button className="cli-danger" role="menuitem" onClick={(e) => { e.stopPropagation(); onDelete(chat.id); closeMenu(false) }}>
+                    {t("chat.deleteChat")}
                   </button>
                 )}
               </div>

@@ -190,6 +190,10 @@
 .modal-btn.primary:hover:not(:disabled) { opacity: 0.85; }
 .modal-btn.cancel { background: transparent; color: var(--text-secondary); }
 .modal-btn.cancel:hover { background: var(--surface-variant); }
+.modal-btn.danger { background: transparent; color: #e53935; }
+.modal-btn.danger:hover:not(:disabled) { background: rgba(229, 57, 53, 0.1); }
+
+.modal-header.with-icon h3 { display: flex; align-items: center; gap: 8px; }
 
 /* Forward Modal */
 .forward-modal {

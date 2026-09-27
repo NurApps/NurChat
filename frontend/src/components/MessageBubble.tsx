@@ -8,6 +8,7 @@ import { renderMarkdown } from "../utils/markdown"
 import MediaViewer from "./MediaViewer"
 import VoiceMessage from "./VoiceMessage"
 import { useFileBlobUrl } from "../hooks/useFileBlobUrl"
+import { useFavoritesStore } from "../store/favoritesStore"
 import { Check, CheckCheck, Clock3, FileText, Image, Mic, Music2, MoreVertical, Play, Video, X } from "lucide-react"
 
 interface Props {
@@ -56,6 +57,7 @@ export default function MessageBubble({
   const [readCount, setReadCount] = useState<{ read: number; total: number } | null>(null)
   const [, setExpiryTick] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
+  const addToFavorites = useFavoritesStore((s) => s.addForwarded)
   const content = message.content
   const time = formatTime(message.created_at)
   const peerId = currentUser.id
@@ -417,17 +419,24 @@ export default function MessageBubble({
     )
   }
 
+  const bookmarkItem = {
+    label: t("chat.bookmarkAdd"),
+    action: () => addToFavorites(message),
+  }
+
   const menuItems = isMyMessage
     ? [
         { label: t("chat.copy"), action: () => navigator.clipboard.writeText(content) },
         { label: t("common.edit"), action: () => { setEditText(message.content); setEditing(true); setMenuOpen(false) } },
         { label: t("chat.reply"), action: () => onReply?.(message.id) },
+        bookmarkItem,
         { label: t("chat.info"), action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
         { label: t("common.delete"), action: () => setShowDeleteOptions(true) },
       ]
     : [
         { label: t("chat.copy"), action: () => navigator.clipboard.writeText(content) },
         { label: t("chat.reply"), action: () => onReply?.(message.id) },
+        bookmarkItem,
         { label: t("chat.info"), action: () => { setMenuOpen(false); onShowInfo?.(message.id) } },
       ]
 

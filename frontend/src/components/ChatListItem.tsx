@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import type { ChatResponse, UserResponse } from "../types"
-import { getAvatarColor } from "../utils/avatar"
 import { getDraftForChat } from "../utils/drafts"
 import { formatFull, formatRelativeTime } from "../utils/format"
+import UserAvatar from "./UserAvatar"
 
 interface Props {
   chat: ChatResponse
@@ -36,11 +36,9 @@ function getLastMessagePreview(chat: ChatResponse, t: (key: string) => string): 
 export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute, onDelete }: Props) {
   const { t } = useTranslation()
   const displayName = getDisplayName(chat, currentUser, t)
-  const avatarChar = displayName[0]?.toUpperCase() || "?"
   // Цвет — от стабильного id (пир или чат), а не от отображаемого имени:
   // иначе один и тот же юзер красится по-разному в списке, чате и звонках.
   const otherPeer = chat.participants.find((p) => p.id !== currentUser.id)
-  const avatarColor = getAvatarColor(otherPeer?.id || chat.id)
   const lastTime = getLastMessageTime(chat)
   const [draft] = useState(() => getDraftForChat(chat.id))
   const lastPreview = draft || getLastMessagePreview(chat, t)
@@ -68,9 +66,11 @@ export default function ChatListItem({ chat, currentUser, onClick, onPin, onMute
   return (
     <div className="chat-list-item" onClick={() => onClick(chat.id)}>
       <div className="cli-avatar">
-        <div className="cli-avatar-circle" style={{ background: avatarColor }}>
-          <span>{avatarChar}</span>
-        </div>
+        {otherPeer && !chat.is_group ? (
+          <UserAvatar id={otherPeer.id} username={displayName} avatarPath={otherPeer.avatar_path} circleClassName="cli-avatar-circle" />
+        ) : (
+          <UserAvatar id={chat.id} username={displayName} circleClassName="cli-avatar-circle" />
+        )}
         {isOnline && <div className="cli-online-dot" />}
       </div>
 

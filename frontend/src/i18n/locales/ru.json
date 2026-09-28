@@ -442,6 +442,8 @@
     "avatarUploadError": "Ошибка загрузки",
     "avatarDeleted": "Аватар удалён",
     "avatarDeleteError": "Ошибка удаления",
+    "avatarTypeError": "Поддерживаются только JPG, PNG и WebP",
+    "avatarTooLarge": "Аватар слишком большой. Максимум 5 МБ",
     "userProfile": "Профиль пользователя",
     "unknownUser": "Пользователь"
   },

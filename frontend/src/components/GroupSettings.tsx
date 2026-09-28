@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import { getAvatarColor } from "../utils/avatar"
+import UserAvatar from "./UserAvatar"
 import type { ChatResponse, UserResponse } from "../types"
 
 interface GroupMember {
@@ -176,9 +176,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
               {members.map((member) => (
                 <div key={member.id} className="group-settings-member">
                   <div className="group-settings-member-info">
-                    <div className="group-settings-avatar" style={{ background: getAvatarColor(member.id) }}>
-                      {member.first_name?.[0] || member.username[0]}
-                    </div>
+                    <UserAvatar id={member.id} username={member.first_name || member.username} avatarPath={member.avatar_path} circleClassName="group-settings-avatar" />
                     <div>
                       <span className="group-settings-member-name">
                         {member.first_name || member.username}
@@ -245,9 +243,7 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
               <div className="group-settings-user-list">
                 {filteredUsers.map((u: any) => (
                   <div key={u.id} className="group-settings-user-item" onClick={() => handleAddMember(u.id)}>
-                    <div className="group-settings-avatar" style={{ background: getAvatarColor(u.id) }}>
-                      {u.first_name?.[0] || u.username[0]}
-                    </div>
+                    <UserAvatar id={u.id} username={u.first_name || u.username} avatarPath={u.avatar_path} circleClassName="group-settings-avatar" />
                     <span>{u.first_name || u.username} (@{u.username})</span>
                   </div>
                 ))}

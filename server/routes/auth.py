@@ -522,14 +522,47 @@ async def upload_avatar(
         if len(content) > 5 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="Аватар слишком большой. Максимум 5 МБ")
 
+        # Проверяем, что байты — действительно картинка, и нормализуем:
+        # разворачиваем по EXIF, счищаем метаданные, ужимаем до 512px.
+        # Иначе в static-раздачу ложился бы мусор, который браузеры
+        # отказываются рисовать (аватар «загрузился», но не отображается).
+        try:
+            import io
+
+            from PIL import Image, ImageOps
+
+            with Image.open(io.BytesIO(content)) as probe:
+                probe.verify()
+            with Image.open(io.BytesIO(content)) as img:
+                if getattr(img, "is_animated", False):
+                    raise HTTPException(status_code=400, detail="Анимированные изображения не поддерживаются")
+                normalized = ImageOps.exif_transpose(img).convert("RGB")
+                normalized.thumbnail((512, 512), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                if file_extension == ".png":
+                    normalized.save(buf, format="PNG")
+                elif file_extension == ".webp":
+                    normalized.save(buf, format="WEBP", quality=85)
+                else:
+                    file_extension = ".jpg"
+                    normalized.save(buf, format="JPEG", quality=85)
+                content = buf.getvalue()
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=400, detail="Файл не является изображением")
+
         avatar_dir = Path("media/avatars") / token["sub"]
         avatar_dir.mkdir(parents=True, exist_ok=True)
 
-        if user.avatar_path and os.path.exists(user.avatar_path):
+        # Чистим весь мусор старых аватаров юзера (не только путь из БД —
+        # он мог протухнуть после ручной чистки/миграции).
+        for stale in avatar_dir.glob("avatar_*"):
             try:
-                os.remove(user.avatar_path)
+                if stale.is_file():
+                    stale.unlink()
             except OSError as e:
-                logger.debug("Could not remove old avatar: %s", e)
+                logger.debug("Could not remove stale avatar: %s", e)
 
         avatar_path = avatar_dir / f"avatar_{int(datetime.now(timezone.utc).timestamp())}{file_extension}"
 

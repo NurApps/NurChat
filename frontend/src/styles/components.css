@@ -130,6 +130,16 @@
 .ch-avatar.clickable { cursor: pointer; transition: opacity 0.15s; }
 .ch-avatar.clickable:hover { opacity: 0.8; }
 
+/* Загруженные аватарки: cover в круге любого из контейнеров
+   (cli-avatar-circle, msg-avatar, ch-avatar, modal-user-avatar). */
+.avatar-img-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
 .ch-info {
   display: flex;
   flex-direction: column;

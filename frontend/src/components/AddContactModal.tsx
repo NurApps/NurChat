@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
+import UserAvatar from "./UserAvatar"
 import type { UserResponse } from "../types"
 
 interface Props {
@@ -76,9 +77,7 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
                   className={`modal-user-item ${selectedId === user.id ? "selected" : ""}`}
                   onClick={() => setSelectedId(user.id)}
                 >
-                  <div className="modal-user-avatar" style={{ background: "#0e7cb4" }}>
-                    <span>{user.username[0]?.toUpperCase() || "?"}</span>
-                  </div>
+                  <UserAvatar id={user.id} username={user.username} avatarPath={user.avatar_path} circleClassName="modal-user-avatar" />
                   <div className="modal-user-info">
                     <span className="modal-user-name">{user.username}</span>
                     <span className="modal-user-sub">{user.first_name}</span>

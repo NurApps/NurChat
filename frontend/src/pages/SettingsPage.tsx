@@ -445,8 +445,11 @@ export default function SettingsPage() {
                     </button>
                   )}
                 </div>
-                <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => {
                   const file = e.target.files?.[0]
+                  // Сбрасываем input, чтобы повторный выбор того же файла
+                  // снова вызывал onChange.
+                  e.target.value = ""
                   if (file) uploadAvatar(file)
                 }} />
               </div>

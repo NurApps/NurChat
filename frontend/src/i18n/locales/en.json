@@ -442,6 +442,8 @@
     "avatarUploadError": "Upload failed",
     "avatarDeleted": "Avatar deleted",
     "avatarDeleteError": "Delete failed",
+    "avatarTypeError": "Only JPG, PNG and WebP are supported",
+    "avatarTooLarge": "Avatar is too large. Maximum 5 MB",
     "userProfile": "User profile",
     "unknownUser": "User"
   },

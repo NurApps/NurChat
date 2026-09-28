@@ -1,15 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 300">
-  <defs>
-    <linearGradient id="nurchatGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0B63C9"/>
-      <stop offset="1" stop-color="#4FD8FF"/>
-    </linearGradient>
-  </defs>
-  <g fill="url(#nurchatGrad)">
-    <path fill-rule="evenodd" d="M262.00,150.00 A112.00,112.00 0 1,0 38.00,150.00 A112.00,112.00 0 1,0 262.00,150.00 Z M237.00,150.00 A87.00,87.00 0 1,0 63.00,150.00 A87.00,87.00 0 1,0 237.00,150.00 Z"/>
-    <path d="M60.55,217.40 A112.00,112.00 0 0,1 44.75,188.31 L25.29,222.00 Z"/>
-    <path d="M9.037037037037038 0.0V-122.00000000000001H28.014814814814816L53.01728395061729 -63.25925925925927V-122.00000000000001H75.30864197530865V0.0H57.08395061728395L32.08148148148148 -63.25925925925927V0.0Z" transform="translate(107.75,207.00)"/>
-    <rect x="259.51" y="47.82" width="30.00" height="30.00" rx="7.00"/>
-    <rect x="306.77" y="130.21" width="22.00" height="22.00" rx="6.00"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <path d="M17 6h30a11 11 0 0 1 11 11v21a11 11 0 0 1-11 11H32L19 60l2.4-11H17a11 11 0 0 1-11-11V17A11 11 0 0 1 17 6Z" fill="#2AABEE"/>
+  <path d="M24 20v24M24 20l16 24M40 44V20" stroke="#FFFFFF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 </svg>

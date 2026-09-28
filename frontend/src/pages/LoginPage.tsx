@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, type JSX } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
@@ -14,6 +14,7 @@ function healPreKeys(keys: E2EKeys, userId: string, where: string): void {
   ensurePreKeysUploaded(keys, userId).catch((e) => console.warn(`[E2E] ensurePreKeys (${where}) failed:`, e))
 }
 import { useTheme } from "../context/useTheme"
+import Logo from "../components/Logo"
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme()
@@ -32,8 +33,6 @@ function ThemeToggle() {
     </button>
   )
 }
-
-const TG_BLUE = "#2AABEE"
 
 function LoginBrand() {
   const { t } = useTranslation()
@@ -80,9 +79,7 @@ function LoginBrand() {
     <div className="login-brand">
       <div className="login-brand-header">
         <div className="logo-circle logo-circle-lg">
-          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke={TG_BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
+          <Logo size={44} />
         </div>
         <h1 className="login-title login-brand-title">NurChat</h1>
         <p className="login-subtitle login-brand-subtitle">{t("auth.subtitle")}</p>
@@ -362,9 +359,7 @@ export default function LoginPage() {
           <div className="login-container">
             <div className="login-logo">
               <div className="logo-circle">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={TG_BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
+                <Logo size={36} />
               </div>
               <h1 className="login-title">NurChat</h1>
               <p className="login-subtitle">{t("auth.subtitle")}</p>
@@ -389,9 +384,7 @@ export default function LoginPage() {
         <div className="login-container">
         <div className="login-logo">
           <div className="logo-circle">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={TG_BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
+            <Logo size={36} />
           </div>
           <h1 className="login-title">NurChat</h1>
           <p className="login-subtitle">{t("auth.subtitle")}</p>

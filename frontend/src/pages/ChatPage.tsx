@@ -28,6 +28,7 @@ import NotificationToast from "../components/NotificationToast"
 import { MessageListSkeleton } from "../components/Skeleton"
 import type { UserResponse, MessageResponse } from "../types"
 import ChatSidebar from "../components/ChatSidebar"
+import Logo from "../components/Logo"
 import ChatModals from "../components/ChatModals"
 
 import { getDraft, saveDraft, removeDraft } from "../utils/drafts"
@@ -794,7 +795,9 @@ export default function ChatPage() {
   const selectedChatName = selectedChat
     ? selectedChat.is_group ? (selectedChat.name || t("chat.chats")) : selectedChat.participants.find((p) => p.id !== currentUser.id)?.username || t("chat.chats")
     : ""
-  const selectedChatAvatar = selectedChatName[0]?.toUpperCase() || "?"
+  const selectedChatPeer = selectedChat && !selectedChat.is_group
+    ? selectedChat.participants.find((p) => p.id !== currentUser.id)
+    : undefined
   const isSelectedGroup = selectedChat?.is_group || false
 
   const currentTyping = selectedChat ? typingUsers[selectedChat.id] : undefined
@@ -882,7 +885,7 @@ export default function ChatPage() {
         <div className="chat-main" role="main" id="main-content">
           {!selectedChat ? (
             <div className="chat-placeholder" role="status">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="1.5" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+              <Logo size={64} />
               <h3>NurChat</h3>
               <p>{t("chat.placeholder")}</p>
             </div>
@@ -897,7 +900,13 @@ export default function ChatPage() {
                 )}
                 <div className="ch-avatar clickable"
                   onClick={() => { if (!isSelectedGroup) { const peer = selectedChat.participants.find(p => p.id !== currentUser.id); if (peer) handleViewProfile(peer) } }}>
-                  {selectedChatAvatar}
+                  {(() => {
+                    const src = selectedChatPeer ? avatarUrl(selectedChatPeer.avatar_path) : null
+                    if (src) {
+                      return <img src={src} alt={selectedChatName} className="avatar-img-cover" />
+                    }
+                    return <span>{selectedChatName[0]?.toUpperCase() || "?"}</span>
+                  })()}
                 </div>
                 <div className="ch-info">
                   <span className="ch-name" style={!isSelectedGroup ? { cursor: "pointer" } : undefined}

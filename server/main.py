@@ -252,6 +252,20 @@ async def limit_body_size(request: Request, call_next):
     return await call_next(request)
 
 # Routes
+# Аватары: static-раздача media/avatars. Без этого mount avatarUrl()
+# (BASE_URL + media/avatars/<uid>/avatar_<ts>.<ext>) отдавал 404 —
+# загрузка работала, а картинки нигде не отображались.
+# Маунтим ТОЛЬКО avatars (не весь media/): имена файлов генерирует сервер
+# (avatar_<ts> + allowlist-расширение), путь вне директории StaticFiles
+# не отдаёт. Остальные файлы — строго через /api/files/download с JWT.
+from pathlib import Path as _Path
+
+from fastapi.staticfiles import StaticFiles as _StaticFiles
+
+_avatar_dir = (_Path(settings.MEDIA_ROOT) / "avatars").resolve()
+_avatar_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/media/avatars", _StaticFiles(directory=_avatar_dir), name="avatars")
+
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])

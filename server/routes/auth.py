@@ -533,7 +533,13 @@ async def upload_avatar(
 ):
     """Загрузка аватара пользователя"""
     try:
-        user = db.query(models.User).filter(models.User.id == token["sub"]).first()
+        user_id = token["sub"]
+        # sub — claim из серверно-подписанного JWT (generate_user_id выдаёт
+        # строго user_<hex32>), но в путь ФС пускаем только этот формат:
+        # traversal невозможен даже при странном sub.
+        if not re.fullmatch(r"user_[0-9a-f]{32}", user_id):
+            raise HTTPException(status_code=401, detail="Недействительный токен")
+        user = db.query(models.User).filter(models.User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
 
@@ -576,11 +582,15 @@ async def upload_avatar(
         except Exception:
             raise HTTPException(status_code=400, detail="Файл не является изображением")
 
-        avatar_dir = Path("media/avatars") / token["sub"]
+        avatar_dir = Path("media/avatars") / user_id
         avatar_dir.mkdir(parents=True, exist_ok=True)
 
         # Чистим весь мусор старых аватаров юзера (не только путь из БД —
         # он мог протухнуть после ручной чистки/миграции).
+        # codeql[py/path-injection]: avatar_dir собран из user_id, уже
+        # проверенного выше строгим allowlist user_[0-9a-f]{32} (sub из
+        # серверно-подписанного JWT) — .., /, \ невозможны; удаление только
+        # файлов avatar_* внутри этого каталога.
         for stale in avatar_dir.glob("avatar_*"):
             try:
                 if stale.is_file():

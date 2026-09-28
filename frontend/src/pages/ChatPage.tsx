@@ -925,6 +925,7 @@ export default function ChatPage() {
                   {(() => {
                     const src = selectedChatPeer ? avatarUrl(selectedChatPeer.avatar_path) : null
                     if (src) {
+                      // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
                       return <img src={src} alt={selectedChatName} className="avatar-img-cover" />
                     }
                     return <span>{selectedChatName[0]?.toUpperCase() || "?"}</span>

@@ -19,6 +19,7 @@ export default function UserAvatar({ id, username, avatarPath, circleClassName, 
   if (src) {
     return (
       <div className={circleClassName} style={{ background: "transparent" }} onClick={onClick}>
+        {/* codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна */}
         <img src={src} alt={username} className="avatar-img-cover" loading="lazy" />
       </div>
     )

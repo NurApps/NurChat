@@ -12,6 +12,9 @@ import { getSettings, setSetting, clearSettings } from "../services/userSettings
 import { useTheme, THEMES } from "../context/ThemeContext"
 import { AlertTriangle, ArrowLeft, Bell, Database, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
 import ProfileEditor from "../components/ProfileEditor"
+import { BottomTabs } from "../components/mobile/BottomTabs"
+import { useMobile } from "../hooks/useMobile"
+import { useChatStore } from "../store/chatStore"
 import type { UserResponse } from "../types"
 
 type SettingsTab = "profile" | "appearance" | "notifications" | "privacy" | "storage" | "security" | "account"
@@ -28,6 +31,8 @@ const TabIcons = {
 
 export default function SettingsPage() {
   const navigate = useNavigate()
+  const { isMobile } = useMobile()
+  const chats = useChatStore((s) => s.chats)
   const { t, i18n } = useTranslation()
   const [user, setUser] = useState<UserResponse | null>(null)
   const [loadError, setLoadError] = useState(false)
@@ -360,7 +365,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="settings-page">
+    <div className={`settings-page${isMobile ? " has-bottom-nav" : ""}`}>
       <div className="settings-header">
         <button type="button" className="settings-back" onClick={() => { if (confirmDiscardProfile()) navigate("/chat") }} aria-label={t("common.back")}>
           <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
@@ -841,6 +846,18 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {isMobile && (
+        <BottomTabs
+          onTabChange={(newTab) => {
+            if (newTab === "chats") navigate("/chat")
+            if (newTab === "settings") return
+            if (newTab === "calls") navigate("/calls")
+            if (newTab === "contacts") navigate("/contacts")
+          }}
+          badges={{ chats: chats.reduce((sum, c) => sum + (c.unread_count || 0), 0) }}
+        />
+      )}
     </div>
   )
 }

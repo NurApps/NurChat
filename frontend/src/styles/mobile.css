@@ -872,4 +872,11 @@
   .input-bar {
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
+
+  /* Settings/CallHistory now render BottomTabs too (it was missing there
+     entirely on mobile) — reserve space so the fixed nav bar doesn't sit
+     on top of the last setting/call row. */
+  .settings-page.has-bottom-nav {
+    height: calc(100svh - var(--bottom-nav-height));
+  }
 }

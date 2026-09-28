@@ -91,6 +91,7 @@
     "relayCheckFailed": "Relay unreachable — check the address"
   },
   "chat": {
+    "sidebar": "Sidebar",
     "chats": "Chats",
     "contacts": "Contacts",
     "bookmarks": "Bookmarks",
@@ -146,6 +147,11 @@
     "unpin": "Unpin",
     "muteNotifications": "Mute notifications",
     "unmuteNotifications": "Unmute notifications",
+    "deleteChat": "Delete chat",
+    "chatMenu": "Chat menu",
+    "resizeSidebar": "Resize sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
     "messageMenu": "Message menu",
     "copy": "Copy",
     "reply": "Reply",
@@ -243,8 +249,12 @@
     "allowMultiple": "Multiple choices"
   },
   "bookmarks": {
-    "empty": "No bookmarks",
-    "remove": "Remove from bookmarks"
+    "empty": "No messages in Favorites",
+    "remove": "Remove from bookmarks",
+    "notePlaceholder": "Note to self...",
+    "clearAll": "Clear",
+    "clearConfirmText": "Are you sure you want to delete all messages saved to Favorites?",
+    "clearWarning": "This action cannot be undone."
   },
   "updates": {
     "downloading": "Downloading update {{version}}…",
@@ -394,6 +404,8 @@
     "sessions": "Sessions",
     "sessionDesc": "You are signed in as @{{username}} on this device.",
     "logoutAllDevices": "Log out of all devices",
+    "logoutAllDesc": "Ends every session of this account on all devices, including this one. You will need to sign in again.",
+    "confirmLogoutAll": "Log out on all devices? Sessions on other devices will end.",
     "advanced": "Advanced",
     "backups": "Backups & Recovery",
     "callHistory": "Call History",
@@ -442,10 +454,14 @@
     "avatarUploadError": "Upload failed",
     "avatarDeleted": "Avatar deleted",
     "avatarDeleteError": "Delete failed",
-    "avatarTypeError": "Only JPG, PNG and WebP are supported",
-    "avatarTooLarge": "Avatar is too large. Maximum 5 MB",
     "userProfile": "User profile",
-    "unknownUser": "User"
+    "unknownUser": "User",
+    "avatarAlt": "Avatar",
+    "avatarBadType": "Only JPG, PNG and WebP are supported",
+    "avatarTooLarge": "File is larger than 5 MB",
+    "confirmRemoveAvatar": "Remove avatar?",
+    "discardChanges": "Discard unsaved changes?",
+    "firstNameTooShort": "First name must be at least {{min}} characters"
   },
   "errors": {
     "general": "Something went wrong",

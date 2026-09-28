@@ -16,7 +16,7 @@ import { loadKeys as loadE2EKeys, decryptMessage, ensurePreKeysUploaded, type E2
 import { initGroupKey, fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications } from "../services/notifications"
-import { clearPin } from "../services/pinLock"
+import { performLogout } from "../services/localSession"
 import { avatarUrl, BASE_URL } from "../config"
 import { useChatStore } from "../store/chatStore"
 import TopBar from "../components/TopBar"
@@ -29,6 +29,7 @@ import { MessageListSkeleton } from "../components/Skeleton"
 import type { UserResponse, MessageResponse } from "../types"
 import ChatSidebar from "../components/ChatSidebar"
 import Logo from "../components/Logo"
+import FavoritesChatWindow from "../components/FavoritesChatWindow"
 import ChatModals from "../components/ChatModals"
 
 import { getDraft, saveDraft, removeDraft } from "../utils/drafts"
@@ -83,6 +84,20 @@ export default function ChatPage() {
     })
   }, [chats, search, currentUser.id])
 
+  // Поиск в шапке сайдбара фильтрует не только чаты, но и контакты/приглашения —
+  // раньше поле молча ничего не делало на вкладках "Контакты" и "Приглашения".
+  const filteredContacts = useMemo(() => {
+    if (!search) return contacts
+    const q = search.toLowerCase()
+    return contacts.filter((c) => c.contact_user.username.toLowerCase().includes(q))
+  }, [contacts, search])
+
+  const filteredInvites = useMemo(() => {
+    if (!search) return invites
+    const q = search.toLowerCase()
+    return invites.filter((i) => i.group.name.toLowerCase().includes(q) || i.inviter.username.toLowerCase().includes(q))
+  }, [invites, search])
+
   const input = useChatStore((s) => s.input)
   const showEmoji = useChatStore((s) => s.showEmoji)
   const uploading = useChatStore((s) => s.uploading)
@@ -124,6 +139,7 @@ export default function ChatPage() {
   const [e2eKeys, setE2eKeys] = useState<E2EKeys | null>(null)
   const [keyWarning, setKeyWarning] = useState<string | null>(null)
   const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null)
+  const [showFavoritesChat, setShowFavoritesChat] = useState(false)
   const [recording, setRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [recordingTime, setRecordingTime] = useState(0)
@@ -639,7 +655,7 @@ export default function ChatPage() {
   const handleStartChat = useCallback(async (userId: string) => {
     try {
       const chat = await api.createChat("", [userId], false)
-      loadChats(); setSelectedChat(chat); setTab("chats"); setMessages([])
+      loadChats(); setShowFavoritesChat(false); setSelectedChat(chat); setTab("chats"); setMessages([])
     } catch { setErrorToast(t("errors.createChat")) }
   }, [loadChats, setSelectedChat, setTab, setMessages, setErrorToast, t])
 
@@ -659,7 +675,7 @@ export default function ChatPage() {
     try {
       const isGroup = participantIds.length > 1
       const chat = await api.createChat(name || "", participantIds, isGroup, isSecret || false, secretTtl || 0)
-      setShowCreateChat(false); loadChats(); setSelectedChat(chat); setTab("chats"); setMessages([])
+      setShowCreateChat(false); loadChats(); setShowFavoritesChat(false); setSelectedChat(chat); setTab("chats"); setMessages([])
 
       // Initialize group E2E key for new group chats
       if (isGroup && e2eKeys) {
@@ -783,7 +799,7 @@ export default function ChatPage() {
   const handleViewProfile = useCallback((user: UserResponse) => setProfileUser(user), [setProfileUser])
 
   const handleProfile = useCallback(() => navigate("/profile"), [navigate])
-  const handleLogout = useCallback(() => { api.clearToken(); clearPin(); navigate("/login", { replace: true }) }, [navigate])
+  const handleLogout = useCallback(() => { performLogout(); navigate("/login", { replace: true }) }, [navigate])
   const handleSettings = useCallback(() => navigate("/settings"), [navigate])
 
   const mentionCandidates = mentionQuery && selectedChat
@@ -864,26 +880,32 @@ export default function ChatPage() {
 
       <div className="chat-body">
         {/* Sidebar — hidden on mobile when chat selected */}
-        {!(isMobile && selectedChat) && (
+        {!(isMobile && (selectedChat || showFavoritesChat)) && (
         <ChatSidebar
           tab={tab} setTab={setTab} search={search} setSearch={setSearch}
-          chats={chats} filteredChats={filteredChats} contacts={contacts} invites={invites}
-          currentUser={currentUser} chatListRef={chatListRef}
-          scrollToMessageId={scrollToMessageId} setScrollToMessageId={setScrollToMessageId}
-          setSelectedChat={setSelectedChat} setShowCreateChat={setShowCreateChat}
+          filteredChats={filteredChats} filteredContacts={filteredContacts}
+          invites={invites} filteredInvites={filteredInvites}
+          currentUser={currentUser} selectedChatId={selectedChat?.id ?? null} isMobile={isMobile}
+          chatListRef={chatListRef}
+          setShowCreateChat={setShowCreateChat}
           setShowAddContact={setShowAddContact}
-          handleSelectChat={handleSelectChat} handlePin={handlePin}
+          handleSelectChat={(chatId) => { setShowFavoritesChat(false); handleSelectChat(chatId) }}
+          handlePin={handlePin}
           handleMute={handleMute} handleDeleteChat={handleDeleteChat}
           handleRemoveContact={handleRemoveContact} handleStartChat={handleStartChat}
           handleAcceptInvite={handleAcceptInvite} handleDeclineInvite={handleDeclineInvite}
           chatsLoaded={chatsLoaded} chatsError={chatsError} onRetryChats={loadChats}
           onGlobalSearch={() => setShowGlobalSearch(true)}
+          onOpenFavorites={() => { setSelectedChat(null); setShowFavoritesChat(true) }}
+          isFavoritesOpen={showFavoritesChat}
         />
         )}
 
         {/* Main */}
         <div className="chat-main" role="main" id="main-content">
-          {!selectedChat ? (
+          {showFavoritesChat ? (
+            <FavoritesChatWindow isMobile={isMobile} onClose={() => setShowFavoritesChat(false)} />
+          ) : !selectedChat ? (
             <div className="chat-placeholder" role="status">
               <Logo size={64} />
               <h3>NurChat</h3>
@@ -1179,13 +1201,13 @@ export default function ChatPage() {
         onAddContact={handleAddContact} onCloseAddContact={() => setShowAddContact(false)}
         showCreateChat={showCreateChat} onCreateChat={handleCreateChat}
         onCloseCreateChat={() => setShowCreateChat(false)}
-        profileUser={profileUser} onCloseProfile={() => setProfileUser(null)}
+        profileUser={profileUser} onCloseProfile={() => setProfileUser(null)} onWriteToUser={handleStartChat}
         showGroupSettings={showGroupSettings} selectedChat={selectedChat}
         onCloseGroupSettings={() => setShowGroupSettings(false)} onGroupUpdated={loadChats}
         showGlobalSearch={showGlobalSearch} chats={chats}
         onSelectGlobalSearch={(chatId, messageId) => {
           const chat = chats.find(c => c.id === chatId)
-          if (chat) { setSelectedChat(chat); setTab("chats") }
+          if (chat) { setShowFavoritesChat(false); setSelectedChat(chat); setTab("chats") }
           if (messageId) setScrollToMessageId(messageId)
           setShowGlobalSearch(false)
         }}

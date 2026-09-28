@@ -10,6 +10,21 @@ class ApiError extends Error {
   }
 }
 
+/**
+ * Человекочитаемое сообщение из ошибки API: сервер отдаёт JSON {"detail": ...},
+ * ApiError несёт его сырым текстом. Возвращает detail либо fallback.
+ */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : ""
+  if (!raw) return fallback
+  try {
+    const detail = JSON.parse(raw)?.detail
+    if (typeof detail === "string" && detail) return detail
+    if (Array.isArray(detail) && typeof detail[0]?.msg === "string") return detail[0].msg
+  } catch { /* не JSON — сетевые ошибки и т.п. */ }
+  return raw.startsWith("{") || raw.startsWith("<") ? fallback : raw
+}
+
 function getToken(): string | null {
   return localStorage.getItem("token")
 }
@@ -53,7 +68,7 @@ export function refreshAccessToken(): Promise<boolean> {
         const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh_token: rt }),
+          body: JSON.stringify({ refresh_token_str: rt }),
           signal: controller.signal,
         })
         if (!res.ok) return false
@@ -163,6 +178,34 @@ export const api = {
 
   getCurrentUser: () =>
     request<UserResponse>("GET", "/api/auth/me"),
+
+  updateProfile: async (fields: { first_name: string; last_name: string; status: string; bio: string }): Promise<UserResponse> => {
+    // Пустые status/bio отправляем как есть: сервер трактует "" как очистку,
+    // а отсутствие поля как «не менять».
+    const send = () => {
+      const form = new FormData()
+      for (const [k, v] of Object.entries(fields)) form.append(k, v)
+      const token = getToken()
+      const csrf = csrfHeader()
+      return fetch(`${BASE_URL}/api/auth/profile/update`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
+        body: form,
+      })
+    }
+    let res = await send()
+    if (res.status === 401 && await refreshAccessToken()) res = await send()
+    if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText)
+    const updated: UserResponse = await res.json()
+    localStorage.setItem("user", JSON.stringify(updated))
+    return updated
+  },
+
+  logoutAll: () =>
+    request<{ message: string }>("POST", "/api/auth/logout-all"),
 
   getAllUsers: () =>
     request<UserResponse[]>("GET", "/api/auth/users"),

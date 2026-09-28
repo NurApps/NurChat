@@ -22,6 +22,7 @@ from server.utils.security import (
     generate_totp_secret,
     generate_totp_uri,
     hash_backup_codes,
+    remember_tokens_valid_after,
     verify_backup_code,
     verify_totp,
 )
@@ -444,6 +445,29 @@ async def logout(
 
     log_audit(user_id, "user_logout", ip_address=client_ip(request))
     return {"message": "Успешный выход"}
+
+
+@router.post("/logout-all")
+@limiter.limit("5/minute")
+async def logout_all(
+    request: Request,
+    token: dict = Depends(verify_token_dependency),
+    db: Session = Depends(get_db)
+):
+    """Выход со всех устройств: все выданные ранее access/refresh токены перестают действовать."""
+    user_id = token["sub"]
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    cutoff = int(datetime.now(timezone.utc).timestamp())
+    user.tokens_valid_after = cutoff
+    user.is_online = False
+    db.commit()
+    remember_tokens_valid_after(user_id, cutoff)
+
+    log_audit(user_id, "user_logout_all", ip_address=client_ip(request))
+    return {"message": "Выход выполнен на всех устройствах"}
 
 
 @router.post("/profile/update")

@@ -1,65 +1,41 @@
 ﻿import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { api } from "../services/api"
-import { csrfHeader } from "../services/api"
-import { BASE_URL, avatarUrl, getRelayConfig, setRelayConfig, resetRelayConfig } from "../config"
-import { useAvatar } from "../hooks/useAvatar"
+import { api, csrfHeader, apiErrorMessage } from "../services/api"
+import { BASE_URL, getRelayConfig, setRelayConfig, resetRelayConfig } from "../config"
 import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
+import { performLogout, releaseLocalKeys } from "../services/localSession"
 import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
 import { useTheme, THEMES } from "../context/ThemeContext"
+import { AlertTriangle, ArrowLeft, Bell, Database, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
+import ProfileEditor from "../components/ProfileEditor"
 import type { UserResponse } from "../types"
 
-type SettingsTab = "profile" | "notifications" | "privacy" | "storage" | "security" | "account"
+type SettingsTab = "profile" | "appearance" | "notifications" | "privacy" | "storage" | "security" | "account"
 
 const TabIcons = {
-  profile: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-    </svg>
-  ),
-  notifications: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  ),
-  privacy: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  ),
-  storage: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-    </svg>
-  ),
-  security: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  ),
-  account: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
-  ),
+  profile: <User size={18} strokeWidth={2} aria-hidden="true" />,
+  appearance: <Palette size={18} strokeWidth={2} aria-hidden="true" />,
+  notifications: <Bell size={18} strokeWidth={2} aria-hidden="true" />,
+  privacy: <LockKeyhole size={18} strokeWidth={2} aria-hidden="true" />,
+  storage: <Database size={18} strokeWidth={2} aria-hidden="true" />,
+  security: <Shield size={18} strokeWidth={2} aria-hidden="true" />,
+  account: <Settings size={18} strokeWidth={2} aria-hidden="true" />,
 }
 
 export default function SettingsPage() {
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
-  const fileRef = useRef<HTMLInputElement>(null)
   const [user, setUser] = useState<UserResponse | null>(null)
-  const [firstName, setFirstName] = useState("")
-  const [lastName, setLastName] = useState("")
-  const [status, setStatus] = useState("")
-  const [bio, setBio] = useState("")
-  const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [tab, setTab] = useState<SettingsTab>("profile")
-  const { uploading, msg, msgKind, setMsg, uploadAvatar, deleteAvatar } = useAvatar(setUser)
+  const [msg, setMsgText] = useState("")
+  const [msgKind, setMsgKind] = useState<"ok" | "err">("ok")
+  const setMsg = (text: string) => { setMsgText(text); setMsgKind("ok") }
+  const setErr = (text: string) => { setMsgText(text); setMsgKind("err") }
   const [lang, setLang] = useState(i18n.language)
   const [appVersion, setAppVersion] = useState("")
   const [updateStatus, setUpdateStatus] = useState<"checking" | "available" | "latest" | "error" | "">("")
@@ -88,6 +64,7 @@ export default function SettingsPage() {
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("http")
   const [relaySaved, setRelaySaved] = useState(false)
   const [settings, setSettings] = useState(getSettings)
+  const profileDirtyRef = useRef(false)
 
   useEffect(() => {
     const cfg = getRelayConfig()
@@ -97,15 +74,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     api.getCurrentUser()
-      .then((u: UserResponse) => {
-        setUser(u)
-        setFirstName(u.first_name || "")
-        setLastName(u.last_name || "")
-        setStatus(u.status || "")
-        setBio(u.bio || "")
-      })
-      .catch(() => navigate("/login"))
-  }, [navigate])
+      .then((u: UserResponse) => setUser(u))
+      .catch(() => setLoadError(true))
+  }, [])
 
   useEffect(() => {
     hasKeys().then(setE2eEnabled).catch(() => setE2eEnabled(false))
@@ -152,7 +123,7 @@ export default function SettingsPage() {
       setTotpSetupMode("enable")
       setTotpBackupCodes(data.backup_codes || [])
     } catch (e: any) {
-      setMsg(e.message || t("settings.totpSetupError"))
+      setErr(e.message || t("settings.totpSetupError"))
     } finally {
       setTotpLoading(false)
     }
@@ -160,7 +131,7 @@ export default function SettingsPage() {
 
   const handleTotpEnable = async () => {
     if (!totpCode || totpCode.length < 6) {
-      setMsg(t("settings.totpCodePlaceholder"))
+      setErr(t("settings.totpCodePlaceholder"))
       return
     }
     setTotpLoading(true)
@@ -185,7 +156,7 @@ export default function SettingsPage() {
       setTotpPassword("")
       setMsg(t("settings.totpEnabledSuccess"))
     } catch (e: any) {
-      setMsg(e.message || t("settings.totpEnableError"))
+      setErr(e.message || t("settings.totpEnableError"))
     } finally {
       setTotpLoading(false)
     }
@@ -193,7 +164,7 @@ export default function SettingsPage() {
 
   const handleTotpDisable = async () => {
     if (!totpCode) {
-      setMsg(t("settings.totpCodeOrBackup"))
+      setErr(t("settings.totpCodeOrBackup"))
       return
     }
     setTotpLoading(true)
@@ -218,38 +189,9 @@ export default function SettingsPage() {
       setTotpPassword("")
       setMsg(t("settings.totpDisabledSuccess"))
     } catch (e: any) {
-      setMsg(e.message || t("settings.totpDisableError"))
+      setErr(e.message || t("settings.totpDisableError"))
     } finally {
       setTotpLoading(false)
-    }
-  }
-
-  const handleSave = async () => {
-    setSaving(true)
-    setMsg("")
-    try {
-      const form = new FormData()
-      form.append("first_name", firstName)
-      form.append("last_name", lastName)
-      if (status) form.append("status", status)
-      if (bio) form.append("bio", bio)
-      const res = await fetch(`${BASE_URL}/api/auth/profile/update`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
-        },
-        body: form,
-      })
-      if (!res.ok) throw new Error(await res.text())
-      const updated = await res.json()
-      localStorage.setItem("user", JSON.stringify(updated))
-      setUser(updated)
-      setMsg(t("settings.saved"))
-    } catch (e: any) {
-      setMsg(e.message || t("settings.error"))
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -262,12 +204,12 @@ export default function SettingsPage() {
 
   const handlePinSetup = () => {
     if (pinStep === "enter") {
-      if (pinInput.length < 4) { setMsg(t("settings.pinMinLength")); return }
+      if (pinInput.length < 4) { setErr(t("settings.pinMinLength")); return }
       setPinStep("confirm")
       setPinInput("")
       setMsg("")
     } else {
-      if (pinInput !== pinConfirm) { setMsg(t("settings.pinMismatch")); return }
+      if (pinInput !== pinConfirm) { setErr(t("settings.pinMismatch")); return }
       setPin(pinInput).then(() => {
         setPinEnabled(true)
         setPinSetup("idle")
@@ -282,12 +224,12 @@ export default function SettingsPage() {
   const handlePinChange = async () => {
     if (pinStep === "enter") {
       const ok = await verifyPin(pinInput)
-      if (!ok) { setMsg(t("settings.pinWrongCurrent")); return }
+      if (!ok) { setErr(t("settings.pinWrongCurrent")); return }
       setPinStep("confirm")
       setPinInput("")
       setMsg("")
     } else {
-      if (pinInput.length < 4) { setMsg(t("settings.pinMinLength")); return }
+      if (pinInput.length < 4) { setErr(t("settings.pinMinLength")); return }
       setPin(pinInput).then(() => {
         setPinEnabled(true)
         setPinSetup("idle")
@@ -302,7 +244,7 @@ export default function SettingsPage() {
   const handlePinRemove = async () => {
     if (pinStep === "enter") {
       const ok = await verifyPin(pinInput)
-      if (!ok) { setMsg(t("settings.pinWrong")); return }
+      if (!ok) { setErr(t("settings.pinWrong")); return }
       clearPin()
       setPinEnabled(false)
       setPinSetup("idle")
@@ -334,8 +276,7 @@ export default function SettingsPage() {
 
   const handleLogout = () => {
     if (!confirm(t("settings.confirmLogout"))) return
-    api.clearToken()
-    clearPin()
+    performLogout()
     navigate("/login", { replace: true })
   }
 
@@ -352,18 +293,29 @@ export default function SettingsPage() {
     }
   }
 
+  const handleLogoutAll = async () => {
+    if (!confirm(t("settings.confirmLogoutAll"))) return
+    try {
+      await api.logoutAll()
+      performLogout()
+      navigate("/login", { replace: true })
+    } catch (e) {
+      setErr(apiErrorMessage(e, t("settings.error")))
+    }
+  }
+
   const handleDeleteAccount = async () => {
     if (!confirm(t("settings.confirmDeleteAccount"))) return
     if (!confirm(t("settings.confirmDeleteAccountSecond"))) return
     try {
       await api.deleteAccount()
-      clearKeys()
+      await clearKeys()
+      releaseLocalKeys()
       clearSettings()
-      api.clearToken()
-      clearPin()
+      performLogout()
       navigate("/login", { replace: true })
     } catch {
-      setMsg(t("settings.deleteError"))
+      setErr(t("settings.deleteError"))
     }
   }
 
@@ -371,13 +323,28 @@ export default function SettingsPage() {
     setSettings(setSetting(key, value))
   }
 
+  if (loadError) {
+    return (
+      <div className="auth-loading">
+        <p className="settings-msg err" role="alert">{t("errors.network")}</p>
+        <button type="button" className="avatar-btn" onClick={() => window.location.reload()}>{t("common.retry")}</button>
+      </div>
+    )
+  }
   if (!user) return <div className="auth-loading"><div className="spinner" /></div>
 
-  const avatarSrc = avatarUrl(user.avatar_path)
-  const initial = user.username[0]?.toUpperCase() || "?"
+  // Вкладка «Профиль» редактируется на месте — не теряем правки при уходе с неё.
+  const confirmDiscardProfile = () => {
+    if (!profileDirtyRef.current || confirm(t("profile.discardChanges"))) {
+      profileDirtyRef.current = false
+      return true
+    }
+    return false
+  }
 
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: "profile", label: t("settings.profile"), icon: TabIcons.profile },
+    { id: "appearance", label: t("settings.appearance"), icon: TabIcons.appearance },
     { id: "notifications", label: t("settings.notifications"), icon: TabIcons.notifications },
     { id: "privacy", label: t("settings.privacy"), icon: TabIcons.privacy },
     { id: "storage", label: t("settings.storage"), icon: TabIcons.storage },
@@ -395,131 +362,80 @@ export default function SettingsPage() {
   return (
     <div className="settings-page">
       <div className="settings-header">
-        <button className="settings-back" onClick={() => navigate("/chat")}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
+        <button type="button" className="settings-back" onClick={() => { if (confirmDiscardProfile()) navigate("/chat") }} aria-label={t("common.back")}>
+          <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
         </button>
         <h2>{t("settings.title")}</h2>
       </div>
 
       <div className="settings-body">
         {/* Tab navigation */}
-        <div className="settings-tabs">
-          {tabs.map((t) => (
+        <div className="settings-tabs" role="tablist">
+          {tabs.map((it) => (
             <button
-              key={t.id}
-              className={`settings-tab ${tab === t.id ? "active" : ""}`}
-              onClick={() => setTab(t.id)}
+              key={it.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === it.id}
+              className={`settings-tab ${tab === it.id ? "active" : ""}`}
+              onClick={() => {
+                if (it.id === tab || !confirmDiscardProfile()) return
+                setTab(it.id)
+                setMsg("")
+              }}
             >
-              <span className="settings-tab-icon">{t.icon}</span>
-              <span className="settings-tab-label">{t.label}</span>
+              <span className="settings-tab-icon">{it.icon}</span>
+              <span className="settings-tab-label">{it.label}</span>
             </button>
           ))}
         </div>
 
         <div className="settings-content">
+          {msg && <p className={`settings-msg ${msgKind}`} role="status" aria-live="polite">{msg}</p>}
+
           {/* ─── Profile ─── */}
           {tab === "profile" && (
-            <>
-              <div className="settings-avatar-section">
-                <div className="settings-avatar" style={{ background: avatarSrc ? "transparent" : "#0e7cb4" }}>
-                  {avatarSrc ? (
-                    // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
-                    <img src={avatarSrc} alt="avatar" className="settings-avatar-img" />
-                  ) : (
-                    <span>{initial}</span>
-                  )}
-                </div>
-                <div className="settings-user-meta">
-                  <span className="settings-username">@{user.username}</span>
-                  <span className="settings-userid">ID: {user.id}</span>
-                </div>
-                <div className="avatar-actions">
-                  <button className="avatar-btn" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                    {uploading ? "..." : t("profile.changeAvatar")}
-                  </button>
-                  {user.avatar_path && (
-                    <button className="avatar-btn danger" onClick={deleteAvatar} disabled={uploading}>
-                      {t("common.delete")}
-                    </button>
-                  )}
-                </div>
-                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  // Сбрасываем input, чтобы повторный выбор того же файла
-                  // снова вызывал onChange.
-                  e.target.value = ""
-                  if (file) uploadAvatar(file)
-                }} />
-              </div>
+            <ProfileEditor user={user} onUserChange={setUser} onDirtyChange={(d) => { profileDirtyRef.current = d }} />
+          )}
 
-              <div className="settings-fields">
-                <label className="settings-label">{t("profile.firstName")}</label>
-                <input className="settings-input" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-
-                <label className="settings-label">{t("profile.lastName")}</label>
-                <input className="settings-input" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-
-                <label className="settings-label">{t("settings.status")}</label>
-                <input className="settings-input" placeholder={t("settings.statusPlaceholder")} value={status} onChange={(e) => setStatus(e.target.value)} />
-
-                <label className="settings-label">{t("profile.bio")}</label>
-                <textarea className="settings-textarea" rows={3} placeholder={t("settings.bioPlaceholder")} value={bio} onChange={(e) => setBio(e.target.value)} />
-              </div>
-
-              {msg && <p className={`settings-msg ${msgKind ? (msgKind === "err" ? "err" : "ok") : (msg === t("settings.saved") ? "ok" : "err")}`}>{msg}</p>}
-
-              <button className="settings-save-btn" disabled={saving} onClick={handleSave}>
-                {saving ? t("settings.saving") : t("common.save")}
-              </button>
-
-              <div className="settings-group" style={{ marginTop: 24 }}>
+          {/* ─── Appearance ─── */}
+          {tab === "appearance" && (
+            <div className="settings-sections">
+              <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.themeTitle")}</h3>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                  {THEMES.map((t) => (
+                <div className="settings-choices" role="radiogroup" aria-label={t("settings.themeTitle")}>
+                  {THEMES.map((th) => (
                     <button
-                      key={t.id}
-                      className={`settings-tab ${theme === t.id ? "active" : ""}`}
-                      onClick={() => setTheme(t.id)}
-                      style={{
-                        padding: "8px 16px",
-                        borderRadius: 8,
-                        border: theme === t.id ? "2px solid var(--accent)" : "2px solid transparent",
-                        background: theme === t.id ? "var(--surface-variant)" : "var(--card-bg)",
-                        cursor: "pointer",
-                        fontSize: 13,
-                      }}
+                      key={th.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={theme === th.id}
+                      className={`settings-tab settings-choice ${theme === th.id ? "active" : ""}`}
+                      onClick={() => setTheme(th.id)}
                     >
-                      {t.label}
+                      {th.label}
                     </button>
                   ))}
                 </div>
               </div>
-
-              <div className="settings-group" style={{ marginTop: 24 }}>
+              <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.language")}</h3>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                <div className="settings-choices" role="radiogroup" aria-label={t("settings.language")}>
                   {(["ru", "en"] as const).map((lng) => (
                     <button
                       key={lng}
-                      className={`settings-tab ${lang === lng ? "active" : ""}`}
+                      type="button"
+                      role="radio"
+                      aria-checked={lang === lng}
+                      className={`settings-tab settings-choice ${lang === lng ? "active" : ""}`}
                       onClick={() => { i18n.changeLanguage(lng); setLang(lng) }}
-                      style={{
-                        padding: "8px 16px",
-                        borderRadius: 8,
-                        border: lang === lng ? "2px solid var(--accent)" : "2px solid transparent",
-                        background: lang === lng ? "var(--surface-variant)" : "var(--card-bg)",
-                        cursor: "pointer",
-                        fontSize: 13,
-                      }}
                     >
                       {lng === "ru" ? "Русский" : "English"}
                     </button>
                   ))}
                 </div>
               </div>
-            </>
+            </div>
           )}
 
           {/* ─── Notifications ─── */}
@@ -674,7 +590,7 @@ export default function SettingsPage() {
                     {totpBackupCodes.length > 0 && (
                       <div style={{ marginTop: 16, padding: 12, background: "rgba(76,175,80,0.1)", borderRadius: 6 }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: "#4CAF50", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          <AlertTriangle size={14} strokeWidth={2} aria-hidden="true" />
                           <span>{t("settings.totpSaveBackup")}</span>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 4, fontSize: 11 }}>
@@ -811,8 +727,8 @@ export default function SettingsPage() {
               </div>
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.sessions")}</h3>
-                <p className="settings-info-text">{t("settings.sessionDesc", { username: user.username })}</p>
-                <button className="settings-action-btn danger" onClick={() => { api.clearToken(); clearPin(); navigate("/login", { replace: true }) }}>
+                <p className="settings-info-text">{t("settings.logoutAllDesc")}</p>
+                <button type="button" className="settings-action-btn danger" onClick={handleLogoutAll}>
                   {t("settings.logoutAllDevices")}
                 </button>
               </div>

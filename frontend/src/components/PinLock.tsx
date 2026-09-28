@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { verifyPin, isPinEnabled, resetAttempts, recordFailedAttempt, getLockoutTimeRemaining, isLockedOut } from "../services/pinLock"
+import { Delete, LockKeyhole } from "lucide-react"
 
 interface Props {
   onUnlock: () => void
@@ -78,9 +79,7 @@ export default function PinLock({ onUnlock }: Props) {
     <div className="pinlock-overlay">
       <div className="pinlock-card">
         <div className="pinlock-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
+          <LockKeyhole size={48} color="#2AABEE" strokeWidth={2} aria-hidden="true" />
         </div>
         <h2 className="pinlock-title">NurChat</h2>
         <p className="pinlock-subtitle">{t("pinLock.enterPin")}</p>
@@ -105,9 +104,7 @@ export default function PinLock({ onUnlock }: Props) {
             if (d === "⌫") {
               return (
                 <button key={i} className="pinlock-key" onClick={handleDelete} disabled={locked}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" /><line x1="18" y1="9" x2="12" y2="15" /><line x1="12" y1="9" x2="18" y2="15" />
-                  </svg>
+                  <Delete size={24} strokeWidth={2} aria-hidden="true" />
                 </button>
               )
             }

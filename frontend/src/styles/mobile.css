@@ -671,15 +671,6 @@
    ======================================== */
 
 @media (min-width: 769px) and (max-width: 1024px) {
-  .app-layout {
-    display: grid;
-    grid-template-columns: 280px 1fr;
-  }
-
-  .app-sidebar {
-    border-right: 1px solid var(--border-color);
-  }
-
   .chat-list-item {
     padding: var(--space-md) var(--space-lg);
   }
@@ -753,6 +744,10 @@
   .chat-sidebar {
     width: 100%;
     height: 100%;
+  }
+
+  .sidebar-resize-handle {
+    display: none;
   }
 
   .chat-main {

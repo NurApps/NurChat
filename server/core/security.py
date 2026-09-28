@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from nacl import public
 
-from server.utils.security import is_token_revoked, revoke_token
+from server.utils.security import is_token_revoked, is_token_stale, revoke_token
 from shared.config import settings
 from shared.exceptions import AuthenticationError
 
@@ -31,7 +31,12 @@ class SecurityManager:
             expire = datetime.now(timezone.utc) + expires_delta
         else:
             expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        to_encode.update({"exp": expire, "type": "access", "jti": secrets.token_hex(16)})
+        to_encode.update({
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+            "type": "access",
+            "jti": secrets.token_hex(16),
+        })
         return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
     @staticmethod
@@ -39,7 +44,12 @@ class SecurityManager:
         """Создание refresh токена (долгий)"""
         to_encode = data.copy()
         expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-        to_encode.update({"exp": expire, "type": "refresh", "jti": secrets.token_hex(16)})
+        to_encode.update({
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+            "type": "refresh",
+            "jti": secrets.token_hex(16),
+        })
         return cast(str, jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM))
 
     @staticmethod
@@ -63,6 +73,8 @@ class SecurityManager:
             jti = payload.get("jti")
             if jti and is_token_revoked(jti):
                 raise AuthenticationError("Токен отозван")
+            if is_token_stale(payload):
+                raise AuthenticationError("Токен отозван")
             return cast(dict, payload)
         except jwt.PyJWTError:
             raise AuthenticationError("Невалидный токен")
@@ -76,6 +88,8 @@ class SecurityManager:
                 raise AuthenticationError("Неверный тип токена")
             jti = payload.get("jti")
             if jti and is_token_revoked(jti):
+                raise AuthenticationError("Токен отозван")
+            if is_token_stale(payload):
                 raise AuthenticationError("Токен отозван")
             return cast(dict, payload)
         except jwt.PyJWTError:
@@ -156,7 +170,7 @@ async def verify_token_dependency(credentials: HTTPAuthorizationCredentials = De
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         jti = payload.get("jti")
-        if jti and is_token_revoked(jti):
+        if (jti and is_token_revoked(jti)) or is_token_stale(payload):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token revoked",
@@ -192,7 +206,7 @@ async def verify_pending_2fa_dependency(credentials: HTTPAuthorizationCredential
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         jti = payload.get("jti")
-        if jti and is_token_revoked(jti):
+        if (jti and is_token_revoked(jti)) or is_token_stale(payload):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token revoked",

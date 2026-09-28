@@ -250,6 +250,7 @@ export async function clearKeys(): Promise<void> {
   const { resetRatchetCache } = await import("./groupE2E")
   await clearAll()
   resetRatchetCache()
+  resetMemoryCaches()
 }
 
 export async function hasKeys(): Promise<boolean> {
@@ -1001,9 +1002,20 @@ export async function initSecureStorage(): Promise<{
  * Cleanup on logout. Clears all sensitive data.
  */
 export async function logout(): Promise<void> {
+  resetMemoryCaches()
+  await clearSessionsSecure()
+}
+
+/**
+ * Drop in-memory E2E state (session/decrypt caches, group ratchets) WITHOUT
+ * touching IndexedDB. Used on ordinary logout: the persisted ratchet state
+ * stays so the same user can log back in and keep decrypting; the next
+ * account must just not see the previous one's cached state.
+ */
+export function resetMemoryCaches(): void {
   cancelAutoClear()
   sessionCache.clear()
   sessionPeers.clear()
   clearDecryptedCache()
-  await clearSessionsSecure()
+  void import("./groupE2E").then((m) => m.resetRatchetCache())
 }

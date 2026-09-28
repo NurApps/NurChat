@@ -98,6 +98,8 @@ function App() {
                 <Route path="/calls" element={<AuthGuard><CallHistoryPage /></AuthGuard>} />
                 <Route path="/contacts" element={<AuthGuard><ChatPage /></AuthGuard>} />
                 <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
+                <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
+                <Route path="/blocked" element={<AuthGuard><BlockedUsersPage /></AuthGuard>} />
               </>
             ) : (
               <>

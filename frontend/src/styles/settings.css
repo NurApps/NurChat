@@ -59,6 +59,8 @@
   box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
 }
 
+.settings-choice.active { color: var(--text); }
+
 .settings-tab-icon { display: flex; align-items: center; opacity: 0.85; }
 .settings-tab.active .settings-tab-icon { opacity: 1; }
 .settings-tab-label { font-size: 13px; }
@@ -406,3 +408,26 @@
 .pinlock-key:disabled { opacity: 0.4; cursor: not-allowed; }
 .pinlock-key.empty { background: none; cursor: default; }
 .settings-pin-setup { margin-top: 8px; }
+
+.profile-edit-actions { display: flex; gap: 8px; align-items: stretch; margin-top: 12px; }
+.profile-edit-actions .settings-save-btn { flex: 1; }
+.profile-edit-actions .avatar-btn { padding: 0 18px; height: 48px; border-radius: 12px; font-size: 15px; }
+.settings-input[aria-invalid="true"] { border-color: var(--error); }
+.settings-choices { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.settings-choice {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background: var(--card-bg);
+  cursor: pointer;
+  font-size: 13px;
+}
+.settings-choice.active { border-color: var(--accent); background: var(--surface-variant); }
+
+/* Профиль: длинные значения не распирают страницу, многострочное «о себе» сохраняет переносы */
+.settings-user-meta { min-width: 0; }
+.settings-username, .settings-userid { overflow-wrap: anywhere; }
+.settings-avatar-section { flex-wrap: wrap; }
+.profile-field-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+.profile-bio-counter { align-self: flex-end; }
+.profile-edit-btn { margin-top: 12px; }

@@ -271,3 +271,45 @@ def is_token_revoked(jti: str) -> bool:
         return True
     _load_persisted_blacklist()
     return jti in _BLACKLIST
+
+
+# ── Logout from all devices ──
+# users.tokens_valid_after (unix-секунды): токены с iat <= значения недействительны.
+# Кэш в памяти процесса, лениво подгружается из БД — как и _BLACKLIST.
+
+_VALID_AFTER: dict[str, int] = {}
+_valid_after_loaded = False
+
+
+def _load_valid_after() -> None:
+    global _valid_after_loaded
+    if _valid_after_loaded:
+        return
+    try:
+        from server.core.database import SessionLocal
+        from server.core.models import User
+        db = SessionLocal()
+        try:
+            for uid, ts in db.query(User.id, User.tokens_valid_after).filter(User.tokens_valid_after.isnot(None)).all():
+                _VALID_AFTER[uid] = ts
+            _valid_after_loaded = True
+        finally:
+            db.close()
+    except Exception:
+        # БД недоступна — не помечаем как загруженное, повторим при следующей проверке.
+        pass
+
+
+def remember_tokens_valid_after(user_id: str, ts: int) -> None:
+    """Обновить кэш после записи tokens_valid_after в БД."""
+    _VALID_AFTER[user_id] = max(ts, _VALID_AFTER.get(user_id, 0))
+
+
+def is_token_stale(payload: dict) -> bool:
+    """True, если токен выпущен не позже момента «выйти со всех устройств»."""
+    _load_valid_after()
+    valid_after = _VALID_AFTER.get(payload.get("sub", ""))
+    if valid_after is None:
+        return False
+    iat = payload.get("iat")
+    return not isinstance(iat, (int, float)) or iat <= valid_after

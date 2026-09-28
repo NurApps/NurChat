@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { BASE_URL } from "../config"
-import { csrfHeader } from "../services/api"
+import { csrfHeader, apiErrorMessage } from "../services/api"
 import type { UserResponse } from "../types"
 
 export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
@@ -22,7 +22,7 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
     // Ранняя клиентская проверка — не гоняем мусор на сервер.
     const allowed = ["image/jpeg", "image/png", "image/webp"]
     if (!allowed.includes(file.type) && !/\.(jpe?g|png|webp)$/i.test(file.name)) {
-      setErr(t("profile.avatarTypeError", "Поддерживаются только JPG, PNG и WebP"))
+      setErr(t("profile.avatarBadType", "Поддерживаются только JPG, PNG и WebP"))
       return
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -48,7 +48,7 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
       onUserUpdate?.(updated)
       setOk(t("profile.avatarUpdated"))
     } catch (e: any) {
-      setErr(e.message || t("profile.avatarUploadError"))
+      setErr(apiErrorMessage(e, t("profile.avatarUploadError")))
     } finally {
       setUploading(false)
     }
@@ -73,11 +73,11 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
       onUserUpdate?.(updated)
       setOk(t("profile.avatarDeleted"))
     } catch (e: any) {
-      setErr(e.message || t("profile.avatarDeleteError"))
+      setErr(apiErrorMessage(e, t("profile.avatarDeleteError")))
     } finally {
       setUploading(false)
     }
   }, [onUserUpdate, t])
 
-  return { uploading, msg, msgKind, setMsg, uploadAvatar, deleteAvatar }
+  return { uploading, msg, msgKind, setMsg, setOk, setErr, uploadAvatar, deleteAvatar }
 }

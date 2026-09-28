@@ -4,6 +4,7 @@ import '@testing-library/jest-dom'
 
 vi.mock('../utils/drafts', () => ({
   getDraftForChat: vi.fn(() => ''),
+  subscribeDrafts: vi.fn(() => () => {}),
 }))
 
 import ChatListItem from './ChatListItem'
@@ -104,7 +105,7 @@ describe('ChatListItem', () => {
 
   it('opens menu on menu button click', () => {
     render(<ChatListItem chat={makeChat()} currentUser={currentUser} onClick={vi.fn()} onPin={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button'))
+    fireEvent.click(screen.getByRole('button', { name: 'Меню чата' }))
     expect(screen.getByText('Закрепить')).toBeInTheDocument()
   })
 
@@ -115,10 +116,22 @@ describe('ChatListItem', () => {
     expect(onClick).toHaveBeenCalledWith('chat_1')
   })
 
+  it('calls onClick on Enter keypress (keyboard access)', () => {
+    const onClick = vi.fn()
+    render(<ChatListItem chat={makeChat()} currentUser={currentUser} onClick={onClick} />)
+    fireEvent.keyDown(document.querySelector('.chat-list-item')!, { key: 'Enter' })
+    expect(onClick).toHaveBeenCalledWith('chat_1')
+  })
+
+  it('highlights the item when selected', () => {
+    render(<ChatListItem chat={makeChat()} currentUser={currentUser} onClick={vi.fn()} selected />)
+    expect(document.querySelector('.chat-list-item')).toHaveClass('active')
+  })
+
   it('calls onPin from menu', () => {
     const onPin = vi.fn()
     render(<ChatListItem chat={makeChat()} currentUser={currentUser} onClick={vi.fn()} onPin={onPin} />)
-    fireEvent.click(screen.getByRole('button'))
+    fireEvent.click(screen.getByRole('button', { name: 'Меню чата' }))
     fireEvent.click(screen.getByText('Закрепить'))
     expect(onPin).toHaveBeenCalledWith('chat_1', expect.any(Boolean))
   })
@@ -126,7 +139,7 @@ describe('ChatListItem', () => {
   it('calls onMute from menu', () => {
     const onMute = vi.fn()
     render(<ChatListItem chat={makeChat()} currentUser={currentUser} onClick={vi.fn()} onMute={onMute} />)
-    fireEvent.click(screen.getByRole('button'))
+    fireEvent.click(screen.getByRole('button', { name: 'Меню чата' }))
     fireEvent.click(screen.getByText('Отключить уведомления'))
     expect(onMute).toHaveBeenCalledWith('chat_1', false)
   })
@@ -134,8 +147,8 @@ describe('ChatListItem', () => {
   it('calls onDelete from menu', () => {
     const onDelete = vi.fn()
     render(<ChatListItem chat={makeChat()} currentUser={currentUser} onClick={vi.fn()} onDelete={onDelete} />)
-    fireEvent.click(screen.getByRole('button'))
-    fireEvent.click(screen.getByRole('button', { name: /Удалить/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Меню чата' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Удалить/i }))
     expect(onDelete).toHaveBeenCalledWith('chat_1')
   })
 })

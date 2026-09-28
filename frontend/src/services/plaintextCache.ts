@@ -56,6 +56,10 @@ export function savePlaintext(messageId: string, text: string): void {
   persist(cache)
 }
 
+export function clearPlaintextCache(): void {
+  try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+}
+
 export function getPlaintext(messageId: string): string | null {
   if (!messageId) return null
   return loadPlaintextCache()[messageId] ?? null

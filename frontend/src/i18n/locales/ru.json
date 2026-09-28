@@ -91,6 +91,7 @@
     "relayCheckFailed": "Relay недоступен — проверьте адрес"
   },
   "chat": {
+    "sidebar": "Боковая панель",
     "chats": "Чаты",
     "contacts": "Контакты",
     "bookmarks": "Избранное",
@@ -146,6 +147,11 @@
     "unpin": "Открепить",
     "muteNotifications": "Отключить уведомления",
     "unmuteNotifications": "Включить уведомления",
+    "deleteChat": "Удалить чат",
+    "chatMenu": "Меню чата",
+    "resizeSidebar": "Изменить ширину панели",
+    "collapseSidebar": "Свернуть панель",
+    "expandSidebar": "Развернуть панель",
     "messageMenu": "Меню сообщения",
     "copy": "Копировать",
     "reply": "Ответить",
@@ -243,8 +249,12 @@
     "allowMultiple": "Несколько вариантов"
   },
   "bookmarks": {
-    "empty": "Нет избранных сообщений",
-    "remove": "Убрать из избранного"
+    "empty": "Нет сообщений в Избранном",
+    "remove": "Убрать из избранного",
+    "notePlaceholder": "Заметка себе...",
+    "clearAll": "Очистить",
+    "clearConfirmText": "Вы точно хотите удалить все сообщения, сохранённые в Избранное?",
+    "clearWarning": "Это действие нельзя будет отменить."
   },
   "updates": {
     "downloading": "Скачивание обновления {{version}}…",
@@ -394,6 +404,8 @@
     "sessions": "Сессии",
     "sessionDesc": "Вы вошли как @{{username}} на этом устройстве.",
     "logoutAllDevices": "Выйти из всех устройств",
+    "logoutAllDesc": "Завершает все сессии этого аккаунта на всех устройствах, включая это. Потребуется войти заново.",
+    "confirmLogoutAll": "Выйти на всех устройствах? Сессии на других устройствах завершатся.",
     "advanced": "Дополнительно",
     "backups": "Бэкапы и восстановление",
     "callHistory": "История звонков",
@@ -442,10 +454,14 @@
     "avatarUploadError": "Ошибка загрузки",
     "avatarDeleted": "Аватар удалён",
     "avatarDeleteError": "Ошибка удаления",
-    "avatarTypeError": "Поддерживаются только JPG, PNG и WebP",
-    "avatarTooLarge": "Аватар слишком большой. Максимум 5 МБ",
     "userProfile": "Профиль пользователя",
-    "unknownUser": "Пользователь"
+    "unknownUser": "Пользователь",
+    "avatarAlt": "Аватар",
+    "avatarBadType": "Подходят только JPG, PNG и WebP",
+    "avatarTooLarge": "Файл больше 5 МБ",
+    "confirmRemoveAvatar": "Удалить аватар?",
+    "discardChanges": "Отменить несохранённые изменения?",
+    "firstNameTooShort": "Имя должно содержать минимум {{min}} символа"
   },
   "errors": {
     "general": "Произошла ошибка",

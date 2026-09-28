@@ -37,7 +37,7 @@ def _drop_tmp_db(engine, db_path: str) -> None:
         pass
 
 
-def test_upgrade_head_reaches_006(monkeypatch):
+def test_upgrade_head_reaches_007(monkeypatch):
     from sqlalchemy import create_engine, text
 
     db_path = _upgrade_tmp_db(monkeypatch)
@@ -45,7 +45,9 @@ def test_upgrade_head_reaches_006(monkeypatch):
     try:
         with e.connect() as c:
             ver = c.execute(text("SELECT version_num FROM alembic_version")).scalar()
-            assert ver == "006", ver
+            assert ver == "007", ver
+            cols = {r[1] for r in c.execute(text("PRAGMA table_info(users)"))}
+            assert "tokens_valid_after" in cols
     finally:
         _drop_tmp_db(e, db_path)
 

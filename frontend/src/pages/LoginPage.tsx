@@ -453,6 +453,8 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type="text"
+                name="username"
+                autoComplete="username"
                 placeholder={t("auth.usernamePlaceholder")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -465,6 +467,8 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type={showPassword ? "text" : "password"}
+                name="new-password"
+                autoComplete="new-password"
                 placeholder={t("auth.passwordPlaceholder")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -485,6 +489,8 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type={showPassword ? "text" : "password"}
+                name="new-password-confirm"
+                autoComplete="new-password"
                 placeholder={t("auth.passwordConfirmPlaceholder")}
                 value={passwordConfirm}
                 onChange={(e) => setPasswordConfirm(e.target.value)}
@@ -554,6 +560,8 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type="text"
+                name="username"
+                autoComplete="username"
                 placeholder={t("auth.usernamePlaceholder")}
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
@@ -566,6 +574,8 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type={showPassword ? "text" : "password"}
+                name="password"
+                autoComplete="current-password"
                 placeholder={t("auth.loginPasswordPlaceholder")}
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}

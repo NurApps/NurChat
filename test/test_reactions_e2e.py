@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from server.main import app
 from shared.rate_limiter import limiter
-from test.test_api import _csrf_headers, _register_user, _solve_captcha  # noqa: F401  (helpers reuse)
+from test.test_api import _csrf_headers, _register_user  # noqa: F401  (helpers reuse)
 
 client = TestClient(app)
 

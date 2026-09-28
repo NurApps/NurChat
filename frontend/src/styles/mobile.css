@@ -95,6 +95,10 @@
     font-size: var(--font-mobile-base);
     -webkit-text-size-adjust: 100%;
     -ms-text-size-adjust: 100%;
+    /* html, not just body, is the scrolling element in iOS Safari — without
+       this, content that overflows the viewport horizontally is still
+       reachable by scrolling/rubber-banding even though body clips it. */
+    overflow-x: hidden;
   }
 
   body {
@@ -367,6 +371,7 @@
 
 @media (max-width: 768px) {
   .bottom-nav__item {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -374,9 +379,15 @@
     padding: var(--space-xs) var(--space-sm);
     min-width: var(--touch-target);
     min-height: var(--touch-target);
+    background: none;
+    border: none;
+    border-radius: 0;
+    appearance: none;
+    -webkit-appearance: none;
     color: var(--text-secondary);
     font-size: var(--font-mobile-xs);
     text-decoration: none;
+    cursor: pointer;
     transition: color 0.15s ease;
   }
 
@@ -736,9 +747,62 @@
 /* ─── ChatPage Responsive ─── */
 
 @media (max-width: 768px) {
+  /* .topbar's flex children (title, username, 3 action buttons) don't
+     shrink by default (flex-item min-width is "auto"), so on narrow phones
+     the row was wider than the viewport and forced the whole page to
+     scroll horizontally. Drop the redundant title text, let the username
+     truncate, and shrink the button row so everything fits. */
+  .topbar {
+    padding: 0 var(--space-md);
+    gap: var(--space-xs);
+  }
+
+  .topbar-title {
+    display: none;
+  }
+
+  .topbar-center {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .topbar-profile-trigger {
+    min-width: 0;
+  }
+
+  .topbar-username {
+    min-width: 0;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar-right {
+    flex-shrink: 0;
+    gap: 0;
+  }
+
+  .topbar-btn {
+    width: var(--touch-target);
+    height: var(--touch-target);
+  }
+
+  /* No system tray on mobile/web builds — the button did nothing useful
+     there and only ate space in an already-tight row. */
+  .topbar-btn--tray {
+    display: none;
+  }
+
+  /* Settings already has its own tab in the bottom nav — keeping this one
+     too meant two buttons opened the same screen. */
+  .topbar-btn--settings {
+    display: none;
+  }
+
   .chat-body {
     flex-direction: column;
-    height: calc(100dvh - 52px);
+    height: calc(100dvh - 56px);
   }
 
   .chat-sidebar {

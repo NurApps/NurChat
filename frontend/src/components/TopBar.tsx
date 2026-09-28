@@ -77,11 +77,13 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
         </div>
       </div>
       <div className="topbar-right">
-        <button className="topbar-btn" title={t("settings.title")} aria-label={t("settings.title")} onClick={onSettings}><Settings size={20} strokeWidth={2} aria-hidden="true" /></button>
-        <button className="topbar-btn" title={t("common.theme")} aria-label={t("common.theme")} onClick={toggle}>
+        {/* Duplicates the bottom nav's "Настройки" tab on mobile — CSS hides
+            this one there so the setting has a single entry point. */}
+        <button className="topbar-btn topbar-btn--settings" title={t("settings.title")} aria-label={t("settings.title")} onClick={onSettings}><Settings size={20} strokeWidth={2} aria-hidden="true" /></button>
+        <button className="topbar-btn topbar-btn--theme" title={t("common.theme")} aria-label={t("common.theme")} onClick={toggle}>
           {theme === "light" ? <Moon size={20} strokeWidth={2} aria-hidden="true" /> : <Sun size={20} strokeWidth={2} aria-hidden="true" />}
         </button>
-        <button className="topbar-btn" title={t("common.minimizeToTray")} aria-label={t("common.minimizeToTray")} onClick={() => platform.minimizeToTray()}><ArrowUpToLine size={20} strokeWidth={2} aria-hidden="true" /></button>
+        <button className="topbar-btn topbar-btn--tray" title={t("common.minimizeToTray")} aria-label={t("common.minimizeToTray")} onClick={() => platform.minimizeToTray()}><ArrowUpToLine size={20} strokeWidth={2} aria-hidden="true" /></button>
       </div>
     </div>
   )

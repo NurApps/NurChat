@@ -2,7 +2,6 @@ import AddContactModal from "./AddContactModal"
 import CreateChatModal from "./CreateChatModal"
 import UserProfileModal from "./UserProfileModal"
 import GroupSettings from "./GroupSettings"
-import GlobalSearch from "./GlobalSearch"
 import MessageInfoModal from "./MessageInfoModal"
 import InviteModal from "./InviteModal"
 import type { UserResponse, ChatResponse, ContactResponse } from "../types"
@@ -23,10 +22,6 @@ interface Props {
   selectedChat: ChatResponse | null
   onCloseGroupSettings: () => void
   onGroupUpdated: () => void
-  showGlobalSearch: boolean
-  chats: ChatResponse[]
-  onSelectGlobalSearch: (chatId: string, messageId?: string) => void
-  onCloseGlobalSearch: () => void
   showMessageInfo: string | null
   onCloseMessageInfo: () => void
   showInviteModal: boolean
@@ -38,7 +33,6 @@ export default function ChatModals({
   showCreateChat, onCreateChat, onCloseCreateChat,
   profileUser, onCloseProfile, onWriteToUser,
   showGroupSettings, selectedChat, onCloseGroupSettings, onGroupUpdated,
-  showGlobalSearch, chats, onSelectGlobalSearch, onCloseGlobalSearch,
   showMessageInfo, onCloseMessageInfo,
   showInviteModal, onCloseInviteModal,
 }: Props) {
@@ -64,9 +58,6 @@ export default function ChatModals({
       )}
       {showGroupSettings && selectedChat?.is_group && (
         <GroupSettings chat={selectedChat} currentUser={currentUser} onClose={onCloseGroupSettings} onUpdated={onGroupUpdated} />
-      )}
-      {showGlobalSearch && (
-        <GlobalSearch chats={chats} onSelect={onSelectGlobalSearch} onClose={onCloseGlobalSearch} />
       )}
       {showMessageInfo && (
         <MessageInfoModal messageId={showMessageInfo} onClose={onCloseMessageInfo} />

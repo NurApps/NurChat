@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import ChatListItem from "./ChatListItem"
 import ContactListItem from "./ContactListItem"
@@ -6,9 +6,35 @@ import GroupInviteItem from "./GroupInviteItem"
 import { ChatListSkeleton } from "./Skeleton"
 import FileManager from "./FileManager"
 import { useFavoritesStore } from "../store/favoritesStore"
-import type { UserResponse, ChatResponse, ContactResponse, GroupInviteResponse } from "../types"
+import { api } from "../services/api"
+import { formatTime } from "../utils/format"
+import type { UserResponse, ChatResponse, ContactResponse, GroupInviteResponse, MessageResponse } from "../types"
 import type { Tab } from "../store/chatStore"
-import { Bookmark, ChevronLeft, ChevronRight, File, Globe, MessageCircle, Search, UserPlus, Users, Plus } from "lucide-react"
+import { Bookmark, ChevronLeft, ChevronRight, File, FileText, Image as ImageIcon, Link2, MessageCircle, Search, UserPlus, Users, Plus } from "lucide-react"
+
+type SearchCategory = "chats" | "media" | "files" | "links"
+
+interface MessageSearchResult {
+  chat: ChatResponse
+  message: MessageResponse
+}
+
+const SEARCH_CATEGORIES: { key: SearchCategory; icon: typeof Search }[] = [
+  { key: "chats", icon: Search },
+  { key: "media", icon: ImageIcon },
+  { key: "files", icon: FileText },
+  { key: "links", icon: Link2 },
+]
+
+const URL_RE = /(https?:\/\/[^\s]+|www\.[^\s]+)/i
+
+function matchesSearchCategory(message: MessageResponse, category: SearchCategory): boolean {
+  if (category === "chats") return true
+  if (category === "media") return message.message_type === "image" || message.message_type === "video"
+  if (category === "files") return message.message_type === "file" || message.message_type === "audio" || message.message_type === "voice"
+  if (category === "links") return message.message_type === "text" && URL_RE.test(message.content || "")
+  return true
+}
 
 const SIDEBAR_WIDTH_KEY = "nurchat_sidebar_width"
 const SIDEBAR_COLLAPSED_KEY = "nurchat_sidebar_collapsed"
@@ -44,6 +70,8 @@ interface Props {
   setTab: (tab: Tab) => void
   search: string
   setSearch: (s: string) => void
+  searchInputRef?: React.RefObject<HTMLInputElement | null>
+  chats: ChatResponse[]
   filteredChats: ChatResponse[]
   filteredContacts: ContactResponse[]
   invites: GroupInviteResponse[]
@@ -65,7 +93,7 @@ interface Props {
   chatsLoaded: boolean
   chatsError: string | null
   onRetryChats: () => void
-  onGlobalSearch: () => void
+  onSelectSearchMessage: (chatId: string, messageId: string) => void
   onOpenFavorites: () => void
   isFavoritesOpen: boolean
 }
@@ -78,17 +106,61 @@ const TABS = [
 ] as const
 
 export default function ChatSidebar({
-  tab, setTab, search, setSearch, filteredChats, filteredContacts, invites, filteredInvites,
+  tab, setTab, search, setSearch, searchInputRef, chats, filteredChats, filteredContacts, invites, filteredInvites,
   currentUser, selectedChatId, isMobile, chatListRef,
   setShowCreateChat, setShowAddContact,
   handleSelectChat, handlePin, handleMute, handleDeleteChat,
   handleRemoveContact, handleStartChat, handleAcceptInvite, handleDeclineInvite,
-  chatsLoaded, chatsError, onRetryChats, onGlobalSearch, onOpenFavorites, isFavoritesOpen,
+  chatsLoaded, chatsError, onRetryChats, onSelectSearchMessage, onOpenFavorites, isFavoritesOpen,
 }: Props) {
   const { t } = useTranslation()
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const favoritesItems = useFavoritesStore((s) => s.items)
   const lastFavorite = favoritesItems[favoritesItems.length - 1]
+
+  const isSearching = tab === "chats" && search.trim().length > 0
+  const [category, setCategory] = useState<SearchCategory>("chats")
+  const [msgResults, setMsgResults] = useState<MessageSearchResult[]>([])
+  const [msgSearching, setMsgSearching] = useState(false)
+
+  // Единственная строка поиска в сайдбаре — ищет и по названиям чатов
+  // (мгновенно, локально), и по содержимому сообщений (через relay, с
+  // debounce), как в Telegram: один инпут, категории результатов под ним.
+  useEffect(() => {
+    if (!isSearching) { setMsgResults([]); return }
+    const q = search.trim()
+    setMsgSearching(true)
+    const timer = setTimeout(async () => {
+      try {
+        const messages = await api.globalSearch(q)
+        const grouped: MessageSearchResult[] = []
+        for (const msg of messages) {
+          const chat = chats.find((c) => c.id === msg.chat_id)
+          if (chat) grouped.push({ chat, message: msg })
+        }
+        setMsgResults(grouped)
+      } catch {
+        setMsgResults([])
+      } finally {
+        setMsgSearching(false)
+      }
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [isSearching, search, chats])
+
+  useEffect(() => {
+    if (!isSearching) setCategory("chats")
+  }, [isSearching])
+
+  const categoryResults = useMemo(
+    () => msgResults.filter((r) => matchesSearchCategory(r.message, category)),
+    [msgResults, category]
+  )
+
+  // "chats"/"contacts" duplicate the bottom tab bar on mobile (same routes,
+  // same tab state — see ChatPage's location.pathname effect), so only the
+  // tabs with no bottom-nav equivalent are shown there.
+  const visibleTabs = isMobile ? TABS.filter((tabDef) => tabDef.key === "files" || tabDef.key === "invites") : TABS
 
   const [width, setWidth] = useState(loadStoredWidth)
   const [collapsed, setCollapsed] = useState(loadStoredCollapsed)
@@ -145,13 +217,13 @@ export default function ChatSidebar({
   // Roving tabindex + стрелки для панели вкладок (WAI-ARIA tablist pattern).
   const handleTabsKeyDown = (e: React.KeyboardEvent, index: number) => {
     let nextIndex: number | null = null
-    if (e.key === "ArrowRight") nextIndex = (index + 1) % TABS.length
-    else if (e.key === "ArrowLeft") nextIndex = (index - 1 + TABS.length) % TABS.length
+    if (e.key === "ArrowRight") nextIndex = (index + 1) % visibleTabs.length
+    else if (e.key === "ArrowLeft") nextIndex = (index - 1 + visibleTabs.length) % visibleTabs.length
     else if (e.key === "Home") nextIndex = 0
-    else if (e.key === "End") nextIndex = TABS.length - 1
+    else if (e.key === "End") nextIndex = visibleTabs.length - 1
     if (nextIndex !== null) {
       e.preventDefault()
-      const nextKey = TABS[nextIndex].key
+      const nextKey = visibleTabs[nextIndex].key
       selectTab(nextKey)
       tabRefs.current[nextKey]?.focus()
     }
@@ -169,7 +241,7 @@ export default function ChatSidebar({
     >
       <div className="sidebar-tabs-row">
         <div className="sidebar-tabs" role="tablist" aria-label={t("chat.sidebar")}>
-          {TABS.map(({ key, icon: Icon }, index) => (
+          {visibleTabs.map(({ key, icon: Icon }, index) => (
             <button key={key} ref={(el) => { tabRefs.current[key] = el }}
               id={`sidebar-tab-${key}`}
               className={`sidebar-tab ${tab === key ? "active" : ""}`}
@@ -201,20 +273,29 @@ export default function ChatSidebar({
       <>
       <div className="sidebar-search">
         <Search size={16} strokeWidth={2} aria-hidden="true" />
-        <input type="text" placeholder={t("common.search")} aria-label={t("common.search")}
+        <input ref={searchInputRef} type="text" placeholder={t("common.search")} aria-label={t("common.search")}
           value={search} onChange={(e) => setSearch(e.target.value)} />
+      </div>
+
+      {/* Категории результатов выезжают из-под поиска, как в Telegram —
+          один инпут вместо отдельной модалки глобального поиска. */}
+      <div className={`gs-tabs-collapse${isSearching ? " open" : ""}`}>
+        <div className="gs-tabs" role="tablist" aria-label={t("chat.searchAllChats")}>
+          {SEARCH_CATEGORIES.map(({ key, icon: Icon }) => (
+            <button key={key} role="tab" aria-selected={category === key}
+              className={`gs-tab${category === key ? " active" : ""}`}
+              onClick={() => setCategory(key)}>
+              <Icon size={14} strokeWidth={2} aria-hidden="true" />
+              {t(`chat.${key}`)}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="sidebar-list-header">
         <span className="sidebar-list-title">
           {tab === "chats" ? t("chat.chats") : tab === "contacts" ? t("chat.contacts") : tab === "files" ? t("chat.files") : t("chat.invitations")}
         </span>
-        <button className="sidebar-add-btn"
-          title={t("common.globalSearch")}
-          aria-label={t("common.globalSearch")}
-          onClick={onGlobalSearch}>
-          <Globe size={18} strokeWidth={2} aria-hidden="true" />
-        </button>
         {(tab === "chats" || tab === "contacts") && (
           <button className="sidebar-add-btn"
             title={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
@@ -228,48 +309,83 @@ export default function ChatSidebar({
       <div className="sidebar-list">
         {tab === "chats" && (
           <div className="list-scroll" ref={chatListRef} role="tabpanel" id="sidebar-panel-chats" aria-labelledby="sidebar-tab-chats">
-            {!chatsLoaded && <ChatListSkeleton />}
-            {chatsLoaded && (!search || t("chat.bookmarks").toLowerCase().includes(search.toLowerCase())) && (
-              <div
-                className={`chat-list-item favorites-entry${isFavoritesOpen ? " active" : ""}`}
-                onClick={onOpenFavorites} role="button" tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter") onOpenFavorites() }}
-              >
-                <div className="cli-avatar">
-                  <div className="cli-avatar-circle favorites-avatar-circle">
-                    <Bookmark size={18} strokeWidth={2} aria-hidden="true" />
-                  </div>
-                </div>
-                <div className="cli-info">
-                  <div className="cli-top-row">
-                    <div className="cli-name-row">
-                      <span className="cli-name">{t("chat.bookmarks")}</span>
+            {(!isSearching || category === "chats") && (
+              <>
+                {!chatsLoaded && <ChatListSkeleton />}
+                {chatsLoaded && (!search || t("chat.bookmarks").toLowerCase().includes(search.toLowerCase())) && (
+                  <div
+                    className={`chat-list-item favorites-entry${isFavoritesOpen ? " active" : ""}`}
+                    onClick={onOpenFavorites} role="button" tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === "Enter") onOpenFavorites() }}
+                  >
+                    <div className="cli-avatar">
+                      <div className="cli-avatar-circle favorites-avatar-circle">
+                        <Bookmark size={18} strokeWidth={2} aria-hidden="true" />
+                      </div>
+                    </div>
+                    <div className="cli-info">
+                      <div className="cli-top-row">
+                        <div className="cli-name-row">
+                          <span className="cli-name">{t("chat.bookmarks")}</span>
+                        </div>
+                      </div>
+                      <div className="cli-bottom-row">
+                        <span className="cli-preview">{lastFavorite ? lastFavorite.content : t("bookmarks.empty")}</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="cli-bottom-row">
-                    <span className="cli-preview">{lastFavorite ? lastFavorite.content : t("bookmarks.empty")}</span>
+                )}
+                {chatsLoaded && chatsError && filteredChats.length === 0 && (
+                  <div className="list-empty" role="alert">
+                    <p>{t("chat.chatsLoadFailed")}</p>
+                    <button className="settings-action-btn" onClick={onRetryChats}>
+                      {t("common.retry")}
+                    </button>
                   </div>
-                </div>
-              </div>
+                )}
+                {chatsLoaded && !chatsError && filteredChats.length === 0 && !search && (
+                  <p className="list-empty">{t("chat.noChats")}</p>
+                )}
+                {filteredChats.map((chat) => (
+                  <ChatListItem key={chat.id} chat={chat} currentUser={currentUser}
+                    selected={chat.id === selectedChatId}
+                    onClick={handleSelectChat} onPin={handlePin}
+                    onMute={(id) => handleMute(id, !chat.is_muted)}
+                    onDelete={(id) => handleDeleteChat(id)} />
+                ))}
+              </>
             )}
-            {chatsLoaded && chatsError && filteredChats.length === 0 && (
-              <div className="list-empty" role="alert">
-                <p>{t("chat.chatsLoadFailed")}</p>
-                <button className="settings-action-btn" onClick={onRetryChats}>
-                  {t("common.retry")}
-                </button>
-              </div>
+
+            {isSearching && (
+              <>
+                {category === "chats" && categoryResults.length > 0 && (
+                  <div className="gs-section-label">{t("chat.messages")}</div>
+                )}
+                {msgSearching && <p className="global-search-empty">{t("common.loading")}</p>}
+                {!msgSearching && category !== "chats" && categoryResults.length === 0 && (
+                  <p className="global-search-empty">{t("chat.nothingFound")}</p>
+                )}
+                {!msgSearching && category === "chats" && filteredChats.length === 0 && categoryResults.length === 0 && (
+                  <p className="global-search-empty">{t("chat.nothingFound")}</p>
+                )}
+                {!msgSearching && categoryResults.map((r) => {
+                  const time = formatTime(r.message.created_at)
+                  const chatName = r.chat.is_group ? (r.chat.name || t("chat.group")) : (r.chat.participants.find(p => p.id !== r.message.user_id)?.username || t("chat.chat"))
+                  const isFileLike = r.message.message_type !== "text"
+                  const preview = isFileLike ? (r.message.file?.filename || t(`chat.${r.message.message_type}`)) : r.message.content.slice(0, 80)
+                  return (
+                    <div key={r.message.id} className="global-search-item" onClick={() => onSelectSearchMessage(r.chat.id, r.message.id)}>
+                      <div className="gs-chat-name">{chatName}</div>
+                      <div className="gs-message">
+                        <span className="gs-sender">{r.message.user?.username || "User"}</span>
+                        <span className="gs-text">{preview}</span>
+                      </div>
+                      <span className="gs-time">{time}</span>
+                    </div>
+                  )
+                })}
+              </>
             )}
-            {chatsLoaded && !chatsError && filteredChats.length === 0 && !search && (
-              <p className="list-empty">{t("chat.noChats")}</p>
-            )}
-            {filteredChats.map((chat) => (
-              <ChatListItem key={chat.id} chat={chat} currentUser={currentUser}
-                selected={chat.id === selectedChatId}
-                onClick={handleSelectChat} onPin={handlePin}
-                onMute={(id) => handleMute(id, !chat.is_muted)}
-                onDelete={(id) => handleDeleteChat(id)} />
-            ))}
           </div>
         )}
         {tab === "contacts" && (

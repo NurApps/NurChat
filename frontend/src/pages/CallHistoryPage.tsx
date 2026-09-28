@@ -6,9 +6,6 @@ import type { UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
 import { formatTime, formatDateShort } from "../utils/format"
 import { ArrowLeft } from "lucide-react"
-import { BottomTabs } from "../components/mobile/BottomTabs"
-import { useMobile } from "../hooks/useMobile"
-import { useChatStore } from "../store/chatStore"
 
 interface CallLog {
   id: number
@@ -47,8 +44,6 @@ function formatCallTime(ts: string): string {
 export default function CallHistoryPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { isMobile } = useMobile()
-  const chats = useChatStore((s) => s.chats)
   const [calls, setCalls] = useState<CallLog[]>([])
   const [currentUser, setCurrentUser] = useState<UserResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -86,7 +81,7 @@ export default function CallHistoryPage() {
 
   if (loading) {
     return (
-      <div className={`settings-page${isMobile ? " has-bottom-nav" : ""}`}>
+      <div className="settings-page">
         <div className="settings-header">
           <button className="settings-back" onClick={() => navigate("/chat")}>
             <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
@@ -94,23 +89,12 @@ export default function CallHistoryPage() {
           <h1>{t("call.history")}</h1>
         </div>
         <div style={{ padding: 40, textAlign: "center", color: "#888" }}>{t("common.loading")}</div>
-        {isMobile && (
-          <BottomTabs
-            onTabChange={(newTab) => {
-              if (newTab === "chats") navigate("/chat")
-              if (newTab === "settings") navigate("/settings")
-              if (newTab === "calls") return
-              if (newTab === "contacts") navigate("/contacts")
-            }}
-            badges={{ chats: chats.reduce((sum, c) => sum + (c.unread_count || 0), 0) }}
-          />
-        )}
       </div>
     )
   }
 
   return (
-    <div className={`settings-page${isMobile ? " has-bottom-nav" : ""}`}>
+    <div className="settings-page">
       <div className="settings-header">
         <button className="settings-back" onClick={() => navigate("/chat")}>
           <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
@@ -188,18 +172,6 @@ export default function CallHistoryPage() {
           </div>
         )}
       </div>
-
-      {isMobile && (
-        <BottomTabs
-          onTabChange={(newTab) => {
-            if (newTab === "chats") navigate("/chat")
-            if (newTab === "settings") navigate("/settings")
-            if (newTab === "calls") return
-            if (newTab === "contacts") navigate("/contacts")
-          }}
-          badges={{ chats: chats.reduce((sum, c) => sum + (c.unread_count || 0), 0) }}
-        />
-      )}
     </div>
   )
 }

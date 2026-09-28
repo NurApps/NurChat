@@ -11,7 +11,6 @@ import { useChatTyping } from "../hooks/useChatTyping"
 
 import { useMobile } from "../hooks/useMobile"
 import OfflineBanner from "../components/OfflineBanner"
-import { BottomTabs } from "../components/mobile/BottomTabs"
 import { loadKeys as loadE2EKeys, decryptMessage, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
 import { initGroupKey, fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
 import { checkKeyStatus } from "../services/keyVerification"
@@ -805,8 +804,6 @@ export default function ChatPage() {
     ? selectedChat.participants.filter((p) => p.id !== currentUser.id && p.username.toLowerCase().includes(mentionQuery.toLowerCase()))
     : []
 
-  const unreadCount = chats.reduce((sum, c) => sum + (c.unread_count || 0), 0)
-
   const selectedChatName = selectedChat
     ? selectedChat.is_group ? (selectedChat.name || t("chat.chats")) : selectedChat.participants.find((p) => p.id !== currentUser.id)?.username || t("chat.chats")
     : ""
@@ -1175,22 +1172,6 @@ export default function ChatPage() {
           )}
         </div>
       </div>
-
-      {isMobile && (
-        <BottomTabs
-          activeTab={tab}
-          onTabChange={(newTab) => {
-            setTab(newTab as "chats" | "calls" | "contacts" | "settings")
-            if (newTab === "chats") navigate("/chat")
-            if (newTab === "settings") navigate("/settings")
-            if (newTab === "calls") navigate("/calls")
-            if (newTab === "contacts") navigate("/contacts")
-          }}
-          badges={{
-            chats: unreadCount,
-          }}
-        />
-      )}
 
       <ChatModals
         showAddContact={showAddContact} contacts={contacts} currentUser={currentUser}

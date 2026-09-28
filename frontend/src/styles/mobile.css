@@ -873,10 +873,13 @@
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
 
-  /* Settings/CallHistory now render BottomTabs too (it was missing there
-     entirely on mobile) — reserve space so the fixed nav bar doesn't sit
-     on top of the last setting/call row. */
-  .settings-page.has-bottom-nav {
+  /* Settings/CallHistory render inside MobileTabsLayout now, which always
+     shows the shared BottomTabs — reserve space so the fixed nav bar
+     doesn't sit on top of the last setting/call row. Scoped to pages
+     actually wrapped by that layout: ProfilePage/BlockedUsersPage reuse
+     the same .settings-page class but render outside it, with no nav bar
+     to leave room for. */
+  .mobile-tabs-page .settings-page {
     height: calc(100svh - var(--bottom-nav-height));
   }
 }

@@ -163,6 +163,7 @@ if not _TOTP_MASTER_KEY:
 
     # Auto-generate and persist to .env
     _TOTP_MASTER_KEY = secrets.token_urlsafe(32)
+    settings.SECRETS_EPHEMERAL = True
     try:
         from pathlib import Path
         _env_file = Path(__file__).resolve().parent.parent.parent / ".env"

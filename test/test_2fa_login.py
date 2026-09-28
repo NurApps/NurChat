@@ -20,9 +20,13 @@ def _captcha() -> tuple[str, str]:
     data = r.json()
     q = data["question"]
     nums = [int(n) for n in re.findall(r"\d+", q)]
-    if "\u00d7" in q or "x" in q:
+    if "÷" in q:
+        ans = nums[0] // nums[1]
+    elif len(nums) >= 3:
+        ans = nums[0] + nums[1] - nums[2]
+    elif "\u00d7" in q or "x" in q:
         ans = nums[0] * nums[1]
-    elif "-" in q:
+    elif "-" in q or "−" in q:
         ans = nums[0] - nums[1]
     else:
         ans = nums[0] + nums[1]

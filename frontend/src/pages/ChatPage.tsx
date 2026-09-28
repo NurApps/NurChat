@@ -16,7 +16,7 @@ import { initGroupKey, fetchGroupKey, decryptGroupMessageRatcheted } from "../se
 import { checkKeyStatus } from "../services/keyVerification"
 import { initNotifications } from "../services/notifications"
 import { performLogout } from "../services/localSession"
-import { avatarUrl, BASE_URL } from "../config"
+import { avatarUrl } from "../config"
 import { useChatStore } from "../store/chatStore"
 import TopBar from "../components/TopBar"
 import MessageBubble from "../components/MessageBubble"
@@ -290,13 +290,11 @@ export default function ChatPage() {
     // Медиа: одно скачивание (сервер сотрёт байты после отдачи).
     if (opened.file_id) {
       try {
-        const token = localStorage.getItem("token") || ""
-        const res = await fetch(
-          `${BASE_URL}/api/files/download/${encodeURIComponent(opened.file_id)}?token=${encodeURIComponent(token)}`,
-        )
+        const url = await api.getScopedFileUrl(opened.file_id)
+        const res = await fetch(url)
         if (!res.ok) return null
-        const url = URL.createObjectURL(await res.blob())
-        return { fileUrl: url }
+        const objectUrl = URL.createObjectURL(await res.blob())
+        return { fileUrl: objectUrl }
       } catch {
         return null
       }

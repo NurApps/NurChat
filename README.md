@@ -64,8 +64,9 @@
 
 ### 💾 Бэкапы
 
-- **Зашифрованные бэкапы** — экспорт чатов и ключей, защищён паролем (AES-256-GCM)
-- **Восстановление** — импорт данных на другом устройстве
+- **Резервные коды 2FA** — одноразовые коды восстановления доступа при потере TOTP (`/api/auth/2fa/*`)
+- **Экспорт чата** — выгрузка одного чата в JSON/text (`GET /api/chat/chats/{id}/export`), без шифрования
+- ⚠️ Шифрованного бэкапа ключей/всех чатов с восстановлением на другом устройстве **нет**: E2E-ключи живут только на устройстве. Потеря устройства без резервных кодов = потеря доступа
 
 ### ✨ Удобство
 
@@ -130,7 +131,7 @@ npx tauri dev
 
 Без запущенного relay фронтенд покажет «Сервер недоступен» — укажите `VITE_API_HOST`/`VITE_API_PROTOCOL` для удалённого relay.
 
-**Требования:** Python 3.12, Node.js 22+, Rust, WebView2 (Windows).
+**Требования:** Python 3.10+, Node.js 22+, Rust, WebView2 (Windows).
 
 ### Прочие команды
 
@@ -199,7 +200,7 @@ docker-compose down -v        # полная очистка (удалит все
 | `db` | 5432 | PostgreSQL 15 |
 | `redis` | 6379 | Redis 7 (rate-limiting, presence, WS pub/sub) |
 
-Ключевые переменные `.env` (полный список — `.env.example`, `shared/config.py`):
+Ключевые переменные `.env` (полный список — `.env.example`; большая часть читается через `shared/config.py`, а `CORS_ORIGINS`/`CORS_ORIGIN_REGEX` — напрямую через `os.getenv` в `server/main.py`):
 
 ```ini
 DATABASE_URL=sqlite:///./nurchat.db   # локально; Docker: postgresql://nurchat:nurchat_pass@db:5432/nurchat

@@ -98,6 +98,8 @@
     "bookmarks": "Bookmarks",
     "files": "Files",
     "invitations": "Invitations",
+    "pendingInvites_one": "{{count}} new invite",
+    "pendingInvites_other": "{{count}} new invites",
     "invite": "Invite a friend",
     "newChat": "New Chat",
     "newContact": "Add Contact",

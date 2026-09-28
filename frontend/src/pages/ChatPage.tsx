@@ -899,7 +899,7 @@ export default function ChatPage() {
         )}
 
         {/* Main */}
-        <div className="chat-main" role="main" id="main-content">
+        <div className={`chat-main${isMobile && !(selectedChat || showFavoritesChat) ? " chat-main--empty" : ""}`} role="main" id="main-content">
           {showFavoritesChat ? (
             <FavoritesChatWindow isMobile={isMobile} onClose={() => setShowFavoritesChat(false)} />
           ) : !selectedChat ? (

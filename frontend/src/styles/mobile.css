@@ -753,6 +753,22 @@
   .chat-main {
     width: 100%;
     height: 100%;
+  }
+
+  /* Mobile is single-pane: with nothing selected, the sidebar (chat list)
+     already fills the screen, so the desktop "select a chat" placeholder
+     is redundant. Without this it still rendered in the same column flex
+     as the sidebar and the two split the height, squeezing the placeholder
+     into a small box under a half-height chat list. */
+  .chat-main.chat-main--empty {
+    display: none;
+  }
+
+  /* Only slide the chat window over the sidebar when a chat/favorites view
+     is actually open. Without this, the "select a chat" placeholder
+     (rendered whenever nothing is selected) covered the chat list and made
+     it impossible to open any chat on mobile. */
+  .chat-main:not(.chat-main--empty) {
     position: absolute;
     top: 0;
     left: 0;

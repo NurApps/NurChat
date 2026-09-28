@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useLayoutEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
@@ -134,6 +134,20 @@ export default function LoginPage() {
   const [captchaId, setCaptchaId] = useState("")
   const [captchaQuestion, setCaptchaQuestion] = useState("")
   const [captchaAnswer, setCaptchaAnswer] = useState("")
+
+  // Плавная высота: формы входа/регистрации/2FA отличаются по числу полей,
+  // без этого переключение вкладок дёргает карточку скачком. Меряем
+  // фактическую высоту контента и анимируем к ней через CSS-transition.
+  const fieldsInnerRef = useRef<HTMLDivElement>(null)
+  const [fieldsHeight, setFieldsHeight] = useState<number>()
+
+  useLayoutEffect(() => {
+    const el = fieldsInnerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => setFieldsHeight(entry.contentRect.height))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // Смена релея прямо с экрана входа: тестер получает ссылку/адрес релея
   // и не должен лезть в настройки или ?relay=. После смены — reload,
@@ -417,9 +431,15 @@ export default function LoginPage() {
           </button>
         </div>
 
+        <div
+          className="auth-fields-viewport"
+          style={{ height: fieldsHeight !== undefined ? fieldsHeight : "auto" }}
+        >
+        <div ref={fieldsInnerRef}>
         {tab === "register" ? (
           <form
-            className="login-fields"
+            key="register"
+            className="login-fields auth-fields-anim"
             onSubmit={(e) => { e.preventDefault(); if (!loading) handleRegister() }}
           >
             <div className="field-wrapper">
@@ -517,7 +537,7 @@ export default function LoginPage() {
             )}
           </form>
         ) : awaiting2fa ? (
-          <div className="login-fields">
+          <div key="2fa" className="login-fields auth-fields-anim">
             <div className="field-wrapper">
               <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -545,7 +565,8 @@ export default function LoginPage() {
           </div>
         ) : (
           <form
-            className="login-fields"
+            key="login"
+            className="login-fields auth-fields-anim"
             onSubmit={(e) => {
               e.preventDefault()
               if (loading) return
@@ -591,6 +612,8 @@ export default function LoginPage() {
             </div>
           </form>
         )}
+        </div>
+        </div>
 
         {error && <p className="login-error">{error}</p>}
 

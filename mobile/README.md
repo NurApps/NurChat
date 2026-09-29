@@ -6,20 +6,12 @@
 
 ```
 mobile/
-├── android/          ← Tauri v2 Android (Kotlin/NDK, после `cargo tauri android init`)
-├── ios/              ← Tauri v2 iOS (Swift, после `cargo tauri ios init`)
-├── assets/           ← Готовые иконки приложения (единый знак, см. scripts/generate_icons.py)
-│   ├── ic_launcher_foreground.png + ic_launcher_background.xml ← Android adaptive icon
-│   ├── ios-appicon-1024.png         ← iOS App Store (1024, без прозрачности)
-│   └── store-icon-512.png           ← Google Play (512)
+├── android/          ← Tauri v2 Android (Kotlin/NDK)
+├── ios/              ← Tauri v2 iOS (Swift)
 ├── docs/             ← Документация по mobile
 ├── scripts/          ← Скрипты сборки
 └── README.md         ← Этот файл
 ```
-
-> WebView mobile-клиента использует тот же frontend, что и desktop:
-> иконка вкладки/PWA — `frontend/public/favicon.svg`, `icon-192/512.png`,
-> `manifest.webmanifest`. Отдельных мобильных логотипов нет — знак один везде.
 
 ## Быстрый старт
 

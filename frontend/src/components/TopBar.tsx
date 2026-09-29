@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowUpToLine, LogOut, Moon, Settings, Sun, User, Users } from "lucide-react"
+import { ArrowUpToLine, LogOut, MessageCircle, Moon, Settings, Sun, User, Users } from "lucide-react"
 import { useTheme } from "../context/useTheme"
 import { platform } from "../services/platform"
-import Logo from "./Logo"
+import { useAvatarStyle } from "../services/avatarStyle"
+import Identicon from "./Identicon"
 
 interface Props {
   username: string
-  avatarChar: string
+  userId: string
   avatarUrl?: string | null
   onProfile?: () => void
   onSettings?: () => void
@@ -15,9 +16,10 @@ interface Props {
   onSwitchAccount?: () => void
 }
 
-export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onSettings, onLogout, onSwitchAccount }: Props) {
+export default function TopBar({ username, userId, avatarUrl, onProfile, onSettings, onLogout, onSwitchAccount }: Props) {
   const { t } = useTranslation()
   const { theme, toggle } = useTheme()
+  const avatarStyle = useAvatarStyle()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -44,7 +46,7 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
   return (
     <div className="topbar">
       <div className="topbar-left">
-        <Logo size={22} />
+        <MessageCircle size={22} color="#2AABEE" strokeWidth={2} aria-hidden="true" />
         <span className="topbar-title">NurChat</span>
       </div>
       <div className="topbar-center">
@@ -60,11 +62,15 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
             onClick={() => setMenuOpen((open) => !open)}
           >
             <span className="topbar-username">{username}</span>
-            <span className="topbar-avatar">
+            <span className="topbar-avatar" style={avatarUrl || avatarStyle === "letter" ? undefined : { background: "transparent" }}>
             {avatarUrl ? (
               // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
               <img src={avatarUrl} alt={username} className="topbar-avatar-img" />
-            ) : <span aria-hidden="true">{avatarChar}</span>}
+            ) : avatarStyle === "identicon" ? (
+              <Identicon seed={userId} className="identicon-cover" label={username} />
+            ) : (
+              <span aria-hidden="true">{username[0]?.toUpperCase() || "?"}</span>
+            )}
             </span>
           </button>
           {menuOpen && (
@@ -78,11 +84,13 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
         </div>
       </div>
       <div className="topbar-right">
-        <button className="topbar-btn" title={t("settings.title")} aria-label={t("settings.title")} onClick={onSettings}><Settings size={20} strokeWidth={2} aria-hidden="true" /></button>
-        <button className="topbar-btn" title={t("common.theme")} aria-label={t("common.theme")} onClick={toggle}>
+        {/* Duplicates the bottom nav's "Настройки" tab on mobile — CSS hides
+            this one there so the setting has a single entry point. */}
+        <button className="topbar-btn topbar-btn--settings" title={t("settings.title")} aria-label={t("settings.title")} onClick={onSettings}><Settings size={20} strokeWidth={2} aria-hidden="true" /></button>
+        <button className="topbar-btn topbar-btn--theme" title={t("common.theme")} aria-label={t("common.theme")} onClick={toggle}>
           {theme === "light" ? <Moon size={20} strokeWidth={2} aria-hidden="true" /> : <Sun size={20} strokeWidth={2} aria-hidden="true" />}
         </button>
-        <button className="topbar-btn" title={t("common.minimizeToTray")} aria-label={t("common.minimizeToTray")} onClick={() => platform.minimizeToTray()}><ArrowUpToLine size={20} strokeWidth={2} aria-hidden="true" /></button>
+        <button className="topbar-btn topbar-btn--tray" title={t("common.minimizeToTray")} aria-label={t("common.minimizeToTray")} onClick={() => platform.minimizeToTray()}><ArrowUpToLine size={20} strokeWidth={2} aria-hidden="true" /></button>
       </div>
     </div>
   )

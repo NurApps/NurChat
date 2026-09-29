@@ -8,6 +8,8 @@ import { useChatSocket, WS_STATE_EVENT } from "../hooks/useChatSocket"
 import { useChatMessages } from "../hooks/useChatMessages"
 import { useChatActions } from "../hooks/useChatActions"
 import { useChatTyping } from "../hooks/useChatTyping"
+import { useAvatarStyle } from "../services/avatarStyle"
+import Identicon from "../components/Identicon"
 
 import { useMobile } from "../hooks/useMobile"
 import OfflineBanner from "../components/OfflineBanner"
@@ -28,7 +30,6 @@ import NotificationToast from "../components/NotificationToast"
 import { MessageListSkeleton } from "../components/Skeleton"
 import type { UserResponse, MessageResponse } from "../types"
 import ChatSidebar from "../components/ChatSidebar"
-import Logo from "../components/Logo"
 import FavoritesChatWindow from "../components/FavoritesChatWindow"
 import ChatModals from "../components/ChatModals"
 
@@ -64,6 +65,7 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const { chatId: routeChatId } = useParams<{ chatId?: string }>()
   const { isMobile } = useMobile()
+  const avatarStyle = useAvatarStyle()
 
   const currentUser = useChatStore((s) => s.currentUser)
   const tab = useChatStore((s) => s.tab)
@@ -829,7 +831,7 @@ export default function ChatPage() {
       <OfflineBanner isOnline={isOnline && wsUp} pendingCount={outboxPending} />
       <TopBar
         username={currentUser.username}
-        avatarChar={currentUser.username[0]?.toUpperCase() || "?"}
+        userId={currentUser.id}
         avatarUrl={avatarUrl(currentUser.avatar_path)}
         onProfile={handleProfile}
         onLogout={handleLogout}
@@ -907,7 +909,7 @@ export default function ChatPage() {
             <FavoritesChatWindow isMobile={isMobile} onClose={() => setShowFavoritesChat(false)} />
           ) : !selectedChat ? (
             <div className="chat-placeholder" role="status">
-              <Logo size={64} />
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="1.5" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
               <h3>NurChat</h3>
               <p>{t("chat.placeholder")}</p>
             </div>
@@ -927,6 +929,9 @@ export default function ChatPage() {
                     if (src) {
                       // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
                       return <img src={src} alt={selectedChatName} className="avatar-img-cover" />
+                    }
+                    if (avatarStyle === "identicon") {
+                      return <Identicon seed={selectedChatPeer?.id || selectedChat.id} className="identicon-cover" label={selectedChatName} />
                     }
                     return <span>{selectedChatName[0]?.toUpperCase() || "?"}</span>
                   })()}

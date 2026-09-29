@@ -140,6 +140,14 @@
   display: block;
 }
 
+/* Сгенерированные идентиконы: заливают круг целиком. */
+.identicon-cover {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+}
+
 .ch-info {
   display: flex;
   flex-direction: column;

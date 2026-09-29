@@ -9,6 +9,7 @@ import { performLogout, releaseLocalKeys } from "../services/localSession"
 import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
+import { useAvatarStyle, setAvatarStyle } from "../services/avatarStyle"
 import { useTheme, THEMES } from "../context/ThemeContext"
 import { AlertTriangle, ArrowLeft, Bell, Database, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
 import ProfileEditor from "../components/ProfileEditor"
@@ -64,6 +65,7 @@ export default function SettingsPage() {
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("http")
   const [relaySaved, setRelaySaved] = useState(false)
   const [settings, setSettings] = useState(getSettings)
+  const avatarStyle = useAvatarStyle()
   const profileDirtyRef = useRef(false)
 
   useEffect(() => {
@@ -431,6 +433,24 @@ export default function SettingsPage() {
                       onClick={() => { i18n.changeLanguage(lng); setLang(lng) }}
                     >
                       {lng === "ru" ? "Русский" : "English"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="settings-group">
+                <h3 className="settings-group-title">{t("settings.avatarStyle")}</h3>
+                <p className="settings-info-text">{t("settings.avatarStyleDesc")}</p>
+                <div className="settings-choices" role="radiogroup" aria-label={t("settings.avatarStyle")}>
+                  {(["identicon", "letter"] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      role="radio"
+                      aria-checked={avatarStyle === st}
+                      className={`settings-tab settings-choice ${avatarStyle === st ? "active" : ""}`}
+                      onClick={() => setAvatarStyle(st)}
+                    >
+                      {st === "identicon" ? t("settings.avatarIdenticon") : t("settings.avatarLetters")}
                     </button>
                   ))}
                 </div>

@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next"
 
 import { WS_BASE } from "../config"
 import { api } from "../services/api"
+import { useAvatarStyle } from "../services/avatarStyle"
+import Identicon from "../components/Identicon"
 import { sealSignalingMessage, unsealSignalingMessage } from "../services/callE2E"
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
@@ -34,6 +36,7 @@ export default function CallPage() {
 
   const [targetName, setTargetName] = useState(targetUserId || t("call.audioCall"))
   const avatarChar = targetName[0]?.toUpperCase() || "?"
+  const avatarStyle = useAvatarStyle()
 
   const wsRef = useRef<WebSocket | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
@@ -925,7 +928,13 @@ export default function CallPage() {
       </div>
 
       <div className="call-body">
-        <div className="call-avatar">{avatarChar}</div>
+        <div className="call-avatar" style={avatarStyle === "identicon" ? { background: "transparent" } : undefined}>
+          {avatarStyle === "identicon" ? (
+            <Identicon seed={targetUserId || targetName} className="identicon-cover" label={targetName} />
+          ) : (
+            avatarChar
+          )}
+        </div>
         <h2 className="call-name">{targetName}</h2>
         <p className="call-status">{statusText()}</p>
         {status === "active" && <p className="call-timer">{formatTime(timer)}</p>}

@@ -356,7 +356,7 @@ export default function ChatSidebar({
                 )}
                 {chatsLoaded && invites.length > 0 && (!search || t("chat.invitations").toLowerCase().includes(search.toLowerCase())) && (
                   <div
-                    className={`chat-list-item invites-entry${tab === "invites" ? " active" : ""}`}
+                    className="chat-list-item invites-entry"
                     onClick={() => setTab("invites")} role="button" tabIndex={0}
                     onKeyDown={(e) => { if (e.key === "Enter") setTab("invites") }}
                   >

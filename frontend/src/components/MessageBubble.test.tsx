@@ -25,6 +25,7 @@ vi.mock('./VoiceMessage', () => ({
 }))
 
 import MessageBubble from './MessageBubble'
+import { setAvatarStyle } from '../services/avatarStyle'
 import type { MessageResponse, UserResponse } from '../types'
 
 const currentUser: UserResponse = {
@@ -57,6 +58,7 @@ function makeMessage(overrides: Partial<MessageResponse> = {}): MessageResponse 
 }
 
 beforeEach(() => {
+  setAvatarStyle('identicon')
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-07-27T14:00:00Z'))
 })
@@ -71,10 +73,23 @@ describe('MessageBubble', () => {
     render(<MessageBubble message={makeMessage()} currentUser={currentUser} isMyMessage={false} />)
     expect(screen.getByText('Hello world')).toBeInTheDocument()
   })
-
   it('shows sender avatar for other user messages', () => {
-    render(<MessageBubble message={makeMessage({ user: otherUser })} currentUser={currentUser} isMyMessage={false} />)
-    expect(screen.getByText('O')).toBeInTheDocument()
+    // Дефолт — геометрическая иконка, а не буква.
+    setAvatarStyle('identicon')
+    const { container } = render(<MessageBubble message={makeMessage({ user: otherUser })}
+      currentUser={currentUser} isMyMessage={false} />)
+    expect(container.querySelector('.msg-avatar svg')).toBeInTheDocument()
+  })
+
+  it('shows letter avatar when letters mode is on', () => {
+    setAvatarStyle('letter')
+    try {
+      render(<MessageBubble message={makeMessage({ user: otherUser })}
+        currentUser={currentUser} isMyMessage={false} />)
+      expect(screen.getByText('O')).toBeInTheDocument()
+    } finally {
+      setAvatarStyle('identicon')
+    }
   })
 
   it('applies "mine" class for own messages', () => {

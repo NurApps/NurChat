@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from server.main import app
 from shared.rate_limiter import limiter
+from test.conftest import TURNSTILE_TEST_TOKEN
 
 client = TestClient(app)
 
@@ -21,21 +22,6 @@ client = TestClient(app)
 def _csrf_headers() -> dict:
     r = client.get("/health")
     return {"X-CSRF-Token": r.cookies.get("csrf_token", "")}
-
-
-def _solve_captcha() -> tuple[str, str]:
-    r = client.get("/api/auth/captcha")
-    assert r.status_code == 200
-    data = r.json()
-    nums = [int(n) for n in re.findall(r"\d+", data["question"])]
-    q = data["question"]
-    if "×" in q or "x" in q:
-        answer = nums[0] * nums[1]
-    elif "-" in q:
-        answer = nums[0] - nums[1]
-    else:
-        answer = nums[0] + nums[1]
-    return data["captcha_id"], str(answer)
 
 
 def _make_png(color=(42, 171, 238), size=(64, 64)) -> bytes:
@@ -54,12 +40,11 @@ def _reset_limiter():
 @pytest.fixture()
 def user(request):
     suffix = re.sub(r"\W", "", request.node.name)[:16]
-    cid, ans = _solve_captcha()
     r = client.post("/api/auth/register", json={
         "username": f"avatar_{suffix}", "password": "TestPass123",
         "first_name": "Ava",
         "public_key": "a" * 64, "signing_public_key": "b" * 64,
-        "captcha_id": cid, "captcha_code": ans,
+        "turnstile_token": TURNSTILE_TEST_TOKEN,
     }, headers=_csrf_headers())
     assert r.status_code == 200, r.text
     data = r.json()

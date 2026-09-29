@@ -157,9 +157,12 @@ else:
 # trycloudflare. Прод: именованный туннель + явный CORS_ORIGINS, regex
 # не задавать (любой trycloudflare-поддомен — чужой, ключ всё равно JWT).
 _cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip() or None
+# Штатный trycloudflare-regex — его ставит run.bat (см. .env.example).
+# CSP ниже раскрывает поддомены только при строгом равенстве с эталоном.
+_TRYCLOUDFLARE_ORIGIN_REGEX = r"https://[a-z0-9-]+\.trycloudflare\.com"
 if settings.DEBUG:
     logger.info("Allowed origins: %s (regex: %s)", _cors_origins, _cors_origin_regex)
-if _cors_origin_regex and "trycloudflare.com" not in _cors_origin_regex:
+if _cors_origin_regex and _cors_origin_regex != _TRYCLOUDFLARE_ORIGIN_REGEX:
     # Кастомный regex пускает чужие origin'ы с credentials — высокий риск
     # миссконфига: любой совпавший origin сможет слать credentialed-запросы.
     logger.warning(
@@ -261,14 +264,16 @@ async def add_security_headers(request: Request, call_next):
         )
         _http_origins = " ".join(_cors_origins)
         # Туннельный хост случаен — в CSP его не перечислить (regex в CSP
-        # нет). Когда включён штатный trycloudflare-regex — разрешаем только
-        # его поддомены, а не весь https:/wss:. Кастомный regex с широким
-        # покрытием НЕ раскрываем в CSP (иначе чужие origin'ы получат сеть/
-        # медиа) — только предупреждаем в лог.
+        # нет). Раскрываем поддомены только для штатного trycloudflare-regex
+        # (его ставит run.bat; см. .env.example). Сравнение — строгое
+        # равенство с эталоном, НЕ substring: "foo-trycloudflare.com.evil"
+        # внутри кастомного regex не должен открывать чужой CSP.
+        # Кастомный regex с широким покрытием НЕ раскрываем (иначе чужие
+        # origin'ы получат сеть/медиа) — только предупреждаем в лог.
         _tunnel_net = ""
         _tunnel_media = ""
         if _cors_origin_regex:
-            if "trycloudflare.com" in _cors_origin_regex:
+            if _cors_origin_regex == _TRYCLOUDFLARE_ORIGIN_REGEX:
                 _tunnel_net = " https://*.trycloudflare.com wss://*.trycloudflare.com"
                 _tunnel_media = " https://*.trycloudflare.com"
             else:

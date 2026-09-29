@@ -424,6 +424,40 @@
 }
 .settings-choice.active { border-color: var(--accent); background: var(--surface-variant); }
 
+.theme-swatches { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.theme-swatch-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+.theme-swatch-btn:hover { border-color: var(--border-color); }
+.theme-swatch-btn.active { border-color: var(--accent); }
+.theme-swatch {
+  width: 72px;
+  height: 48px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 7px;
+  box-sizing: border-box;
+}
+.theme-swatch-bubble { height: 8px; border-radius: 4px; }
+.theme-swatch-bubble.theirs { width: 68%; background: var(--surface-variant); }
+.theme-swatch-bubble.mine { width: 55%; align-self: flex-end; background: var(--msg-mine-bg); }
+.theme-swatch-label { font-size: 12px; color: var(--text-secondary); }
+.theme-swatch-btn.active .theme-swatch-label { color: var(--text-primary); font-weight: 600; }
+
 /* Профиль: длинные значения не распирают страницу, многострочное «о себе» сохраняет переносы */
 .settings-user-meta { min-width: 0; }
 .settings-username, .settings-userid { overflow-wrap: anywhere; }

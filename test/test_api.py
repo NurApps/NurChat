@@ -1,5 +1,4 @@
 import io
-import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +8,7 @@ from nacl.signing import SigningKey
 
 from server.main import app
 from shared.rate_limiter import limiter
+from test.conftest import TURNSTILE_TEST_TOKEN
 
 client = TestClient(app)
 
@@ -19,36 +19,15 @@ def _csrf_headers() -> dict:
     return {"X-CSRF-Token": token}
 
 
-def _solve_captcha() -> tuple[str, str]:
-    r = client.get("/api/auth/captcha")
-    assert r.status_code == 200
-    data = r.json()
-    q = data["question"]
-    nums = [int(n) for n in re.findall(r"\d+", q)]
-    if "÷" in q:
-        answer = nums[0] // nums[1]
-    elif len(nums) >= 3:
-        # Трёхоперандная капча вида «a + b − c».
-        answer = nums[0] + nums[1] - nums[2]
-    elif "×" in q or "x" in q:
-        answer = nums[0] * nums[1]
-    elif "-" in q or "−" in q:
-        answer = nums[0] - nums[1]
-    else:
-        answer = nums[0] + nums[1]
-    return data["captcha_id"], str(answer)
-
-
 def _register_user(username="testuser", password="TestPass123", first_name="Test",
                    public_key="a" * 64, signing_public_key="b" * 64) -> dict:
-    cid, ans = _solve_captcha()
     csrf = _csrf_headers()
     r = client.post("/api/auth/register", json={
         "username": username, "password": password,
         "first_name": first_name,
         "public_key": public_key,
         "signing_public_key": signing_public_key,
-        "captcha_id": cid, "captcha_code": ans,
+        "turnstile_token": TURNSTILE_TEST_TOKEN,
     }, headers=csrf)
     assert r.status_code == 200, f"Register failed: {r.text}"
     return r.json()
@@ -96,20 +75,18 @@ class TestAuth:
 
     def test_register_duplicate(self):
         _register_user()
-        cid, ans = _solve_captcha()
         r = client.post("/api/auth/register", json={
             "username": "testuser", "password": "TestPass123",
             "first_name": "Dup",
-            "captcha_id": cid, "captcha_code": ans,
+            "turnstile_token": TURNSTILE_TEST_TOKEN,
         })
         assert r.status_code == 400
 
     def test_register_weak_password(self):
-        cid, ans = _solve_captcha()
         r = client.post("/api/auth/register", json={
             "username": "weak_user", "password": "abc",
             "first_name": "Weak",
-            "captcha_id": cid, "captcha_code": ans,
+            "turnstile_token": TURNSTILE_TEST_TOKEN,
         })
         assert r.status_code == 400
 

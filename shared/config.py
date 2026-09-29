@@ -167,6 +167,12 @@ class Settings(BaseSettings):
     LOG_TO_FILE: bool = True
     TOTP_MASTER_KEY: str = ""
 
+    # Cloudflare Turnstile на регистрации. Без SECRET/HOSTNAMES регистрация
+    # закрыта (fail-closed). HOSTNAMES — хосты страницы фронтенда, не релея:
+    # tauri.localhost (сборка Windows), 127.0.0.1/localhost (dev).
+    TURNSTILE_SITEKEY: str = ""
+    TURNSTILE_SECRET: str = ""
+    TURNSTILE_HOSTNAMES: str = ""
 
     WS_CONNECTIONS_WARN: int = 100
     ERROR_RATE_WARN: float = 5.0

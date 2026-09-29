@@ -16,7 +16,7 @@ interface Props {
 
 export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onSettings, onLogout, onSwitchAccount }: Props) {
   const { t } = useTranslation()
-  const { theme, toggle } = useTheme()
+  const { variant, toggle } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -81,7 +81,7 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
             this one there so the setting has a single entry point. */}
         <button className="topbar-btn topbar-btn--settings" title={t("settings.title")} aria-label={t("settings.title")} onClick={onSettings}><Settings size={20} strokeWidth={2} aria-hidden="true" /></button>
         <button className="topbar-btn topbar-btn--theme" title={t("common.theme")} aria-label={t("common.theme")} onClick={toggle}>
-          {theme === "light" ? <Moon size={20} strokeWidth={2} aria-hidden="true" /> : <Sun size={20} strokeWidth={2} aria-hidden="true" />}
+          {variant === "light" ? <Moon size={20} strokeWidth={2} aria-hidden="true" /> : <Sun size={20} strokeWidth={2} aria-hidden="true" />}
         </button>
         <button className="topbar-btn topbar-btn--tray" title={t("common.minimizeToTray")} aria-label={t("common.minimizeToTray")} onClick={() => platform.minimizeToTray()}><ArrowUpToLine size={20} strokeWidth={2} aria-hidden="true" /></button>
       </div>

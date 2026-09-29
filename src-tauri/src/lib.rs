@@ -1,14 +1,26 @@
+// Встроенный сервер, трей и cloudflared — только десктоп. На Android/iOS
+// приложение — тонкий клиент, релей всегда удалённый.
+#[cfg(desktop)]
 mod server;
 
+#[cfg(desktop)]
 use server::ServerManager;
-use tauri::{Emitter, Manager, State};
+use tauri::Manager;
+#[cfg(desktop)]
+use tauri::{Emitter, State};
+#[cfg(desktop)]
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+#[cfg(desktop)]
 use tauri::menu::{MenuBuilder};
 
+#[cfg(desktop)]
 use tokio::sync::RwLock;
+#[cfg(desktop)]
 use tokio::process::{Child, Command as TokioCommand};
+#[cfg(desktop)]
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+#[cfg(desktop)]
 struct AppState {
     cloudflared: RwLock<Option<Child>>,
     server: ServerManager,
@@ -31,6 +43,13 @@ async fn get_local_ip() -> Result<String, String> {
     Ok("127.0.0.1".to_string())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn download_and_open_file(_url: String, _token: String, _filename: String) -> Result<String, String> {
+    Err("Открытие файлов недоступно на мобильных платформах".to_string())
+}
+
+#[cfg(desktop)]
 #[tauri::command]
 async fn download_and_open_file(url: String, token: String, filename: String) -> Result<String, String> {
     let client = reqwest::Client::new();
@@ -100,6 +119,13 @@ fn minimize_to_tray(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+fn share_invite(_uri: String) -> Result<(), String> {
+    Err("Недоступно на мобильных платформах".to_string())
+}
+
+#[cfg(desktop)]
 #[tauri::command]
 fn share_invite(uri: String) -> Result<(), String> {
     // Open default mail client with invite URI
@@ -110,6 +136,7 @@ fn share_invite(uri: String) -> Result<(), String> {
 }
 
 
+#[cfg(desktop)]
 async fn download_cloudflared(dest: &std::path::Path) -> Result<(), String> {
     let url = if cfg!(target_os = "windows") {
         "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
@@ -138,6 +165,19 @@ async fn download_cloudflared(dest: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn start_cloudflare_tunnel() -> Result<String, String> {
+    Err("Туннель недоступен на мобильных платформах".to_string())
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+async fn stop_cloudflare_tunnel() -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(desktop)]
 #[tauri::command]
 async fn start_cloudflare_tunnel(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     {
@@ -208,6 +248,7 @@ async fn start_cloudflare_tunnel(app: tauri::AppHandle, state: State<'_, AppStat
     Ok(url)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 async fn stop_cloudflare_tunnel(state: State<'_, AppState>) -> Result<(), String> {
     let mut cf = state.cloudflared.write().await;
@@ -257,6 +298,7 @@ fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+#[cfg(desktop)]
 fn urlencoding(s: &str) -> String {
     s.chars().map(|c| match c {
         ' ' => "%20".to_string(),
@@ -266,7 +308,7 @@ fn urlencoding(s: &str) -> String {
     }).collect()
 }
 
-#[cfg(test)]
+#[cfg(all(test, desktop))]
 mod tests {
     use super::*;
 
@@ -290,14 +332,18 @@ mod tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
+
+    #[cfg(desktop)]
+    let builder = builder
         .manage(AppState {
             cloudflared: RwLock::new(None),
             server: ServerManager::new(),
         })
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .invoke_handler(tauri::generate_handler![
             get_local_ip,
             download_and_open_file,
@@ -322,146 +368,160 @@ pub fn run() {
                 )?;
             }
 
-            // Auto-start server
-            let state = app.handle().state::<AppState>();
-
-            // Use app_data_dir for server files, create if missing
-            let app_dir = app.path()
-                .app_data_dir()
-                .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
-            if !app_dir.exists() {
-                let _ = std::fs::create_dir_all(&app_dir);
-            }
-
-            // Also try resource dir for Tauri sidecar
-            let res_dir = app.path()
-                .resource_dir()
-                .ok();
-
-            log::info!("Server app_dir: {:?}", app_dir);
-            log::info!("Server resource_dir: {:?}", res_dir);
-
-            let handle = app.handle().clone();
-            match state.server.start(&app_dir, res_dir.as_deref()) {
-                Ok(()) => {
-                    log::info!("Server process started");
-                    let _ = handle.emit("server-status", serde_json::json!({"status": "starting"}));
-                    // Wait for server in background (60s for embeddable Python download)
-                    std::thread::spawn(move || {
-                        let state = handle.state::<AppState>();
-                        match state.server.wait_ready(60) {
-                            Ok(()) => {
-                                log::info!("Server is ready");
-                                let _ = handle.emit("server-status", serde_json::json!({"status": "ready"}));
-                            }
-                            Err(e) => {
-                                log::error!("Server failed to start: {}", e);
-                                let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
-                            }
-                        }
-                    });
-                }
-                Err(e) => {
-                    log::error!("Failed to start server: {}", e);
-                    let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
-                }
-            }
-
-            // Tray icon
-
-            if !cfg!(debug_assertions) {
-                let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    use std::time::Duration;
-                    for _ in 0..30 {
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-                        if let Ok(resp) = reqwest::get("http://127.0.0.1:8000/health").await {
-                            if resp.status().is_success() {
-                                println!("[NurChat] Server is ready");
-                                let _ = handle.emit("server-ready", ());
-                                return;
-                            }
-                        }
-                    }
-                    eprintln!("[NurChat] Server failed to start within 15s");
-                });
-            }
-
-            let show_label = "Показать NurChat";
-            let quit_label = "Закрыть NurChat";
-
-            let tray_menu = MenuBuilder::new(app)
-                .item(&tauri::menu::MenuItemBuilder::with_id("show", show_label).build(app)?)
-                .item(&tauri::menu::MenuItemBuilder::with_id("quit", quit_label).build(app)?)
-                .build()?;
-
-            let mut tray_builder = TrayIconBuilder::new();
-            if let Some(icon) = app.default_window_icon() {
-                tray_builder = tray_builder.icon(icon.clone());
-            }
-            let _tray = tray_builder
-                .menu(&tray_menu)
-                .tooltip("NurChat")
-                .on_menu_event(move |app, event| {
-                    match event.id().as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        }
-                        "quit" => {
-                            let state = app.state::<AppState>();
-                            state.server.stop();
-
-                            app.exit(0);
-                        }
-                        _ => {}
-                    }
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up, ..
-                    } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                })
-                .build(app)?;
+            #[cfg(desktop)]
+            setup_desktop(app)?;
 
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            let state = app_handle.state::<AppState>();
+        .run(|_app_handle, _event| {
+            #[cfg(desktop)]
+            handle_desktop_event(_app_handle, _event);
+        });
+}
 
-            match event {
-                tauri::RunEvent::WindowEvent { label, event: win_event, .. } => {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = win_event {
-                        api.prevent_close();
-                        if let Some(window) = app_handle.get_webview_window(&label) {
-                            let _ = window.hide();
-                        }
+#[cfg(desktop)]
+fn handle_desktop_event(app_handle: &tauri::AppHandle, event: tauri::RunEvent) {
+    let state = app_handle.state::<AppState>();
+
+    match event {
+        tauri::RunEvent::WindowEvent { label, event: win_event, .. } => {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = win_event {
+                api.prevent_close();
+                if let Some(window) = app_handle.get_webview_window(&label) {
+                    let _ = window.hide();
+                }
+            }
+        }
+        tauri::RunEvent::Exit => {
+            state.server.stop();
+        }
+        tauri::RunEvent::ExitRequested { .. } => {
+            if let Some(state) = app_handle.try_state::<AppState>() {
+                if let Ok(mut cf) = state.cloudflared.try_write() {
+                    if let Some(mut child) = cf.take() {
+                        let _ = child.kill();
                     }
                 }
-                tauri::RunEvent::Exit => {
+            }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(desktop)]
+fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Auto-start server
+    let state = app.handle().state::<AppState>();
+
+    // Use app_data_dir for server files, create if missing
+    let app_dir = app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
+    if !app_dir.exists() {
+        let _ = std::fs::create_dir_all(&app_dir);
+    }
+
+    // Also try resource dir for Tauri sidecar
+    let res_dir = app.path()
+        .resource_dir()
+        .ok();
+
+    log::info!("Server app_dir: {:?}", app_dir);
+    log::info!("Server resource_dir: {:?}", res_dir);
+
+    let handle = app.handle().clone();
+    match state.server.start(&app_dir, res_dir.as_deref()) {
+        Ok(()) => {
+            log::info!("Server process started");
+            let _ = handle.emit("server-status", serde_json::json!({"status": "starting"}));
+            // Wait for server in background (60s for embeddable Python download)
+            std::thread::spawn(move || {
+                let state = handle.state::<AppState>();
+                match state.server.wait_ready(60) {
+                    Ok(()) => {
+                        log::info!("Server is ready");
+                        let _ = handle.emit("server-status", serde_json::json!({"status": "ready"}));
+                    }
+                    Err(e) => {
+                        log::error!("Server failed to start: {}", e);
+                        let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
+                    }
+                }
+            });
+        }
+        Err(e) => {
+            log::error!("Failed to start server: {}", e);
+            let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
+        }
+    }
+
+    // Tray icon
+
+    if !cfg!(debug_assertions) {
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+            use std::time::Duration;
+            for _ in 0..30 {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                if let Ok(resp) = reqwest::get("http://127.0.0.1:8000/health").await {
+                    if resp.status().is_success() {
+                        println!("[NurChat] Server is ready");
+                        let _ = handle.emit("server-ready", ());
+                        return;
+                    }
+                }
+            }
+            eprintln!("[NurChat] Server failed to start within 15s");
+        });
+    }
+
+    let show_label = "Показать NurChat";
+    let quit_label = "Закрыть NurChat";
+
+    let tray_menu = MenuBuilder::new(app)
+        .item(&tauri::menu::MenuItemBuilder::with_id("show", show_label).build(app)?)
+        .item(&tauri::menu::MenuItemBuilder::with_id("quit", quit_label).build(app)?)
+        .build()?;
+
+    let mut tray_builder = TrayIconBuilder::new();
+    if let Some(icon) = app.default_window_icon() {
+        tray_builder = tray_builder.icon(icon.clone());
+    }
+    let _tray = tray_builder
+        .menu(&tray_menu)
+        .tooltip("NurChat")
+        .on_menu_event(move |app, event| {
+            match event.id().as_ref() {
+                "show" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "quit" => {
+                    let state = app.state::<AppState>();
                     state.server.stop();
-                }
-                tauri::RunEvent::ExitRequested { .. } => {
-                    if let Some(state) = app_handle.try_state::<AppState>() {
-                        if let Ok(mut cf) = state.cloudflared.try_write() {
-                            if let Some(mut child) = cf.take() {
-                                let _ = child.kill();
-                            }
-                        }
-                    }
+
+                    app.exit(0);
                 }
                 _ => {}
             }
-        });
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up, ..
+            } = event {
+                let app = tray.app_handle();
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        })
+        .build(app)?;
+
+    Ok(())
 }

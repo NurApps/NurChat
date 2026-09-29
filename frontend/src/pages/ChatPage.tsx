@@ -8,6 +8,8 @@ import { useChatSocket, WS_STATE_EVENT } from "../hooks/useChatSocket"
 import { useChatMessages } from "../hooks/useChatMessages"
 import { useChatActions } from "../hooks/useChatActions"
 import { useChatTyping } from "../hooks/useChatTyping"
+import { useAvatarStyle } from "../services/avatarStyle"
+import Identicon from "../components/Identicon"
 
 import { useMobile } from "../hooks/useMobile"
 import OfflineBanner from "../components/OfflineBanner"
@@ -62,6 +64,7 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const { chatId: routeChatId } = useParams<{ chatId?: string }>()
   const { isMobile } = useMobile()
+  const avatarStyle = useAvatarStyle()
 
   const currentUser = useChatStore((s) => s.currentUser)
   const tab = useChatStore((s) => s.tab)
@@ -805,7 +808,9 @@ export default function ChatPage() {
   const selectedChatName = selectedChat
     ? selectedChat.is_group ? (selectedChat.name || t("chat.chats")) : selectedChat.participants.find((p) => p.id !== currentUser.id)?.username || t("chat.chats")
     : ""
-  const selectedChatAvatar = selectedChatName[0]?.toUpperCase() || "?"
+  const selectedChatPeer = selectedChat && !selectedChat.is_group
+    ? selectedChat.participants.find((p) => p.id !== currentUser.id)
+    : undefined
   const isSelectedGroup = selectedChat?.is_group || false
 
   const currentTyping = selectedChat ? typingUsers[selectedChat.id] : undefined
@@ -821,7 +826,7 @@ export default function ChatPage() {
       <OfflineBanner isOnline={isOnline && wsUp} pendingCount={outboxPending} />
       <TopBar
         username={currentUser.username}
-        avatarChar={currentUser.username[0]?.toUpperCase() || "?"}
+        userId={currentUser.id}
         avatarUrl={avatarUrl(currentUser.avatar_path)}
         onProfile={handleProfile}
         onLogout={handleLogout}
@@ -919,7 +924,17 @@ export default function ChatPage() {
                 )}
                 <div className="ch-avatar clickable"
                   onClick={() => { if (!isSelectedGroup) { const peer = selectedChat.participants.find(p => p.id !== currentUser.id); if (peer) handleViewProfile(peer) } }}>
-                  {selectedChatAvatar}
+                  {(() => {
+                    const src = selectedChatPeer ? avatarUrl(selectedChatPeer.avatar_path) : null
+                    if (src) {
+                      // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
+                      return <img src={src} alt={selectedChatName} className="avatar-img-cover" />
+                    }
+                    if (avatarStyle === "identicon") {
+                      return <Identicon seed={selectedChatPeer?.id || selectedChat.id} className="identicon-cover" label={selectedChatName} />
+                    }
+                    return <span>{selectedChatName[0]?.toUpperCase() || "?"}</span>
+                  })()}
                 </div>
                 <div className="ch-info">
                   <span className="ch-name" style={!isSelectedGroup ? { cursor: "pointer" } : undefined}

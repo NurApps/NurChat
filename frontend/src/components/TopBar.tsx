@@ -3,10 +3,12 @@ import { useTranslation } from "react-i18next"
 import { ArrowUpToLine, LogOut, MessageCircle, Moon, Settings, Sun, User, Users } from "lucide-react"
 import { useTheme } from "../context/useTheme"
 import { platform } from "../services/platform"
+import { useAvatarStyle } from "../services/avatarStyle"
+import Identicon from "./Identicon"
 
 interface Props {
   username: string
-  avatarChar: string
+  userId: string
   avatarUrl?: string | null
   onProfile?: () => void
   onSettings?: () => void
@@ -14,9 +16,10 @@ interface Props {
   onSwitchAccount?: () => void
 }
 
-export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onSettings, onLogout, onSwitchAccount }: Props) {
+export default function TopBar({ username, userId, avatarUrl, onProfile, onSettings, onLogout, onSwitchAccount }: Props) {
   const { t } = useTranslation()
   const { variant, toggle } = useTheme()
+  const avatarStyle = useAvatarStyle()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -59,11 +62,15 @@ export default function TopBar({ username, avatarChar, avatarUrl, onProfile, onS
             onClick={() => setMenuOpen((open) => !open)}
           >
             <span className="topbar-username">{username}</span>
-            <span className="topbar-avatar">
+            <span className="topbar-avatar" style={avatarUrl || avatarStyle === "letter" ? undefined : { background: "transparent" }}>
             {avatarUrl ? (
               // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
               <img src={avatarUrl} alt={username} className="topbar-avatar-img" />
-            ) : <span aria-hidden="true">{avatarChar}</span>}
+            ) : avatarStyle === "identicon" ? (
+              <Identicon seed={userId} className="identicon-cover" label={username} />
+            ) : (
+              <span aria-hidden="true">{username[0]?.toUpperCase() || "?"}</span>
+            )}
             </span>
           </button>
           {menuOpen && (

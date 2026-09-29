@@ -1,7 +1,9 @@
 import { useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { avatarUrl } from "../config"
+import { useAvatarStyle } from "../services/avatarStyle"
 import { getAvatarColor } from "../utils/avatar"
+import Identicon from "./Identicon"
 import type { UserResponse } from "../types"
 
 // Совпадает с ограничениями сервера (server/routes/auth.py: upload_avatar).
@@ -19,6 +21,7 @@ interface Props {
 /** Аватар + смена/удаление. Единый для страницы профиля и настроек. */
 export default function ProfileAvatar({ user, uploading, onUpload, onDelete, onInvalid }: Props) {
   const { t } = useTranslation()
+  const avatarStyle = useAvatarStyle()
   const fileRef = useRef<HTMLInputElement>(null)
   const src = avatarUrl(user.avatar_path)
   const initial = (user.first_name?.[0] || user.username[0] || "?").toUpperCase()
@@ -37,10 +40,12 @@ export default function ProfileAvatar({ user, uploading, onUpload, onDelete, onI
 
   return (
     <div className="settings-avatar-section">
-      <div className="settings-avatar" style={{ background: src ? "transparent" : getAvatarColor(user.id) }}>
+      <div className="settings-avatar" style={{ background: src ? "transparent" : (avatarStyle === "identicon" ? "transparent" : getAvatarColor(user.id)) }}>
         {src ? (
           // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
           <img src={src} alt={t("profile.avatarAlt")} width={80} height={80} className="settings-avatar-img" />
+        ) : avatarStyle === "identicon" ? (
+          <Identicon seed={user.id} className="identicon-cover" label={user.username} />
         ) : (
           <span aria-hidden="true">{initial}</span>
         )}

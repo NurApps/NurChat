@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
-import { WS_BASE } from "../config"
 import { api } from "../services/api"
 import { useAvatarStyle } from "../services/avatarStyle"
 import Identicon from "../components/Identicon"
+import { getAccessToken, peekRefreshToken } from "../services/tokenVault"
+import { openAuthedSocket } from "../services/wsAuth"
 import { sealSignalingMessage, unsealSignalingMessage } from "../services/callE2E"
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
@@ -385,33 +386,41 @@ export default function CallPage() {
   useEffect(() => {
     if (connectedRef.current) return
     connectedRef.current = true
+    let disposed = false
 
     const currentUser = (() => {
       try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
     })()
-    const token = localStorage.getItem("token")
 
-    if (!currentUser || !token) {
+    const failNotAuthorized = () => {
       statusRef.current = "failed"
       connectedRef.current = true
       setTimeout(() => {
         setStatus("failed")
         setMediaError(t("call.notAuthorized"))
       }, 0)
+    }
+
+    if (!currentUser) {
+      failNotAuthorized()
       return
     }
 
     let reconnectAttempts = 0
     const MAX_RECONNECT = 5
+    // Запоминаем, что relay старый (subprotocol не поднялся): повторные
+    // реконнекты сразу идут legacy-путём, без лишнего 1006-цикла.
+    let legacyWs = false
 
     // Единый источник правды — WS-сигналинг. REST /start-call больше не
     // дёргаем: он слал дублирующее уведомление, а его call_id гонялся
     // с локальным (два ID одного звонка).
 
-    function connectWs() {
+    function connectWs(forceLegacy?: boolean) {
+      const queryFallback = forceLegacy ?? legacyWs
       // Fresh token on every (re)connect: the effect captured it once at
       // mount, but access TTL is 30 min — a stale token 4001-loops here.
-      const freshToken = localStorage.getItem("token")
+      const freshToken = getAccessToken()
       if (!freshToken) {
         setMediaError(t("call.authError"))
         setStatus("failed")
@@ -419,12 +428,20 @@ export default function CallPage() {
         setTimeout(() => navigate("/chat"), 1500)
         return
       }
-      const wsUrl = `${WS_BASE}/calls/${currentUser!.id}?token=${encodeURIComponent(freshToken)}`
-      console.log("[CALL] Connecting to:", wsUrl.replace(freshToken, "***"))
-      const ws = new WebSocket(wsUrl)
+      // Pentest #3: JWT via Sec-WebSocket-Protocol, not ?token= in the URL.
+      const ws = openAuthedSocket(`/calls/${currentUser!.id}`, queryFallback)
+      if (!ws) {
+        setMediaError(t("call.authError"))
+        setStatus("failed")
+        statusRef.current = "failed"
+        return
+      }
+      console.log("[CALL] Connecting (subprotocol auth)")
       wsRef.current = ws
+      let opened = false
 
       ws.onopen = () => {
+        opened = true
         console.log("[CALL] WS connected, isIncoming:", isIncoming)
         reconnectAttempts = 0
 
@@ -672,6 +689,14 @@ export default function CallPage() {
 
       ws.onclose = (ev: CloseEvent) => {
         console.log("[CALL] WS closed:", ev.code, ev.reason)
+        // Pre-fix relay + subprotocol attempt: handshake fails with 1006
+        // before ever opening. One legacy retry, then normal backoff.
+        if (!opened && !queryFallback && ev.code === 1006) {
+          console.warn("[CALL] subprotocol handshake failed — retrying with legacy ?token=")
+          legacyWs = true
+          connectWs(true)
+          return
+        }
         const currentStatus = statusRef.current
 
         const isAbnormal = ev.code === 1006 || ev.code === 1001 || ev.code === 1005
@@ -721,11 +746,27 @@ export default function CallPage() {
       }
     }
 
-    connectWs()
+    // tokenVault: access живёт только в памяти — после reload его нет, но
+    // refresh может уцелеть: тянем access silent-refresh'ем и только потом
+    // коннектимся (иначе звонок умирал бы на каждой перезагрузке страницы).
+    const memToken = getAccessToken()
+    if (memToken) {
+      connectWs()
+    } else if (!peekRefreshToken()) {
+      failNotAuthorized()
+    } else {
+      import("../services/api").then(({ refreshAccessToken }) =>
+        refreshAccessToken().then((ok) => {
+          if (disposed) return
+          if (ok && getAccessToken()) connectWs()
+          else failNotAuthorized()
+        }).catch(failNotAuthorized),
+      ).catch(failNotAuthorized)
+    }
     // StrictMode в dev монтирует эффект дважды (mount → cleanup → remount).
     // Сбрасываем флаг, чтобы remount переподключился чисто, а не остался
     // без сокета из-за раннего return по connectedRef.
-    return () => { connectedRef.current = false; cleanup() }
+    return () => { disposed = true; connectedRef.current = false; cleanup() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t])
 

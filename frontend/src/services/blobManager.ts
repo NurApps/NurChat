@@ -65,12 +65,25 @@ export function getCachedBlobUrl(fileId: string): string | null {
 }
 
 export async function fetchFileBlob(fileId: string): Promise<Blob> {
-  const token = localStorage.getItem("token") || ""
-  const base = (await import("../config")).BASE_URL
-  const url = `${base}/api/files/download/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`download ${res.status}`)
-  return await res.blob()
+  // Pentest #3: качаем по scoped file_token (60s, один файл), а не по
+  // полному access-JWT. api импортируется динамически — blobManager
+  // используется внутри api (цикл запрещён статикой).
+  try {
+    const { api } = await import("./api")
+    const url = await api.getScopedFileUrl(fileId)
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`download ${res.status}`)
+    return await res.blob()
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("download ")) throw e
+    const { getAccessToken } = await import("./tokenVault")
+    const token = getAccessToken() || ""
+    const base = (await import("../config")).BASE_URL
+    const url = `${base}/api/files/download/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`download ${res.status}`, { cause: e })
+    return await res.blob()
+  }
 }
 
 export async function getOrCreateBlobUrl(fileId: string, opts?: { decrypt?: (blob: Blob) => Promise<Blob> }): Promise<string> {

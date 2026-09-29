@@ -1,0 +1,88 @@
+name: Build Android
+
+# Только ручной запуск: Actions -> Build Android -> Run workflow.
+# Автозапуск добавим, когда сборка стабильно проходит (тогда — по тегу).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install root deps (Tauri CLI)
+        run: npm ci
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Rust (Android targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Setup Android NDK
+        # SDK и NDK предустановлены на ubuntu-latest; Tauri ищет NDK через NDK_HOME.
+        run: echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        # gen/android закоммичен, поэтому `tauri android init` не нужен.
+        # Собираем aarch64 (все современные телефоны) и armv7 (старые 32-бит).
+        run: npx --yes tauri android build --apk --target aarch64 armv7 --ci
+
+      - name: Sign APK
+        # Без keystore Gradle отдаёт unsigned APK — на устройство он не встанет.
+        # Если секреты заданы, подписываем; иначе просто выкладываем unsigned.
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          OUT=src-tauri/gen/android/app/build/outputs/apk/universal/release
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 не задан — APK остаётся unsigned"
+            exit 0
+          fi
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          "$BT/zipalign" -f -p 4 "$OUT/app-universal-release-unsigned.apk" "$OUT/app-aligned.apk"
+          "$BT/apksigner" sign \
+            --ks "$RUNNER_TEMP/release.jks" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --out "$OUT/NurChat-signed.apk" "$OUT/app-aligned.apk"
+          rm -f "$RUNNER_TEMP/release.jks" "$OUT/app-aligned.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: nurchat-android
+          path: src-tauri/gen/android/app/build/outputs/apk/**/release/*.apk
+          retention-days: 3

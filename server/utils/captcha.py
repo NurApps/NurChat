@@ -1,4 +1,6 @@
 """Cloudflare Turnstile server-side verification (siteverify)."""
+from datetime import datetime, timedelta, timezone
+
 import httpx
 
 from server.utils.logger import logger
@@ -7,6 +9,42 @@ from shared.config import settings
 SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 SIGNUP_ACTION = "signup"
 _MAX_TOKEN_LEN = 2048
+
+
+class LockoutManager:
+    """Брутфорс-защита уровня IP/аккаунта (pentest #5/#6): после серии
+    неудач (неверная капча, неверный пароль) ключ блокируется.
+
+    In-memory per-process — как весь slowapi здесь; для мульти-инстанса
+    нужен Redis (см. USE_REDIS).
+    """
+
+    def __init__(self) -> None:
+        self._failures: dict[str, list[datetime]] = {}
+        self.lockout_threshold = 10
+        self.lockout_window = timedelta(minutes=15)
+        self.lockout_seconds = 300
+
+    def is_locked_out(self, key: str) -> bool:
+        now = datetime.now(timezone.utc)
+        hits = [t for t in self._failures.get(key, []) if now - t < self.lockout_window]
+        self._failures[key] = hits
+        if len(hits) < self.lockout_threshold:
+            return False
+        # Блок держится lockout_seconds с ПОСЛЕДНЕЙ неудачи (скользящее окно).
+        return (now - hits[-1]).total_seconds() < self.lockout_seconds
+
+    def record_failure(self, key: str) -> None:
+        now = datetime.now(timezone.utc)
+        hits = [t for t in self._failures.get(key, []) if now - t < self.lockout_window]
+        hits.append(now)
+        self._failures[key] = hits
+
+    def record_success(self, key: str) -> None:
+        self._failures.pop(key, None)
+
+
+lockout_manager = LockoutManager()
 
 
 def _allowed_hostnames() -> set[str]:

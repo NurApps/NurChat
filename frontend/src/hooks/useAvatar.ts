@@ -2,6 +2,7 @@ import { useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { BASE_URL } from "../config"
 import { csrfHeader, apiErrorMessage } from "../services/api"
+import { getAccessToken } from "../services/tokenVault"
 import type { UserResponse } from "../types"
 
 export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
@@ -31,7 +32,7 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
     }
     setUploading(true)
     try {
-      const token = localStorage.getItem("token")
+      const token = getAccessToken()
       const form = new FormData()
       form.append("file", file)
       const res = await fetch(`${BASE_URL}/api/auth/profile/avatar`, {
@@ -59,7 +60,7 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
     setMsg("")
     setMsgKind("")
     try {
-      const token = localStorage.getItem("token")
+      const token = getAccessToken()
       const res = await fetch(`${BASE_URL}/api/auth/profile/avatar`, {
         method: "DELETE",
         headers: {

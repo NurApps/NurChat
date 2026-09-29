@@ -1,20 +1,28 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-const mockToken = 'test-token'
 const mockUser = { id: 'user_1', username: 'test', first_name: 'Test' }
 
-beforeEach(() => {
-  localStorage.setItem('token', mockToken)
+beforeEach(async () => {
+  localStorage.clear()
+  vi.resetModules()
+  // Pentest #1: access token lives in memory (tokenVault), never on disk.
+  const { setSession } = await import('../services/tokenVault')
+  setSession('test-token')
   localStorage.setItem('user', JSON.stringify(mockUser))
 })
 
 describe('api', () => {
-  it('should set and clear token in localStorage', async () => {
+  it('should set and clear session via vault (access never on disk)', async () => {
     const { api } = await import('../services/api')
-    api.setToken('new-token')
-    expect(localStorage.getItem('token')).toBe('new-token')
-    api.clearToken()
+    const { getAccessToken } = await import('../services/tokenVault')
+    api.setToken('new-token', 'new-refresh')
+    expect(getAccessToken()).toBe('new-token')
     expect(localStorage.getItem('token')).toBeNull()
+    expect(localStorage.getItem('refresh_token')).toBe('new-refresh')
+    api.clearToken()
+    expect(getAccessToken()).toBeNull()
+    expect(api.isAuthenticated()).toBe(false)
+    expect(localStorage.getItem('refresh_token')).toBeNull()
     expect(localStorage.getItem('user')).toBeNull()
   })
 

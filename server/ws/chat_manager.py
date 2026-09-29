@@ -38,7 +38,8 @@ class ConnectionManager:
                 await old.close(code=4000, reason="Replaced by new connection")
             except Exception:
                 pass
-        await websocket.accept()
+        from server.ws.subprotocol import accept_ws
+        await accept_ws(websocket)
         self.active_connections[user_id] = websocket
 
         # Загружаем чаты пользователя из БД

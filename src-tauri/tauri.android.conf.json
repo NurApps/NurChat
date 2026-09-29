@@ -1,0 +1,17 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "app": {
+    "windows": [
+      {
+        "title": "NurChat",
+        "visible": true
+      }
+    ]
+  },
+  "bundle": {
+    "android": {
+      "minSdkVersion": 26,
+      "versionCode": 1
+    }
+  }
+}

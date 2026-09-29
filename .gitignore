@@ -65,7 +65,7 @@ server/logs/
 server/media/
 server/legal/
 p2pchat/models/
-src-tauri/gen/
+src-tauri/gen/schemas/
 src-tauri/nsis/
 frontend/public/fonts/
 
@@ -156,3 +156,6 @@ P2P_MIGRATION_PLAN.md
 # Brag artifacts
 brag/
 brag-output*/
+
+# Android: gradle wrapper jar нужен для сборки в CI
+!src-tauri/gen/android/gradle/wrapper/gradle-wrapper.jar

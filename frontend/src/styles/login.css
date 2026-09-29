@@ -354,29 +354,18 @@
 
 .auth-btn:hover { opacity: 0.92; }
 
-/* CAPTCHA */
-.captcha-block {
+/* CAPTCHA (Turnstile iframe 300×65) */
+.turnstile-block {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  justify-content: center;
+  min-height: 65px;
   width: 100%;
 }
 
-.captcha-label {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--text-primary);
-  white-space: nowrap;
-  padding-left: 4px;
-}
-
-.captcha-input {
-  flex: 1;
-}
-
-.captcha-refresh {
-  padding: 6px;
-  flex-shrink: 0;
+.captcha-error {
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
 }
 
 /* ─── Wide window: split brand panel + card instead of one lonely

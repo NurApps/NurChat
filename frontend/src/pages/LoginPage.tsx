@@ -15,6 +15,7 @@ function healPreKeys(keys: E2EKeys, userId: string, where: string): void {
   ensurePreKeysUploaded(keys, userId).catch((e) => console.warn(`[E2E] ensurePreKeys (${where}) failed:`, e))
 }
 import { useTheme } from "../context/useTheme"
+import TurnstileWidget from "../components/TurnstileWidget"
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme()
@@ -106,8 +107,9 @@ function LoginBrand() {
 type Tab = "register" | "login"
 
 export default function LoginPage() {
+  const { theme } = useTheme()
   const navigate = useNavigate()
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [checking, setChecking] = useState(true)
   const [tab, setTab] = useState<Tab>("register")
   const [loading, setLoading] = useState(false)
@@ -130,10 +132,11 @@ export default function LoginPage() {
   const [awaiting2fa, setAwaiting2fa] = useState(false)
   const [twoFactorCode, setTwoFactorCode] = useState("")
 
-  // CAPTCHA
-  const [captchaId, setCaptchaId] = useState("")
-  const [captchaQuestion, setCaptchaQuestion] = useState("")
-  const [captchaAnswer, setCaptchaAnswer] = useState("")
+  // CAPTCHA (Cloudflare Turnstile; sitekey отдаёт выбранный релей)
+  const [captchaSitekey, setCaptchaSitekey] = useState("")
+  const [captchaToken, setCaptchaToken] = useState("")
+  const [captchaFailed, setCaptchaFailed] = useState(false)
+  const [captchaReset, setCaptchaReset] = useState(0)
 
   // Плавная высота: формы входа/регистрации/2FA отличаются по числу полей,
   // без этого переключение вкладок дёргает карточку скачком. Меряем
@@ -210,21 +213,15 @@ export default function LoginPage() {
     checkServerHealth()
   }, [navigate])
 
-  // Load CAPTCHA when tab is register
   useEffect(() => {
-    if (tab === "register") fetchCaptcha()
-  }, [tab])
-
-  const fetchCaptcha = async () => {
-    try {
-      const res = await api.getCaptcha()
-      setCaptchaId(res.captcha_id)
-      setCaptchaQuestion(res.question)
-      setCaptchaAnswer("")
-    } catch {
-      setCaptchaQuestion(t("auth.captchaLoading"))
-    }
-  }
+    if (tab !== "register" || captchaSitekey) return
+    api.getCaptcha()
+      .then((res) => {
+        setCaptchaSitekey(res.sitekey)
+        setCaptchaFailed(false)
+      })
+      .catch(() => setCaptchaFailed(true))
+  }, [tab, captchaSitekey])
 
   const handleRegister = async () => {
     setError("")
@@ -256,7 +253,7 @@ export default function LoginPage() {
       setError(t("auth.passwordsMismatch"))
       return
     }
-    if (!captchaAnswer.trim()) {
+    if (!captchaToken) {
       setError(t("auth.solveCaptcha"))
       return
     }
@@ -271,8 +268,7 @@ export default function LoginPage() {
         password,
         firstName.trim(),
         lastName.trim(),
-        captchaId,
-        captchaAnswer.trim(),
+        captchaToken,
         e2eKeys.publicKeyHex,
         e2eKeys.signingPublicHex
       )
@@ -286,12 +282,13 @@ export default function LoginPage() {
 
       navigate("/chat", { replace: true })
     } catch (err: any) {
+      // Токен одноразовый: сервер погасил его при любом исходе, для повтора нужен новый.
+      setCaptchaReset((n) => n + 1)
       const msg = err?.message || err?.toString() || ""
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED")) {
         setError(`${t("errors.network")}: ${BASE_URL}`)
       } else if (msg.includes("CAPTCHA")) {
         setError(t("auth.wrongCaptcha"))
-        fetchCaptcha()
       } else {
         setError(msg || t("auth.registerError"))
       }
@@ -517,23 +514,30 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* CAPTCHA */}
-            {captchaQuestion && (
-              <div className="captcha-block">
-                <label className="captcha-label">{captchaQuestion} =</label>
-                <input
-                  className="login-input captcha-input"
-                  type="text"
-                  placeholder={t("auth.captchaAnswer")}
-                  value={captchaAnswer}
-                  onChange={(e) => setCaptchaAnswer(e.target.value)}
-                />
-                <button className="link-btn captcha-refresh" onClick={fetchCaptcha} type="button">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                  </svg>
+            {captchaFailed ? (
+              <div className="captcha-error">
+                {t("auth.captchaUnavailable")}{" "}
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => {
+                    setCaptchaFailed(false)
+                    setCaptchaSitekey("")
+                  }}
+                >
+                  {t("auth.captchaRetry")}
                 </button>
               </div>
+            ) : captchaSitekey && (
+              <TurnstileWidget
+                sitekey={captchaSitekey}
+                action="signup"
+                theme={theme === "light" ? "light" : "dark"}
+                language={i18n.language}
+                resetSignal={captchaReset}
+                onToken={setCaptchaToken}
+                onError={() => setCaptchaFailed(true)}
+              />
             )}
           </form>
         ) : awaiting2fa ? (

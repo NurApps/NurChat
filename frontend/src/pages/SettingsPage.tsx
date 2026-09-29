@@ -2,6 +2,7 @@
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api, csrfHeader, apiErrorMessage } from "../services/api"
+import { getAccessToken } from "../services/tokenVault"
 import { BASE_URL, getRelayConfig, setRelayConfig, resetRelayConfig } from "../config"
 import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
@@ -88,7 +89,7 @@ export default function SettingsPage() {
   const loadTotpStatus = async () => {
     try {
       const res = await fetch(`${BASE_URL}/api/auth/2fa/status`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        headers: { Authorization: `Bearer ${getAccessToken()}` },
       })
       if (res.ok) {
         const data = await res.json()
@@ -108,7 +109,7 @@ export default function SettingsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${getAccessToken()}`,
           ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: JSON.stringify({ password: totpPassword }),
@@ -141,7 +142,7 @@ export default function SettingsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${getAccessToken()}`,
           ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: JSON.stringify({ code: totpCode }),
@@ -174,7 +175,7 @@ export default function SettingsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${getAccessToken()}`,
           ...(csrfHeader() ? { "X-CSRF-Token": csrfHeader()! } : {}),
         },
         body: JSON.stringify({ code: totpCode }),

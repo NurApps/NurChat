@@ -1,4 +1,4 @@
-import { useState, useEffect, type JSX } from "react"
+import { useState, useEffect, useLayoutEffect, useRef, type JSX } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
@@ -16,6 +16,7 @@ function healPreKeys(keys: E2EKeys, userId: string, where: string): void {
 }
 import { useTheme } from "../context/useTheme"
 import Logo from "../components/Logo"
+import TurnstileWidget from "../components/TurnstileWidget"
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme()
@@ -103,8 +104,9 @@ function LoginBrand() {
 type Tab = "register" | "login"
 
 export default function LoginPage() {
+  const { theme } = useTheme()
   const navigate = useNavigate()
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [checking, setChecking] = useState(true)
   const [tab, setTab] = useState<Tab>("register")
   const [loading, setLoading] = useState(false)
@@ -127,10 +129,25 @@ export default function LoginPage() {
   const [awaiting2fa, setAwaiting2fa] = useState(false)
   const [twoFactorCode, setTwoFactorCode] = useState("")
 
-  // CAPTCHA
-  const [captchaId, setCaptchaId] = useState("")
-  const [captchaQuestion, setCaptchaQuestion] = useState("")
-  const [captchaAnswer, setCaptchaAnswer] = useState("")
+  // CAPTCHA (Cloudflare Turnstile; sitekey отдаёт выбранный релей)
+  const [captchaSitekey, setCaptchaSitekey] = useState("")
+  const [captchaToken, setCaptchaToken] = useState("")
+  const [captchaFailed, setCaptchaFailed] = useState(false)
+  const [captchaReset, setCaptchaReset] = useState(0)
+
+  // Плавная высота: формы входа/регистрации/2FA отличаются по числу полей,
+  // без этого переключение вкладок дёргает карточку скачком. Меряем
+  // фактическую высоту контента и анимируем к ней через CSS-transition.
+  const fieldsInnerRef = useRef<HTMLDivElement>(null)
+  const [fieldsHeight, setFieldsHeight] = useState<number>()
+
+  useLayoutEffect(() => {
+    const el = fieldsInnerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => setFieldsHeight(entry.contentRect.height))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // Смена релея прямо с экрана входа: тестер получает ссылку/адрес релея
   // и не должен лезть в настройки или ?relay=. После смены — reload,
@@ -193,21 +210,15 @@ export default function LoginPage() {
     checkServerHealth()
   }, [navigate])
 
-  // Load CAPTCHA when tab is register
   useEffect(() => {
-    if (tab === "register") fetchCaptcha()
-  }, [tab])
-
-  const fetchCaptcha = async () => {
-    try {
-      const res = await api.getCaptcha()
-      setCaptchaId(res.captcha_id)
-      setCaptchaQuestion(res.question)
-      setCaptchaAnswer("")
-    } catch {
-      setCaptchaQuestion(t("auth.captchaLoading"))
-    }
-  }
+    if (tab !== "register" || captchaSitekey) return
+    api.getCaptcha()
+      .then((res) => {
+        setCaptchaSitekey(res.sitekey)
+        setCaptchaFailed(false)
+      })
+      .catch(() => setCaptchaFailed(true))
+  }, [tab, captchaSitekey])
 
   const handleRegister = async () => {
     setError("")
@@ -239,7 +250,7 @@ export default function LoginPage() {
       setError(t("auth.passwordsMismatch"))
       return
     }
-    if (!captchaAnswer.trim()) {
+    if (!captchaToken) {
       setError(t("auth.solveCaptcha"))
       return
     }
@@ -254,8 +265,7 @@ export default function LoginPage() {
         password,
         firstName.trim(),
         lastName.trim(),
-        captchaId,
-        captchaAnswer.trim(),
+        captchaToken,
         e2eKeys.publicKeyHex,
         e2eKeys.signingPublicHex
       )
@@ -269,12 +279,13 @@ export default function LoginPage() {
 
       navigate("/chat", { replace: true })
     } catch (err: any) {
+      // Токен одноразовый: сервер погасил его при любом исходе, для повтора нужен новый.
+      setCaptchaReset((n) => n + 1)
       const msg = err?.message || err?.toString() || ""
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED")) {
         setError(`${t("errors.network")}: ${BASE_URL}`)
       } else if (msg.includes("CAPTCHA")) {
         setError(t("auth.wrongCaptcha"))
-        fetchCaptcha()
       } else {
         setError(msg || t("auth.registerError"))
       }
@@ -410,9 +421,15 @@ export default function LoginPage() {
           </button>
         </div>
 
+        <div
+          className="auth-fields-viewport"
+          style={{ height: fieldsHeight !== undefined ? fieldsHeight : "auto" }}
+        >
+        <div ref={fieldsInnerRef}>
         {tab === "register" ? (
           <form
-            className="login-fields"
+            key="register"
+            className="login-fields auth-fields-anim"
             onSubmit={(e) => { e.preventDefault(); if (!loading) handleRegister() }}
           >
             <div className="field-wrapper">
@@ -446,6 +463,8 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type="text"
+                name="username"
+                autoComplete="username"
                 placeholder={t("auth.usernamePlaceholder")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -458,6 +477,8 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type={showPassword ? "text" : "password"}
+                name="new-password"
+                autoComplete="new-password"
                 placeholder={t("auth.passwordPlaceholder")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -478,33 +499,42 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type={showPassword ? "text" : "password"}
+                name="new-password-confirm"
+                autoComplete="new-password"
                 placeholder={t("auth.passwordConfirmPlaceholder")}
                 value={passwordConfirm}
                 onChange={(e) => setPasswordConfirm(e.target.value)}
               />
             </div>
 
-            {/* CAPTCHA */}
-            {captchaQuestion && (
-              <div className="captcha-block">
-                <label className="captcha-label">{captchaQuestion} =</label>
-                <input
-                  className="login-input captcha-input"
-                  type="text"
-                  placeholder={t("auth.captchaAnswer")}
-                  value={captchaAnswer}
-                  onChange={(e) => setCaptchaAnswer(e.target.value)}
-                />
-                <button className="link-btn captcha-refresh" onClick={fetchCaptcha} type="button">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                  </svg>
+            {captchaFailed ? (
+              <div className="captcha-error">
+                {t("auth.captchaUnavailable")}{" "}
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => {
+                    setCaptchaFailed(false)
+                    setCaptchaSitekey("")
+                  }}
+                >
+                  {t("auth.captchaRetry")}
                 </button>
               </div>
+            ) : captchaSitekey && (
+              <TurnstileWidget
+                sitekey={captchaSitekey}
+                action="signup"
+                theme={theme === "light" ? "light" : "dark"}
+                language={i18n.language}
+                resetSignal={captchaReset}
+                onToken={setCaptchaToken}
+                onError={() => setCaptchaFailed(true)}
+              />
             )}
           </form>
         ) : awaiting2fa ? (
-          <div className="login-fields">
+          <div key="2fa" className="login-fields auth-fields-anim">
             <div className="field-wrapper">
               <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -532,7 +562,8 @@ export default function LoginPage() {
           </div>
         ) : (
           <form
-            className="login-fields"
+            key="login"
+            className="login-fields auth-fields-anim"
             onSubmit={(e) => {
               e.preventDefault()
               if (loading) return
@@ -547,6 +578,8 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type="text"
+                name="username"
+                autoComplete="username"
                 placeholder={t("auth.usernamePlaceholder")}
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
@@ -559,6 +592,8 @@ export default function LoginPage() {
               <input
                 className="login-input"
                 type={showPassword ? "text" : "password"}
+                name="password"
+                autoComplete="current-password"
                 placeholder={t("auth.loginPasswordPlaceholder")}
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
@@ -574,6 +609,8 @@ export default function LoginPage() {
             </div>
           </form>
         )}
+        </div>
+        </div>
 
         {error && <p className="login-error">{error}</p>}
 

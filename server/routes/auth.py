@@ -12,7 +12,7 @@ from server.core import models, schemas
 from server.core.audit import client_ip, log_audit
 from server.core.database import get_db
 from server.core.security import security, verify_pending_2fa_dependency, verify_token_dependency
-from server.utils.captcha import generate_captcha, validate_captcha
+from server.utils.captcha import SIGNUP_ACTION, verify_turnstile
 from server.utils.logger import logger
 from server.utils.security import (
     decrypt_totp_secret,
@@ -32,6 +32,7 @@ from server.utils.security import (
 from server.utils.security import (
     verify_password as verify_password_argon2,
 )
+from shared.config import settings
 from shared.exceptions import AuthenticationError
 from shared.rate_limiter import limiter
 
@@ -41,19 +42,13 @@ router = APIRouter()
 @router.get("/captcha")
 @limiter.limit("30/minute")
 async def get_captcha(request: Request):
-    """Get a new CAPTCHA challenge for registration"""
-    try:
-        captcha_id, question = generate_captcha()
-        return {
-            "captcha_id": captcha_id,
-            "question": question,
-        }
-    except Exception as e:
-        logger.error(f"Get captcha error: {e}")
+    """Sitekey Turnstile этого релея: секрет живёт здесь же, поэтому ключ отдаёт релей, а не сборка."""
+    if not settings.TURNSTILE_SITEKEY:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка генерации CAPTCHA"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CAPTCHA не настроена на сервере"
         )
+    return {"provider": "turnstile", "sitekey": settings.TURNSTILE_SITEKEY}
 
 
 @router.post("/register")
@@ -64,15 +59,13 @@ async def register(
     password: str = Body(...),
     first_name: str = Body(...),
     last_name: str = Body(default=""),
-    captcha_id: str = Body(...),
-    captcha_code: str = Body(...),
+    turnstile_token: str = Body(...),
     public_key: str = Body(default=""),
     signing_public_key: str = Body(default=""),
     db: Session = Depends(get_db)
 ):
     """Регистрация пользователя с именем и фамилией"""
-    # Validate CAPTCHA first
-    if not validate_captcha(captcha_id, captcha_code):
+    if not await verify_turnstile(turnstile_token, SIGNUP_ACTION):
         logger.warning(f"Registration: invalid CAPTCHA from {client_ip(request)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -38,7 +38,6 @@ interface ChatState {
   incomingCall: IncomingCall | null
   profileUser: UserResponse | null
   showGroupSettings: boolean
-  showGlobalSearch: boolean
   showAddContact: boolean
   showCreateChat: boolean
   showMessageInfo: string | null
@@ -58,7 +57,6 @@ interface ChatState {
   setIncomingCall: (call: IncomingCall | null) => void
   setProfileUser: (user: UserResponse | null) => void
   setShowGroupSettings: (show: boolean) => void
-  setShowGlobalSearch: (show: boolean) => void
   setShowAddContact: (show: boolean) => void
   setShowCreateChat: (show: boolean) => void
   setShowMessageInfo: (id: string | null) => void
@@ -102,7 +100,6 @@ const initialUiState = () => ({
   incomingCall: null,
   profileUser: null,
   showGroupSettings: false,
-  showGlobalSearch: false,
   showAddContact: false,
   showCreateChat: false,
   showMessageInfo: null,
@@ -134,7 +131,6 @@ export const useChatStore = create<ChatState>((set) => ({
   setIncomingCall: (call) => set({ incomingCall: call }),
   setProfileUser: (user) => set({ profileUser: user }),
   setShowGroupSettings: (show) => set({ showGroupSettings: show }),
-  setShowGlobalSearch: (show) => set({ showGlobalSearch: show }),
   setShowAddContact: (show) => set({ showAddContact: show }),
   setShowCreateChat: (show) => set({ showCreateChat: show }),
   setShowMessageInfo: (id) => set({ showMessageInfo: id }),

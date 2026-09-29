@@ -10,7 +10,7 @@ import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
 import { useAvatarStyle, setAvatarStyle } from "../services/avatarStyle"
-import { useTheme, THEMES } from "../context/ThemeContext"
+import { useTheme, LIGHT_THEMES, DARK_THEMES, type Theme, type ThemeMode } from "../context/ThemeContext"
 import { AlertTriangle, ArrowLeft, Bell, Database, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
 import ProfileEditor from "../components/ProfileEditor"
 import type { UserResponse } from "../types"
@@ -59,7 +59,7 @@ export default function SettingsPage() {
   const [totpSetupMode, setTotpSetupMode] = useState<"idle" | "setup" | "enable" | "disable">("idle")
   const [totpBackupCodes, setTotpBackupCodes] = useState<string[]>([])
   const [totpLoading, setTotpLoading] = useState(false)
-  const { theme, setTheme } = useTheme()
+  const { mode, setMode, lightTheme, setLightTheme, darkTheme, setDarkTheme } = useTheme()
 
   const [relayHost, setRelayHost] = useState("")
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("http")
@@ -404,19 +404,39 @@ export default function SettingsPage() {
           {tab === "appearance" && (
             <div className="settings-sections">
               <div className="settings-group">
-                <h3 className="settings-group-title">{t("settings.themeTitle")}</h3>
-                <div className="settings-choices" role="radiogroup" aria-label={t("settings.themeTitle")}>
-                  {THEMES.map((th) => (
+                <h3 className="settings-group-title">{t("settings.themeMode")}</h3>
+                <div className="settings-choices" role="radiogroup" aria-label={t("settings.themeMode")}>
+                  {([
+                    { id: "light", label: t("settings.themeModeLight") },
+                    { id: "dark", label: t("settings.themeModeDark") },
+                    { id: "system", label: t("settings.themeModeSystem") },
+                  ] as { id: ThemeMode; label: string }[]).map((m) => (
                     <button
-                      key={th.id}
+                      key={m.id}
                       type="button"
                       role="radio"
-                      aria-checked={theme === th.id}
-                      className={`settings-tab settings-choice ${theme === th.id ? "active" : ""}`}
-                      onClick={() => setTheme(th.id)}
+                      aria-checked={mode === m.id}
+                      className={`settings-tab settings-choice ${mode === m.id ? "active" : ""}`}
+                      onClick={() => setMode(m.id)}
                     >
-                      {th.label}
+                      {m.label}
                     </button>
+                  ))}
+                </div>
+              </div>
+              <div className="settings-group">
+                <h3 className="settings-group-title">{t("settings.themeLightTitle")}</h3>
+                <div className="theme-swatches" role="radiogroup" aria-label={t("settings.themeLightTitle")}>
+                  {LIGHT_THEMES.map((th) => (
+                    <ThemeSwatchButton key={th.id} id={th.id} label={th.label} checked={lightTheme === th.id} onSelect={() => setLightTheme(th.id)} />
+                  ))}
+                </div>
+              </div>
+              <div className="settings-group">
+                <h3 className="settings-group-title">{t("settings.themeDarkTitle")}</h3>
+                <div className="theme-swatches" role="radiogroup" aria-label={t("settings.themeDarkTitle")}>
+                  {DARK_THEMES.map((th) => (
+                    <ThemeSwatchButton key={th.id} id={th.id} label={th.label} checked={darkTheme === th.id} onSelect={() => setDarkTheme(th.id)} />
                   ))}
                 </div>
               </div>
@@ -862,5 +882,23 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function ThemeSwatchButton({ id, label, checked, onSelect }: { id: Theme; label: string; checked: boolean; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      className={`theme-swatch-btn ${checked ? "active" : ""}`}
+      onClick={onSelect}
+    >
+      <span className="theme-swatch" data-theme={id}>
+        <span className="theme-swatch-bubble theirs" />
+        <span className="theme-swatch-bubble mine" />
+      </span>
+      <span className="theme-swatch-label">{label}</span>
+    </button>
   )
 }

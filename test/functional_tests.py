@@ -81,41 +81,9 @@ class TestResults:
         return self.failed == 0
 
 
-def get_captcha():
-    """Получить CAPTCHA для регистрации"""
-    r = requests.get(f"{BASE_URL}/api/auth/captcha", timeout=10)
-    if r.status_code == 200:
-        data = r.json()
-        return data.get("captcha_id"), data.get("question")
-    return None, None
-
-
-def solve_captcha(question: str) -> str:
-    """Решить простую математическую CAPTCHA."""
-    question = question.strip().lower().replace("?", "").replace(" ", "")
-    if "+" in question:
-        parts = question.split("+")
-        try:
-            return str(int(parts[0]) + int(parts[1]))
-        except (ValueError, IndexError):
-            pass
-    return "0"
-
-
-
-    """Решить математическую CAPTCHA (поддерживает +, -, ×)."""
-    import re
-    if not question:
-        return "0"
-    m = re.search(r"(\d+)\s*([+\-×x*])\s*(\d+)", question)
-    if not m:
-        return "0"
-    num1, op, num2 = int(m.group(1)), m.group(2), int(m.group(3))
-    if op in ("-", "−"):
-        return str(num1 - num2)
-    if op in ("×", "x", "*"):
-        return str(num1 * num2)
-    return str(num1 + num2)
+def turnstile_token() -> str:
+    """Живой relay проверяет настоящий Turnstile-токен (одноразовый) — передайте его через env."""
+    return os.environ.get("NURCHAT_TURNSTILE_TOKEN", "")
 
 
 @pytest.mark.integration
@@ -139,19 +107,11 @@ def test_registration(results):
         username = random_username()
         password = "TestPass123"
 
-        captcha_id, question = get_captcha()
-        if captcha_id and question:
-            captcha_code = solve_captcha(question)
-        else:
-            captcha_code = "0"
-            captcha_id = ""
-
         r = requests.post(f"{BASE_URL}/api/auth/register", json={
             "username": username,
             "password": password,
             "first_name": "Тестовый",
-            "captcha_id": captcha_id,
-            "captcha_code": captcha_code,
+            "turnstile_token": turnstile_token(),
         }, timeout=10)
 
         assert r.status_code == 200, f"Status: {r.status_code}, Response: {r.text}"
@@ -370,15 +330,12 @@ def test_invalid_login(results):
 
 
 def _register_with_captcha(username: str, password: str, first_name: str, last_name: str = "", expect_fail: bool = False):
-    """Helper: get CAPTCHA and register."""
-    captcha_id, question = get_captcha()
-    captcha_code = solve_captcha(question) if question else "0"
+    """Helper: register with the Turnstile token from env."""
     payload = {
         "username": username,
         "password": password,
         "first_name": first_name,
-        "captcha_id": captcha_id or "",
-        "captcha_code": captcha_code,
+        "turnstile_token": turnstile_token(),
     }
     if last_name:
         payload["last_name"] = last_name

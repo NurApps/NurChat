@@ -18,8 +18,24 @@ os.environ.setdefault(
     "test-totp-key-for-ci-only-0000000000000000000000",
 )
 os.environ.setdefault("USE_REDIS", "false")
+# Публичный тестовый sitekey Cloudflare — только чтобы /captcha отвечал 200.
+os.environ.setdefault("TURNSTILE_SITEKEY", "1x00000000000000000000AA")
 
 import pytest
+
+TURNSTILE_TEST_TOKEN = "test-pass"
+
+
+@pytest.fixture(autouse=True)
+def _fake_turnstile(monkeypatch):
+    """/register не ходит в Cloudflare из тестов: пропускает только TURNSTILE_TEST_TOKEN.
+
+    Сам verify_turnstile покрыт отдельно в test_turnstile.py.
+    """
+    async def fake_verify(token: str, expected_action: str) -> bool:
+        return token == TURNSTILE_TEST_TOKEN
+
+    monkeypatch.setattr("server.routes.auth.verify_turnstile", fake_verify)
 
 
 @pytest.fixture(scope="session", autouse=True)

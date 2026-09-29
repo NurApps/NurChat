@@ -13,7 +13,6 @@ import Identicon from "../components/Identicon"
 
 import { useMobile } from "../hooks/useMobile"
 import OfflineBanner from "../components/OfflineBanner"
-import { BottomTabs } from "../components/mobile/BottomTabs"
 import { loadKeys as loadE2EKeys, decryptMessage, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
 import { initGroupKey, fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
 import { checkKeyStatus } from "../services/keyVerification"
@@ -111,7 +110,6 @@ export default function ChatPage() {
   const showAddContact = useChatStore((s) => s.showAddContact)
   const showCreateChat = useChatStore((s) => s.showCreateChat)
   const showGroupSettings = useChatStore((s) => s.showGroupSettings)
-  const showGlobalSearch = useChatStore((s) => s.showGlobalSearch)
   const showMessageInfo = useChatStore((s) => s.showMessageInfo)
   const setSelectedChat = useChatStore((s) => s.setSelectedChat)
   const setInput = useChatStore((s) => s.setInput)
@@ -124,7 +122,6 @@ export default function ChatPage() {
   const setIncomingCall = useChatStore((s) => s.setIncomingCall)
   const setProfileUser = useChatStore((s) => s.setProfileUser)
   const setShowGroupSettings = useChatStore((s) => s.setShowGroupSettings)
-  const setShowGlobalSearch = useChatStore((s) => s.setShowGlobalSearch)
   const setShowMessageInfo = useChatStore((s) => s.setShowMessageInfo)
   const typingUsers = useChatStore((s) => s.typingUsers)
   const setTypingUsers = useChatStore((s) => s.setTypingUsers)
@@ -552,6 +549,7 @@ export default function ChatPage() {
   }, [mentionQuery, mentionIndex, setInput])
 
   const chatListRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [chatIndex, setChatIndex] = useState(0)
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -625,7 +623,7 @@ export default function ChatPage() {
   }, [selectedChat, setToast, setErrorToast, t])
 
   useKeyboardShortcuts({
-    onSearch: () => setShowGlobalSearch(true),
+    onSearch: () => { setTab("chats"); searchInputRef.current?.focus() },
     onNewChat: () => setShowAddContact(true),
     onExport: handleExportChat,
     onFindInChat: () => { setSearchQuery(""); setScrollToMessageId(null) },
@@ -646,7 +644,8 @@ export default function ChatPage() {
     },
     onEscape: () => {
       setShowEmoji(false); setShowAddContact(false); setShowCreateChat(false)
-      setShowGlobalSearch(false); setShowGroupSettings(false); setProfileUser(null)
+      setShowGroupSettings(false); setProfileUser(null)
+      if (search) setSearch("")
     },
   })
 
@@ -808,8 +807,6 @@ export default function ChatPage() {
     ? selectedChat.participants.filter((p) => p.id !== currentUser.id && p.username.toLowerCase().includes(mentionQuery.toLowerCase()))
     : []
 
-  const unreadCount = chats.reduce((sum, c) => sum + (c.unread_count || 0), 0)
-
   const selectedChatName = selectedChat
     ? selectedChat.is_group ? (selectedChat.name || t("chat.chats")) : selectedChat.participants.find((p) => p.id !== currentUser.id)?.username || t("chat.chats")
     : ""
@@ -884,8 +881,8 @@ export default function ChatPage() {
         {/* Sidebar — hidden on mobile when chat selected */}
         {!(isMobile && (selectedChat || showFavoritesChat)) && (
         <ChatSidebar
-          tab={tab} setTab={setTab} search={search} setSearch={setSearch}
-          filteredChats={filteredChats} filteredContacts={filteredContacts}
+          tab={tab} setTab={setTab} search={search} setSearch={setSearch} searchInputRef={searchInputRef}
+          chats={chats} filteredChats={filteredChats} filteredContacts={filteredContacts}
           invites={invites} filteredInvites={filteredInvites}
           currentUser={currentUser} selectedChatId={selectedChat?.id ?? null} isMobile={isMobile}
           chatListRef={chatListRef}
@@ -897,14 +894,19 @@ export default function ChatPage() {
           handleRemoveContact={handleRemoveContact} handleStartChat={handleStartChat}
           handleAcceptInvite={handleAcceptInvite} handleDeclineInvite={handleDeclineInvite}
           chatsLoaded={chatsLoaded} chatsError={chatsError} onRetryChats={loadChats}
-          onGlobalSearch={() => setShowGlobalSearch(true)}
+          onSelectSearchMessage={(chatId, messageId) => {
+            const chat = chats.find(c => c.id === chatId)
+            if (chat) { setShowFavoritesChat(false); setSelectedChat(chat); setTab("chats") }
+            setScrollToMessageId(messageId)
+            setSearch("")
+          }}
           onOpenFavorites={() => { setSelectedChat(null); setShowFavoritesChat(true) }}
           isFavoritesOpen={showFavoritesChat}
         />
         )}
 
         {/* Main */}
-        <div className="chat-main" role="main" id="main-content">
+        <div className={`chat-main${isMobile && !(selectedChat || showFavoritesChat) ? " chat-main--empty" : ""}`} role="main" id="main-content">
           {showFavoritesChat ? (
             <FavoritesChatWindow isMobile={isMobile} onClose={() => setShowFavoritesChat(false)} />
           ) : !selectedChat ? (
@@ -1186,22 +1188,6 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {isMobile && (
-        <BottomTabs
-          activeTab={tab}
-          onTabChange={(newTab) => {
-            setTab(newTab as "chats" | "calls" | "contacts" | "settings")
-            if (newTab === "chats") navigate("/chat")
-            if (newTab === "settings") navigate("/settings")
-            if (newTab === "calls") navigate("/calls")
-            if (newTab === "contacts") navigate("/contacts")
-          }}
-          badges={{
-            chats: unreadCount,
-          }}
-        />
-      )}
-
       <ChatModals
         showAddContact={showAddContact} contacts={contacts} currentUser={currentUser}
         onAddContact={handleAddContact} onCloseAddContact={() => setShowAddContact(false)}
@@ -1210,14 +1196,6 @@ export default function ChatPage() {
         profileUser={profileUser} onCloseProfile={() => setProfileUser(null)} onWriteToUser={handleStartChat}
         showGroupSettings={showGroupSettings} selectedChat={selectedChat}
         onCloseGroupSettings={() => setShowGroupSettings(false)} onGroupUpdated={loadChats}
-        showGlobalSearch={showGlobalSearch} chats={chats}
-        onSelectGlobalSearch={(chatId, messageId) => {
-          const chat = chats.find(c => c.id === chatId)
-          if (chat) { setShowFavoritesChat(false); setSelectedChat(chat); setTab("chats") }
-          if (messageId) setScrollToMessageId(messageId)
-          setShowGlobalSearch(false)
-        }}
-        onCloseGlobalSearch={() => setShowGlobalSearch(false)}
         showMessageInfo={showMessageInfo} onCloseMessageInfo={() => setShowMessageInfo(null)}
         showInviteModal={showInviteModal} onCloseInviteModal={() => setShowInviteModal(false)}
       />

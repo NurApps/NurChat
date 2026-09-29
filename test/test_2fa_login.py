@@ -1,11 +1,11 @@
 """Интеграционный тест полного цикла 2FA: enable -> login (2fa_pending) -> verify-login."""
-import re
 
 import pytest
 from fastapi.testclient import TestClient
 
 from server.main import app
 from shared.rate_limiter import limiter
+from test.conftest import TURNSTILE_TEST_TOKEN
 
 client = TestClient(app)
 
@@ -13,20 +13,6 @@ client = TestClient(app)
 def _csrf() -> dict:
     r = client.get("/health")
     return {"X-CSRF-Token": r.cookies.get("csrf_token", "")}
-
-
-def _captcha() -> tuple[str, str]:
-    r = client.get("/api/auth/captcha")
-    data = r.json()
-    q = data["question"]
-    nums = [int(n) for n in re.findall(r"\d+", q)]
-    if "\u00d7" in q or "x" in q:
-        ans = nums[0] * nums[1]
-    elif "-" in q:
-        ans = nums[0] - nums[1]
-    else:
-        ans = nums[0] + nums[1]
-    return data["captcha_id"], str(ans)
 
 
 @pytest.fixture(autouse=True)
@@ -45,11 +31,10 @@ def _reset():
 
 
 def _register(username: str) -> dict:
-    cid, ans = _captcha()
     r = client.post("/api/auth/register", json={
         "username": username, "password": "TestPass123", "first_name": "Tst",
         "public_key": "a" * 64, "signing_public_key": "b" * 64,
-        "captcha_id": cid, "captcha_code": ans,
+        "turnstile_token": TURNSTILE_TEST_TOKEN,
     }, headers=_csrf())
     assert r.status_code == 200, r.text
     return r.json()

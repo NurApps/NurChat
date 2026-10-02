@@ -431,29 +431,50 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     log::info!("Server app_dir: {:?}", app_dir);
     log::info!("Server resource_dir: {:?}", res_dir);
 
-    let handle = app.handle().clone();
-    match state.server.start(&app_dir, res_dir.as_deref()) {
-        Ok(()) => {
-            log::info!("Server process started");
-            let _ = handle.emit("server-status", serde_json::json!({"status": "starting"}));
-            // Wait for server in background (60s for embeddable Python download)
-            std::thread::spawn(move || {
-                let state = handle.state::<AppState>();
-                match state.server.wait_ready(60) {
-                    Ok(()) => {
-                        log::info!("Server is ready");
-                        let _ = handle.emit("server-status", serde_json::json!({"status": "ready"}));
-                    }
-                    Err(e) => {
-                        log::error!("Server failed to start: {}", e);
-                        let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
-                    }
+    // run.bat dev/vite поднимает relay сам (NURCHAT_MANAGED_RELAY=1):
+    // встраивать второй сервер не нужно — только ждём готовности :8000.
+    // Иначе (двойной клик по .exe) поведение прежнее — autostart.
+    if std::env::var("NURCHAT_MANAGED_RELAY").as_deref() == Ok("1") {
+        log::info!("NURCHAT_MANAGED_RELAY=1: relay managed externally, skipping autostart");
+        let handle = app.handle().clone();
+        std::thread::spawn(move || {
+            let state = handle.state::<AppState>();
+            match state.server.wait_ready(60) {
+                Ok(()) => {
+                    log::info!("External relay is ready");
+                    let _ = handle.emit("server-status", serde_json::json!({"status": "ready"}));
                 }
-            });
-        }
-        Err(e) => {
-            log::error!("Failed to start server: {}", e);
-            let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
+                Err(e) => {
+                    log::error!("External relay not ready: {}", e);
+                    let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
+                }
+            }
+        });
+    } else {
+        let handle = app.handle().clone();
+        match state.server.start(&app_dir, res_dir.as_deref()) {
+            Ok(()) => {
+                log::info!("Server process started");
+                let _ = handle.emit("server-status", serde_json::json!({"status": "starting"}));
+                // Wait for server in background (60s for embeddable Python download)
+                std::thread::spawn(move || {
+                    let state = handle.state::<AppState>();
+                    match state.server.wait_ready(60) {
+                        Ok(()) => {
+                            log::info!("Server is ready");
+                            let _ = handle.emit("server-status", serde_json::json!({"status": "ready"}));
+                        }
+                        Err(e) => {
+                            log::error!("Server failed to start: {}", e);
+                            let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                log::error!("Failed to start server: {}", e);
+                let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
+            }
         }
     }
 

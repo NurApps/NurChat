@@ -52,6 +52,11 @@ def _allowed_hostnames() -> set[str]:
 
 
 async def verify_turnstile(token: str, expected_action: str) -> bool:
+    if settings.DISABLE_CAPTCHA:
+        # Локальный dev без Cloudflare (см. shared/config.py).
+        # Прод остаётся fail-closed: флаг по умолчанию false.
+        logger.warning("CAPTCHA disabled via DISABLE_CAPTCHA — registration is unprotected")
+        return True
     hostnames = _allowed_hostnames()
     if not settings.TURNSTILE_SECRET or not hostnames:
         logger.error("Turnstile not configured: TURNSTILE_SECRET and TURNSTILE_HOSTNAMES are required")

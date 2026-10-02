@@ -88,7 +88,11 @@ set RELAY_FLAGS=--reload
 call :ensure_relay
 if %errorlevel% neq 0 goto :eof
 echo [..] Starting Tauri dev...
+:: Relay уже поднят этим скриптом — Tauri не должен стартовать второй
+:: (см. NURCHAT_MANAGED_RELAY в src-tauri/src/lib.rs).
+set NURCHAT_MANAGED_RELAY=1
 call npx tauri dev
+set NURCHAT_MANAGED_RELAY=
 call :stop_relay_if_mine
 goto :eof
 
@@ -98,9 +102,11 @@ set RELAY_FLAGS=--reload
 call :ensure_relay
 if %errorlevel% neq 0 goto :eof
 echo [..] Starting Vite (http://localhost:5173)...
+set NURCHAT_MANAGED_RELAY=1
 cd frontend
 call npm run dev
 cd /d "%~dp0"
+set NURCHAT_MANAGED_RELAY=
 call :stop_relay_if_mine
 goto :eof
 

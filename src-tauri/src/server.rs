@@ -24,14 +24,21 @@ impl ServerManager {
             return Ok(());
         }
 
-        // Pre-check: already serving on port 8000?
-        if is_server_running() {
+        // Pre-check: already serving on port 8000? (run.bat dev/vite поднимает
+        // relay сам — второй сервер не нужен). Relay может ещё подниматься,
+        // поэтому ждём до ~10с вместо одной попытки.
+        if wait_for_server(Duration::from_secs(10)) {
             info!("Server already running on port 8000, reusing");
             return Ok(());
         }
 
         // Generate .env if missing (keys persist across restarts)
         ensure_env(app_dir);
+
+        // Корень проекта = каталог с server/main.py. app_dir (%APPDATA%)
+        // исходников не содержит — искать там requirements.txt бесполезно
+        // (был баг: pip падал с "No such file or directory").
+        let server_root = find_server_root(app_dir, res_dir);
 
         // Strategy 1: bundled server binary (PyInstaller)
         if let Some(exe) = find_server_exe(app_dir, res_dir) {
@@ -52,17 +59,19 @@ impl ServerManager {
             return Ok(());
         }
 
-        // Strategy 2: Python venv
-        if let Some(python) = find_venv_python(app_dir) {
+        // Strategy 2: Python venv (ищем рядом с исходниками, не только в app_dir)
+        if let Some(python) = find_venv_python(app_dir, res_dir, server_root.as_deref()) {
             info!("Found venv Python: {:?}", python);
-            return self.start_with_python(&python, app_dir, &mut child);
+            let work_dir = server_root.as_deref().unwrap_or(app_dir);
+            return self.start_with_python(&python, work_dir, &mut child);
         }
 
         // Strategy 3: System Python
         if let Some(python) = find_system_python() {
             info!("Found system Python: {:?}", python);
             let python_path = PathBuf::from(&python);
-            return self.start_with_python(&python_path, app_dir, &mut child);
+            let work_dir = server_root.as_deref().unwrap_or(app_dir);
+            return self.start_with_python(&python_path, work_dir, &mut child);
         }
 
         // Strategy 4: Download embeddable Python (Windows only)
@@ -78,10 +87,17 @@ impl ServerManager {
         }
 
         if python_exe.exists() {
-            // Install dependencies into the embeddable Python
-            install_deps(&python_dir, app_dir)?;
+            // Install dependencies into the embeddable Python.
+            // requirements.txt берём из корня исходников, НЕ из app_dir
+            // (в %APPDATA% его нет — была ошибка install_deps).
+            let req_file = server_root
+                .as_deref()
+                .map(|r| r.join("requirements.txt"))
+                .filter(|p| p.is_file());
+            let work_dir = server_root.as_deref().unwrap_or(app_dir);
+            install_deps(&python_dir, req_file.as_deref(), work_dir)?;
             info!("Using downloaded Python: {:?}", python_exe);
-            return self.start_with_python(&python_exe, app_dir, &mut child);
+            return self.start_with_python(&python_exe, work_dir, &mut child);
         }
 
         Err("Python not found. Install Python 3.10+ or place server.exe next to the app.".to_string())
@@ -90,12 +106,12 @@ impl ServerManager {
     fn start_with_python(
         &self,
         python: &Path,
-        app_dir: &Path,
+        work_dir: &Path,
         child: &mut std::sync::MutexGuard<Option<Child>>,
     ) -> Result<(), String> {
         let mut cmd = Command::new(python);
         cmd.args(["-m", "uvicorn", "server.main:app", "--host", "127.0.0.1", "--port", "8000"])
-            .current_dir(app_dir)
+            .current_dir(work_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         #[cfg(windows)]
@@ -253,29 +269,85 @@ fn find_server_exe(app_dir: &Path, res_dir: Option<&Path>) -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.is_file())
 }
 
-fn is_server_running() -> bool {
-    if let Ok(resp) = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .and_then(|c| c.get("http://127.0.0.1:8000/health").send())
-    {
-        return resp.status().is_success();
+/// Ждём здоровый relay на :8000 до `timeout` (poll 500мс).
+/// Одна попытка давала гонку: run.bat уже поднял relay, но /health
+/// ещё не отвечает — Tauri качал embed-Python вместо reuse.
+fn wait_for_server(timeout: Duration) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        if let Ok(resp) = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .and_then(|c| c.get("http://127.0.0.1:8000/health").send())
+        {
+            if resp.status().is_success() {
+                return true;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(500));
     }
     false
 }
 
-fn find_venv_python(app_dir: &Path) -> Option<PathBuf> {
-    let venv_python = if cfg!(windows) {
-        app_dir.join(".venv").join("Scripts").join("python.exe")
-    } else {
-        app_dir.join(".venv").join("bin").join("python")
-    };
-
-    if venv_python.exists() {
-        Some(venv_python)
-    } else {
-        None
+/// Корень проекта: каталог, содержащий server/main.py.
+/// Ищем от cwd / exe / res_dir вверх (tauri dev: exe в target/debug,
+/// исходники на 2 уровня выше), затем app_dir.
+fn find_server_root(app_dir: &Path, res_dir: Option<&Path>) -> Option<PathBuf> {
+    let mut bases: Vec<PathBuf> = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        bases.push(cwd);
     }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            bases.push(dir.to_path_buf());
+        }
+    }
+    if let Some(rd) = res_dir {
+        bases.push(rd.to_path_buf());
+    }
+    bases.push(app_dir.to_path_buf());
+
+    for base in &bases {
+        let mut dir = Some(base.as_path());
+        for _ in 0..4 {
+            match dir {
+                Some(d) => {
+                    if d.join("server").join("main.py").is_file() {
+                        return Some(d.to_path_buf());
+                    }
+                    dir = d.parent();
+                }
+                None => break,
+            }
+        }
+    }
+    None
+}
+
+fn find_venv_python(app_dir: &Path, res_dir: Option<&Path>, server_root: Option<&Path>) -> Option<PathBuf> {
+    let mut bases: Vec<PathBuf> = Vec::new();
+    if let Some(r) = server_root {
+        bases.push(r.to_path_buf());
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        bases.push(cwd);
+    }
+    if let Some(rd) = res_dir {
+        bases.push(rd.to_path_buf());
+    }
+    bases.push(app_dir.to_path_buf());
+
+    for base in &bases {
+        let venv_python = if cfg!(windows) {
+            base.join(".venv").join("Scripts").join("python.exe")
+        } else {
+            base.join(".venv").join("bin").join("python")
+        };
+        if venv_python.exists() {
+            return Some(venv_python);
+        }
+    }
+    None
 }
 
 fn find_system_python() -> Option<String> {
@@ -371,7 +443,7 @@ fn download_embeddable_python(target_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn install_deps(python_dir: &Path, app_dir: &Path) -> Result<(), String> {
+fn install_deps(python_dir: &Path, req_file: Option<&Path>, work_dir: &Path) -> Result<(), String> {
     let python_exe = python_dir.join("python.exe");
     if !python_exe.exists() {
         return Err("Python exe not found after download".to_string());
@@ -401,11 +473,21 @@ fn install_deps(python_dir: &Path, app_dir: &Path) -> Result<(), String> {
     // Install requirements
     let pip_exe = python_dir.join("Scripts").join("pip.exe");
     if pip_exe.exists() {
-        info!("Installing dependencies...");
-        let req_file = app_dir.join("requirements.txt");
+        let req_file = match req_file {
+            Some(p) => p.to_path_buf(),
+            None => {
+                return Err(
+                    "requirements.txt not found next to the app sources. \
+                     Run via run.bat (it uses .venv), install Python 3.10+ with \
+                     dependencies, or place the bundled server binary next to the app."
+                        .to_string(),
+                )
+            }
+        };
+        info!("Installing dependencies from {:?}...", req_file);
         let status = Command::new(&pip_exe)
             .args(["install", "-r", req_file.to_str().unwrap()])
-            .current_dir(app_dir)
+            .current_dir(work_dir)
             .status()
             .map_err(|e| format!("deps install failed: {e}"))?;
 

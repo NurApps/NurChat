@@ -133,8 +133,11 @@ export default function LoginPage() {
   const [awaiting2fa, setAwaiting2fa] = useState(false)
   const [twoFactorCode, setTwoFactorCode] = useState("")
 
-  // CAPTCHA (Cloudflare Turnstile; sitekey отдаёт выбранный релей)
+  // CAPTCHA (Cloudflare Turnstile; sitekey отдаёт выбранный релей).
+  // captchaDisabled — dev-релей с DISABLE_CAPTCHA=true (provider "none"):
+  // виджет не показываем, токен не требуем.
   const [captchaSitekey, setCaptchaSitekey] = useState("")
+  const [captchaDisabled, setCaptchaDisabled] = useState(false)
   const [captchaToken, setCaptchaToken] = useState("")
   const [captchaFailed, setCaptchaFailed] = useState(false)
   const [captchaReset, setCaptchaReset] = useState(0)
@@ -216,14 +219,19 @@ export default function LoginPage() {
   }, [navigate])
 
   useEffect(() => {
-    if (tab !== "register" || captchaSitekey) return
+    if (tab !== "register" || captchaSitekey || captchaDisabled) return
     api.getCaptcha()
       .then((res) => {
+        if (res.provider === "none" || !res.sitekey) {
+          setCaptchaDisabled(true)
+          setCaptchaFailed(false)
+          return
+        }
         setCaptchaSitekey(res.sitekey)
         setCaptchaFailed(false)
       })
       .catch(() => setCaptchaFailed(true))
-  }, [tab, captchaSitekey])
+  }, [tab, captchaSitekey, captchaDisabled])
 
   const handleRegister = async () => {
     setError("")
@@ -255,7 +263,7 @@ export default function LoginPage() {
       setError(t("auth.passwordsMismatch"))
       return
     }
-    if (!captchaToken) {
+    if (!captchaDisabled && !captchaToken) {
       setError(t("auth.solveCaptcha"))
       return
     }
@@ -525,6 +533,7 @@ export default function LoginPage() {
                   onClick={() => {
                     setCaptchaFailed(false)
                     setCaptchaSitekey("")
+                    setCaptchaDisabled(false)
                   }}
                 >
                   {t("auth.captchaRetry")}

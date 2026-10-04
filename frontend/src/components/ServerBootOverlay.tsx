@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { BASE_URL, setRelayConfig, PUBLIC_RELAYS, isRelayExplicit, parseRelayInput } from "../config"
+import { BASE_URL, setRelayConfig, PUBLIC_RELAYS, isRelayExplicit, parseRelayInput, getRelayConfig } from "../config"
 import RelayAddressInput from "./RelayAddressInput"
+import { performRelaySwitch, storedAccount } from "../services/localSession"
 import { AlertTriangle, Power } from "lucide-react"
 
 interface Props {
@@ -101,6 +102,24 @@ export default function ServerBootOverlay({ onReady }: Props) {
     const ok = await checkHealth(`${protocol}://${host}`)
     manualAttemptRef.current = false
     if (ok) {
+      const current = getRelayConfig()
+      const switched = host !== current.host || protocol !== current.protocol
+      const account = storedAccount()
+      // Тот же guard, что на входе и в настройках: аккаунт живёт на одном
+      // реле, молчаливая смена = потеря доступа.
+      if (switched && account) {
+        if (!window.confirm(t("settings.relaySwitchConfirm", {
+          username: account.username,
+          from: `${current.protocol}://${current.host}`,
+          to: `${protocol}://${host}`,
+        }))) {
+          setPhase("failed")
+          return
+        }
+        // Сессия принадлежит чужому релею — гасим перед уходом.
+        performRelaySwitch({ host, protocol })
+        return
+      }
       setRelayConfig({ host, protocol })
       window.location.reload()
     }

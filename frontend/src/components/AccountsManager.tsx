@@ -1,16 +1,20 @@
 import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import QRCode from "qrcode"
 import { getRelayConfig } from "../config"
 import { ensureActiveProfile, type AccountProfile } from "../services/profiles"
 import { readStoredUserRaw } from "../services/tokenVault"
 import { storedAccount } from "../services/localSession"
 import AccountList from "./AccountList"
 import {
+  QR_MAX_CHARS,
   decryptTransferBundle,
+  exportCompactTransferBundle,
   exportTransferBundle,
   importTransferBundle,
   wipeProfileData,
 } from "../services/transferBundle"
+import QrScanner from "./QrScanner"
 
 function storedUserId(): string | null {
   try {
@@ -37,6 +41,8 @@ export default function AccountsManager({ showList = true, activeAvatarSrc }: { 
   const [importPw, setImportPw] = useState("")
   const [showExport, setShowExport] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [qrDataUrl, setQrDataUrl] = useState("")
+  const [scanning, setScanning] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const fail = (e: unknown, fallback: string) => {
@@ -115,20 +121,84 @@ export default function AccountsManager({ showList = true, activeAvatarSrc }: { 
     setBusy(true)
     try {
       const text = await file.text()
-      const payload = await decryptTransferBundle(JSON.parse(text), importPw)
-      if (
-        !window.confirm(
-          t("settings.transferImportConfirm", {
-            name: `${payload.username}@${payload.relayHost}`,
-          }),
-        )
-      ) {
-        return
-      }
-      await importTransferBundle(payload)
-      // import перезагружает приложение
+      await importFromText(text)
     } catch (e) {
       fail(e, t("settings.transferImportFailed"))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Общий финал импорта: расшифровка текстом (файл или QR) → confirm → ввоз. */
+  const importFromText = async (text: string) => {
+    const payload = await decryptTransferBundle(JSON.parse(text), importPw)
+    if (
+      !window.confirm(
+        t("settings.transferImportConfirm", {
+          name: `${payload.username}@${payload.relayHost}`,
+        }),
+      )
+    ) {
+      return
+    }
+    await importTransferBundle(payload)
+    // import перезагружает приложение
+  }
+
+  const handleScanDecode = async (text: string) => {
+    setScanning(false)
+    setErr("")
+    setMsg("")
+    if (importPw.length < 8) {
+      setErr(t("settings.transferPwTooShort"))
+      return
+    }
+    setBusy(true)
+    try {
+      await importFromText(text)
+    } catch (e) {
+      fail(e, t("settings.transferImportFailed"))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleShowQr = async () => {
+    setErr("")
+    setMsg("")
+    setQrDataUrl("")
+    if (exportPw.length < 8) {
+      setErr(t("settings.transferPwTooShort"))
+      return
+    }
+    const account = storedAccount()
+    const userId = storedUserId()
+    if (!account || !userId) {
+      setErr(t("settings.transferNoSession"))
+      return
+    }
+    setBusy(true)
+    try {
+      const relay = getRelayConfig()
+      const profile = ensureActiveProfile(relay.protocol, relay.host, userId, account.username)
+      // QR — компактный бандл: без OPK (сервер догрузит) и outbox
+      // (остаётся на старом устройстве).
+      const envelope = await exportCompactTransferBundle(
+        profile.relayHost,
+        profile.relayProtocol,
+        profile.username,
+        profile.userId,
+        exportPw,
+      )
+      const text = JSON.stringify(envelope)
+      if (text.length > QR_MAX_CHARS) {
+        setErr(t("settings.transferQrTooBig"))
+        return
+      }
+      setQrDataUrl(await QRCode.toDataURL(text, { errorCorrectionLevel: "M", width: 320, margin: 2 }))
+      setMsg(t("settings.transferQrReady"))
+    } catch (e) {
+      fail(e, t("settings.transferExportFailed"))
     } finally {
       setBusy(false)
     }
@@ -173,6 +243,15 @@ export default function AccountsManager({ showList = true, activeAvatarSrc }: { 
             <button type="button" className="settings-save-btn" disabled={busy} onClick={handleExport} style={{ width: "auto", padding: "0 16px", height: 40 }}>
               {t("settings.transferExportGo")}
             </button>
+            <button type="button" className="settings-action-btn" disabled={busy} onClick={handleShowQr} style={{ width: "auto", padding: "0 16px", height: 40 }}>
+              {t("settings.transferShowQr")}
+            </button>
+            {qrDataUrl && (
+              <>
+                <img src={qrDataUrl} alt="transfer QR" style={{ width: 240, height: 240, borderRadius: 8, background: "#fff" }} />
+                <p className="settings-info-text">{t("settings.transferQrCompactNote")}</p>
+              </>
+            )}
           </div>
         )}
 
@@ -201,6 +280,10 @@ export default function AccountsManager({ showList = true, activeAvatarSrc }: { 
             <button type="button" className="settings-save-btn" disabled={busy} onClick={() => fileRef.current?.click()} style={{ width: "auto", padding: "0 16px", height: 40 }}>
               {t("settings.transferImportGo")}
             </button>
+            <button type="button" className="settings-action-btn" disabled={busy} onClick={() => setScanning((v) => !v)} style={{ width: "auto", padding: "0 16px", height: 40 }}>
+              {t("settings.transferScanQr")}
+            </button>
+            {scanning && <QrScanner onDecode={(text) => void handleScanDecode(text)} onClose={() => setScanning(false)} />}
           </div>
         )}
 

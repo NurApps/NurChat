@@ -444,6 +444,7 @@
     "relaySaved": "Сохранено",
     "relayReset": "Сбросить",
     "relayRestart": "Изменения применяются после перезапуска приложения.",
+    "relayMixedContent": "Страница открыта по https — браузер заблокирует http-релей. Используйте https.",
     "status": "Статус",
     "statusPlaceholder": "Например: в сети, занят...",
     "bioPlaceholder": "Расскажите о себе...",

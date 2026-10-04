@@ -5,8 +5,6 @@ export interface UserSettings {
   callSound: boolean
   messagePreview: boolean
   desktopNotifications: boolean
-  showOnline: boolean
-  showLastSeen: boolean
 }
 
 const DEFAULTS: UserSettings = {
@@ -14,8 +12,6 @@ const DEFAULTS: UserSettings = {
   callSound: true,
   messagePreview: true,
   desktopNotifications: true,
-  showOnline: true,
-  showLastSeen: true,
 }
 
 let cache: UserSettings | null = null
@@ -25,7 +21,11 @@ export function getSettings(): UserSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
     const parsed = raw ? JSON.parse(raw) : {}
-    cache = { ...DEFAULTS, ...parsed }
+    // Только известные ключи: старые showOnline/showLastSeen были пустышками.
+    cache = { ...DEFAULTS }
+    for (const k of Object.keys(DEFAULTS) as (keyof UserSettings)[]) {
+      if (typeof parsed[k] === "boolean") cache[k] = parsed[k]
+    }
   } catch {
     cache = { ...DEFAULTS }
   }

@@ -11,12 +11,12 @@ import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
 import { useTheme, LIGHT_THEMES, DARK_THEMES, type Theme, type ThemeMode } from "../context/ThemeContext"
-import { AlertTriangle, ArrowLeft, Bell, Database, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Bell, Database, Info, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
 import ProfileEditor from "../components/ProfileEditor"
 import RelayAddressInput from "../components/RelayAddressInput"
 import type { UserResponse } from "../types"
 
-type SettingsTab = "profile" | "appearance" | "notifications" | "privacy" | "storage" | "security" | "account"
+type SettingsTab = "profile" | "appearance" | "notifications" | "privacy" | "storage" | "security" | "account" | "about"
 
 const TabIcons = {
   profile: <User size={18} strokeWidth={2} aria-hidden="true" />,
@@ -26,7 +26,10 @@ const TabIcons = {
   storage: <Database size={18} strokeWidth={2} aria-hidden="true" />,
   security: <Shield size={18} strokeWidth={2} aria-hidden="true" />,
   account: <Settings size={18} strokeWidth={2} aria-hidden="true" />,
+  about: <Info size={18} strokeWidth={2} aria-hidden="true" />,
 }
+
+const FALLBACK_APP_VERSION = "0.15.0"
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -85,7 +88,7 @@ export default function SettingsPage() {
   useEffect(() => {
     hasKeys().then(setE2eEnabled).catch(() => setE2eEnabled(false))
     api.getStorageInfo?.().then((info: any) => setStorageInfo(info)).catch(() => {})
-    platform.getAppVersion().then(setAppVersion).catch(() => setAppVersion("0.15.0"))
+    platform.getAppVersion().then(setAppVersion).catch(() => setAppVersion(FALLBACK_APP_VERSION))
     loadTotpStatus()
   }, [])
 
@@ -365,7 +368,26 @@ export default function SettingsPage() {
     { id: "storage", label: t("settings.storage"), icon: TabIcons.storage },
     { id: "security", label: t("settings.security"), icon: TabIcons.security },
     { id: "account", label: t("settings.account"), icon: TabIcons.account },
+    { id: "about", label: t("settings.aboutApp"), icon: TabIcons.about },
   ]
+
+  const selectTab = (id: SettingsTab) => {
+    if (id === tab || !confirmDiscardProfile()) return
+    setTab(id)
+    setMsg("")
+  }
+
+  const handleTabsKeyDown = (e: React.KeyboardEvent) => {
+    const keys = ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"]
+    if (!keys.includes(e.key)) return
+    e.preventDefault()
+    const i = tabs.findIndex((x) => x.id === tab)
+    const next = e.key === "Home" ? 0
+      : e.key === "End" ? tabs.length - 1
+      : (i + (e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length
+    selectTab(tabs[next].id)
+    document.getElementById(`settings-tab-${tabs[next].id}`)?.focus()
+  }
 
   const formatSize = (bytes: number) => {
     if (!Number.isFinite(bytes) || bytes < 0) return "—"
@@ -385,18 +407,19 @@ export default function SettingsPage() {
 
       <div className="settings-body">
         {/* Tab navigation */}
-        <div className="settings-tabs" role="tablist">
+        <div className="settings-tabs" role="tablist" aria-orientation="vertical" onKeyDown={handleTabsKeyDown}>
           {tabs.map((it) => (
             <button
               key={it.id}
+              id={`settings-tab-${it.id}`}
               type="button"
               role="tab"
               aria-selected={tab === it.id}
+              aria-controls="settings-panel"
+              tabIndex={tab === it.id ? 0 : -1}
               className={`settings-tab ${tab === it.id ? "active" : ""}`}
               onClick={() => {
-                if (it.id === tab || !confirmDiscardProfile()) return
-                setTab(it.id)
-                setMsg("")
+                selectTab(it.id)
               }}
             >
               <span className="settings-tab-icon">{it.icon}</span>
@@ -405,7 +428,7 @@ export default function SettingsPage() {
           ))}
         </div>
 
-        <div className="settings-content">
+        <div className="settings-content" id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${tab}`}>
           {msg && <p className={`settings-msg ${msgKind}`} role="status" aria-live="polite">{msg}</p>}
 
           {/* ─── Profile ─── */}
@@ -505,20 +528,13 @@ export default function SettingsPage() {
           {tab === "privacy" && (
             <div className="settings-sections">
               <div className="settings-group">
-                <h3 className="settings-group-title">{t("settings.visibility")}</h3>
-                <div className="settings-toggle-row">
-                  <span>{t("settings.showOnline")}</span>
-                  <label className="settings-toggle"><input type="checkbox" checked={settings.showOnline} onChange={(e) => handleToggleSetting("showOnline", e.target.checked)} /><span className="settings-toggle-slider" /></label>
-                </div>
-                <div className="settings-toggle-row">
-                  <span>{t("settings.showLastSeen")}</span>
-                  <label className="settings-toggle"><input type="checkbox" checked={settings.showLastSeen} onChange={(e) => handleToggleSetting("showLastSeen", e.target.checked)} /><span className="settings-toggle-slider" /></label>
-                </div>
-              </div>
-              <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.blocking")}</h3>
                 <p className="settings-info-text">{t("settings.blockingDesc")}</p>
                 <button className="settings-link-btn" onClick={() => navigate("/blocked")}>{t("settings.manageBlocking")}</button>
+              </div>
+              <div className="settings-group">
+                <h3 className="settings-group-title">{t("settings.callHistory")}</h3>
+                <button className="settings-link-btn" onClick={() => navigate("/calls")}>{t("settings.openCallHistory")}</button>
               </div>
             </div>
           )}
@@ -530,9 +546,6 @@ export default function SettingsPage() {
                 <h3 className="settings-group-title">{t("settings.usage")}</h3>
                 {storageInfo ? (
                   <div className="settings-storage-info">
-                    <div className="settings-storage-bar">
-                      <div className="settings-storage-fill" style={{ width: `${Math.min(100, (storageInfo.total / (1024 * 1024 * 100)) * 100)}%` }} />
-                    </div>
                     <p>{formatSize(storageInfo.total)} {t("settings.used")} · {t("settings.filesCount", { count: storageInfo.files })}</p>
                   </div>
                 ) : (
@@ -542,6 +555,7 @@ export default function SettingsPage() {
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.management")}</h3>
                 <button className="settings-action-btn" onClick={handleClearCache}>{t("settings.clearCache")}</button>
+                <p className="settings-info-text">{t("settings.clearCacheDesc")}</p>
                 <p className="settings-info-text">{t("settings.autoDelete")}</p>
               </div>
             </div>
@@ -553,7 +567,7 @@ export default function SettingsPage() {
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.totp2fa")}</h3>
                 <div className="settings-toggle-row">
-                  <span>TOTP 2FA</span>
+                  <span>{t("settings.totp2faShort")}</span>
                   <span className={`settings-badge ${totpEnabled ? "on" : "off"}`}>
                     {totpEnabled ? t("settings.totpEnabled") : t("settings.totpDisabled")}
                   </span>
@@ -588,10 +602,10 @@ export default function SettingsPage() {
                   <div style={{ padding: 16, borderRadius: 8, background: "var(--input-bg)", border: "1px solid var(--border)" }}>
                     <p style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>{t("settings.totpScanQr")}</p>
                     {totpQrCode && (
-                      <img src={totpQrCode} alt="TOTP QR Code" style={{ width: 200, height: 200, marginBottom: 12 }} />
+                      <img src={totpQrCode} alt={t("settings.totpQrAlt")} style={{ width: 200, height: 200, marginBottom: 12 }} />
                     )}
                     {totpManualKey && (
-                      <p style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>
+                      <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
                         {t("settings.totpManualKey")} <strong>{totpManualKey}</strong>
                       </p>
                     )}
@@ -623,14 +637,14 @@ export default function SettingsPage() {
                       </button>
                     </div>
                     {totpBackupCodes.length > 0 && (
-                      <div style={{ marginTop: 16, padding: 12, background: "rgba(76,175,80,0.1)", borderRadius: 6 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "#4CAF50", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ marginTop: 16, padding: 12, background: "var(--surface-variant)", borderRadius: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--success)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
                           <AlertTriangle size={14} strokeWidth={2} aria-hidden="true" />
                           <span>{t("settings.totpSaveBackup")}</span>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 4, fontSize: 11 }}>
                           {totpBackupCodes.map((code, i) => (
-                            <div key={i} style={{ fontFamily: "monospace", background: "#fff", color: "#000", padding: "2px 6px", borderRadius: 4 }}>
+                            <div key={i} style={{ fontFamily: "monospace", background: "var(--card-bg)", color: "var(--text-primary)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 4 }}>
                               {code}
                             </div>
                           ))}
@@ -642,7 +656,7 @@ export default function SettingsPage() {
                 
                 {totpEnabled && (
                   <div>
-                    <p style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>{t("settings.totpDisableHint")}</p>
+                    <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>{t("settings.totpDisableHint")}</p>
                     <input
                       className="settings-input"
                       type="text"
@@ -747,11 +761,11 @@ export default function SettingsPage() {
                         style={{ width: "auto", padding: "0 16px", height: 44 }}
                         onClick={pinSetup === "set" ? handlePinSetup : pinSetup === "change" ? handlePinChange : handlePinRemove}
                       >
-                        OK
+                        {t("common.ok")}
                       </button>
                       <button
                         className="settings-save-btn"
-                        style={{ width: "auto", padding: "0 16px", height: 44, background: "#555" }}
+                        style={{ width: "auto", padding: "0 16px", height: 44, background: "var(--text-secondary)" }}
                         onClick={() => { setPinSetup("idle"); setPinInput(""); setPinConfirm(""); setPinStep("enter"); setMsg("") }}
                       >
                         {t("common.cancel")}
@@ -767,17 +781,6 @@ export default function SettingsPage() {
                   {t("settings.logoutAllDevices")}
                 </button>
               </div>
-              <div className="settings-group">
-                <h3 className="settings-group-title">{t("settings.advanced")}</h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <button className="settings-action-btn" onClick={() => navigate("/calls")}>
-                    {t("settings.callHistory")}
-                  </button>
-                  <button className="settings-action-btn" onClick={() => navigate("/blocked")}>
-                    {t("settings.blocked")}
-                  </button>
-                </div>
-              </div>
             </div>
           )}
 
@@ -787,11 +790,11 @@ export default function SettingsPage() {
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.account")}</h3>
                 <div className="settings-field-row">
-                  <span className="settings-field-label">Username</span>
+                  <span className="settings-field-label">{t("settings.username")}</span>
                   <span className="settings-field-value">@{user.username}</span>
                 </div>
                 <div className="settings-field-row">
-                  <span className="settings-field-label">ID</span>
+                  <span className="settings-field-label">{t("settings.userId")}</span>
                   <span className="settings-field-value">{user.id}</span>
                 </div>
               </div>
@@ -800,11 +803,17 @@ export default function SettingsPage() {
                 <button className="settings-action-btn" onClick={handleLogout}>{t("settings.logoutAccount")}</button>
                 <button className="settings-action-btn danger" onClick={handleDeleteAccount}>{t("settings.deleteAccount")}</button>
               </div>
+            </div>
+          )}
+
+          {/* ─── About ─── */}
+          {tab === "about" && (
+            <div className="settings-sections">
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.aboutApp")}</h3>
                 <div className="settings-field-row">
                   <span className="settings-field-label">{t("settings.version")}</span>
-                  <span className="settings-field-value">{appVersion || "0.15.0"}</span>
+                  <span className="settings-field-value">{appVersion || FALLBACK_APP_VERSION}</span>
                 </div>
                 <div className="settings-field-row">
                   <span className="settings-field-label">{t("settings.license")}</span>

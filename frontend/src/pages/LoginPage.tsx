@@ -443,6 +443,7 @@ export default function LoginPage() {
         <div ref={fieldsInnerRef}>
         {tab === "register" ? (
           <form
+            id="register-form"
             key="register"
             className="login-fields auth-fields-anim"
             onSubmit={(e) => { e.preventDefault(); if (!loading) handleRegister() }}
@@ -578,6 +579,7 @@ export default function LoginPage() {
           </div>
         ) : (
           <form
+            id="login-form"
             key="login"
             className="login-fields auth-fields-anim"
             onSubmit={(e) => {
@@ -634,13 +636,11 @@ export default function LoginPage() {
           <button
             className="login-btn"
             disabled={loading}
-            onClick={tab === "register" ? handleRegister : (awaiting2fa ? handleVerify2fa : handleLogin)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && tab === "login") {
-                if (awaiting2fa) handleVerify2fa()
-                else handleLogin()
-              }
-            }}
+            // Кнопка вне <form>: связываем через form=, иначе Enter в полях формы
+            // с двумя input'ами ничего не отправляет. Шаг 2FA — не форма, там onClick.
+            {...(tab === "login" && awaiting2fa
+              ? { type: "button" as const, onClick: handleVerify2fa }
+              : { type: "submit" as const, form: tab === "register" ? "register-form" : "login-form" })}
           >
             {loading ? (
               <span className="btn-loading">

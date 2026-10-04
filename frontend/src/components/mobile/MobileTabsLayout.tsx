@@ -6,10 +6,10 @@ import { useChatStore } from "../../store/chatStore"
 // Порядок совпадает с порядком кнопок в BottomTabs — от него зависит
 // направление анимации (вправо по панели → экран въезжает справа).
 function tabIndex(pathname: string): number {
+  if (pathname.startsWith("/contacts")) return 0
   if (pathname.startsWith("/calls")) return 1
-  if (pathname.startsWith("/contacts")) return 2
   if (pathname.startsWith("/settings")) return 3
-  return 0
+  return 2
 }
 
 // Один экземпляр BottomTabs на все мобильные экраны с нижней навигацией

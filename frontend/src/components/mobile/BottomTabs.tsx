@@ -17,10 +17,12 @@ interface BottomTabsProps {
   badges?: Record<string, number>;
 }
 
+// Порядок как в Telegram: Контакты, Звонки, Чаты, Настройки.
+// MobileTabsLayout.tabIndex опирается на него для направления анимации.
 const defaultTabs: Tab[] = [
-  { id: 'chats', label: 'Чаты', path: '/', icon: <MessageCircle size={24} strokeWidth={2} aria-hidden="true" /> },
-  { id: 'calls', label: 'Звонки', path: '/calls', icon: <Phone size={24} strokeWidth={2} aria-hidden="true" /> },
   { id: 'contacts', label: 'Контакты', path: '/contacts', icon: <Users size={24} strokeWidth={2} aria-hidden="true" /> },
+  { id: 'calls', label: 'Звонки', path: '/calls', icon: <Phone size={24} strokeWidth={2} aria-hidden="true" /> },
+  { id: 'chats', label: 'Чаты', path: '/', icon: <MessageCircle size={24} strokeWidth={2} aria-hidden="true" /> },
   { id: 'settings', label: 'Настройки', path: '/settings', icon: <Settings size={24} strokeWidth={2} aria-hidden="true" /> },
 ];
 

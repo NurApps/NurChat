@@ -7,6 +7,7 @@
  */
 
 import { api } from "./api"
+import { setRelayConfig, type RelayConfig } from "../config"
 import { clearPin } from "./pinLock"
 import { clearKeys, resetMemoryCaches } from "./e2e"
 import { clearPlaintextCache } from "./plaintextCache"
@@ -48,4 +49,28 @@ export function releaseLocalKeys(): void {
   try { localStorage.removeItem(KEYS_OWNER_KEY) } catch { /* ignore */ }
   clearPlaintextCache()
   useFavoritesStore.getState().clear()
+}
+
+/** Аккаунт, привязанный к устройству (если был вход), — для guard'а смены релея. */
+export function storedAccount(): { username: string } | null {
+  try {
+    const raw = localStorage.getItem("user")
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { username?: unknown }
+    return typeof parsed.username === "string" ? { username: parsed.username } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Смена релея: аккаунт живёт на ОДНОМ реле (история и ключи на новом
+ * будут пустыми), поэтому молча переключаться нельзя. Выход + забыть
+ * локальный профиль + релей + перезагрузка (BASE_URL заморожен на старте).
+ */
+export function performRelaySwitch(config: RelayConfig): void {
+  performLogout()
+  try { localStorage.removeItem("user") } catch { /* ignore */ }
+  setRelayConfig(config)
+  window.location.reload()
 }

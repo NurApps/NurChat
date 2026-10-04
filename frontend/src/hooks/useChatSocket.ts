@@ -140,7 +140,7 @@ export function useChatSocket({
           } catch { /* ignore */ }
         }
         if (data.chat_id !== chatIdRef.current && !(mutedRef.current?.has(data.chat_id))) {
-          const sender = data.username || "Пользователь"
+          const sender = data.display_name || data.username || "Пользователь"
           const preview = data.encrypted_content
             ? "🔒 Зашифрованное сообщение"
             : (data.content || "").slice(0, 50)

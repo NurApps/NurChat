@@ -9,6 +9,7 @@ import { useAvatarStyle } from "../services/avatarStyle"
 import Identicon from "../components/Identicon"
 import { formatTime, formatDateShort } from "../utils/format"
 import { ArrowLeft } from "lucide-react"
+import { userDisplayName } from "../utils/userName"
 
 interface CallLog {
   id: number
@@ -152,7 +153,7 @@ export default function CallHistoryPage() {
                     overflow: "hidden",
                   }}>
                     {other && avatarStyle === "identicon" ? (
-                      <Identicon seed={other.id} className="identicon-cover" label={other.username} />
+                      <Identicon seed={other.id} className="identicon-cover" label={userDisplayName(other)} />
                     ) : (
                       other?.first_name?.[0]?.toUpperCase() || "?"
                     )}

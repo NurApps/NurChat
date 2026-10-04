@@ -8,6 +8,7 @@ import Identicon from "../components/Identicon"
 import { getAccessToken, peekRefreshToken, readStoredUserRaw } from "../services/tokenVault"
 import { openAuthedSocket } from "../services/wsAuth"
 import { sealSignalingMessage, unsealSignalingMessage } from "../services/callE2E"
+import { userDisplayName } from "../utils/userName"
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -358,7 +359,7 @@ export default function CallPage() {
     if (targetUserId) {
       import("../services/api").then(({ api }) => {
         api.getUser(targetUserId).then((user) => {
-          setTargetName(user.username || user.first_name || t("call.audioCall"))
+          setTargetName(userDisplayName(user, t("call.audioCall")))
         }).catch(() => {})
       })
     }

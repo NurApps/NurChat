@@ -404,6 +404,9 @@ class ChatManager:
             db.commit()
             sender = db.query(models.User).filter(models.User.id == user_id).first()
             sender_username = sender.username if sender else "Unknown"
+            sender_display_name = (
+                " ".join(filter(None, [sender.first_name, sender.last_name])).strip() or sender_username
+            ) if sender else sender_username
             logger.debug(f"Message {message_id} saved to DB")
 
             mentioned_usernames = parse_mentions(data.get("content", ""))
@@ -439,6 +442,7 @@ class ChatManager:
                 "id": message_id,
                 "user_id": user_id,
                 "username": sender_username,
+                "display_name": sender_display_name,
                 "content": stored_content,
                 "encrypted_content": encrypted_content,
                 "signature": signature,

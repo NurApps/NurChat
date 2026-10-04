@@ -460,13 +460,12 @@ export default function SettingsPage() {
           <div className={`settings-mobile-home${everOpened ? " settings-slide-back" : ""}`}>
             <button type="button" className="settings-profile-card" onClick={() => openSection("profile")}>
               <span className="settings-profile-card__avatar" style={{ background: avatarSrc ? "transparent" : getAvatarColor(user.id) }}>
-                {avatarSrc ? <img src={avatarSrc} alt="" width={64} height={64} /> : <span aria-hidden="true">{initial}</span>}
+                {avatarSrc ? <img src={avatarSrc} alt="" width={96} height={96} /> : <span aria-hidden="true">{initial}</span>}
               </span>
               <span className="settings-profile-card__meta">
                 <span className="settings-profile-card__name">{displayName}</span>
                 <span className="settings-profile-card__sub">@{user.username}</span>
               </span>
-              <ChevronRight className="settings-item__arrow" size={18} strokeWidth={2} aria-hidden="true" />
             </button>
             {listGroups.map((group, gi) => (
               <nav key={gi} className="settings-list" aria-label={t("settings.title")}>

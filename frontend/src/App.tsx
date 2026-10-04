@@ -25,7 +25,6 @@ const LoginPage = lazy(() => import("./pages/LoginPage"))
 const ChatPage = lazy(() => import("./pages/ChatPage"))
 const CallPage = lazy(() => import("./pages/CallPage"))
 const SettingsPage = lazy(() => import("./pages/SettingsPage"))
-const ProfilePage = lazy(() => import("./pages/ProfilePage"))
 const CallHistoryPage = lazy(() => import("./pages/CallHistoryPage"))
 const BlockedUsersPage = lazy(() => import("./pages/BlockedUsersPage"))
 
@@ -110,7 +109,7 @@ function App() {
                   <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
                 </Route>
                 <Route path="/call/:userId/:type" element={<AuthGuard><CallPage /></AuthGuard>} />
-                <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
+                <Route path="/profile" element={<Navigate to="/settings" replace />} />
                 <Route path="/blocked" element={<AuthGuard><BlockedUsersPage /></AuthGuard>} />
               </>
             ) : (
@@ -118,7 +117,7 @@ function App() {
                 <Route path="/chat" element={<AuthGuard><ChatPage /></AuthGuard>} />
                 <Route path="/call/:userId/:type" element={<AuthGuard><CallPage /></AuthGuard>} />
                 <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
-                <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
+                <Route path="/profile" element={<Navigate to="/settings" replace />} />
                 <Route path="/calls" element={<AuthGuard><CallHistoryPage /></AuthGuard>} />
                 <Route path="/blocked" element={<AuthGuard><BlockedUsersPage /></AuthGuard>} />
               </>

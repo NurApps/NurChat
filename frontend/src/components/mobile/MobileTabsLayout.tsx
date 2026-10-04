@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { BottomTabs } from "./BottomTabs"
 import { useChatStore } from "../../store/chatStore"
@@ -16,6 +16,13 @@ function tabIndex(pathname: string): number {
 // (/chat, /calls, /contacts, /settings) — раньше каждая страница монтировала
 // свою копию, и при переходе между ними панель пересоздавалась заново
 // (и пропадала совсем на страницах, где её забыли добавить).
+// Чанки страниц вкладок грузим заранее: иначе первое переключение ждёт сеть.
+function preloadTabPages() {
+  void import("../../pages/ChatPage")
+  void import("../../pages/SettingsPage")
+  void import("../../pages/CallHistoryPage")
+}
+
 export default function MobileTabsLayout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -25,13 +32,23 @@ export default function MobileTabsLayout() {
   // key — индекс вкладки, а не путь: /chat → /chat/:id остаётся одним экраном.
   const [nav, setNav] = useState<{ index: number; dir: "none" | "forward" | "back" }>({ index, dir: "none" })
   if (nav.index !== index) setNav({ index, dir: index > nav.index ? "forward" : "back" })
+  useEffect(() => {
+    const idle = window.requestIdleCallback
+    if (idle) { const id = idle(preloadTabPages); return () => window.cancelIdleCallback(id) }
+    const id = window.setTimeout(preloadTabPages, 500)
+    return () => window.clearTimeout(id)
+  }, [])
   const chats = useChatStore((s) => s.chats)
   const unreadCount = chats.reduce((sum, c) => sum + (c.unread_count || 0), 0)
 
   return (
     <>
       <div key={index} className="mobile-tabs-page" data-tab-dir={nav.dir}>
-        <Outlet />
+        {/* Свой Suspense: пока грузится чанк вкладки, нижнее меню остаётся на месте,
+            а не уходит под общий PageLoader из App. */}
+        <Suspense fallback={<div className="auth-loading"><div className="spinner" /></div>}>
+          <Outlet />
+        </Suspense>
       </div>
       <BottomTabs
         onTabChange={(newTab) => {

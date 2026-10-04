@@ -109,7 +109,8 @@ def verify_totp(secret: str, code: str) -> bool:
     """Verify a TOTP code against the secret."""
     try:
         totp = pyotp.TOTP(secret)
-        return totp.verify(code, valid_window=1)
+        # Мобильные клавиатуры/автозаполнение любят подсунуть пробелы.
+        return totp.verify((code or "").strip().replace(" ", ""), valid_window=1)
     except Exception:
         return False
 
@@ -137,6 +138,25 @@ def hash_backup_codes(codes: list[str]) -> str:
     return json.dumps(hashed)
 
 
+def _backup_code_candidates(plain_code: str) -> list[str]:
+    """Варианты написания резервного кода: с дефисом и без, без пробелов.
+
+    Коды выдаются как XXXX-XXXX, но пользователи вводят и XXXXXXXX —
+    обе формы должны приниматься (хеш в БД — от формы с дефисом).
+    """
+    cleaned = "".join((plain_code or "").upper().split())
+    no_dash = cleaned.replace("-", "")
+    candidates = [plain_code, cleaned]
+    if len(no_dash) == _BACKUP_CODE_LENGTH and no_dash.isalnum():
+        candidates.append(f"{no_dash[:4]}-{no_dash[4:]}")
+    # Порядок + дедупликация, исходный ввод первым (дешевле при совпадении).
+    seen: list[str] = []
+    for c in candidates:
+        if c not in seen:
+            seen.append(c)
+    return seen
+
+
 def verify_backup_code(plain_code: str, hashed_json: str) -> tuple[bool, str]:
     """Verify a backup code against stored hashes.
     Returns (is_valid, updated_json) — updated_json removes the used code.
@@ -146,10 +166,11 @@ def verify_backup_code(plain_code: str, hashed_json: str) -> tuple[bool, str]:
     except (json.JSONDecodeError, TypeError):
         return False, hashed_json
 
-    for i, h in enumerate(hashes):
-        if verify_password(plain_code, h):
-            hashes.pop(i)
-            return True, json.dumps(hashes)
+    for candidate in _backup_code_candidates(plain_code):
+        for i, h in enumerate(hashes):
+            if verify_password(candidate, h):
+                hashes.pop(i)
+                return True, json.dumps(hashes)
 
     return False, hashed_json
 

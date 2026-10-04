@@ -450,3 +450,11 @@
 .profile-field-value { white-space: pre-wrap; overflow-wrap: anywhere; }
 .profile-bio-counter { align-self: flex-end; }
 .profile-edit-btn { margin-top: 12px; }
+
+/* Своя тема: строки палитры (метка + color-input + hex). */
+.custom-theme-editor { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.custom-theme-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 13px; color: var(--text-primary); cursor: pointer; }
+.custom-theme-label { overflow-wrap: anywhere; }
+.custom-theme-picker { display: flex; align-items: center; gap: 8px; }
+.custom-theme-picker input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid var(--border-color); border-radius: 6px; background: var(--surface); cursor: pointer; }
+.custom-theme-picker code { font-size: 12px; color: var(--text-secondary); min-width: 58px; }

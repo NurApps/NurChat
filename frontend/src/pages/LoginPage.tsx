@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import { claimLocalKeys } from "../services/localSession"
+import { claimLocalKeys, performRelaySwitch, storedAccount } from "../services/localSession"
 import { hasSession } from "../services/tokenVault"
 import { BASE_URL, getRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
 import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
@@ -20,11 +20,11 @@ import TurnstileWidget from "../components/TurnstileWidget"
 import RelayAddressInput from "../components/RelayAddressInput"
 
 function ThemeToggle() {
-  const { theme, toggle } = useTheme()
+  const { variant, toggle } = useTheme()
   const { t } = useTranslation()
   return (
     <button className="login-theme-toggle" type="button" title={t("common.theme")} aria-label={t("common.theme")} onClick={toggle}>
-      {theme === "light" ? (
+      {variant === "light" ? (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
         </svg>
@@ -109,7 +109,7 @@ function LoginBrand() {
 type Tab = "register" | "login"
 
 export default function LoginPage() {
-  const { theme } = useTheme()
+  const { variant } = useTheme()
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
   const [checking, setChecking] = useState(true)
@@ -171,8 +171,30 @@ export default function LoginPage() {
     if (!host || relayApplying) return
     setRelayApplying(true)
     setRelayError("")
-    const res = await applyRelayIfHealthy({ host, protocol: relayProtocol })
+    const next = { host, protocol: relayProtocol }
+    const current = getRelayConfig()
+    // Активная сессия привязана к текущему реле — смена без предупреждения
+    // стоила бы аккаунта. Проверка здоровья ниже: не отвечает — остаёмся,
+    // сессия не тронута.
+    let needLogout = false
+    if (hasSession() && (next.host !== current.host || next.protocol !== current.protocol)) {
+      const account = storedAccount()
+      if (!window.confirm(t("settings.relaySwitchConfirm", {
+        username: account?.username ?? "",
+        from: `${current.protocol}://${current.host}`,
+        to: `${next.protocol}://${next.host}`,
+      }))) {
+        setRelayApplying(false)
+        return
+      }
+      needLogout = true
+    }
+    const res = await applyRelayIfHealthy(next)
     if (res.ok) {
+      if (needLogout) {
+        performRelaySwitch(next)
+        return
+      }
       window.location.reload()
       return
     }
@@ -542,7 +564,7 @@ export default function LoginPage() {
               <TurnstileWidget
                 sitekey={captchaSitekey}
                 action="signup"
-                theme={theme === "light" ? "light" : "dark"}
+                theme={variant}
                 language={i18n.language}
                 resetSignal={captchaReset}
                 onToken={setCaptchaToken}

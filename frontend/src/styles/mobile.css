@@ -31,7 +31,7 @@
 
   /* Mobile header height */
   --header-height: 56px;
-  --bottom-nav-height: 56px;
+  --bottom-nav-height: calc(76px + var(--safe-bottom));
   --status-bar-height: 24px;
 
   /* Mobile font sizes */
@@ -156,21 +156,28 @@
     overscroll-behavior: contain;
   }
 
+  /* Плавающая «пилюля» как в Telegram: не прижата к краям, закруглена,
+     с тенью. --bottom-nav-height — это место, которое страницы резервируют
+     под неё (пилюля + зазоры), а не её собственная высота. */
   .app-bottom-nav {
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: var(--bottom-nav-height);
-    padding-bottom: var(--safe-bottom);
+    bottom: calc(12px + var(--safe-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(calc(100% - 24px), 420px);
+    height: 60px;
+    padding: 6px;
+    box-sizing: border-box;
     z-index: var(--z-bottom-nav);
-    background: var(--bg-primary);
-    border-top: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid var(--border-color);
+    border-radius: 30px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18), 0 1px 4px rgba(0, 0, 0, 0.1);
     display: flex;
     align-items: center;
-    justify-content: space-around;
-    /* No backdrop-filter here: the background above is opaque in every
-       theme, so blur rendered nothing — decoration without an effect. */
+    gap: 4px;
   }
 }
 
@@ -372,27 +379,46 @@
 @media (max-width: 768px) {
   .bottom-nav__item {
     position: relative;
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 2px;
-    padding: var(--space-xs) var(--space-sm);
-    min-width: var(--touch-target);
-    min-height: var(--touch-target);
+    height: 100%;
+    padding: 0 var(--space-xs);
     background: none;
     border: none;
-    border-radius: 0;
+    border-radius: 24px;
     appearance: none;
     -webkit-appearance: none;
     color: var(--text-secondary);
     font-size: var(--font-mobile-xs);
     text-decoration: none;
     cursor: pointer;
-    transition: color 0.15s ease;
+    z-index: 1;
+    transition: color 0.2s ease;
   }
 
   .bottom-nav__item--active {
-    color: var(--accent-color);
+    color: var(--accent);
+  }
+
+  /* Подсветка активной вкладки. Ширина = доля одного пункта внутри padding
+     (6px) и промежутков (4px); сдвиг на N·(ширина + gap) — translateX в %
+     считается от собственной ширины индикатора. */
+  .bottom-nav__indicator {
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    left: 6px;
+    width: calc((100% - 12px - 4px * (var(--tab-count) - 1)) / var(--tab-count));
+    border-radius: 24px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    transform: translateX(calc(var(--tab-index) * (100% + 4px)));
+    transition: transform 0.28s cubic-bezier(0.34, 1.3, 0.5, 1);
+    pointer-events: none;
   }
 
   .bottom-nav__icon {
@@ -402,8 +428,8 @@
 
   .bottom-nav__badge {
     position: absolute;
-    top: -2px;
-    right: -6px;
+    top: 4px;
+    right: calc(50% - 24px);
     min-width: 16px;
     height: 16px;
     border-radius: 8px;
@@ -546,49 +572,6 @@
     border-radius: 2px;
     background: var(--border-color);
     margin: 0 auto var(--space-lg);
-  }
-}
-
-/* ========================================
-   Mobile Settings
-   ======================================== */
-
-@media (max-width: 768px) {
-  .settings-list {
-    padding: var(--space-sm) 0;
-  }
-
-  .settings-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    padding: var(--space-md) var(--space-lg);
-    min-height: var(--touch-target);
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .settings-item__icon {
-    width: 24px;
-    height: 24px;
-    color: var(--text-secondary);
-  }
-
-  .settings-item__content {
-    flex: 1;
-  }
-
-  .settings-item__label {
-    font-size: var(--font-mobile-base);
-  }
-
-  .settings-item__value {
-    font-size: var(--font-mobile-sm);
-    color: var(--text-secondary);
-  }
-
-  .settings-item__arrow {
-    color: var(--text-secondary);
-    font-size: var(--font-mobile-sm);
   }
 }
 
@@ -873,13 +856,32 @@
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
 
-  /* Settings/CallHistory render inside MobileTabsLayout now, which always
-     shows the shared BottomTabs — reserve space so the fixed nav bar
-     doesn't sit on top of the last setting/call row. Scoped to pages
-     actually wrapped by that layout: ProfilePage/BlockedUsersPage reuse
-     the same .settings-page class but render outside it, with no nav bar
-     to leave room for. */
-  .mobile-tabs-page .settings-page {
-    height: calc(100svh - var(--bottom-nav-height));
+  /* Нижняя панель плавает поверх контента, поэтому прокручиваемым областям
+     под ней нужен нижний запас, чтобы последняя строка не пряталась за ней.
+     Область — только экраны внутри MobileTabsLayout: Profile/Blocked рисуются
+     вне него и панели не имеют. */
+  .mobile-tabs-page .settings-layout,
+  .mobile-tabs-page .settings-page > .settings-content {
+    padding-bottom: calc(var(--bottom-nav-height) + 8px);
   }
+
+  /* Смена вкладки нижней панели: экран въезжает со стороны новой вкладки.
+     Без fill-mode: после окончания transform снимается, иначе он стал бы
+     containing block для position:fixed внутри экранов. */
+  .mobile-tabs-page[data-tab-dir="forward"] { animation: tab-enter-forward 0.22s ease-out; }
+  .mobile-tabs-page[data-tab-dir="back"] { animation: tab-enter-back 0.22s ease-out; }
+
+  .mobile-tabs-page .sidebar-list {
+    padding-bottom: calc(var(--bottom-nav-height) + 8px);
+  }
+}
+
+@keyframes tab-enter-forward {
+  from { opacity: 0; transform: translateX(28px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes tab-enter-back {
+  from { opacity: 0; transform: translateX(-28px); }
+  to { opacity: 1; transform: none; }
 }

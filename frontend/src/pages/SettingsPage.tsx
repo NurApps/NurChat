@@ -44,6 +44,7 @@ export default function SettingsPage() {
   const [sectionOpen, setSectionOpen] = useState(false)
   // Анимируем возврат к списку только после того, как раздел уже открывали.
   const [everOpened, setEverOpened] = useState(false)
+  const [autoEdit, setAutoEdit] = useState(false)
   const [msg, setMsgText] = useState("")
   const [msgKind, setMsgKind] = useState<"ok" | "err">("ok")
   const setMsg = (text: string) => { setMsgText(text); setMsgKind("ok") }
@@ -384,8 +385,9 @@ export default function SettingsPage() {
     setMsg("")
   }
 
-  const openSection = (id: SettingsTab) => {
+  const openSection = (id: SettingsTab, edit = false) => {
     setTab(id)
+    setAutoEdit(edit)
     setMsg("")
     setSectionOpen(true)
     setEverOpened(true)
@@ -457,7 +459,7 @@ export default function SettingsPage() {
       <div className="settings-body">
        {showList && (
         <div className="settings-hero" style={{ ["--hero-color" as string]: getAvatarColor(user.id) }}>
-          <button type="button" className="settings-hero__edit" onClick={() => openSection("profile")}>{t("settings.editShort")}</button>
+          <button type="button" className="settings-hero__edit" onClick={() => openSection("profile", true)}>{t("settings.editShort")}</button>
           <button type="button" className="settings-hero__main" onClick={() => openSection("profile")}>
             <span className="settings-hero__avatar">
               {avatarSrc ? <img src={avatarSrc} alt="" width={96} height={96} /> : <span aria-hidden="true">{initial}</span>}
@@ -475,7 +477,7 @@ export default function SettingsPage() {
                 <Camera size={22} strokeWidth={1.8} aria-hidden="true" />
                 <span className="settings-item__label">{t("settings.changePhoto")}</span>
               </button>
-              <button type="button" className="settings-item settings-item--action" onClick={() => openSection("profile")}>
+              <button type="button" className="settings-item settings-item--action" onClick={() => openSection("profile", true)}>
                 <Pencil size={22} strokeWidth={1.8} aria-hidden="true" />
                 <span className="settings-item__label">{t("profile.editProfile")}</span>
               </button>
@@ -537,7 +539,7 @@ export default function SettingsPage() {
 
           {/* ─── Profile ─── */}
           {tab === "profile" && (
-            <ProfileEditor user={user} onUserChange={setUser} onDirtyChange={(d) => { profileDirtyRef.current = d }} />
+            <ProfileEditor autoEdit={autoEdit} user={user} onUserChange={setUser} onDirtyChange={(d) => { profileDirtyRef.current = d }} />
           )}
 
           {/* ─── Appearance ─── */}

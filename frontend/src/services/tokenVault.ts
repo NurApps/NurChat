@@ -24,9 +24,11 @@
  * builds) is absorbed into memory once and then deleted from disk.
  */
 
+import { namespacedLSKey } from "./profiles"
+
 const LS_ACCESS = "token"
-const LS_REFRESH = "refresh_token"
-const LS_USER = "user"
+const LS_REFRESH_BASE = "refresh_token"
+const LS_USER_BASE = "user"
 
 let accessToken: string | null = null
 let refreshToken: string | null = null
@@ -62,7 +64,7 @@ function migrateOnce(): void {
       if (legacy) accessToken = legacy
     }
     if (!refreshToken) {
-      const legacyRt = readLS(LS_REFRESH)
+      const legacyRt = readLS(namespacedLSKey(LS_REFRESH_BASE))
       if (legacyRt) refreshToken = legacyRt
     }
     // Legacy access JWT must not stay on disk: memory owns it now.
@@ -92,8 +94,8 @@ export function setSession(access: string, refresh?: string | null): void {
   accessToken = access
   if (refresh !== undefined) {
     refreshToken = refresh
-    if (refresh) writeLS(LS_REFRESH, refresh)
-    else removeLS(LS_REFRESH)
+    if (refresh) writeLS(namespacedLSKey(LS_REFRESH_BASE), refresh)
+    else removeLS(namespacedLSKey(LS_REFRESH_BASE))
   }
 }
 
@@ -102,7 +104,7 @@ export function updateAfterRefresh(access: string, refresh?: string | null): voi
   accessToken = access
   if (refresh) {
     refreshToken = refresh
-    writeLS(LS_REFRESH, refresh)
+    writeLS(namespacedLSKey(LS_REFRESH_BASE), refresh)
   }
 }
 
@@ -110,6 +112,15 @@ export function clearSession(): void {
   accessToken = null
   refreshToken = null
   removeLS(LS_ACCESS)
-  removeLS(LS_REFRESH)
-  removeLS(LS_USER)
+  removeLS(namespacedLSKey(LS_REFRESH_BASE))
+  removeLS(namespacedLSKey(LS_USER_BASE))
+}
+
+/** Профиль пользователя активного аккаунта (JSON), с учётом неймспейса. */
+export function readStoredUserRaw(): string | null {
+  return readLS(namespacedLSKey(LS_USER_BASE))
+}
+
+export function writeStoredUserRaw(json: string): void {
+  writeLS(namespacedLSKey(LS_USER_BASE), json)
 }

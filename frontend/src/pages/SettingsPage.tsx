@@ -16,6 +16,7 @@ import { useTheme, LIGHT_THEMES, DARK_THEMES, type Theme, type ThemeMode } from 
 import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
 import { useMobile } from "../hooks/useMobile"
 import ProfileEditor from "../components/ProfileEditor"
+import AccountsManager from "../components/AccountsManager"
 import RelayAddressInput from "../components/RelayAddressInput"
 import type { UserResponse } from "../types"
 
@@ -878,6 +879,7 @@ export default function SettingsPage() {
                 <button className="settings-action-btn" onClick={handleLogout}>{t("settings.logoutAccount")}</button>
                 <button className="settings-action-btn danger" onClick={handleDeleteAccount}>{t("settings.deleteAccount")}</button>
               </div>
+              <AccountsManager />
             </div>
           )}
 

@@ -746,8 +746,10 @@ async def enable_2fa(
 
     if not verify_password_argon2(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Неверный пароль")
-
     secret = decrypt_totp_secret(user.totp_secret)
+    if user.totp_secret and not secret:
+        logger.error(f"2FA setup confirm: secret undecryptable for {user.username} (key rotated?)")
+
     if not secret or not verify_totp(secret, body.code):
         raise HTTPException(status_code=400, detail="Неверный TOTP-код")
 
@@ -775,6 +777,8 @@ async def verify_2fa_login_with_token(
         raise HTTPException(status_code=400, detail="2FA не активна")
 
     secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
+    if user.totp_secret and not secret:
+        logger.error(f"2FA login: secret undecryptable for {user.username} (key rotated?)")
     totp_valid = secret and verify_totp(secret, body.code)
 
     # Try backup code
@@ -827,6 +831,8 @@ async def disable_2fa(
         raise HTTPException(status_code=401, detail="Неверный пароль")
 
     secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
+    if user.totp_secret and not secret:
+        logger.error(f"2FA disable: secret undecryptable for {user.username} (key rotated?)")
     totp_valid = secret and verify_totp(secret, body.code)
 
     backup_valid = False

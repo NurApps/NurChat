@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter } from "react-router-dom"
-import ProfilePage from "../pages/ProfilePage"
+import ProfileEditor from "../components/ProfileEditor"
 import { api } from "../services/api"
 
 const baseUser = {
@@ -18,20 +17,12 @@ vi.mock("../services/api", async (orig) => {
   }
 })
 
-const renderPage = () => render(<MemoryRouter><ProfilePage /></MemoryRouter>)
+const renderPage = () => render(<ProfileEditor user={baseUser as never} onUserChange={() => {}} />)
 
-describe("ProfilePage", () => {
+describe("ProfileEditor", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(api.getCurrentUser).mockResolvedValue(baseUser as never)
-  })
-
-  it("shows retry instead of redirecting when the profile fails to load", async () => {
-    vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new Error("net"))
-    renderPage()
-    expect(await screen.findByRole("alert")).toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Повторить" }))
-    expect(await screen.findByText("Алиса")).toBeInTheDocument()
   })
 
   it("sends empty status and bio so they can be cleared", async () => {

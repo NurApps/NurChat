@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import type { MessageResponse } from "../types"
 import { loadKeys as loadE2EKeys } from "../services/e2e"
+import { readStoredUserRaw } from "../services/tokenVault"
 
 const EXT_MIME: Record<string, string> = {
   gif: "image/gif",
@@ -61,7 +62,7 @@ export function useFileBlobUrl(message: MessageResponse | null): string | null {
         if (isEncryptedFile && fileEnvelope) {
           const myKeys = await loadE2EKeys()
           const currentUserId = (() => {
-            try { return JSON.parse(localStorage.getItem("user") || "null")?.id as string } catch { return "" }
+            try { return JSON.parse(readStoredUserRaw() || "null")?.id as string } catch { return "" }
           })()
           const mySecret = myKeys?.privateKeyHex
           const senderPub = fileEnvelope.senderPublicKey || message!.user?.public_key || ""

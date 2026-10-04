@@ -17,10 +17,12 @@ interface BottomTabsProps {
   badges?: Record<string, number>;
 }
 
+// Порядок как в Telegram: Контакты, Звонки, Чаты, Настройки.
+// MobileTabsLayout.tabIndex опирается на него для направления анимации.
 const defaultTabs: Tab[] = [
-  { id: 'chats', label: 'Чаты', path: '/', icon: <MessageCircle size={24} strokeWidth={2} aria-hidden="true" /> },
-  { id: 'calls', label: 'Звонки', path: '/calls', icon: <Phone size={24} strokeWidth={2} aria-hidden="true" /> },
   { id: 'contacts', label: 'Контакты', path: '/contacts', icon: <Users size={24} strokeWidth={2} aria-hidden="true" /> },
+  { id: 'calls', label: 'Звонки', path: '/calls', icon: <Phone size={24} strokeWidth={2} aria-hidden="true" /> },
+  { id: 'chats', label: 'Чаты', path: '/', icon: <MessageCircle size={24} strokeWidth={2} aria-hidden="true" /> },
   { id: 'settings', label: 'Настройки', path: '/settings', icon: <Settings size={24} strokeWidth={2} aria-hidden="true" /> },
 ];
 
@@ -37,8 +39,15 @@ export function BottomTabs({ tabs = defaultTabs, activeTab, onTabChange, badges 
     [activeTab, location.pathname]
   );
 
+  const activeIndex = tabs.findIndex(isActive);
+
   return (
-    <nav className="app-bottom-nav">
+    <nav
+      className="app-bottom-nav"
+      style={{ '--tab-count': tabs.length, '--tab-index': Math.max(activeIndex, 0) } as React.CSSProperties}
+    >
+      {/* Скользящая подсветка активной вкладки: переезжает между пунктами. */}
+      {activeIndex >= 0 && <span className="bottom-nav__indicator" aria-hidden="true" />}
       {tabs.map((tab) => (
         <button
           key={tab.id}

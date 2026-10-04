@@ -6,6 +6,7 @@ import {
   peekRefreshToken,
   setSession,
   updateAfterRefresh,
+  writeStoredUserRaw,
 } from "./tokenVault"
 import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse, ContactRequestResponse } from "../types"
 
@@ -63,18 +64,35 @@ function notifyAuthExpired(): void {
 // (the endpoint is rate-limited 10/min AND rotates the refresh token,
 // so parallel refreshes would revoke each other).
 let refreshPromise: Promise<boolean> | null = null
+
+// CSRFMiddleware требует X-CSRF-Token и на /refresh (он не в exempt_paths).
+// После перезагрузки страницы кэша нет, а document.cookie не видит cookie чужого
+// хоста реле — берём токен из заголовка любого ответа (GET /health).
+async function ensureCsrfToken(): Promise<string | null> {
+  const known = csrfTokenCache || getCsrfToken()
+  if (known) return known
+  try {
+    const res = await fetch(`${BASE_URL}/health`, { credentials: "include" })
+    const token = res.headers.get("X-CSRF-Token")
+    if (token) csrfTokenCache = token
+    return token
+  } catch {
+    return null
+  }
+}
 export function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
       const rt = peekRefreshToken()
       if (!rt) return false
+      const csrf = await ensureCsrfToken()
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 30000)
       try {
         const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) },
           // credentials:include — на будущее: если relay начнёт ставить
           // HttpOnly refresh-cookie (same-origin prod), она подхватится
           // автоматически; сейчас refresh едет в body как раньше.
@@ -211,7 +229,7 @@ export const api = {
     if (res.status === 401 && await refreshAccessToken()) res = await send()
     if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText)
     const updated: UserResponse = await res.json()
-    localStorage.setItem("user", JSON.stringify(updated))
+    writeStoredUserRaw(JSON.stringify(updated))
     return updated
   },
 

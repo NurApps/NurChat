@@ -88,6 +88,34 @@ class TestTwoFactorLogin:
         assert r.status_code == 200
         assert r.json()["username"] == "u2fa_user"
 
+class TestCodeNormalization:
+    """Ввод с пробелами и резервный код без дефиса тоже принимаются."""
+
+    def test_totp_with_spaces(self):
+        import pyotp
+
+        from server.utils.security import generate_totp_secret, verify_totp
+        secret = generate_totp_secret()
+        code = pyotp.TOTP(secret).now()
+        assert verify_totp(secret, f" {code[:3]} {code[3:]} ") is True
+        assert verify_totp(secret, "000000") is False
+
+    def test_backup_code_with_and_without_dash(self):
+        from server.utils.security import (
+            generate_backup_codes,
+            hash_backup_codes,
+            verify_backup_code,
+        )
+        codes = generate_backup_codes(count=2)
+        hashed = hash_backup_codes(codes)
+        plain, dashed_back = codes[0].replace("-", ""), codes[1]
+        ok, hashed = verify_backup_code(plain.lower(), hashed)
+        assert ok is True
+        ok, hashed = verify_backup_code(dashed_back, hashed)
+        assert ok is True
+        ok, _ = verify_backup_code("WRONG-CODE", hashed)
+        assert ok is False
+
     def test_backup_code_login(self):
         import pyotp
         reg = _register("u2fa_backup")

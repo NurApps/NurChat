@@ -446,9 +446,11 @@ export default function SettingsPage() {
   return (
     <div className="settings-page">
       <div className="settings-header">
-        <button type="button" className="settings-back" onClick={handleBack} aria-label={t("common.back")}>
-          <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
-        </button>
+        {!showList && (
+          <button type="button" className="settings-back" onClick={handleBack} aria-label={t("common.back")}>
+            <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
+          </button>
+        )}
         <h2>{headerTitle}</h2>
       </div>
 

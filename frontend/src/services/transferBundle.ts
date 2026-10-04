@@ -144,6 +144,45 @@ export async function exportTransferBundle(
   return encryptTransferPayload(payload, password)
 }
 
+/**
+ * Компактный бандл для QR: без OPK и outbox.
+ * OPK сервер догрузит сам (heal при <20), outbox остаётся на старом
+ * устройстве — честно предупреждаем в UI. Всё остальное (identity,
+ * SPK, DR-сессии, групповые ратчеты) на месте — переезд полный.
+ */
+export async function exportCompactTransferBundle(
+  relayHost: string,
+  relayProtocol: "http" | "https",
+  username: string,
+  userId: string,
+  password: string,
+): Promise<TransferEnvelope> {
+  const identity = await loadIdentityKeys()
+  if (!identity) throw new Error("no-identity")
+  const payload: TransferPayload = {
+    format: TRANSFER_FORMAT,
+    version: TRANSFER_VERSION,
+    exportedAt: Date.now(),
+    relayHost,
+    relayProtocol,
+    username,
+    userId,
+    identity,
+    spk: await loadSPK(),
+    opks: [],
+    sessions: await loadSessions(),
+    groupStates: await loadSecureValue(GROUP_RATCHET_KEY),
+    outbox: null,
+  }
+  return encryptTransferPayload(payload, password)
+}
+
+/**
+ * Потолок одиночного QR (byte mode, ECC-M): больше — только файлом.
+ * Берём с запасом под декодеры телефонов.
+ */
+export const QR_MAX_CHARS = 2200
+
 function isPayload(v: unknown): v is TransferPayload {
   if (typeof v !== "object" || v === null) return false
   const p = v as Record<string, unknown>

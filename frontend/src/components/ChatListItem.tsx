@@ -5,6 +5,7 @@ import { getDraftForChat, subscribeDrafts } from "../utils/drafts"
 import { formatFull, formatRelativeTime } from "../utils/format"
 import { LockKeyhole, MoreVertical, Pin, Users, VolumeX } from "lucide-react"
 import UserAvatar from "./UserAvatar"
+import { userDisplayName } from "../utils/userName"
 
 interface Props {
   chat: ChatResponse
@@ -19,7 +20,7 @@ interface Props {
 function getDisplayName(chat: ChatResponse, currentUser: UserResponse, t: (key: string) => string): string {
   if (chat.is_group) return chat.name || t("chat.group")
   const other = chat.participants.find((p) => p.id !== currentUser.id)
-  return other?.username || chat.name || t("chat.chat")
+  return (other ? userDisplayName(other) : "") || chat.name || t("chat.chat")
 }
 
 function getLastMessageTime(chat: ChatResponse): string {

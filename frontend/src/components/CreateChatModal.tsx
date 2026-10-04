@@ -4,6 +4,7 @@ import { api } from "../services/api"
 import UserAvatar from "./UserAvatar"
 import type { UserResponse } from "../types"
 import { Check, Search, X } from "lucide-react"
+import { userDisplayName } from "../utils/userName"
 
 interface Props {
   currentUserId: string
@@ -33,7 +34,7 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
   }, [currentUserId])
 
   const filtered = search
-    ? users.filter((u) => u.username.toLowerCase().includes(search.toLowerCase()))
+    ? users.filter((u) => (u.username + " " + userDisplayName(u)).toLowerCase().includes(search.toLowerCase()))
     : users
 
   function toggleUser(id: string) {
@@ -129,9 +130,9 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
                       <Check size={14} color="#0e7cb4" strokeWidth={3} aria-hidden="true" />
                     )}
                   </div>
-                  <UserAvatar id={user.id} username={user.username} avatarPath={user.avatar_path} circleClassName="modal-user-avatar" />
+                  <UserAvatar id={user.id} username={userDisplayName(user)} avatarPath={user.avatar_path} circleClassName="modal-user-avatar" />
                   <div className="modal-user-info">
-                    <span className="modal-user-name">{user.username}</span>
+                    <span className="modal-user-name">{userDisplayName(user)}</span>
                     <span className="modal-user-sub">{user.first_name}</span>
                   </div>
                 </div>

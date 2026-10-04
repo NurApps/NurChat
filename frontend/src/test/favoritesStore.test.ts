@@ -39,7 +39,7 @@ describe("favoritesStore", () => {
     const items = useFavoritesStore.getState().items
     expect(items).toHaveLength(1)
     expect(items[0].content).toBe("text-m1")
-    expect(items[0].forwardedFromName).toBe("alice")
+    expect(items[0].forwardedFromName).toBe("Alice")
   })
 
   it("appends multiple entries preserving order", () => {

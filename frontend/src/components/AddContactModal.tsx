@@ -4,6 +4,7 @@ import { api } from "../services/api"
 import UserAvatar from "./UserAvatar"
 import type { UserResponse } from "../types"
 import { Search, X } from "lucide-react"
+import { userDisplayName } from "../utils/userName"
 
 interface Props {
   existingContactIds: string[]
@@ -35,7 +36,7 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
   }, [currentUserId, existingContactIds])
 
   const filtered = search
-    ? users.filter((u) => u.username.toLowerCase().includes(search.toLowerCase()))
+    ? users.filter((u) => (u.username + " " + userDisplayName(u)).toLowerCase().includes(search.toLowerCase()))
     : users
 
   return (
@@ -74,9 +75,9 @@ export default function AddContactModal({ existingContactIds, currentUserId, onA
                   className={`modal-user-item ${selectedId === user.id ? "selected" : ""}`}
                   onClick={() => setSelectedId(user.id)}
                 >
-                  <UserAvatar id={user.id} username={user.username} avatarPath={user.avatar_path} circleClassName="modal-user-avatar" />
+                  <UserAvatar id={user.id} username={userDisplayName(user)} avatarPath={user.avatar_path} circleClassName="modal-user-avatar" />
                   <div className="modal-user-info">
-                    <span className="modal-user-name">{user.username}</span>
+                    <span className="modal-user-name">{userDisplayName(user)}</span>
                     <span className="modal-user-sub">{user.first_name}</span>
                   </div>
                 </div>

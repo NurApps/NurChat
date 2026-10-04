@@ -33,6 +33,7 @@ import FavoritesChatWindow from "../components/FavoritesChatWindow"
 import ChatModals from "../components/ChatModals"
 
 import { getDraft, saveDraft, removeDraft } from "../utils/drafts"
+import { userDisplayName } from "../utils/userName"
 
 function hexToBytesLocal(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
@@ -80,7 +81,8 @@ export default function ChatPage() {
   const filteredChats = useMemo(() => {
     return chats.filter((c) => {
       if (!search) return true
-      const name = c.is_group ? c.name : c.participants.find((p) => p.id !== currentUser.id)?.username
+      const peer = c.is_group ? undefined : c.participants.find((p) => p.id !== currentUser.id)
+      const name = c.is_group ? c.name : peer ? `${peer.username} ${userDisplayName(peer)}` : ""
       return name?.toLowerCase().includes(search.toLowerCase())
     })
   }, [chats, search, currentUser.id])
@@ -90,13 +92,13 @@ export default function ChatPage() {
   const filteredContacts = useMemo(() => {
     if (!search) return contacts
     const q = search.toLowerCase()
-    return contacts.filter((c) => c.contact_user.username.toLowerCase().includes(q))
+    return contacts.filter((c) => `${c.contact_user.username} ${userDisplayName(c.contact_user)}`.toLowerCase().includes(q))
   }, [contacts, search])
 
   const filteredInvites = useMemo(() => {
     if (!search) return invites
     const q = search.toLowerCase()
-    return invites.filter((i) => i.group.name.toLowerCase().includes(q) || i.inviter.username.toLowerCase().includes(q))
+    return invites.filter((i) => i.group.name.toLowerCase().includes(q) || `${i.inviter.username} ${userDisplayName(i.inviter)}`.toLowerCase().includes(q))
   }, [invites, search])
 
   const input = useChatStore((s) => s.input)
@@ -464,8 +466,8 @@ export default function ChatPage() {
       const peer = chat.participants.find((p) => p.id !== currentUser.id)
       if (peer?.public_key) {
         const status = checkKeyStatus(peer.id, peer.public_key)
-        if (status === "changed") setKeyWarning(t("chat.keyChanged", { name: peer.username || peer.first_name }))
-        else if (status === "new") setKeyWarning(t("chat.keyNew", { name: peer.username || peer.first_name }))
+        if (status === "changed") setKeyWarning(t("chat.keyChanged", { name: userDisplayName(peer) }))
+        else if (status === "new") setKeyWarning(t("chat.keyNew", { name: userDisplayName(peer) }))
       }
       // У пира нет серверных prekeys (не заходил после регистрации) —
       // предупреждаем СРАЗУ при открытии, а не 400й при отправке.
@@ -806,7 +808,7 @@ export default function ChatPage() {
     : []
 
   const selectedChatName = selectedChat
-    ? selectedChat.is_group ? (selectedChat.name || t("chat.chats")) : selectedChat.participants.find((p) => p.id !== currentUser.id)?.username || t("chat.chats")
+    ? selectedChat.is_group ? (selectedChat.name || t("chat.chats")) : userDisplayName(selectedChat.participants.find((p) => p.id !== currentUser.id), t("chat.chats"))
     : ""
   const selectedChatPeer = selectedChat && !selectedChat.is_group
     ? selectedChat.participants.find((p) => p.id !== currentUser.id)
@@ -817,7 +819,7 @@ export default function ChatPage() {
   const typingNames = currentTyping
     ? Object.entries(currentTyping).filter(([, v]) => v).map(([uid]) => {
         const p = selectedChat?.participants.find((pp) => pp.id === uid)
-        return p?.username || t("chat.replySender")
+        return userDisplayName(p, t("chat.replySender"))
       })
     : []
 
@@ -825,7 +827,7 @@ export default function ChatPage() {
     <div className="chat-page">
       <OfflineBanner isOnline={isOnline && wsUp} pendingCount={outboxPending} />
       <TopBar
-        username={currentUser.username}
+        username={userDisplayName(currentUser)}
         userId={currentUser.id}
         avatarUrl={avatarUrl(currentUser.avatar_path)}
         onProfile={handleProfile}
@@ -1069,7 +1071,7 @@ export default function ChatPage() {
               {replyTo && (
                 <div className="reply-preview">
                   <div className="reply-border">
-                    <span className="reply-sender">{replyTo.user?.username || t("chat.replySender")}</span>
+                    <span className="reply-sender">{userDisplayName(replyTo.user, t("chat.replySender"))}</span>
                     <span className="reply-text">{replyTo.content.slice(0, 60)}{replyTo.content.length > 60 ? "..." : ""}</span>
                   </div>
                   <button className="reply-close" onClick={() => setReplyTo(null)}>

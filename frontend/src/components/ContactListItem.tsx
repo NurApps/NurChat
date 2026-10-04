@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next"
 import type { ContactResponse } from "../types"
 import UserAvatar from "./UserAvatar"
 import { MessageCircle, Trash2 } from "lucide-react"
+import { userDisplayName } from "../utils/userName"
 
 interface Props {
   contact: ContactResponse
@@ -11,7 +12,7 @@ interface Props {
 
 export default function ContactListItem({ contact, onRemove, onStartChat }: Props) {
   const { t } = useTranslation()
-  const username = contact.contact_user.username
+  const username = userDisplayName(contact.contact_user)
 
   return (
     <div className="contact-list-item">

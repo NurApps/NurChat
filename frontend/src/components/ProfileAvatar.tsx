@@ -5,6 +5,7 @@ import { useAvatarStyle } from "../services/avatarStyle"
 import { getAvatarColor } from "../utils/avatar"
 import Identicon from "./Identicon"
 import type { UserResponse } from "../types"
+import { userDisplayName } from "../utils/userName"
 
 // Совпадает с ограничениями сервера (server/routes/auth.py: upload_avatar).
 const AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"]
@@ -45,7 +46,7 @@ export default function ProfileAvatar({ user, uploading, onUpload, onDelete, onI
           // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
           <img src={src} alt={t("profile.avatarAlt")} width={80} height={80} className="settings-avatar-img" />
         ) : avatarStyle === "identicon" ? (
-          <Identicon seed={user.id} className="identicon-cover" label={user.username} />
+          <Identicon seed={user.id} className="identicon-cover" label={userDisplayName(user)} />
         ) : (
           <span aria-hidden="true">{initial}</span>
         )}

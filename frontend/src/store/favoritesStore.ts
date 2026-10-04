@@ -9,6 +9,7 @@
 import { create } from "zustand"
 import type { MessageResponse } from "../types"
 import { namespacedLSKey } from "../services/profiles"
+import { userDisplayName } from "../utils/userName"
 
 export interface FavoriteEntry {
   id: string
@@ -76,7 +77,7 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
       id: makeId(),
       content: message.content,
       createdAt: new Date().toISOString(),
-      forwardedFromName: message.user?.username || "",
+      forwardedFromName: userDisplayName(message.user),
       forwardedMessageType: message.message_type,
       forwardedFileName: message.file?.filename,
     }

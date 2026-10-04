@@ -10,6 +10,7 @@ import VoiceMessage from "./VoiceMessage"
 import { useFileBlobUrl } from "../hooks/useFileBlobUrl"
 import { useFavoritesStore } from "../store/favoritesStore"
 import { Check, CheckCheck, Clock3, FileText, Image, Mic, Music2, MoreVertical, Play, Video, X } from "lucide-react"
+import { userDisplayName } from "../utils/userName"
 
 interface Props {
   message: MessageResponse
@@ -89,7 +90,7 @@ export default function MessageBubble({
     }).catch(() => {})
   }, [menuOpen, isMyMessage, message.id])
 
-  const senderName = message.user?.username || "User"
+  const senderName = userDisplayName(message.user, "User")
   const senderAvatarPath = message.user?.avatar_path
   const senderId = message.user?.id || message.user_id || senderName
 
@@ -228,7 +229,7 @@ export default function MessageBubble({
       <div className="msg-reply-wrapper">
         {replyTo && (
           <div className="msg-reply-border" onClick={() => {/* scroll to replied message */}}>
-            <span className="msg-reply-sender">{replyTo.user?.username || t("chat.user")}</span>
+            <span className="msg-reply-sender">{userDisplayName(replyTo.user, t("chat.user"))}</span>
             <span className="msg-reply-text">{(replyTo.content || "").slice(0, 60)}{(replyTo.content || "").length > 60 ? "..." : ""}</span>
           </div>
         )}

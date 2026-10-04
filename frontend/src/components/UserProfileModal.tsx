@@ -9,6 +9,7 @@ import { formatDateShort, formatFull } from "../utils/format"
 import { getAvatarColor } from "../utils/avatar"
 import SafetyNumberModal from "./SafetyNumberModal"
 import { LockKeyhole, MessageCircle, Phone, X } from "lucide-react"
+import { userDisplayName } from "../utils/userName"
 
 interface Props {
   user: UserResponse
@@ -36,7 +37,7 @@ export default function UserProfileModal({ user, currentUserId, onClose, onWrite
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [showSafetyNumber, setShowSafetyNumber] = useState(false)
-  const name = user.first_name || user.username || t("profile.unknownUser")
+  const name = userDisplayName(user, t("profile.unknownUser"))
   const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username
   const avatarChar = name[0]?.toUpperCase() || "?"
   const avatarColor = getAvatarColor(user.id)
@@ -142,7 +143,7 @@ export default function UserProfileModal({ user, currentUserId, onClose, onWrite
           <SafetyNumberModal
             theirUserId={user.id}
             theirPublicKey={user.public_key}
-            theirUsername={user.username || user.first_name || t("profile.unknownUser")}
+            theirUsername={userDisplayName(user, t("profile.unknownUser"))}
             onClose={() => setShowSafetyNumber(false)}
           />
         )}

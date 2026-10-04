@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next"
 import type { GroupInviteResponse } from "../types"
 import { Check, UserPlus, X } from "lucide-react"
+import { userDisplayName } from "../utils/userName"
 
 interface Props {
   invite: GroupInviteResponse
@@ -16,7 +17,7 @@ export default function GroupInviteItem({ invite, onAccept, onDecline }: Props) 
         <UserPlus size={24} color="#2AABEE" strokeWidth={2} aria-hidden="true" />
         <div className="invite-text">
           <span className="invite-title">{t("chat.groupInviteTo", { name: invite.group.name })}</span>
-          <span className="invite-from">{t("chat.fromUser", { username: invite.inviter.username })}</span>
+          <span className="invite-from">{t("chat.fromUser", { username: userDisplayName(invite.inviter) })}</span>
         </div>
       </div>
       <div className="invite-actions">

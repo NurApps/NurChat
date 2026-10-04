@@ -49,13 +49,20 @@ afterEach(() => {
 })
 
 describe('ChatListItem', () => {
-  it('shows other user username for direct chat', () => {
+  it('shows other user display name for direct chat', () => {
     render(<ChatListItem chat={makeChat()} currentUser={currentUser} onClick={vi.fn()} />)
-    expect(screen.getByText('other')).toBeInTheDocument()
+    expect(screen.getByText('Other')).toBeInTheDocument()
   })
 
-  it('shows other user username for direct chat without name', () => {
+  it('shows other user display name for direct chat without name', () => {
     const chat = makeChat({ name: '' })
+    render(<ChatListItem chat={chat} currentUser={currentUser} onClick={vi.fn()} />)
+    expect(screen.getByText('Other')).toBeInTheDocument()
+  })
+
+  it('falls back to username when first name is empty', () => {
+    const chat = makeChat()
+    chat.participants = chat.participants.map((p) => p.id === otherUser.id ? { ...p, first_name: '' } : p)
     render(<ChatListItem chat={chat} currentUser={currentUser} onClick={vi.fn()} />)
     expect(screen.getByText('other')).toBeInTheDocument()
   })

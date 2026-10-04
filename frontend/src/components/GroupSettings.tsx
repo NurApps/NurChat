@@ -4,6 +4,7 @@ import { api } from "../services/api"
 import UserAvatar from "./UserAvatar"
 import type { ChatResponse, UserResponse } from "../types"
 import { Star, User, X } from "lucide-react"
+import { userDisplayName } from "../utils/userName"
 
 interface GroupMember {
   id: string
@@ -175,10 +176,10 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
               {members.map((member) => (
                 <div key={member.id} className="group-settings-member">
                   <div className="group-settings-member-info">
-                    <UserAvatar id={member.id} username={member.first_name || member.username} avatarPath={member.avatar_path} circleClassName="group-settings-avatar" />
+                    <UserAvatar id={member.id} username={userDisplayName(member)} avatarPath={member.avatar_path} circleClassName="group-settings-avatar" />
                     <div>
                       <span className="group-settings-member-name">
-                        {member.first_name || member.username}
+                        {userDisplayName(member)}
                         {member.id === currentUser.id && <span className="group-settings-you"> {t("group.you")}</span>}
                       </span>
                       {member.is_admin && <span className="group-settings-admin-badge">{t("group.admin")}</span>}
@@ -236,8 +237,8 @@ export default function GroupSettings({ chat, currentUser, onClose, onUpdated }:
               <div className="group-settings-user-list">
                 {filteredUsers.map((u: any) => (
                   <div key={u.id} className="group-settings-user-item" onClick={() => handleAddMember(u.id)}>
-                    <UserAvatar id={u.id} username={u.first_name || u.username} avatarPath={u.avatar_path} circleClassName="group-settings-avatar" />
-                    <span>{u.first_name || u.username} (@{u.username})</span>
+                    <UserAvatar id={u.id} username={userDisplayName(u)} avatarPath={u.avatar_path} circleClassName="group-settings-avatar" />
+                    <span>{userDisplayName(u)} (@{u.username})</span>
                   </div>
                 ))}
                 {filteredUsers.length === 0 && <p className="group-settings-empty">{t("group.noUsers")}</p>}

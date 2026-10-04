@@ -10,6 +10,7 @@ import { formatTime } from "../utils/format"
 import type { UserResponse, ChatResponse, ContactResponse, GroupInviteResponse, MessageResponse } from "../types"
 import type { Tab } from "../store/chatStore"
 import { Bookmark, ChevronLeft, ChevronRight, FileText, Image as ImageIcon, Link2, MessageCircle, Search, UserPlus, Users, Plus } from "lucide-react"
+import { userDisplayName } from "../utils/userName"
 
 type SearchCategory = "chats" | "media" | "files" | "links"
 
@@ -413,14 +414,14 @@ export default function ChatSidebar({
                 )}
                 {!msgSearching && categoryResults.map((r) => {
                   const time = formatTime(r.message.created_at)
-                  const chatName = r.chat.is_group ? (r.chat.name || t("chat.group")) : (r.chat.participants.find(p => p.id !== r.message.user_id)?.username || t("chat.chat"))
+                  const chatName = r.chat.is_group ? (r.chat.name || t("chat.group")) : (userDisplayName(r.chat.participants.find(p => p.id !== r.message.user_id), t("chat.chat")))
                   const isFileLike = r.message.message_type !== "text"
                   const preview = isFileLike ? (r.message.file?.filename || t(`chat.${r.message.message_type}`)) : r.message.content.slice(0, 80)
                   return (
                     <div key={r.message.id} className="global-search-item" onClick={() => onSelectSearchMessage(r.chat.id, r.message.id)}>
                       <div className="gs-chat-name">{chatName}</div>
                       <div className="gs-message">
-                        <span className="gs-sender">{r.message.user?.username || "User"}</span>
+                        <span className="gs-sender">{userDisplayName(r.message.user, "User")}</span>
                         <span className="gs-text">{preview}</span>
                       </div>
                       <span className="gs-time">{time}</span>

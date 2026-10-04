@@ -31,21 +31,16 @@ export default function AuthGuard({ children }: Props) {
         setChecking(false)
       })
       .catch((err) => {
-        // Distinguish network errors from auth errors
-        const isNetworkError = err instanceof TypeError
-          || err?.message?.includes("Failed to fetch")
-          || err?.message?.includes("NetworkError")
-          || err?.status === 0
-          || !navigator.onLine
-
-        if (isNetworkError) {
-          // Network error — don't destroy token, just show error and let user retry
-          console.warn("[AuthGuard] Network error, keeping token:", err)
-          setChecking(false)
-        } else {
-          // Auth error (401, 403, etc.) — token is invalid
+        // Сессию гасим только при настоящем отказе в авторизации (401/403 после
+        // неудачного refresh). Сеть, 429 (rate limit), 5xx — временные: токен
+        // остаётся, иначе любая перезагрузка (HMR, F5) при лимите выкидывает из аккаунта.
+        const status = (err as { status?: unknown } | null)?.status
+        if (status === 401 || status === 403) {
           performLogout()
           navigate("/login", { replace: true })
+        } else {
+          console.warn("[AuthGuard] Transient error, keeping token:", err)
+          setChecking(false)
         }
       })
   }, [navigate])

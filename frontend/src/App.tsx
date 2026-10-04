@@ -99,18 +99,17 @@ function App() {
             {isMobile ? (
               <>
                 {/* Один смонтированный BottomTabs на все экраны с нижней навигацией —
-                    см. MobileTabsLayout. Звонок/профиль/блокировки — экраны без неё,
-                    остаются вне этого layout'а, как и было. */}
+                    см. MobileTabsLayout. Звонок — экран без неё, остаётся вне layout'а. */}
                 <Route element={<MobileTabsLayout />}>
                   <Route path="/chat" element={<AuthGuard><ChatPage /></AuthGuard>} />
                   <Route path="/chat/:chatId" element={<AuthGuard><ChatPage /></AuthGuard>} />
                   <Route path="/calls" element={<AuthGuard><CallHistoryPage /></AuthGuard>} />
                   <Route path="/contacts" element={<AuthGuard><ChatPage /></AuthGuard>} />
                   <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
+                  <Route path="/blocked" element={<AuthGuard><BlockedUsersPage /></AuthGuard>} />
                 </Route>
                 <Route path="/call/:userId/:type" element={<AuthGuard><CallPage /></AuthGuard>} />
                 <Route path="/profile" element={<Navigate to="/settings" replace />} />
-                <Route path="/blocked" element={<AuthGuard><BlockedUsersPage /></AuthGuard>} />
               </>
             ) : (
               <>

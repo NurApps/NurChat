@@ -8,9 +8,11 @@ import { useChatStore } from "../../store/chatStore"
 function tabIndex(pathname: string): number {
   if (pathname.startsWith("/contacts")) return 0
   if (pathname.startsWith("/calls")) return 1
-  if (pathname.startsWith("/settings")) return 3
+  if (pathname.startsWith("/settings") || pathname.startsWith("/blocked")) return 3
   return 2
 }
+
+const TAB_IDS = ["contacts", "calls", "chats", "settings"]
 
 // Один экземпляр BottomTabs на все мобильные экраны с нижней навигацией
 // (/chat, /calls, /contacts, /settings) — раньше каждая страница монтировала
@@ -51,6 +53,7 @@ export default function MobileTabsLayout() {
         </Suspense>
       </div>
       <BottomTabs
+        activeTab={TAB_IDS[index]}
         onTabChange={(newTab) => {
           if (newTab === "chats") navigate("/chat")
           if (newTab === "settings") navigate("/settings")

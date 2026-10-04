@@ -47,6 +47,20 @@ async def lifespan(app: FastAPI):
     start_bus(asyncio.get_running_loop(), _cm)
     logger.info("WS bus subscriber started")
 
+    # Pentest #10 (операционное): эфемерные секреты и отсутствующий TURN
+    # должны орать в лог на старте, а не тихо деградировать в проде.
+    if settings.SECRETS_EPHEMERAL:
+        logger.critical(
+            "Ephemeral secrets in use (ENCRYPTION/JWT/TOTP auto-generated) — "
+            "data/sessions/2FA will NOT survive restart. Set stable values in .env "
+            "(prod gate: REQUIRE_STABLE_SECRETS=true)."
+        )
+    if not settings.turn_configured:
+        logger.warning(
+            "TURN not configured — voice/video calls behind NAT will fail "
+            "(only Google STUN). See infra/coturn.conf + TURN_URLS/TURN_USERNAME/TURN_CREDENTIAL."
+        )
+
     yield
 
     from server.ws.chat_manager import connection_manager
@@ -95,13 +109,9 @@ app.add_middleware(
         "/api/auth/captcha",
         "/api/auth/login",
         "/api/auth/register",
-        # /api/files/upload осознанно exempt: <img>/<audio>/<video> и
-        # прямые ссылки не могут ставить X-CSRF-Token, а скачивание идёт
-        # через Blob URL после fetch. Компенсация: обязательный валидный
-        # JWT (query ?token=), проверка sub == user_id, MIME по magic-bytes,
-        # блок активного контента, лимит 30/мин. Токен в логах не светится
-        # (--no-access-log во всех лаунчерах).
-        "/api/files/upload",
+        # /api/files/upload НЕ exempt: аплоад всегда идёт через XHR/fetch
+        # (api.uploadFile ставит X-CSRF-Token), а скачивание — GET (CSRF
+        # не применяется к GET). JWT в заголовке — основная защита.
     ],
 )
 
@@ -147,8 +157,19 @@ else:
 # trycloudflare. Прод: именованный туннель + явный CORS_ORIGINS, regex
 # не задавать (любой trycloudflare-поддомен — чужой, ключ всё равно JWT).
 _cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip() or None
+# Штатный trycloudflare-regex — его ставит run.bat (см. .env.example).
+# CSP ниже раскрывает поддомены только при строгом равенстве с эталоном.
+_TRYCLOUDFLARE_ORIGIN_REGEX = r"https://[a-z0-9-]+\.trycloudflare\.com"
 if settings.DEBUG:
     logger.info("Allowed origins: %s (regex: %s)", _cors_origins, _cors_origin_regex)
+if _cors_origin_regex and _cors_origin_regex != _TRYCLOUDFLARE_ORIGIN_REGEX:
+    # Кастомный regex пускает чужие origin'ы с credentials — высокий риск
+    # миссконфига: любой совпавший origin сможет слать credentialed-запросы.
+    logger.warning(
+        "CORS_ORIGIN_REGEX=%r looks custom/broad — credentialed CORS trusts "
+        "every matching origin. Prefer explicit CORS_ORIGINS in production.",
+        _cors_origin_regex,
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -188,17 +209,37 @@ async def add_request_id(request: Request, call_next):
 
 @app.middleware("http")
 async def validate_host_header(request: Request, call_next):
+    import re as _re
+
     host = request.headers.get("host", "")
     if not host:
         return await call_next(request)
-    allowed_prefixes = ("localhost", "127.0.0.1", "tauri", "testserver")
-    if any(host.lower().startswith(p) for p in allowed_prefixes):
+    # Отрезаем порт: "relay.example.com:8000" -> "relay.example.com".
+    hostname = host.rsplit(":", 1)[0].lower() if ":" in host and not host.endswith("]") else host.lower()
+    hostname = hostname.strip("[]")
+    # testclient/testserver — дефолтный Host у Starlette TestClient (тесты).
+    # В проде такой Host не встречается (резервированное имя без DNS).
+    allowed_prefixes = ("localhost", "127.0.0.1", "tauri", "testserver", "testclient")
+    if any(hostname.startswith(p) for p in allowed_prefixes):
         return await call_next(request)
-    # Любой dotted host (публичный DNS продакшен-релея) пропускаем осознанно:
-    # строгий вайтлист доменов задаётся через CORS_ORIGINS на уровне CORS,
-    # а здесь отсекаем только мусор без точки (сканирование, poisoned Host).
-    if "." in host:
+    # Явный allowlist: хосты из CORS_ORIGINS + SERVER_HOST.
+    _allowed_hosts = set()
+    for o in _cors_origins:
+        try:
+            _allowed_hosts.add(o.split("://", 1)[1].split("/", 1)[0].rsplit(":", 1)[0].lower())
+        except IndexError:
+            continue
+    _allowed_hosts.add(settings.SERVER_HOST.lower())
+    if hostname in _allowed_hosts:
         return await call_next(request)
+    # Туннельный regex (run.bat tunnel): пускаем только то, что ему матчится.
+    if _cors_origin_regex:
+        try:
+            if _re.search(_cors_origin_regex, f"https://{hostname}"):
+                return await call_next(request)
+        except _re.error:
+            pass
+    logger.warning("Rejected request with unexpected Host header: %s", host)
     return JSONResponse(status_code=400, content={"detail": "Invalid Host header"})
 
 @app.middleware("http")
@@ -223,10 +264,23 @@ async def add_security_headers(request: Request, call_next):
         )
         _http_origins = " ".join(_cors_origins)
         # Туннельный хост случаен — в CSP его не перечислить (regex в CSP
-        # нет). Когда включён CORS_ORIGIN_REGEX, разрешаем схемы https:/wss:
-        # для сети/медиа; без regex прод остаётся строгим.
-        _tunnel_net = " https: wss:" if _cors_origin_regex else ""
-        _tunnel_media = " https:" if _cors_origin_regex else ""
+        # нет). Раскрываем поддомены только для штатного trycloudflare-regex
+        # (его ставит run.bat; см. .env.example). Сравнение — строгое
+        # равенство с эталоном, НЕ substring: "foo-trycloudflare.com.evil"
+        # внутри кастомного regex не должен открывать чужой CSP.
+        # Кастомный regex с широким покрытием НЕ раскрываем (иначе чужие
+        # origin'ы получат сеть/медиа) — только предупреждаем в лог.
+        _tunnel_net = ""
+        _tunnel_media = ""
+        if _cors_origin_regex:
+            if _cors_origin_regex == _TRYCLOUDFLARE_ORIGIN_REGEX:
+                _tunnel_net = " https://*.trycloudflare.com wss://*.trycloudflare.com"
+                _tunnel_media = " https://*.trycloudflare.com"
+            else:
+                logger.warning(
+                    "CORS_ORIGIN_REGEX is custom; CSP stays strict (no scheme-wide https:/wss:). "
+                    "Serve media/API only from CORS_ORIGINS hosts."
+                )
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             f"connect-src 'self' {_http_origins} {_ws_origins} https://api.qrserver.com{_tunnel_net}; "
@@ -311,55 +365,63 @@ async def _verify_ws_token(websocket: WebSocket, token: str | None, client_ip: s
         return None
 
 @app.websocket("/ws/chat/{user_id}")
-async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str):
+async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str = ""):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if not await _verify_ws_token(websocket, token, client_ip, user_id):
+    from server.ws.subprotocol import extract_ws_token
+    effective_token, _ = extract_ws_token(websocket, token or None)
+    if not await _verify_ws_token(websocket, effective_token, client_ip, user_id):
         await release_ws_connection(client_ip)
         return
     try:
-        await handle_websocket_connection(websocket, user_id, token)
+        await handle_websocket_connection(websocket, user_id, effective_token or "")
     finally:
         await release_ws_connection(client_ip)
 
 @app.websocket("/ws/calls/{user_id}")
-async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: str):
+async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: str = ""):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if not await _verify_ws_token(websocket, token, client_ip, user_id):
+    from server.ws.subprotocol import extract_ws_token
+    effective_token, _ = extract_ws_token(websocket, token or None)
+    if not await _verify_ws_token(websocket, effective_token, client_ip, user_id):
         await release_ws_connection(client_ip)
         return
     try:
-        await call_manager.handle_signaling(websocket, user_id, token)
+        await call_manager.handle_signaling(websocket, user_id, effective_token)
     finally:
         await release_ws_connection(client_ip)
 
 @app.websocket("/ws/signaling/{user_id}")
-async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token: str):
+async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token: str = ""):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if not await _verify_ws_token(websocket, token, client_ip, user_id):
+    from server.ws.subprotocol import extract_ws_token
+    effective_token, _ = extract_ws_token(websocket, token or None)
+    if not await _verify_ws_token(websocket, effective_token, client_ip, user_id):
         await release_ws_connection(client_ip)
         return
     try:
         from server.ws.signaling import call_manager as signaling_call_manager
-        await signaling_call_manager.handle_signaling(websocket, user_id, token)
+        await signaling_call_manager.handle_signaling(websocket, user_id, effective_token)
     finally:
         await release_ws_connection(client_ip)
 
 @app.websocket("/ws/notifications/{user_id}")
-async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, token: str):
+async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, token: str = ""):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    if not await _verify_ws_token(websocket, token, client_ip, user_id):
+    from server.ws.subprotocol import extract_ws_token
+    effective_token, _ = extract_ws_token(websocket, token or None)
+    if not await _verify_ws_token(websocket, effective_token, client_ip, user_id):
         await release_ws_connection(client_ip)
         return
     try:
@@ -393,12 +455,19 @@ async def health_check():
         logger.debug("Redis health check failed: %s", e)
     status = "healthy" if db_ok else "degraded"
     status_code = 200 if db_ok else 503
+    if settings.SECRETS_EPHEMERAL and not settings.DEBUG:
+        # Прод на временных ключах — честно degraded: рестарт убьёт данные.
+        status = "degraded"
+        if status_code == 200:
+            status_code = 503
     return JSONResponse(
         status_code=status_code,
         content={
             "status": status,
             "database": "connected" if db_ok else "error",
             "redis": "connected" if redis_ok else "disconnected",
+            "secrets": "ephemeral" if settings.SECRETS_EPHEMERAL else "stable",
+            "turn_configured": settings.turn_configured,
             "service": "NurChat Server",
             "version": "1.0.0",
         },

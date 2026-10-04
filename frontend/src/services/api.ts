@@ -1,4 +1,13 @@
 import { BASE_URL } from "../config"
+import {
+  clearSession,
+  getAccessToken,
+  hasSession,
+  peekRefreshToken,
+  setSession,
+  updateAfterRefresh,
+  writeStoredUserRaw,
+} from "./tokenVault"
 import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse, ContactRequestResponse } from "../types"
 
 class ApiError extends Error {
@@ -26,7 +35,8 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
 }
 
 function getToken(): string | null {
-  return localStorage.getItem("token")
+  // Pentest #1: access token lives in memory (tokenVault), never on disk.
+  return getAccessToken()
 }
 
 export function getCsrfToken(): string | null {
@@ -45,9 +55,7 @@ let csrfTokenCache: string | null = null;
 export const AUTH_EXPIRED_EVENT = "nurchat:auth-expired"
 function notifyAuthExpired(): void {
   try {
-    localStorage.removeItem("token")
-    localStorage.removeItem("refresh_token")
-    localStorage.removeItem("user")
+    clearSession()
     window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
   } catch { /* ignore */ }
 }
@@ -56,26 +64,47 @@ function notifyAuthExpired(): void {
 // (the endpoint is rate-limited 10/min AND rotates the refresh token,
 // so parallel refreshes would revoke each other).
 let refreshPromise: Promise<boolean> | null = null
+
+// CSRFMiddleware требует X-CSRF-Token и на /refresh (он не в exempt_paths).
+// После перезагрузки страницы кэша нет, а document.cookie не видит cookie чужого
+// хоста реле — берём токен из заголовка любого ответа (GET /health).
+async function ensureCsrfToken(): Promise<string | null> {
+  const known = csrfTokenCache || getCsrfToken()
+  if (known) return known
+  try {
+    const res = await fetch(`${BASE_URL}/health`, { credentials: "include" })
+    const token = res.headers.get("X-CSRF-Token")
+    if (token) csrfTokenCache = token
+    return token
+  } catch {
+    return null
+  }
+}
 export function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
-      const rt = localStorage.getItem("refresh_token")
+      const rt = peekRefreshToken()
       if (!rt) return false
+      const csrf = await ensureCsrfToken()
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 30000)
       try {
         const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) },
+          // credentials:include — на будущее: если relay начнёт ставить
+          // HttpOnly refresh-cookie (same-origin prod), она подхватится
+          // автоматически; сейчас refresh едет в body как раньше.
+          // Сервер ждёт поле refresh_token_str (см. server/routes/auth.py).
+          credentials: "include",
           body: JSON.stringify({ refresh_token_str: rt }),
           signal: controller.signal,
         })
         if (!res.ok) return false
         const data = await res.json()
         if (!data.access_token) return false
-        localStorage.setItem("token", data.access_token)
-        if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token)
+        updateAfterRefresh(data.access_token, data.refresh_token ?? null)
         return true
       } finally {
         clearTimeout(timer)
@@ -174,7 +203,7 @@ export const api = {
     request<{ access_token: string; refresh_token?: string; token_type: string; user: UserResponse }>("POST", "/api/auth/register", { username, password, first_name, last_name, turnstile_token, public_key, signing_public_key }),
 
   getCaptcha: () =>
-    request<{ provider: "turnstile"; sitekey: string }>("GET", "/api/auth/captcha"),
+    request<{ provider: "turnstile" | "none"; sitekey?: string }>("GET", "/api/auth/captcha"),
 
   getCurrentUser: () =>
     request<UserResponse>("GET", "/api/auth/me"),
@@ -200,7 +229,7 @@ export const api = {
     if (res.status === 401 && await refreshAccessToken()) res = await send()
     if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText)
     const updated: UserResponse = await res.json()
-    localStorage.setItem("user", JSON.stringify(updated))
+    writeStoredUserRaw(JSON.stringify(updated))
     return updated
   },
 
@@ -383,8 +412,41 @@ export const api = {
   },
 
   getFileUrl: (fileId: string) => {
+    // DEPRECATED (pentest #3): светит полный access-JWT в URL. Оставлен для
+    // совместимости тестов/моков; живой код качает через scoped-токены
+    // (getScopedFileUrl/fetchFileBlob/downloadFile → blob:-URL без токена).
     const token = getToken()
     return `${BASE_URL}/api/files/download/${fileId}?token=${encodeURIComponent(token || "")}`
+  },
+
+  /** Mint a 60s single-file download token (POST /api/files/token). */
+  mintFileToken: async (fileId: string): Promise<string | null> => {
+    try {
+      const token = getToken()
+      const csrf = getCsrfToken()
+      const form = new FormData()
+      form.append("file_id", fileId)
+      const res = await fetch(`${BASE_URL}/api/files/token`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        },
+        body: form,
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      return typeof data.file_token === "string" ? data.file_token : null
+    } catch {
+      return null
+    }
+  },
+
+  /** Download URL carrying only the scoped file_token (pentest #3). */
+  getScopedFileUrl: async (fileId: string): Promise<string> => {
+    const scoped = await api.mintFileToken(fileId)
+    const token = scoped || getToken() || ""
+    return `${BASE_URL}/api/files/download/${fileId}?token=${encodeURIComponent(token)}`
   },
 
   // Stable blob URL via blobManager (cached, revocable, decrypt-aware)
@@ -394,32 +456,32 @@ export const api = {
   },
 
   fetchFileBlob: async (fileId: string): Promise<Blob> => {
-    const token = getToken()
-    const res = await fetch(`${BASE_URL}/api/files/download/${fileId}?token=${encodeURIComponent(token || "")}`)
+    const url = await api.getScopedFileUrl(fileId)
+    const res = await fetch(url)
     if (!res.ok) throw new ApiError(res.status, "Ошибка скачивания")
     return res.blob()
   },
 
   downloadFile: async (fileId: string, filename: string, decrypt?: (blob: Blob) => Promise<Blob>) => {
-    const token = getToken()
     // Prefer blobManager cache + stable revoke semantics
     try {
       const { downloadBlobUrl } = await import("./blobManager")
       await downloadBlobUrl(fileId, filename, decrypt)
       return
     } catch {}
-    const res = await fetch(`${BASE_URL}/api/files/download/${fileId}?token=${encodeURIComponent(token || "")}`)
+    const url = await api.getScopedFileUrl(fileId)
+    const res = await fetch(url)
     if (!res.ok) throw new ApiError(res.status, "Ошибка скачивания")
     let blob = await res.blob()
     if (decrypt) blob = await decrypt(blob)
-    const url = URL.createObjectURL(blob)
+    const objectUrl = URL.createObjectURL(blob)
     const a = document.createElement("a")
-    a.href = url
+    a.href = objectUrl
     a.download = filename || "file"
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
-    setTimeout(() => URL.revokeObjectURL(url), 30000)
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 30000)
   },
 
   getStorageInfo: () =>
@@ -493,12 +555,11 @@ export const api = {
     request<{ user_id: string; identity_key: string; public_key: string }>("GET", `/api/auth/user/${userId}/identity-keys`),
 
   setToken: (token: string, refreshToken?: string) => {
-    localStorage.setItem("token", token)
-    if (refreshToken) localStorage.setItem("refresh_token", refreshToken)
+    setSession(token, refreshToken ?? null)
   },
 
   isAuthenticated: () => {
-    return !!getToken()
+    return hasSession()
   },
 
   clearToken: () => {
@@ -510,8 +571,6 @@ export const api = {
         body: JSON.stringify({}),
       }).catch(() => {})
     }
-    localStorage.removeItem("token")
-    localStorage.removeItem("refresh_token")
-    localStorage.removeItem("user")
+    clearSession()
   },
 }

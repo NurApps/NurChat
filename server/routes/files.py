@@ -90,6 +90,13 @@ async def upload_file(
         }
 
         expected_mimes = allowed_mimes.get(file_type, set())
+        # Активный контент (svg/html/js/...) запрещён ВСЕГДА — в т.ч. для
+        # is_encrypted=true: шифротекст с таким расширением после
+        # расшифровки на клиенте может стать исполняемым документом.
+        # E2E-шифрование скрывает байты от relay, но не от получателя.
+        if detected_type == "blocked/active-content":
+            logger.warning(f"User {token['sub']} tried to upload active content (encrypted={is_encrypted})")
+            raise FileTypeNotAllowedError("Исполняемые форматы (svg/html/js) запрещены")
         # E2E-encrypted blobs are ciphertext: magic bytes meaningless; accept by extension.
         if not is_encrypted and expected_mimes and detected_type and detected_type not in expected_mimes:
             # Lenient for webm: audio/webm vs video/webm are same container.
@@ -206,6 +213,43 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки: {str(e)}")
 
 
+@router.post("/token")
+@limiter.limit("30/minute")
+async def mint_file_token(
+    request: Request,
+    file_id: str = Form(...),
+    db: Session = Depends(get_db),
+    token: dict = Depends(verify_token_dependency),
+):
+    """Выпустить 60-секундный scoped-токен на скачивание одного файла.
+
+    Клиент качает байты по `/download/{id}?token=<file_token>`: в URL светится
+    только одноразовый узкий токен, а не полный access-JWT (см. pentest #3).
+    Доступ проверяется так же строго, как в download_file.
+    """
+    from server.core.security import security as sec
+
+    user_id = token["sub"]
+    file_record = db.query(models.File).filter(models.File.id == file_id).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    if file_record.user_id != user_id:
+        message_with_file = db.query(models.Message).filter(
+            models.Message.file_id == file_id,
+            models.Message.is_deleted.is_(False),
+        ).first()
+        if not message_with_file:
+            raise HTTPException(status_code=403, detail="Доступ к файлу запрещен")
+        participant = db.query(models.ChatParticipant).filter(
+            models.ChatParticipant.chat_id == message_with_file.chat_id,
+            models.ChatParticipant.user_id == user_id,
+        ).first()
+        if not participant:
+            raise HTTPException(status_code=403, detail="Доступ к файлу запрещен")
+    scoped = sec.create_file_token(user_id, file_id)
+    return {"file_token": scoped, "expires_in": 60}
+
+
 @router.get("/download/{file_id}")
 @limiter.limit("30/minute")
 async def download_file(
@@ -218,15 +262,27 @@ async def download_file(
         if not token:
             raise HTTPException(status_code=401, detail="Требуется токен")
 
+        import jwt as _jwt
+
         from server.core.security import AuthenticationError
         from server.core.security import security as sec
+
         try:
-            payload = sec.verify_token(token)
+            peek = _jwt.decode(token, options={"verify_signature": False})
+        except Exception:
+            raise HTTPException(status_code=401, detail="Неверный токен")
+        try:
+            if peek.get("type") == "file_token":
+                # Scoped file-токен предпочтительнее: узкий, короткоживущий.
+                payload = sec.verify_file_token(token, file_id)
+            else:
+                # Полный access-JWT — fallback для старых клиентов.
+                payload = sec.verify_token(token)
         except AuthenticationError:
             raise HTTPException(status_code=401, detail="Неверный токен")
         if payload.get("2fa_pending"):
             raise HTTPException(status_code=401, detail="Требуется завершить двухфакторную аутентификацию")
-        if "type" in payload and payload.get("type") != "access":
+        if "type" in payload and payload.get("type") not in ("access", "file_token"):
             raise HTTPException(status_code=401, detail="Требуется access-токен")
         user_id = payload.get("sub")
 
@@ -316,7 +372,9 @@ async def download_file(
             path=file_path,
             filename=file_record.filename,
             media_type=mime_type,
-            headers={"Cache-Control": "private, max-age=86400"},
+            # View-once: одноразовое вложение нельзя оставлять в дисковом
+            # кэше (replay через cache) — только no-store.
+            headers={"Cache-Control": "private, no-store" if destructive_read else "private, max-age=86400"},
             background=background,
         )
     except HTTPException:

@@ -22,7 +22,9 @@ describe('api refresh cycle', () => {
       }
       if (u.includes('/api/chat/chats')) {
         chatsCalls++
-        if (chatsCalls === 1 && localStorage.getItem('token') === 'old-access') {
+        const auth = (init?.headers as Record<string, string> | undefined)?.['Authorization'] || ''
+        // First call rides the stale in-memory access token → 401.
+        if (chatsCalls === 1 && auth === 'Bearer old-access') {
           return new Response('{"detail":"expired"}', { status: 401 })
         }
         return new Response(JSON.stringify([]), {
@@ -33,11 +35,12 @@ describe('api refresh cycle', () => {
     }))
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.clear()
-    localStorage.setItem('token', 'old-access')
-    localStorage.setItem('refresh_token', 'good-refresh')
     vi.resetModules()
+    // Pentest #1: session seeds memory (vault), refresh persists for reload.
+    const { setSession } = await import('../services/tokenVault')
+    setSession('old-access', 'good-refresh')
   })
 
   afterEach(() => {
@@ -47,16 +50,19 @@ describe('api refresh cycle', () => {
   it('retries once after refresh on 401', async () => {
     mockFetch(true)
     const { api } = await import('../services/api')
+    const { getAccessToken, peekRefreshToken } = await import('../services/tokenVault')
     const chats = await api.getChats()
     expect(chats).toEqual([])
-    expect(localStorage.getItem('token')).toBe('new-access')
-    expect(localStorage.getItem('refresh_token')).toBe('new-refresh')
+    expect(getAccessToken()).toBe('new-access')
+    expect(peekRefreshToken()).toBe('new-refresh')
+    expect(localStorage.getItem('token')).toBeNull()
     expect(refreshCalls).toBe(1)
   })
 
   it('clears session and fires event when refresh is dead', async () => {
     mockFetch(false)
     const { api } = await import('../services/api')
+    const { getAccessToken, peekRefreshToken } = await import('../services/tokenVault')
     const events: string[] = []
     const handler = (e: Event) => events.push(e.type)
     window.addEventListener('nurchat:auth-expired', handler)
@@ -65,7 +71,8 @@ describe('api refresh cycle', () => {
     } finally {
       window.removeEventListener('nurchat:auth-expired', handler)
     }
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBeNull()
+    expect(peekRefreshToken()).toBeNull()
     expect(localStorage.getItem('refresh_token')).toBeNull()
     expect(events).toEqual(['nurchat:auth-expired'])
   })

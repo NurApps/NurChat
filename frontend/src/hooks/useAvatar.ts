@@ -2,6 +2,7 @@ import { useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { BASE_URL } from "../config"
 import { csrfHeader, apiErrorMessage } from "../services/api"
+import { getAccessToken, writeStoredUserRaw } from "../services/tokenVault"
 import type { UserResponse } from "../types"
 
 export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
@@ -21,7 +22,7 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
     setMsg("")
     setMsgKind("")
     try {
-      const token = localStorage.getItem("token")
+      const token = getAccessToken()
       const form = new FormData()
       form.append("file", file)
       const res = await fetch(`${BASE_URL}/api/auth/profile/avatar`, {
@@ -34,7 +35,7 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
       })
       if (!res.ok) throw new Error(await res.text())
       const updated: UserResponse = await res.json()
-      localStorage.setItem("user", JSON.stringify(updated))
+      writeStoredUserRaw(JSON.stringify(updated))
       onUserUpdate?.(updated)
       setOk(t("profile.avatarUpdated"))
     } catch (e: any) {
@@ -49,7 +50,7 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
     setMsg("")
     setMsgKind("")
     try {
-      const token = localStorage.getItem("token")
+      const token = getAccessToken()
       const res = await fetch(`${BASE_URL}/api/auth/profile/avatar`, {
         method: "DELETE",
         headers: {
@@ -59,7 +60,7 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
       })
       if (!res.ok) throw new Error(await res.text())
       const updated: UserResponse = await res.json()
-      localStorage.setItem("user", JSON.stringify(updated))
+      writeStoredUserRaw(JSON.stringify(updated))
       onUserUpdate?.(updated)
       setOk(t("profile.avatarDeleted"))
     } catch (e: any) {

@@ -276,7 +276,7 @@ async def get_ice_servers(token: dict = Depends(verify_token_dependency)):
     # Хосты НЕ выдумываем: внутренний docker-хост (coturn/nurchat-turn)
     # удалённым клиентам бесполезен, а неверный URL тихо ломает звонки
     # (клиент ждёт кандидата, которого не будет).
-    if settings.TURN_URLS and settings.TURN_CREDENTIAL != "CHANGE_ME_IN_PRODUCTION":
+    if settings.TURN_URLS and settings.turn_configured:
         urls = [u.strip() for u in settings.TURN_URLS.split(",") if u.strip()]
         if urls:
             turn_server = {

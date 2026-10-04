@@ -173,6 +173,11 @@ class Settings(BaseSettings):
     TURNSTILE_SITEKEY: str = ""
     TURNSTILE_SECRET: str = ""
     TURNSTILE_HOSTNAMES: str = ""
+    # Локальная разработка без аккаунта Cloudflare: DISABLE_CAPTCHA=true
+    # отдаёт /captcha как {"provider": "none"} и пропускает проверку токена
+    # в /register. Дефолт false — прод остаётся fail-closed. НИКОГДА не
+    # включать на публичном relay: регистрация без капчи = спам-аккаунты.
+    DISABLE_CAPTCHA: bool = False
 
     WS_CONNECTIONS_WARN: int = 100
     ERROR_RATE_WARN: float = 5.0
@@ -202,7 +207,30 @@ class Settings(BaseSettings):
     # удалённым клиентам, а угаданный — вводит в заблуждение.
     TURN_URLS: str = ""
     TURN_USERNAME: str = ""
-    TURN_CREDENTIAL: str = "CHANGE_ME_IN_PRODUCTION"
+    # Пусто = TURN не настроен (звонки за NAT не соединятся — см. warning
+    # в ice-servers). Плейсхолдер CHANGE_ME_IN_PRODUCTION больше не
+    # используется как дефолт: пустая строка честнее «настроенного» мусора.
+    TURN_CREDENTIAL: str = ""
+
+    # Pentest #10: жёсткий гейт для продакшена. REQUIRE_STABLE_SECRETS=true
+    # роняет процесс на старте, если ENCRYPTION/JWT/TOTP-ключи эфемерны
+    # (сгенерированы на этот запуск — данные/сессии/2FA умрут при рестарте).
+    # Дефолт false, чтобы не ломать zero-config dev; в проде — включить.
+    REQUIRE_STABLE_SECRETS: bool = False
+    # Выставляется кодом ниже, если хотя бы один ключ сгенерирован временно.
+    SECRETS_EPHEMERAL: bool = False
+
+    @property
+    def turn_configured(self) -> bool:
+        cred = (self.TURN_CREDENTIAL or "").strip()
+        urls = (self.TURN_URLS or "").strip()
+        websrv = (self.WEBRTC_ICE_SERVERS or "").strip()
+        turn_json = (self.TURN_SERVERS or "").strip()
+        if cred in ("", "CHANGE_ME_IN_PRODUCTION"):
+            cred_ok = False
+        else:
+            cred_ok = True
+        return bool(websrv or turn_json or (urls and cred_ok))
 
     @classmethod
     def settings_customise_sources(
@@ -277,6 +305,7 @@ if settings.ENCRYPTION_KEY == "your_default_encryption_key_here":
         "Set a stable ENCRYPTION_KEY in .env immediately!"
     )
     settings.ENCRYPTION_KEY = secrets.token_hex(32)
+    settings.SECRETS_EPHEMERAL = True
     _env_written = True
 
 if not settings.JWT_SECRET_KEY:
@@ -289,7 +318,18 @@ if not settings.JWT_SECRET_KEY:
         "Set JWT_SECRET_KEY in .env for production."
     )
     settings.JWT_SECRET_KEY = secrets.token_hex(32)
+    settings.SECRETS_EPHEMERAL = True
     _env_written = True
+
+if not settings.TOTP_MASTER_KEY:
+    import logging
+    logging.critical(
+        "[SECURITY] TOTP_MASTER_KEY is NOT set in .env! "
+        "2FA secrets will be encrypted with an EPHEMERAL key below — "
+        "existing TOTP configurations may become invalid after restart. "
+        "Set a stable TOTP_MASTER_KEY in .env for production."
+    )
+    settings.SECRETS_EPHEMERAL = True
 
 if _env_written:
     import os
@@ -326,6 +366,10 @@ def _ensure_key(name: str, value: str, generator: Callable[[], str]) -> str:
     if value:
         return value
     generated: str = generator()
+    # Ключа не было — даже если его сейчас допишем в .env, ТЕКУЩИЙ запуск
+    # уже стартовал без стабильного секрета (а если запись не удалась —
+    # следующий рестарт сгенерирует новый). Считаем эфемерным.
+    settings.SECRETS_EPHEMERAL = True
     try:
         existing = _keys_file.read_text(encoding="utf-8") if _keys_file.exists() else ""
         if name not in existing:
@@ -338,5 +382,11 @@ def _ensure_key(name: str, value: str, generator: Callable[[], str]) -> str:
 
 settings.ENCRYPTION_KEY = _ensure_key("ENCRYPTION_KEY", settings.ENCRYPTION_KEY, lambda: secrets.token_hex(32))
 settings.JWT_SECRET_KEY = _ensure_key("JWT_SECRET_KEY", settings.JWT_SECRET_KEY, lambda: secrets.token_hex(32))
+
+if settings.REQUIRE_STABLE_SECRETS and settings.SECRETS_EPHEMERAL:
+    raise RuntimeError(
+        "REQUIRE_STABLE_SECRETS=true, but ENCRYPTION_KEY/JWT_SECRET_KEY/TOTP_MASTER_KEY "
+        "are ephemeral (auto-generated). Refusing to start: set stable values in .env."
+    )
 
 ENCRYPTION_KEY = settings.ENCRYPTION_KEY.encode()

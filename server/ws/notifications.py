@@ -221,7 +221,8 @@ notification_manager = NotificationManager()
 # WebSocket endpoint для уведомлений
 async def handle_notifications_websocket(websocket: WebSocket, user_id: str):
     """WebSocket endpoint для уведомлений"""
-    await websocket.accept()
+    from server.ws.subprotocol import accept_ws
+    await accept_ws(websocket)
 
     try:
         # Отправляем историю уведомлений при подключении

@@ -17,6 +17,11 @@
  *   localStorage (origin-isolated, not exfiltrated by simple XSS string
  *   theft of localStorage), but a full IndexedDB dump still defeats it.
  *   Documented honestly — do not claim otherwise.
+ * - HARDENING: setDevicePassphrase(pw) mixes a memory-only per-session
+ *   secret into the wrapping-key derivation. With it set, an at-rest dump
+ *   alone is insufficient (attacker also needs live JS memory). UI wiring
+ *   is opt-in (e.g. PIN-unlock screen); without it the limitation above
+ *   applies.
  */
 
 import { openDB, type IDBPDatabase } from "idb"
@@ -71,6 +76,29 @@ export interface SecureStorageKeys {
   opks: StoredOPK[]
 }
 
+// ─── Per-profile namespace (мультиаккаунт) ───
+
+/**
+ * Префикс ключей записей активного профиля: "" = legacy (глобальные
+ * ключи, как раньше), иначе "<profileId>::". device_secret НЕ
+ * неймспейсится — он привязан к устройству, а не к аккаунту.
+ * Выставляется один раз на старте из активного профиля; после смены
+ * профиля приложение перезагружается, так что гонок нет.
+ */
+let recordNamespace = ""
+
+export function setRecordNamespace(ns: string): void {
+  recordNamespace = ns
+}
+
+export function getRecordNamespace(): string {
+  return recordNamespace
+}
+
+function rk(key: string): string {
+  return recordNamespace ? `${recordNamespace}${key}` : key
+}
+
 // ─── Core: IndexedDB Wrapper ───
 
 let dbInstance: IDBPDatabase | null = null
@@ -100,17 +128,40 @@ async function getDB(): Promise<IDBPDatabase> {
 /**
  * Derive a non-extractable AES-256-GCM CryptoKey from device_secret.
  * This key encrypts all data before writing to IndexedDB.
+ *
+ * Pentest #2: optionally mixed with a per-session passphrase
+ * (setDevicePassphrase, memory-only, never persisted). With a passphrase
+ * set, a bare IndexedDB dump is NOT sufficient to decrypt — the attacker
+ * needs the live-session secret too. Without it, the documented browser
+ * limitation stands (no OS keystore in a web app).
  */
 let wrappingKeyCache: CryptoKey | null = null
+let devicePassphrase: string | null = null
+
+/** Set (or clear, with null) the session passphrase. Drops cached key. */
+export function setDevicePassphrase(passphrase: string | null): void {
+  devicePassphrase = passphrase || null
+  wrappingKeyCache = null
+}
+
+export function isPassphraseSet(): boolean {
+  return devicePassphrase !== null
+}
+
+/** Drop the derived wrapping key from memory (re-derived on next use). */
+export function lockSecureStorage(): void {
+  wrappingKeyCache = null
+}
 
 async function getWrappingKey(): Promise<CryptoKey> {
   if (wrappingKeyCache) return wrappingKeyCache
 
   const deviceSecret = await getDeviceSecret()
+  const ikm = devicePassphrase ? `${deviceSecret}::${devicePassphrase}` : deviceSecret
 
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(deviceSecret),
+    new TextEncoder().encode(ikm),
     { name: "PBKDF2" },
     false,
     ["deriveKey"],
@@ -229,7 +280,7 @@ export async function storeIdentityKeys(keys: StoredKeyPair): Promise<void> {
   const db = await getDB()
   const plaintext = JSON.stringify({ ...keys, createdAt: Date.now() })
   const encrypted = await encryptAtRest(plaintext)
-  await db.put(STORE_KEYS, encrypted, "identity")
+  await db.put(STORE_KEYS, encrypted, rk("identity"))
 }
 
 /**
@@ -237,7 +288,7 @@ export async function storeIdentityKeys(keys: StoredKeyPair): Promise<void> {
  */
 export async function loadIdentityKeys(): Promise<StoredKeyPair | null> {
   const db = await getDB()
-  const encrypted: string | undefined = await db.get(STORE_KEYS, "identity")
+  const encrypted: string | undefined = await db.get(STORE_KEYS, rk("identity"))
   if (!encrypted) return null
   try {
     const plaintext = await decryptAtRest(encrypted)
@@ -254,7 +305,7 @@ export async function storeSPK(spk: StoredSPK): Promise<void> {
   const db = await getDB()
   const plaintext = JSON.stringify({ ...spk, createdAt: Date.now() })
   const encrypted = await encryptAtRest(plaintext)
-  await db.put(STORE_KEYS, encrypted, "spk")
+  await db.put(STORE_KEYS, encrypted, rk("spk"))
 }
 
 /**
@@ -262,7 +313,7 @@ export async function storeSPK(spk: StoredSPK): Promise<void> {
  */
 export async function loadSPK(): Promise<StoredSPK | null> {
   const db = await getDB()
-  const encrypted: string | undefined = await db.get(STORE_KEYS, "spk")
+  const encrypted: string | undefined = await db.get(STORE_KEYS, rk("spk"))
   if (!encrypted) return null
   try {
     const plaintext = await decryptAtRest(encrypted)
@@ -280,7 +331,7 @@ export async function storeOPKs(opks: StoredOPK[]): Promise<void> {
   const data = opks.map((k) => ({ ...k, createdAt: Date.now() }))
   const plaintext = JSON.stringify(data)
   const encrypted = await encryptAtRest(plaintext)
-  await db.put(STORE_KEYS, encrypted, "opks")
+  await db.put(STORE_KEYS, encrypted, rk("opks"))
 }
 
 /**
@@ -288,7 +339,7 @@ export async function storeOPKs(opks: StoredOPK[]): Promise<void> {
  */
 export async function loadOPKs(): Promise<StoredOPK[]> {
   const db = await getDB()
-  const encrypted: string | undefined = await db.get(STORE_KEYS, "opks")
+  const encrypted: string | undefined = await db.get(STORE_KEYS, rk("opks"))
   if (!encrypted) return []
   try {
     const plaintext = await decryptAtRest(encrypted)
@@ -315,7 +366,7 @@ export async function storeSessions(data: Record<string, unknown> | string): Pro
   const db = await getDB()
   const plaintext = JSON.stringify(data)
   const encrypted = await encryptAtRest(plaintext)
-  await db.put(STORE_SESSIONS, encrypted, "e2e_sessions")
+  await db.put(STORE_SESSIONS, encrypted, rk("e2e_sessions"))
 }
 
 /**
@@ -323,7 +374,7 @@ export async function storeSessions(data: Record<string, unknown> | string): Pro
  */
 export async function loadSessions(): Promise<Record<string, unknown> | null> {
   const db = await getDB()
-  const encrypted: string | undefined = await db.get(STORE_SESSIONS, "e2e_sessions")
+  const encrypted: string | undefined = await db.get(STORE_SESSIONS, rk("e2e_sessions"))
   if (!encrypted) return null
   try {
     const plaintext = await decryptAtRest(encrypted)
@@ -338,7 +389,7 @@ export async function loadSessions(): Promise<Record<string, unknown> | null> {
  */
 export async function clearSessions(): Promise<void> {
   const db = await getDB()
-  await db.delete(STORE_SESSIONS, "e2e_sessions")
+  await db.delete(STORE_SESSIONS, rk("e2e_sessions"))
 }
 
 /**
@@ -348,7 +399,7 @@ export async function storeSecureValue(key: string, data: unknown): Promise<void
   const db = await getDB()
   const plaintext = JSON.stringify(data)
   const encrypted = await encryptAtRest(plaintext)
-  await db.put(STORE_META, encrypted, key)
+  await db.put(STORE_META, encrypted, rk(key))
 }
 
 /**
@@ -356,7 +407,7 @@ export async function storeSecureValue(key: string, data: unknown): Promise<void
  */
 export async function loadSecureValue<T = Record<string, unknown>>(key: string): Promise<T | null> {
   const db = await getDB()
-  const encrypted: string | undefined = await db.get(STORE_META, key)
+  const encrypted: string | undefined = await db.get(STORE_META, rk(key))
   if (!encrypted) return null
   try {
     const plaintext = await decryptAtRest(encrypted)
@@ -367,23 +418,39 @@ export async function loadSecureValue<T = Record<string, unknown>>(key: string):
 }
 
 /**
- * Clear ALL stored keys and sessions.
+ * Clear stored keys and sessions of the CURRENT namespace only.
+ * (Раньше чистило всё — с мультиаккаунтом это стирало бы чужие профили.)
  */
 export async function clearAll(): Promise<void> {
+  await clearNamespace(recordNamespace)
+}
+
+/**
+ * Стереть все записи неймспейса ("" = только ненеймспейсные ключи,
+ * device_secret при этом НЕ трогаем — он общий для устройства).
+ */
+export async function clearNamespace(ns: string): Promise<void> {
   const db = await getDB()
-  const txKeys = db.transaction(STORE_KEYS, "readwrite")
-  await txKeys.store.clear()
-  await txKeys.done
+  const own = (key: string): boolean =>
+    ns ? key.startsWith(ns) : !key.includes("::");
 
-  const txSessions = db.transaction(STORE_SESSIONS, "readwrite")
-  await txSessions.store.clear()
-  await txSessions.done
+  for (const store of [STORE_KEYS, STORE_SESSIONS]) {
+    const keys = await db.getAllKeys(store)
+    for (const k of keys) {
+      if (typeof k === "string" && own(k)) await db.delete(store, k)
+    }
+  }
+  const metaKeys = await db.getAllKeys(STORE_META)
+  for (const k of metaKeys) {
+    if (typeof k === "string" && k !== DEVICE_SECRET_KEY && own(k)) {
+      await db.delete(STORE_META, k)
+    }
+  }
 
-  const txMeta = db.transaction(STORE_META, "readwrite")
-  await txMeta.store.clear()
-  await txMeta.done
-
-  wrappingKeyCache = null
+  if (!ns || ns === recordNamespace) {
+    wrappingKeyCache = null
+    devicePassphrase = null
+  }
 }
 
 // ─── Device Secret ───

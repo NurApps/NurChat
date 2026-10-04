@@ -1,12 +1,25 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import {
+  applyCustomTheme,
+  clearCustomTheme,
+  customSkinVariant,
+  isCustomSkinId,
+  loadCustomTheme,
+  resetCustomThemeStorage,
+  saveCustomTheme,
+  type CustomVariant,
+  type ThemeVars,
+} from "../services/customTheme"
 
 // "Skin" — конкретная палитра. У каждого скина есть вариант (light/dark),
 // который определяет, в каком режиме (день/ночь) он доступен для выбора.
 export const THEMES = [
   { id: "light", label: "Светлая", variant: "light" },
   { id: "nord", label: "Nord", variant: "light" },
+  { id: "custom-light", label: "Своя", variant: "light" },
   { id: "dark", label: "Тёмная", variant: "dark" },
   { id: "dracula", label: "Dracula", variant: "dark" },
+  { id: "custom-dark", label: "Своя", variant: "dark" },
 ] as const
 
 export type Theme = (typeof THEMES)[number]["id"]
@@ -45,6 +58,11 @@ interface ThemeCtx {
   setDarkTheme: (t: Theme) => void
   /** Быстрый переключатель день/ночь (как кнопка в TopBar Telegram). */
   toggle: () => void
+  /** Пользовательские палитры (null — не задана, берётся сток). */
+  customLight: ThemeVars | null
+  customDark: ThemeVars | null
+  setCustomTheme: (variant: CustomVariant, vars: ThemeVars) => void
+  resetCustomTheme: (variant: CustomVariant) => void
 }
 
 export const ThemeContext = createContext<ThemeCtx>({
@@ -57,6 +75,10 @@ export const ThemeContext = createContext<ThemeCtx>({
   setLightTheme: () => {},
   setDarkTheme: () => {},
   toggle: () => {},
+  customLight: null,
+  customDark: null,
+  setCustomTheme: () => {},
+  resetCustomTheme: () => {},
 })
 
 function readInitial(): { mode: ThemeMode; lightTheme: Theme; darkTheme: Theme } {
@@ -102,6 +124,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [lightTheme, setLightThemeState] = useState<Theme>(initial.lightTheme)
   const [darkTheme, setDarkThemeState] = useState<Theme>(initial.darkTheme)
   const [systemDark, setSystemDark] = useState(systemPrefersDark)
+  const [customLight, setCustomLightState] = useState<ThemeVars | null>(() => loadCustomTheme("light"))
+  const [customDark, setCustomDarkState] = useState<ThemeVars | null>(() => loadCustomTheme("dark"))
 
   // Живое отслеживание смены системной темы (для mode === "system").
   useEffect(() => {
@@ -115,8 +139,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const theme: Theme = variant === "dark" ? darkTheme : lightTheme
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme)
-  }, [theme])
+    // Кастомный скин: data-theme остаётся базовым (все [data-theme=...]
+    // селекторы работают), палитра кладётся инлайном поверх.
+    if (isCustomSkinId(theme)) {
+      document.documentElement.setAttribute("data-theme", customSkinVariant(theme))
+      const vars = theme === "custom-dark" ? customDark : customLight
+      if (vars) applyCustomTheme(vars, customSkinVariant(theme))
+      else clearCustomTheme()
+    } else {
+      document.documentElement.setAttribute("data-theme", theme)
+      clearCustomTheme()
+    }
+  }, [theme, customLight, customDark])
 
   useEffect(() => {
     localStorage.setItem(MODE_KEY, mode)
@@ -129,13 +163,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setLightTheme = (t: Theme) => applyWithTransition(() => setLightThemeState(t))
   const setDarkTheme = (t: Theme) => applyWithTransition(() => setDarkThemeState(t))
 
+  const setCustomTheme = (v: CustomVariant, vars: ThemeVars) => {
+    saveCustomTheme(v, vars)
+    applyWithTransition(() => (v === "dark" ? setCustomDarkState(vars) : setCustomLightState(vars)))
+  }
+  const resetCustomTheme = (v: CustomVariant) => {
+    resetCustomThemeStorage(v)
+    applyWithTransition(() => (v === "dark" ? setCustomDarkState(null) : setCustomLightState(null)))
+  }
+
   const toggle = () => {
     const next: ThemeMode = variant === "dark" ? "light" : "dark"
     setMode(next)
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, variant, mode, setMode, lightTheme, darkTheme, setLightTheme, setDarkTheme, toggle }}>
+    <ThemeContext.Provider value={{ theme, variant, mode, setMode, lightTheme, darkTheme, setLightTheme, setDarkTheme, toggle, customLight, customDark, setCustomTheme, resetCustomTheme }}>
       {children}
     </ThemeContext.Provider>
   )

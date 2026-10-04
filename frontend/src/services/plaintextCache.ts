@@ -14,14 +14,21 @@
  * на этом устройстве.
  */
 
+import { namespacedLSKey } from "./profiles"
+
 const STORAGE_KEY = "nurchat_plaintext_v1"
 const MAX_ENTRIES = 2000
+
+/** Кэш открытого текста активного профиля (сообщения принадлежат аккаунту). */
+function storageKey(): string {
+  return namespacedLSKey(STORAGE_KEY)
+}
 
 export type PlaintextCache = Record<string, string>
 
 export function loadPlaintextCache(): PlaintextCache {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey())
     if (!raw) return {}
     const parsed: unknown = JSON.parse(raw)
     if (parsed && typeof parsed === "object") return parsed as PlaintextCache
@@ -33,13 +40,13 @@ export function loadPlaintextCache(): PlaintextCache {
 
 function persist(cache: PlaintextCache): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cache))
+    localStorage.setItem(storageKey(), JSON.stringify(cache))
   } catch {
     // Quota exceeded: выбрасываем старую половину и пробуем ещё раз
     const keys = Object.keys(cache)
     for (const k of keys.slice(0, Math.ceil(keys.length / 2))) delete cache[k]
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cache))
+      localStorage.setItem(storageKey(), JSON.stringify(cache))
     } catch { /* ignore — кэш best-effort */ }
   }
 }
@@ -57,7 +64,7 @@ export function savePlaintext(messageId: string, text: string): void {
 }
 
 export function clearPlaintextCache(): void {
-  try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+  try { localStorage.removeItem(storageKey()) } catch { /* ignore */ }
 }
 
 export function getPlaintext(messageId: string): string | null {

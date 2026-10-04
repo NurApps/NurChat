@@ -108,6 +108,20 @@ def test_captcha_endpoint_503_without_sitekey(monkeypatch):
     assert client.get("/api/auth/captcha").status_code == 503
 
 
+def test_captcha_disabled_returns_none(monkeypatch):
+    monkeypatch.setattr(captcha.settings, "DISABLE_CAPTCHA", True)
+    r = client.get("/api/auth/captcha")
+    assert r.status_code == 200
+    assert r.json() == {"provider": "none"}
+
+
+def test_verify_passes_when_disabled(monkeypatch):
+    monkeypatch.setattr(captcha.settings, "DISABLE_CAPTCHA", True)
+    seen = _siteverify(monkeypatch, _reply(success=True, action="signup", hostname="tauri.localhost"))
+    assert _verify() is True
+    assert seen == []
+
+
 def test_register_rejects_bad_token():
     csrf = {"X-CSRF-Token": client.get("/health").cookies.get("csrf_token", "")}
     r = client.post("/api/auth/register", json={

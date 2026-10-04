@@ -8,6 +8,7 @@
  */
 import { create } from "zustand"
 import type { MessageResponse } from "../types"
+import { namespacedLSKey } from "../services/profiles"
 
 export interface FavoriteEntry {
   id: string
@@ -22,9 +23,14 @@ export interface FavoriteEntry {
 const STORAGE_KEY = "nurchat_favorites_v1"
 const MAX_ENTRIES = 2000
 
+/** Ключ избранного активного профиля (у каждого аккаунта своё). */
+function storageKey(): string {
+  return namespacedLSKey(STORAGE_KEY)
+}
+
 function load(): FavoriteEntry[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey())
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
     return Array.isArray(parsed) ? (parsed as FavoriteEntry[]) : []
@@ -35,7 +41,7 @@ function load(): FavoriteEntry[] {
 
 function persist(items: FavoriteEntry[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+    localStorage.setItem(storageKey(), JSON.stringify(items))
   } catch {
     /* ignore — quota или приватный режим, храним best-effort */
   }

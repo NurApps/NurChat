@@ -12,7 +12,7 @@ from server.core import models, schemas
 from server.core.audit import client_ip, log_audit
 from server.core.database import get_db
 from server.core.security import security, verify_pending_2fa_dependency, verify_token_dependency
-from server.utils.captcha import SIGNUP_ACTION, verify_turnstile
+from server.utils.captcha import SIGNUP_ACTION, lockout_manager, verify_turnstile
 from server.utils.logger import logger
 from server.utils.security import (
     decrypt_totp_secret,
@@ -39,10 +39,28 @@ from shared.rate_limiter import limiter
 router = APIRouter()
 
 
+def _lock_ip(request: Request) -> str:
+    """IP-ключ для lockout'ов (только in-memory, никуда не пишется).
+
+    client_ip() при LOG_IPS=False возвращает None (deaf relay не хранит IP
+    даже в audit-лог) — для lockout-ключа это давало бы один глобальный
+    ключ на всех. Здесь IP нужен лишь как ключ счётчика в памяти.
+    Оговорка: XFF за недоверенным прокси подделывается — поэтому IP-lockout
+    лишь первый рубеж; перебор логина дополнительно душится lockout'ом
+    по username (от XFF не зависит) и slowapi-лимитами.
+    """
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @router.get("/captcha")
 @limiter.limit("30/minute")
 async def get_captcha(request: Request):
     """Sitekey Turnstile этого релея: секрет живёт здесь же, поэтому ключ отдаёт релей, а не сборка."""
+    if settings.DISABLE_CAPTCHA:
+        return {"provider": "none"}
     if not settings.TURNSTILE_SITEKEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -59,18 +77,27 @@ async def register(
     password: str = Body(...),
     first_name: str = Body(...),
     last_name: str = Body(default=""),
-    turnstile_token: str = Body(...),
+    turnstile_token: str = Body(default=""),
     public_key: str = Body(default=""),
     signing_public_key: str = Body(default=""),
     db: Session = Depends(get_db)
 ):
     """Регистрация пользователя с именем и фамилией"""
-    if not await verify_turnstile(turnstile_token, SIGNUP_ACTION):
+    # Капча-спам с одного IP душится lockout'ом (pentest #5).
+    reg_lock_key = f"register:{_lock_ip(request)}"
+    if lockout_manager.is_locked_out(reg_lock_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Слишком много попыток. Повторите через несколько минут",
+        )
+    if not settings.DISABLE_CAPTCHA and not await verify_turnstile(turnstile_token, SIGNUP_ACTION):
+        lockout_manager.record_failure(reg_lock_key)
         logger.warning(f"Registration: invalid CAPTCHA from {client_ip(request)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Неверная CAPTCHA"
         )
+    lockout_manager.record_success(reg_lock_key)
 
     if not first_name or len(first_name.strip()) < 2:
         raise HTTPException(
@@ -187,12 +214,24 @@ async def login(
 ):
     """Вход пользователя с проверкой пароля и 2FA"""
     try:
+        # Account lockout (pentest #6): перебор пароля к конкретному
+        # username за IP-лимитом не спрячешь (атакующий ротирует IP) —
+        # после 10 неверных попыток за 15 минут аккаунт молчит 5 минут.
+        # Цена: злоумышленник может временно заблокировать чужой логин;
+        # порог высокий, ошибка — generic, без подсказок о существовании.
+        lock_key = f"login:{user_data.username.strip().lower()}"
+        if lockout_manager.is_locked_out(lock_key):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Слишком много попыток. Повторите через несколько минут",
+            )
         user = db.query(models.User).filter(
             models.User.username == user_data.username
         ).first()
 
         if not user:
             logger.warning(f"Login attempt with non-existent username: {user_data.username}")
+            lockout_manager.record_failure(lock_key)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Неверные учетные данные"
@@ -200,10 +239,13 @@ async def login(
 
         if not verify_password_argon2(user_data.password, user.hashed_password):
             logger.warning(f"Login attempt with wrong password for username: {user_data.username}")
+            lockout_manager.record_failure(lock_key)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Неверные учетные данные"
             )
+
+        lockout_manager.record_success(lock_key)
 
         if user.is_2fa_enabled:
             access_token = security.create_access_token(
@@ -704,8 +746,10 @@ async def enable_2fa(
 
     if not verify_password_argon2(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Неверный пароль")
-
     secret = decrypt_totp_secret(user.totp_secret)
+    if user.totp_secret and not secret:
+        logger.error(f"2FA setup confirm: secret undecryptable for {user.username} (key rotated?)")
+
     if not secret or not verify_totp(secret, body.code):
         raise HTTPException(status_code=400, detail="Неверный TOTP-код")
 
@@ -733,6 +777,8 @@ async def verify_2fa_login_with_token(
         raise HTTPException(status_code=400, detail="2FA не активна")
 
     secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
+    if user.totp_secret and not secret:
+        logger.error(f"2FA login: secret undecryptable for {user.username} (key rotated?)")
     totp_valid = secret and verify_totp(secret, body.code)
 
     # Try backup code
@@ -785,6 +831,8 @@ async def disable_2fa(
         raise HTTPException(status_code=401, detail="Неверный пароль")
 
     secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
+    if user.totp_secret and not secret:
+        logger.error(f"2FA disable: secret undecryptable for {user.username} (key rotated?)")
     totp_valid = secret and verify_totp(secret, body.code)
 
     backup_valid = False

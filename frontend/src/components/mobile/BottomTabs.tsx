@@ -39,8 +39,15 @@ export function BottomTabs({ tabs = defaultTabs, activeTab, onTabChange, badges 
     [activeTab, location.pathname]
   );
 
+  const activeIndex = tabs.findIndex(isActive);
+
   return (
-    <nav className="app-bottom-nav">
+    <nav
+      className="app-bottom-nav"
+      style={{ '--tab-count': tabs.length, '--tab-index': Math.max(activeIndex, 0) } as React.CSSProperties}
+    >
+      {/* Скользящая подсветка активной вкладки: переезжает между пунктами. */}
+      {activeIndex >= 0 && <span className="bottom-nav__indicator" aria-hidden="true" />}
       {tabs.map((tab) => (
         <button
           key={tab.id}

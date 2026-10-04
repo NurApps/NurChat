@@ -570,10 +570,7 @@
   align-items: center;
   gap: 4px;
   width: 100%;
-  background: none;
-  border: none;
   color: inherit;
-  cursor: pointer;
 }
 .settings-hero__avatar {
   display: flex;

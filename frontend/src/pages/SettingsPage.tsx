@@ -460,13 +460,13 @@ export default function SettingsPage() {
        {showList && (
         <div className="settings-hero" style={{ ["--hero-color" as string]: getAvatarColor(user.id) }}>
           <button type="button" className="settings-hero__edit" onClick={() => openSection("profile", true)}>{t("settings.editShort")}</button>
-          <button type="button" className="settings-hero__main" onClick={() => openSection("profile")}>
+          <div className="settings-hero__main">
             <span className="settings-hero__avatar">
               {avatarSrc ? <img src={avatarSrc} alt="" width={96} height={96} /> : <span aria-hidden="true">{initial}</span>}
             </span>
             <span className="settings-hero__name">{displayName}</span>
             <span className="settings-hero__sub">@{user.username}</span>
-          </button>
+          </div>
         </div>
        )}
        <div className="settings-layout">

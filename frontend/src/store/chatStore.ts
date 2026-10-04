@@ -3,6 +3,7 @@ import type {
   ChatResponse, ContactResponse, GroupInviteResponse, UserResponse,
 } from "../types"
 import { api } from "../services/api"
+import { readStoredUserRaw } from "../services/tokenVault"
 
 // Дедup параллельных loadChats (см. комментарий внутри loadChats).
 let loadChatsInflight: Promise<void> | null = null
@@ -80,7 +81,7 @@ interface ChatState {
 
 function getCurrentUser(): UserResponse {
   try {
-    return JSON.parse(localStorage.getItem("user") || "null") || { id: "self", username: "user", first_name: "", is_online: true }
+    return JSON.parse(readStoredUserRaw() || "null") || { id: "self", username: "user", first_name: "", is_online: true }
   } catch {
     return { id: "self", username: "user", first_name: "", is_online: true }
   }

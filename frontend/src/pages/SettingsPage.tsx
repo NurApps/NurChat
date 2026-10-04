@@ -5,8 +5,10 @@ import { api, csrfHeader, apiErrorMessage } from "../services/api"
 import { getAccessToken } from "../services/tokenVault"
 import { BASE_URL, avatarUrl, getRelayConfig, resetRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
 import { hasKeys, clearKeys } from "../services/e2e"
+import CustomThemeEditor from "../components/CustomThemeEditor"
+import { customSkinVariant, isCustomSkinId } from "../services/customTheme"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
-import { performLogout, releaseLocalKeys } from "../services/localSession"
+import { performLogout, performRelaySwitch, releaseLocalKeys, storedAccount } from "../services/localSession"
 import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
@@ -15,6 +17,7 @@ import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyho
 import { getAvatarColor } from "../utils/avatar"
 import { useMobile } from "../hooks/useMobile"
 import ProfileEditor from "../components/ProfileEditor"
+import AccountsManager from "../components/AccountsManager"
 import RelayAddressInput from "../components/RelayAddressInput"
 import type { UserResponse } from "../types"
 
@@ -288,11 +291,32 @@ export default function SettingsPage() {
       window.location.reload()
       return
     }
+    const next = { host, protocol: relayProtocol }
+    const current = getRelayConfig()
+    // Аккаунт живёт на ОДНОМ реле: молчаливая смена = потеря доступа.
+    // Подтвердили, но новый релей не отвечает — остаёмся на старом,
+    // сессия не тронута (выход только после успешной проверки).
+    let needLogout = false
+    if (next.host !== current.host || next.protocol !== current.protocol) {
+      const account = storedAccount()
+      if (account) {
+        if (!window.confirm(t("settings.relaySwitchConfirm", {
+          username: account.username,
+          from: `${current.protocol}://${current.host}`,
+          to: `${next.protocol}://${next.host}`,
+        }))) return
+        needLogout = true
+      }
+    }
     // Save only a reachable relay: a typo would otherwise strand the next
     // boot on the "server unavailable" overlay.
     setRelayApplying(true)
-    const res = await applyRelayIfHealthy({ host, protocol: relayProtocol })
+    const res = await applyRelayIfHealthy(next)
     if (res.ok) {
+      if (needLogout) {
+        performRelaySwitch(next)
+        return
+      }
       window.location.reload()
       return
     }
@@ -581,6 +605,13 @@ export default function SettingsPage() {
                     <ThemeSwatchButton key={th.id} id={th.id} label={th.label} checked={darkTheme === th.id} onSelect={() => setDarkTheme(th.id)} />
                   ))}
                 </div>
+              </div>
+              <div className="settings-group">
+                <h3 className="settings-group-title">{t("settings.customThemeTitle")}</h3>
+                <p className="settings-info-text">{t("settings.themeLightTitle")}</p>
+                <CustomThemeEditor variant="light" />
+                <p className="settings-info-text" style={{ marginTop: 12 }}>{t("settings.themeDarkTitle")}</p>
+                <CustomThemeEditor variant="dark" />
               </div>
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.language")}</h3>
@@ -909,6 +940,7 @@ export default function SettingsPage() {
                 <button className="settings-action-btn" onClick={handleLogout}>{t("settings.logoutAccount")}</button>
                 <button className="settings-action-btn danger" onClick={handleDeleteAccount}>{t("settings.deleteAccount")}</button>
               </div>
+              <AccountsManager />
             </div>
           )}
 
@@ -982,6 +1014,13 @@ export default function SettingsPage() {
 }
 
 function ThemeSwatchButton({ id, label, checked, onSelect }: { id: Theme; label: string; checked: boolean; onSelect: () => void }) {
+  const { customLight, customDark } = useTheme()
+  // Превью кастомного скина: базовый data-theme + инлайн-переменные.
+  const customVars = id === "custom-light" ? customLight : id === "custom-dark" ? customDark : null
+  const previewTheme = isCustomSkinId(id) ? customSkinVariant(id) : id
+  const previewStyle = customVars
+    ? ({ "--bg": customVars.bg, "--surface-variant": customVars.surfaceVariant, "--msg-mine-bg": customVars.msgMineBg } as React.CSSProperties)
+    : undefined
   return (
     <button
       type="button"
@@ -990,7 +1029,7 @@ function ThemeSwatchButton({ id, label, checked, onSelect }: { id: Theme; label:
       className={`theme-swatch-btn ${checked ? "active" : ""}`}
       onClick={onSelect}
     >
-      <span className="theme-swatch" data-theme={id}>
+      <span className="theme-swatch" data-theme={previewTheme} style={previewStyle}>
         <span className="theme-swatch-bubble theirs" />
         <span className="theme-swatch-bubble mine" />
       </span>

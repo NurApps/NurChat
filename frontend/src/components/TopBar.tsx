@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowUpToLine, LogOut, MessageCircle, Moon, Settings, Sun, User, Users } from "lucide-react"
+import { ArrowUpToLine, LogOut, MessageCircle, Moon, Settings, Sun, User } from "lucide-react"
 import { useTheme } from "../context/useTheme"
 import { platform } from "../services/platform"
 import { useAvatarStyle } from "../services/avatarStyle"
 import Identicon from "./Identicon"
+import AccountList from "./AccountList"
 
 interface Props {
   username: string
@@ -13,10 +14,9 @@ interface Props {
   onProfile?: () => void
   onSettings?: () => void
   onLogout?: () => void
-  onSwitchAccount?: () => void
 }
 
-export default function TopBar({ username, userId, avatarUrl, onProfile, onSettings, onLogout, onSwitchAccount }: Props) {
+export default function TopBar({ username, userId, avatarUrl, onProfile, onSettings, onLogout }: Props) {
   const { t } = useTranslation()
   const { variant, toggle } = useTheme()
   const avatarStyle = useAvatarStyle()
@@ -28,7 +28,10 @@ export default function TopBar({ username, userId, avatarUrl, onProfile, onSetti
     if (!menuOpen) return
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false)
+      const target = event.target as Node
+      // Подтверждение из меню рендерится порталом в body — клик по нему не закрывает меню.
+      if ((target as Element).closest?.(".modal-overlay")) return
+      if (menuRef.current && !menuRef.current.contains(target)) setMenuOpen(false)
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -76,7 +79,8 @@ export default function TopBar({ username, userId, avatarUrl, onProfile, onSetti
           {menuOpen && (
             <div className="topbar-dropdown" role="menu">
               <button role="menuitem" onClick={() => { setMenuOpen(false); onProfile?.() }}><User size={16} strokeWidth={2} aria-hidden="true" />{t("settings.profile")}</button>
-              <button role="menuitem" onClick={() => { setMenuOpen(false); onSwitchAccount?.() }}><Users size={16} strokeWidth={2} aria-hidden="true" />{t("common.switchAccount")}</button>
+              <hr className="dropdown-divider" />
+              <AccountList variant="menu" activeAvatarSrc={avatarUrl} onAction={() => setMenuOpen(false)} />
               <hr className="dropdown-divider" />
               <button role="menuitem" className="danger" onClick={() => { setMenuOpen(false); onLogout?.() }}><LogOut size={16} strokeWidth={2} aria-hidden="true" />{t("common.logout")}</button>
             </div>

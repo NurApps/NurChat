@@ -797,7 +797,7 @@ export default function ChatPage() {
 
   const handleViewProfile = useCallback((user: UserResponse) => setProfileUser(user), [setProfileUser])
 
-  const handleProfile = useCallback(() => navigate("/profile"), [navigate])
+  const handleProfile = useCallback(() => navigate("/settings"), [navigate])
   const handleLogout = useCallback(() => { performLogout(); navigate("/login", { replace: true }) }, [navigate])
   const handleSettings = useCallback(() => navigate("/settings"), [navigate])
 
@@ -830,7 +830,6 @@ export default function ChatPage() {
         avatarUrl={avatarUrl(currentUser.avatar_path)}
         onProfile={handleProfile}
         onLogout={handleLogout}
-        onSwitchAccount={handleLogout}
         onSettings={handleSettings}
       />
 

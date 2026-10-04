@@ -2,7 +2,7 @@ import { useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { BASE_URL } from "../config"
 import { csrfHeader, apiErrorMessage } from "../services/api"
-import { getAccessToken } from "../services/tokenVault"
+import { getAccessToken, writeStoredUserRaw } from "../services/tokenVault"
 import type { UserResponse } from "../types"
 
 export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
@@ -45,7 +45,7 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
       })
       if (!res.ok) throw new Error(await res.text())
       const updated: UserResponse = await res.json()
-      localStorage.setItem("user", JSON.stringify(updated))
+      writeStoredUserRaw(JSON.stringify(updated))
       onUserUpdate?.(updated)
       setOk(t("profile.avatarUpdated"))
     } catch (e: any) {
@@ -70,7 +70,7 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
       })
       if (!res.ok) throw new Error(await res.text())
       const updated: UserResponse = await res.json()
-      localStorage.setItem("user", JSON.stringify(updated))
+      writeStoredUserRaw(JSON.stringify(updated))
       onUserUpdate?.(updated)
       setOk(t("profile.avatarDeleted"))
     } catch (e: any) {

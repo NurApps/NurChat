@@ -2,9 +2,10 @@ import { useState, useEffect, useLayoutEffect, useRef, type JSX } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import { claimLocalKeys } from "../services/localSession"
-import { hasSession } from "../services/tokenVault"
-import { BASE_URL, getRelayConfig, setRelayConfig } from "../config"
+import { claimLocalKeys, performRelaySwitch, storedAccount } from "../services/localSession"
+import { upsertProfile } from "../services/profiles"
+import { hasSession, writeStoredUserRaw } from "../services/tokenVault"
+import { BASE_URL, getRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
 import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
 
 // Свои prekeys должны лежать на реле — иначе собеседники получают
@@ -17,13 +18,14 @@ function healPreKeys(keys: E2EKeys, userId: string, where: string): void {
 }
 import { useTheme } from "../context/useTheme"
 import TurnstileWidget from "../components/TurnstileWidget"
+import RelayAddressInput from "../components/RelayAddressInput"
 
 function ThemeToggle() {
-  const { theme, toggle } = useTheme()
+  const { variant, toggle } = useTheme()
   const { t } = useTranslation()
   return (
     <button className="login-theme-toggle" type="button" title={t("common.theme")} aria-label={t("common.theme")} onClick={toggle}>
-      {theme === "light" ? (
+      {variant === "light" ? (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
         </svg>
@@ -108,7 +110,7 @@ function LoginBrand() {
 type Tab = "register" | "login"
 
 export default function LoginPage() {
-  const { theme } = useTheme()
+  const { variant } = useTheme()
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
   const [checking, setChecking] = useState(true)
@@ -133,8 +135,11 @@ export default function LoginPage() {
   const [awaiting2fa, setAwaiting2fa] = useState(false)
   const [twoFactorCode, setTwoFactorCode] = useState("")
 
-  // CAPTCHA (Cloudflare Turnstile; sitekey отдаёт выбранный релей)
+  // CAPTCHA (Cloudflare Turnstile; sitekey отдаёт выбранный релей).
+  // captchaDisabled — dev-релей с DISABLE_CAPTCHA=true (provider "none"):
+  // виджет не показываем, токен не требуем.
   const [captchaSitekey, setCaptchaSitekey] = useState("")
+  const [captchaDisabled, setCaptchaDisabled] = useState(false)
   const [captchaToken, setCaptchaToken] = useState("")
   const [captchaFailed, setCaptchaFailed] = useState(false)
   const [captchaReset, setCaptchaReset] = useState(0)
@@ -163,20 +168,39 @@ export default function LoginPage() {
   const [relayError, setRelayError] = useState("")
 
   const handleApplyRelay = async () => {
-    const host = relayHost.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
+    const host = parseRelayInput(relayHost).host
     if (!host || relayApplying) return
     setRelayApplying(true)
     setRelayError("")
-    try {
-      const res = await fetch(`${relayProtocol}://${host}/health`, { signal: AbortSignal.timeout(8000) })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setRelayConfig({ host, protocol: relayProtocol })
-      window.location.reload()
-    } catch {
-      setRelayError(t("auth.relayCheckFailed"))
-    } finally {
-      setRelayApplying(false)
+    const next = { host, protocol: relayProtocol }
+    const current = getRelayConfig()
+    // Активная сессия привязана к текущему реле — смена без предупреждения
+    // стоила бы аккаунта. Проверка здоровья ниже: не отвечает — остаёмся,
+    // сессия не тронута.
+    let needLogout = false
+    if (hasSession() && (next.host !== current.host || next.protocol !== current.protocol)) {
+      const account = storedAccount()
+      if (!window.confirm(t("settings.relaySwitchConfirm", {
+        username: account?.username ?? "",
+        from: `${current.protocol}://${current.host}`,
+        to: `${next.protocol}://${next.host}`,
+      }))) {
+        setRelayApplying(false)
+        return
+      }
+      needLogout = true
     }
+    const res = await applyRelayIfHealthy(next)
+    if (res.ok) {
+      if (needLogout) {
+        performRelaySwitch(next)
+        return
+      }
+      window.location.reload()
+      return
+    }
+    setRelayError(t("auth.relayCheckFailed"))
+    setRelayApplying(false)
   }
 
   const checkServerHealth = () => {
@@ -200,7 +224,7 @@ export default function LoginPage() {
     if (hasSession()) {
       api.getCurrentUser()
         .then(async (user) => {
-          localStorage.setItem("user", JSON.stringify(user))
+          writeStoredUserRaw(JSON.stringify(user))
           const keys = await loadKeys()
           if (keys) healPreKeys(keys, user.id, "auto-login")
           navigate("/chat", { replace: true })
@@ -216,14 +240,19 @@ export default function LoginPage() {
   }, [navigate])
 
   useEffect(() => {
-    if (tab !== "register" || captchaSitekey) return
+    if (tab !== "register" || captchaSitekey || captchaDisabled) return
     api.getCaptcha()
       .then((res) => {
+        if (res.provider === "none" || !res.sitekey) {
+          setCaptchaDisabled(true)
+          setCaptchaFailed(false)
+          return
+        }
         setCaptchaSitekey(res.sitekey)
         setCaptchaFailed(false)
       })
       .catch(() => setCaptchaFailed(true))
-  }, [tab, captchaSitekey])
+  }, [tab, captchaSitekey, captchaDisabled])
 
   const handleRegister = async () => {
     setError("")
@@ -255,7 +284,7 @@ export default function LoginPage() {
       setError(t("auth.passwordsMismatch"))
       return
     }
-    if (!captchaToken) {
+    if (!captchaDisabled && !captchaToken) {
       setError(t("auth.solveCaptcha"))
       return
     }
@@ -275,8 +304,14 @@ export default function LoginPage() {
         e2eKeys.signingPublicHex
       )
       api.setToken(res.access_token, res.refresh_token)
-      localStorage.setItem("user", JSON.stringify(res.user))
+      writeStoredUserRaw(JSON.stringify(res.user))
 
+      // Мультиаккаунт: фиксируем профиль (релей+пользователь) до работы
+      // с ключами — неймспейсы хранилищ зависят от активного профиля.
+      {
+        const relay = getRelayConfig()
+        upsertProfile(relay.protocol, relay.host, res.user.id, res.user.username)
+      }
       // Persist identity keys locally (encrypted at rest); drop leftovers of a previous account first
       await claimLocalKeys(res.user.id)
       await saveKeys(e2eKeys)
@@ -320,7 +355,11 @@ export default function LoginPage() {
       }
 
       api.setToken(res.access_token, res.refresh_token)
-      localStorage.setItem("user", JSON.stringify(res.user))
+      writeStoredUserRaw(JSON.stringify(res.user))
+      {
+        const relay = getRelayConfig()
+        upsertProfile(relay.protocol, relay.host, res.user.id, res.user.username)
+      }
       await claimLocalKeys(res.user.id)
       const keys = await loadKeys()
       if (keys) healPreKeys(keys, res.user.id, "login")
@@ -347,7 +386,11 @@ export default function LoginPage() {
     try {
       const res = await api.verify2faLogin(code)
       api.setToken(res.access_token, res.refresh_token)
-      localStorage.setItem("user", JSON.stringify(res.user))
+      writeStoredUserRaw(JSON.stringify(res.user))
+      {
+        const relay = getRelayConfig()
+        upsertProfile(relay.protocol, relay.host, res.user.id, res.user.username)
+      }
       await claimLocalKeys(res.user.id)
       const keys = await loadKeys()
       if (keys) healPreKeys(keys, res.user.id, "2fa")
@@ -437,6 +480,7 @@ export default function LoginPage() {
         <div ref={fieldsInnerRef}>
         {tab === "register" ? (
           <form
+            id="register-form"
             key="register"
             className="login-fields auth-fields-anim"
             onSubmit={(e) => { e.preventDefault(); if (!loading) handleRegister() }}
@@ -525,6 +569,7 @@ export default function LoginPage() {
                   onClick={() => {
                     setCaptchaFailed(false)
                     setCaptchaSitekey("")
+                    setCaptchaDisabled(false)
                   }}
                 >
                   {t("auth.captchaRetry")}
@@ -534,7 +579,7 @@ export default function LoginPage() {
               <TurnstileWidget
                 sitekey={captchaSitekey}
                 action="signup"
-                theme={theme === "light" ? "light" : "dark"}
+                theme={variant}
                 language={i18n.language}
                 resetSignal={captchaReset}
                 onToken={setCaptchaToken}
@@ -571,6 +616,7 @@ export default function LoginPage() {
           </div>
         ) : (
           <form
+            id="login-form"
             key="login"
             className="login-fields auth-fields-anim"
             onSubmit={(e) => {
@@ -627,13 +673,11 @@ export default function LoginPage() {
           <button
             className="login-btn"
             disabled={loading}
-            onClick={tab === "register" ? handleRegister : (awaiting2fa ? handleVerify2fa : handleLogin)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && tab === "login") {
-                if (awaiting2fa) handleVerify2fa()
-                else handleLogin()
-              }
-            }}
+            // Кнопка вне <form>: связываем через form=, иначе Enter в полях формы
+            // с двумя input'ами ничего не отправляет. Шаг 2FA — не форма, там onClick.
+            {...(tab === "login" && awaiting2fa
+              ? { type: "button" as const, onClick: handleVerify2fa }
+              : { type: "submit" as const, form: tab === "register" ? "register-form" : "login-form" })}
           >
             {loading ? (
               <span className="btn-loading">
@@ -660,28 +704,16 @@ export default function LoginPage() {
               </span>
             ) : (
               <>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <select
-                    value={relayProtocol}
-                    onChange={(e) => setRelayProtocol(e.target.value as "http" | "https")}
-                    className="login-input"
-                    style={{ width: "auto", padding: "6px 8px", fontSize: 13 }}
-                    aria-label={t("settings.relayProtocol")}
-                  >
-                    <option value="https">https</option>
-                    <option value="http">http</option>
-                  </select>
-                  <input
-                    className="login-input"
-                    style={{ flex: 1, fontSize: 13 }}
-                    placeholder={t("settings.relayHost")}
-                    value={relayHost}
-                    onChange={(e) => setRelayHost(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleApplyRelay() }}
-                    autoFocus
-                    aria-label={t("settings.relayHost")}
-                  />
-                </div>
+                <RelayAddressInput
+                  protocol={relayProtocol}
+                  host={relayHost}
+                  onProtocolChange={setRelayProtocol}
+                  onHostChange={setRelayHost}
+                  onSubmit={handleApplyRelay}
+                  placeholder={t("settings.relayHost")}
+                  inputClassName="login-input"
+                  autoFocus
+                />
                 {relayError && <span style={{ fontSize: 12, color: "var(--error, #f44336)" }}>{relayError}</span>}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="login-btn" type="button" style={{ flex: 1, padding: "8px" }}
@@ -690,7 +722,7 @@ export default function LoginPage() {
                     {relayApplying ? t("auth.relayChecking") : t("auth.relayApply")}
                   </button>
                   <button className="link-btn" type="button" style={{ fontSize: 12 }}
-                    onClick={() => { setRelayEditing(false); setRelayError(""); setRelayHost(getRelayConfig().host) }}>
+                    onClick={() => { setRelayEditing(false); setRelayError(""); setRelayHost(getRelayConfig().host); setRelayProtocol(getRelayConfig().protocol) }}>
                     {t("common.cancel")}
                   </button>
                 </div>

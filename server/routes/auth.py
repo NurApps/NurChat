@@ -59,6 +59,8 @@ def _lock_ip(request: Request) -> str:
 @limiter.limit("30/minute")
 async def get_captcha(request: Request):
     """Sitekey Turnstile этого релея: секрет живёт здесь же, поэтому ключ отдаёт релей, а не сборка."""
+    if settings.DISABLE_CAPTCHA:
+        return {"provider": "none"}
     if not settings.TURNSTILE_SITEKEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -75,7 +77,7 @@ async def register(
     password: str = Body(...),
     first_name: str = Body(...),
     last_name: str = Body(default=""),
-    turnstile_token: str = Body(...),
+    turnstile_token: str = Body(default=""),
     public_key: str = Body(default=""),
     signing_public_key: str = Body(default=""),
     db: Session = Depends(get_db)
@@ -88,7 +90,7 @@ async def register(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Слишком много попыток. Повторите через несколько минут",
         )
-    if not await verify_turnstile(turnstile_token, SIGNUP_ACTION):
+    if not settings.DISABLE_CAPTCHA and not await verify_turnstile(turnstile_token, SIGNUP_ACTION):
         lockout_manager.record_failure(reg_lock_key)
         logger.warning(f"Registration: invalid CAPTCHA from {client_ip(request)}")
         raise HTTPException(
@@ -787,8 +789,10 @@ async def enable_2fa(
 
     if not verify_password_argon2(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Неверный пароль")
-
     secret = decrypt_totp_secret(user.totp_secret)
+    if user.totp_secret and not secret:
+        logger.error(f"2FA setup confirm: secret undecryptable for {user.username} (key rotated?)")
+
     if not secret or not verify_totp(secret, body.code):
         raise HTTPException(status_code=400, detail="Неверный TOTP-код")
 
@@ -816,6 +820,8 @@ async def verify_2fa_login_with_token(
         raise HTTPException(status_code=400, detail="2FA не активна")
 
     secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
+    if user.totp_secret and not secret:
+        logger.error(f"2FA login: secret undecryptable for {user.username} (key rotated?)")
     totp_valid = secret and verify_totp(secret, body.code)
 
     # Try backup code
@@ -868,6 +874,8 @@ async def disable_2fa(
         raise HTTPException(status_code=401, detail="Неверный пароль")
 
     secret = decrypt_totp_secret(user.totp_secret) if user.totp_secret else None
+    if user.totp_secret and not secret:
+        logger.error(f"2FA disable: secret undecryptable for {user.username} (key rotated?)")
     totp_valid = secret and verify_totp(secret, body.code)
 
     backup_valid = False

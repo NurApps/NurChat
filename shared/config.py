@@ -173,6 +173,11 @@ class Settings(BaseSettings):
     TURNSTILE_SITEKEY: str = ""
     TURNSTILE_SECRET: str = ""
     TURNSTILE_HOSTNAMES: str = ""
+    # Локальная разработка без аккаунта Cloudflare: DISABLE_CAPTCHA=true
+    # отдаёт /captcha как {"provider": "none"} и пропускает проверку токена
+    # в /register. Дефолт false — прод остаётся fail-closed. НИКОГДА не
+    # включать на публичном relay: регистрация без капчи = спам-аккаунты.
+    DISABLE_CAPTCHA: bool = False
 
     WS_CONNECTIONS_WARN: int = 100
     ERROR_RATE_WARN: float = 5.0

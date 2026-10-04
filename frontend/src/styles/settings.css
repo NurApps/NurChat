@@ -146,7 +146,6 @@
 
 .settings-mobile-home { display: flex; flex-direction: column; gap: 12px; }
 
-.settings-item__icon { display: flex; color: var(--tg-blue); }
 .settings-item__label { flex: 1; }
 .settings-item__arrow { color: var(--text-secondary); flex-shrink: 0; }
 

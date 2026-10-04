@@ -11,7 +11,8 @@ import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
 import { useTheme, LIGHT_THEMES, DARK_THEMES, type Theme, type ThemeMode } from "../context/ThemeContext"
-import { AlertTriangle, ArrowLeft, Bell, Database, Info, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
+import { useMobile } from "../hooks/useMobile"
 import ProfileEditor from "../components/ProfileEditor"
 import RelayAddressInput from "../components/RelayAddressInput"
 import type { UserResponse } from "../types"
@@ -33,10 +34,13 @@ const FALLBACK_APP_VERSION = "0.15.0"
 
 export default function SettingsPage() {
   const navigate = useNavigate()
+  const { isMobile } = useMobile()
   const { t, i18n } = useTranslation()
   const [user, setUser] = useState<UserResponse | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [tab, setTab] = useState<SettingsTab>("profile")
+  // На телефоне: false — список разделов, true — открытый раздел.
+  const [sectionOpen, setSectionOpen] = useState(false)
   const [msg, setMsgText] = useState("")
   const [msgKind, setMsgKind] = useState<"ok" | "err">("ok")
   const setMsg = (text: string) => { setMsgText(text); setMsgKind("ok") }
@@ -377,6 +381,26 @@ export default function SettingsPage() {
     setMsg("")
   }
 
+  const openSection = (id: SettingsTab) => {
+    setTab(id)
+    setMsg("")
+    setSectionOpen(true)
+  }
+
+  const handleBack = () => {
+    if (!confirmDiscardProfile()) return
+    if (isMobile && sectionOpen) {
+      setSectionOpen(false)
+      setMsg("")
+    } else {
+      navigate("/chat")
+    }
+  }
+
+  const showList = isMobile && !sectionOpen
+  const showSection = !isMobile || sectionOpen
+  const headerTitle = isMobile && sectionOpen ? tabs.find((x) => x.id === tab)?.label : t("settings.title")
+
   const handleTabsKeyDown = (e: React.KeyboardEvent) => {
     const keys = ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"]
     if (!keys.includes(e.key)) return
@@ -399,36 +423,57 @@ export default function SettingsPage() {
   return (
     <div className="settings-page">
       <div className="settings-header">
-        <button type="button" className="settings-back" onClick={() => { if (confirmDiscardProfile()) navigate("/chat") }} aria-label={t("common.back")}>
+        <button type="button" className="settings-back" onClick={handleBack} aria-label={t("common.back")}>
           <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
         </button>
-        <h2>{t("settings.title")}</h2>
+        <h2>{headerTitle}</h2>
       </div>
 
       <div className="settings-body">
-        {/* Tab navigation */}
-        <div className="settings-tabs" role="tablist" aria-orientation="vertical" onKeyDown={handleTabsKeyDown}>
-          {tabs.map((it) => (
-            <button
-              key={it.id}
-              id={`settings-tab-${it.id}`}
-              type="button"
-              role="tab"
-              aria-selected={tab === it.id}
-              aria-controls="settings-panel"
-              tabIndex={tab === it.id ? 0 : -1}
-              className={`settings-tab ${tab === it.id ? "active" : ""}`}
-              onClick={() => {
-                selectTab(it.id)
-              }}
-            >
-              <span className="settings-tab-icon">{it.icon}</span>
-              <span className="settings-tab-label">{it.label}</span>
-            </button>
-          ))}
-        </div>
+       <div className="settings-layout">
+        {showList && (
+          <nav className="settings-list" aria-label={t("settings.title")}>
+            {tabs.map((it) => (
+              <button key={it.id} type="button" className="settings-item" onClick={() => openSection(it.id)}>
+                <span className="settings-item__icon">{it.icon}</span>
+                <span className="settings-item__label">{it.label}</span>
+                <ChevronRight className="settings-item__arrow" size={18} strokeWidth={2} aria-hidden="true" />
+              </button>
+            ))}
+          </nav>
+        )}
 
-        <div className="settings-content" id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${tab}`}>
+        {!isMobile && (
+          <div className="settings-tabs" role="tablist" aria-orientation="vertical" onKeyDown={handleTabsKeyDown}>
+            {tabs.map((it) => (
+              <button
+                key={it.id}
+                id={`settings-tab-${it.id}`}
+                type="button"
+                role="tab"
+                aria-selected={tab === it.id}
+                aria-controls="settings-panel"
+                tabIndex={tab === it.id ? 0 : -1}
+                className={`settings-tab ${tab === it.id ? "active" : ""}`}
+                onClick={() => {
+                  selectTab(it.id)
+                }}
+              >
+                <span className="settings-tab-icon">{it.icon}</span>
+                <span className="settings-tab-label">{it.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {showSection && (
+        <div
+          className="settings-content"
+          id="settings-panel"
+          role={isMobile ? "region" : "tabpanel"}
+          aria-labelledby={isMobile ? undefined : `settings-tab-${tab}`}
+          aria-label={isMobile ? headerTitle : undefined}
+        >
           {msg && <p className={`settings-msg ${msgKind}`} role="status" aria-live="polite">{msg}</p>}
 
           {/* ─── Profile ─── */}
@@ -868,6 +913,8 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+        )}
+       </div>
       </div>
     </div>
   )

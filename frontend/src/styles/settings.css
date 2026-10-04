@@ -564,3 +564,12 @@
 .profile-field-value { white-space: pre-wrap; overflow-wrap: anywhere; }
 .profile-bio-counter { align-self: flex-end; }
 .profile-edit-btn { margin-top: 12px; }
+
+/* Телефон: слайд между списком и разделом */
+@keyframes settings-slide-forward { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes settings-slide-back { from { transform: translateX(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.settings-slide-forward { animation: settings-slide-forward 0.25s ease-out; }
+.settings-slide-back { animation: settings-slide-back 0.25s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .settings-slide-forward, .settings-slide-back { animation: none; }
+}

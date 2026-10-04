@@ -42,6 +42,8 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>("profile")
   // На телефоне: false — список разделов, true — открытый раздел.
   const [sectionOpen, setSectionOpen] = useState(false)
+  // Анимируем возврат к списку только после того, как раздел уже открывали.
+  const [everOpened, setEverOpened] = useState(false)
   const [msg, setMsgText] = useState("")
   const [msgKind, setMsgKind] = useState<"ok" | "err">("ok")
   const setMsg = (text: string) => { setMsgText(text); setMsgKind("ok") }
@@ -386,6 +388,7 @@ export default function SettingsPage() {
     setTab(id)
     setMsg("")
     setSectionOpen(true)
+    setEverOpened(true)
   }
 
   const handleBack = () => {
@@ -452,7 +455,7 @@ export default function SettingsPage() {
       <div className="settings-body">
        <div className="settings-layout">
         {showList && (
-          <div className="settings-mobile-home">
+          <div className={`settings-mobile-home${everOpened ? " settings-slide-back" : ""}`}>
             <button type="button" className="settings-profile-card" onClick={() => openSection("profile")}>
               <span className="settings-profile-card__avatar" style={{ background: avatarSrc ? "transparent" : getAvatarColor(user.id) }}>
                 {avatarSrc ? <img src={avatarSrc} alt="" width={64} height={64} /> : <span aria-hidden="true">{initial}</span>}
@@ -509,8 +512,9 @@ export default function SettingsPage() {
 
         {showSection && (
         <div
-          className="settings-content"
+          className={`settings-content${isMobile ? " settings-slide-forward" : ""}`}
           id="settings-panel"
+          key={isMobile ? tab : undefined}
           role={isMobile ? "region" : "tabpanel"}
           aria-labelledby={isMobile ? undefined : `settings-tab-${tab}`}
           aria-label={isMobile ? headerTitle : undefined}

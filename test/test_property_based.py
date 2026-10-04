@@ -268,15 +268,15 @@ class TestPreKeyBundleProperties:
 class TestEdgeCaseProperties:
     """Property-based tests for edge cases."""
 
-    @given(size=st.integers(min_value=0, max_value=1000))
+    # min_value=16: у 1-байтовых значений коллизия случайна (1/256) — тест флакал.
+    @given(size=st.integers(min_value=16, max_value=1000))
     @settings(max_examples=50)
     def test_random_bytes_unique(self, size: int):
         """Random bytes are unique."""
         bytes1 = secrets.token_bytes(size)
         bytes2 = secrets.token_bytes(size)
 
-        if size > 0:
-            assert bytes1 != bytes2
+        assert bytes1 != bytes2
 
     @given(data=st.binary(min_size=0, max_size=10000))
     @settings(max_examples=50)

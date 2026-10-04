@@ -90,9 +90,10 @@ export default function AccountList({ variant, activeAvatarSrc, onRemove, onActi
                 onClick={() => handleSwitch(p)}
               >
                 <span className="account-list__avatar" style={{ background: getAvatarColor(p.userId) }}>
-                  {active && activeAvatarSrc
-                    ? <img src={activeAvatarSrc} alt="" />
-                    : <span aria-hidden="true">{(p.username[0] || "?").toUpperCase()}</span>}
+                  {active && activeAvatarSrc ? (
+                    // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
+                    <img src={activeAvatarSrc} alt="" />
+                  ) : <span aria-hidden="true">{(p.username[0] || "?").toUpperCase()}</span>}
                 </span>
                 <span className="account-list__text">
                   <span className="account-list__name">@{p.username}</span>

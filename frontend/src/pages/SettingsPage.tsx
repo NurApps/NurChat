@@ -487,7 +487,10 @@ export default function SettingsPage() {
           <button type="button" className="settings-hero__edit" onClick={() => openSection("profile", true)}>{t("settings.editShort")}</button>
           <div className="settings-hero__main">
             <span className="settings-hero__avatar">
-              {avatarSrc ? <img src={avatarSrc} alt="" width={96} height={96} /> : <span aria-hidden="true">{initial}</span>}
+              {avatarSrc ? (
+                // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
+                <img src={avatarSrc} alt="" width={96} height={96} />
+              ) : <span aria-hidden="true">{initial}</span>}
             </span>
             <span className="settings-hero__name">{displayName}</span>
             <span className="settings-hero__sub">@{user.username}</span>

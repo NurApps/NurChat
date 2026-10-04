@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
+import { readStoredUserRaw } from "../services/tokenVault"
 import type { UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
 import { formatTime, formatDateShort } from "../utils/format"
@@ -50,7 +51,7 @@ export default function CallHistoryPage() {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("user")
+      const raw = readStoredUserRaw()
       if (raw) setCurrentUser(JSON.parse(raw))
     } catch {}
   }, [])

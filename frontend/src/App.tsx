@@ -11,9 +11,15 @@ import MobileTabsLayout from "./components/mobile/MobileTabsLayout"
 import { platform } from "./services/platform"
 import { e2eWorkerService } from "./services/e2eWorkerService"
 import { initSecureStorage } from "./services/e2e"
+import { setRecordNamespace } from "./services/secureStorage"
+import { activeNamespace } from "./services/profiles"
 import { useMobile } from "./hooks/useMobile"
 
 import "./styles/mobile.css"
+
+// Неймспейс ключей активного профиля — до любого обращения к
+// secureStorage (модуль загружается раньше эффектов и роутов).
+setRecordNamespace(activeNamespace())
 
 const LoginPage = lazy(() => import("./pages/LoginPage"))
 const ChatPage = lazy(() => import("./pages/ChatPage"))

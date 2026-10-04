@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { claimLocalKeys, performRelaySwitch, storedAccount } from "../services/localSession"
-import { hasSession } from "../services/tokenVault"
+import { upsertProfile } from "../services/profiles"
+import { hasSession, writeStoredUserRaw } from "../services/tokenVault"
 import { BASE_URL, getRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
 import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
 
@@ -223,7 +224,7 @@ export default function LoginPage() {
     if (hasSession()) {
       api.getCurrentUser()
         .then(async (user) => {
-          localStorage.setItem("user", JSON.stringify(user))
+          writeStoredUserRaw(JSON.stringify(user))
           const keys = await loadKeys()
           if (keys) healPreKeys(keys, user.id, "auto-login")
           navigate("/chat", { replace: true })
@@ -303,8 +304,14 @@ export default function LoginPage() {
         e2eKeys.signingPublicHex
       )
       api.setToken(res.access_token, res.refresh_token)
-      localStorage.setItem("user", JSON.stringify(res.user))
+      writeStoredUserRaw(JSON.stringify(res.user))
 
+      // Мультиаккаунт: фиксируем профиль (релей+пользователь) до работы
+      // с ключами — неймспейсы хранилищ зависят от активного профиля.
+      {
+        const relay = getRelayConfig()
+        upsertProfile(relay.protocol, relay.host, res.user.id, res.user.username)
+      }
       // Persist identity keys locally (encrypted at rest); drop leftovers of a previous account first
       await claimLocalKeys(res.user.id)
       await saveKeys(e2eKeys)
@@ -348,7 +355,11 @@ export default function LoginPage() {
       }
 
       api.setToken(res.access_token, res.refresh_token)
-      localStorage.setItem("user", JSON.stringify(res.user))
+      writeStoredUserRaw(JSON.stringify(res.user))
+      {
+        const relay = getRelayConfig()
+        upsertProfile(relay.protocol, relay.host, res.user.id, res.user.username)
+      }
       await claimLocalKeys(res.user.id)
       const keys = await loadKeys()
       if (keys) healPreKeys(keys, res.user.id, "login")
@@ -375,7 +386,11 @@ export default function LoginPage() {
     try {
       const res = await api.verify2faLogin(code)
       api.setToken(res.access_token, res.refresh_token)
-      localStorage.setItem("user", JSON.stringify(res.user))
+      writeStoredUserRaw(JSON.stringify(res.user))
+      {
+        const relay = getRelayConfig()
+        upsertProfile(relay.protocol, relay.host, res.user.id, res.user.username)
+      }
       await claimLocalKeys(res.user.id)
       const keys = await loadKeys()
       if (keys) healPreKeys(keys, res.user.id, "2fa")

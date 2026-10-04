@@ -6,6 +6,7 @@ import {
   peekRefreshToken,
   setSession,
   updateAfterRefresh,
+  writeStoredUserRaw,
 } from "./tokenVault"
 import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse, ContactRequestResponse } from "../types"
 
@@ -211,7 +212,7 @@ export const api = {
     if (res.status === 401 && await refreshAccessToken()) res = await send()
     if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText)
     const updated: UserResponse = await res.json()
-    localStorage.setItem("user", JSON.stringify(updated))
+    writeStoredUserRaw(JSON.stringify(updated))
     return updated
   },
 

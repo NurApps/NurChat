@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
 import { api } from "../services/api"
-import { getAccessToken, peekRefreshToken } from "../services/tokenVault"
+import { getAccessToken, peekRefreshToken, readStoredUserRaw } from "../services/tokenVault"
 import { openAuthedSocket } from "../services/wsAuth"
 import { sealSignalingMessage, unsealSignalingMessage } from "../services/callE2E"
 
@@ -386,7 +386,7 @@ export default function CallPage() {
     let disposed = false
 
     const currentUser = (() => {
-      try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
+      try { return JSON.parse(readStoredUserRaw() || "null") } catch { return null }
     })()
 
     const failNotAuthorized = () => {

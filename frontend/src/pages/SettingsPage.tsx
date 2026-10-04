@@ -11,7 +11,7 @@ import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
 import { useTheme, LIGHT_THEMES, DARK_THEMES, type Theme, type ThemeMode } from "../context/ThemeContext"
-import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyhole, LogOut, Palette, Settings, Shield, User } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyhole, LogOut, Camera, Pencil, Palette, Settings, Shield, User } from "lucide-react"
 import { getAvatarColor } from "../utils/avatar"
 import { useMobile } from "../hooks/useMobile"
 import ProfileEditor from "../components/ProfileEditor"
@@ -445,33 +445,41 @@ export default function SettingsPage() {
 
   return (
     <div className="settings-page">
-      <div className="settings-header">
+      {!showList && <div className="settings-header">
         {!showList && (
           <button type="button" className="settings-back" onClick={handleBack} aria-label={t("common.back")}>
             <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
           </button>
         )}
         <h2>{headerTitle}</h2>
-        {showList && (
-          <button type="button" className="settings-header-edit" onClick={() => openSection("profile")}>
-            {t("settings.editShort")}
-          </button>
-        )}
-      </div>
+      </div>}
 
       <div className="settings-body">
+       {showList && (
+        <div className="settings-hero" style={{ ["--hero-color" as string]: getAvatarColor(user.id) }}>
+          <button type="button" className="settings-hero__edit" onClick={() => openSection("profile")}>{t("settings.editShort")}</button>
+          <button type="button" className="settings-hero__main" onClick={() => openSection("profile")}>
+            <span className="settings-hero__avatar">
+              {avatarSrc ? <img src={avatarSrc} alt="" width={96} height={96} /> : <span aria-hidden="true">{initial}</span>}
+            </span>
+            <span className="settings-hero__name">{displayName}</span>
+            <span className="settings-hero__sub">@{user.username}</span>
+          </button>
+        </div>
+       )}
        <div className="settings-layout">
         {showList && (
           <div className={`settings-mobile-home${everOpened ? " settings-slide-back" : ""}`}>
-            <button type="button" className="settings-profile-card" onClick={() => openSection("profile")}>
-              <span className="settings-profile-card__avatar" style={{ background: avatarSrc ? "transparent" : getAvatarColor(user.id) }}>
-                {avatarSrc ? <img src={avatarSrc} alt="" width={96} height={96} /> : <span aria-hidden="true">{initial}</span>}
-              </span>
-              <span className="settings-profile-card__meta">
-                <span className="settings-profile-card__name">{displayName}</span>
-                <span className="settings-profile-card__sub">@{user.username}</span>
-              </span>
-            </button>
+            <div className="settings-hero-actions settings-list">
+              <button type="button" className="settings-item settings-item--action" onClick={() => openSection("profile")}>
+                <Camera size={22} strokeWidth={1.8} aria-hidden="true" />
+                <span className="settings-item__label">{t("settings.changePhoto")}</span>
+              </button>
+              <button type="button" className="settings-item settings-item--action" onClick={() => openSection("profile")}>
+                <Pencil size={22} strokeWidth={1.8} aria-hidden="true" />
+                <span className="settings-item__label">{t("profile.editProfile")}</span>
+              </button>
+            </div>
             {listGroups.map((group, gi) => (
               <nav key={gi} className="settings-list" aria-label={t("settings.title")}>
                 {group.map((it) => (

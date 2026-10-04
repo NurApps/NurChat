@@ -574,3 +574,21 @@
 @media (prefers-reduced-motion: reduce) {
   .settings-slide-forward, .settings-slide-back { animation: none; }
 }
+
+.settings-edit-profile-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: -4px;
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  color: var(--tg-blue);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.settings-edit-profile-btn:active { background: var(--hover); }

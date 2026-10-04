@@ -11,7 +11,7 @@ import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
 import { useTheme, LIGHT_THEMES, DARK_THEMES, type Theme, type ThemeMode } from "../context/ThemeContext"
-import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyhole, LogOut, Palette, Settings, Shield, User } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyhole, LogOut, Pencil, Palette, Settings, Shield, User } from "lucide-react"
 import { getAvatarColor } from "../utils/avatar"
 import { useMobile } from "../hooks/useMobile"
 import ProfileEditor from "../components/ProfileEditor"
@@ -466,6 +466,10 @@ export default function SettingsPage() {
                 <span className="settings-profile-card__name">{displayName}</span>
                 <span className="settings-profile-card__sub">@{user.username}</span>
               </span>
+            </button>
+            <button type="button" className="settings-edit-profile-btn" onClick={() => openSection("profile")}>
+              <Pencil size={16} strokeWidth={2} aria-hidden="true" />
+              {t("profile.editProfile")}
             </button>
             {listGroups.map((group, gi) => (
               <nav key={gi} className="settings-list" aria-label={t("settings.title")}>

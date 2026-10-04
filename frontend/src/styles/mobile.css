@@ -849,7 +849,23 @@
     padding-bottom: calc(var(--bottom-nav-height) + 8px);
   }
 
+  /* Смена вкладки нижней панели: экран въезжает со стороны новой вкладки.
+     Без fill-mode: после окончания transform снимается, иначе он стал бы
+     containing block для position:fixed внутри экранов. */
+  .mobile-tabs-page[data-tab-dir="forward"] { animation: tab-enter-forward 0.22s ease-out; }
+  .mobile-tabs-page[data-tab-dir="back"] { animation: tab-enter-back 0.22s ease-out; }
+
   .mobile-tabs-page .sidebar-list {
     padding-bottom: calc(var(--bottom-nav-height) + 8px);
   }
+}
+
+@keyframes tab-enter-forward {
+  from { opacity: 0; transform: translateX(28px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes tab-enter-back {
+  from { opacity: 0; transform: translateX(-28px); }
+  to { opacity: 1; transform: none; }
 }

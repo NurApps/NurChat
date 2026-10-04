@@ -575,20 +575,14 @@
   .settings-slide-forward, .settings-slide-back { animation: none; }
 }
 
-.settings-edit-profile-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 44px;
-  margin-top: -4px;
-  background: var(--surface);
-  border: 1px solid var(--divider);
-  border-radius: 12px;
+/* Как в Telegram: текстовая кнопка «Изменить» в правом углу шапки */
+.settings-header-edit {
+  margin-left: auto;
+  padding: 8px 4px;
+  background: none;
+  border: none;
   color: var(--tg-blue);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 17px;
   cursor: pointer;
 }
-.settings-edit-profile-btn:active { background: var(--hover); }
+.settings-header-edit:active { opacity: 0.6; }

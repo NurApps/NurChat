@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { BASE_URL, setRelayConfig, PUBLIC_RELAYS, isRelayExplicit } from "../config"
+import { BASE_URL, setRelayConfig, PUBLIC_RELAYS, isRelayExplicit, parseRelayInput } from "../config"
+import RelayAddressInput from "./RelayAddressInput"
 import { AlertTriangle, Power } from "lucide-react"
 
 interface Props {
@@ -89,28 +90,23 @@ export default function ServerBootOverlay({ onReady }: Props) {
 
   // NOTE: BASE_URL/WS_BASE are frozen at module load, so after switching
   // relay we must reload — otherwise api.* keeps hitting the old host.
-  const handleTryPublic = async (host: string, protocol: "http" | "https") => {
+  // Config is persisted only after /health succeeds: a dead address must
+  // not stick in localStorage and trap the next boot on it.
+  const connectTo = async (host: string, protocol: "http" | "https") => {
+    if (!host || phase === "checking") return
     manualAttemptRef.current = true
     setPhase("checking")
     setErrorMsg("")
     setElapsed(0)
-    setRelayConfig({ host, protocol })
     const ok = await checkHealth(`${protocol}://${host}`)
     manualAttemptRef.current = false
-    if (ok) window.location.reload()
+    if (ok) {
+      setRelayConfig({ host, protocol })
+      window.location.reload()
+    }
   }
 
-  const handleTryCustom = async () => {
-    if (!relayHost.trim() || phase === "checking") return
-    setPhase("checking")
-    setErrorMsg("")
-    setElapsed(0)
-    const host = relayHost.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
-    setRelayConfig({ host, protocol: relayProtocol })
-    const ok = await checkHealth(`${relayProtocol}://${host}`)
-    manualAttemptRef.current = false
-    if (ok) window.location.reload()
-  }
+  const handleTryCustom = () => connectTo(parseRelayInput(relayHost).host, relayProtocol)
 
   const handleStartLocal = () => {
     setPhase("setup")
@@ -165,7 +161,7 @@ export default function ServerBootOverlay({ onReady }: Props) {
                   {PUBLIC_RELAYS.map((r) => (
                     <button
                       key={r.host}
-                      onClick={() => handleTryPublic(r.host, r.protocol)}
+                      onClick={() => connectTo(r.host, r.protocol)}
                       className="settings-action-btn"
                       style={{ width: "100%", marginBottom: 6, textAlign: "left" }}
                     >
@@ -181,31 +177,19 @@ export default function ServerBootOverlay({ onReady }: Props) {
                 <p className="server-boot-option-desc">
                   {t("serverBoot.friendsRelayDesc")}
                 </p>
-                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                  <select
-                    value={relayProtocol}
-                    onChange={(e) => setRelayProtocol(e.target.value as "http" | "https")}
-                    style={{
-                      padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border)",
-                      background: "var(--card-bg)", color: "var(--text)", fontSize: 13,
-                    }}
-                  >
-                    <option value="https">https</option>
-                    <option value="http">http</option>
-                  </select>
-                  <input
-                    className="settings-input"
-                    placeholder="relay.example.com:8000"
-                    value={relayHost}
-                    onChange={(e) => setRelayHost(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleTryCustom()}
-                    style={{ flex: 1, fontSize: 13 }}
+                <div style={{ marginBottom: 8 }}>
+                  <RelayAddressInput
+                    protocol={relayProtocol}
+                    host={relayHost}
+                    onProtocolChange={setRelayProtocol}
+                    onHostChange={setRelayHost}
+                    onSubmit={handleTryCustom}
                   />
                 </div>
                 <button
                   className="settings-save-btn"
                   onClick={handleTryCustom}
-                  disabled={!relayHost.trim()}
+                  disabled={!parseRelayInput(relayHost).host}
                   style={{ width: "100%", fontSize: 13 }}
                 >
                   {t("serverBoot.connect")}

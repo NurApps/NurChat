@@ -260,3 +260,50 @@ export function avatarUrl(path: string | null | undefined): string | null {
   if (!/^media\/avatars\/[A-Za-z0-9_-]+\/avatar_\d+\.(jpg|jpeg|png|webp)$/i.test(normalized)) return null
   return `${BASE_URL}/${normalized}`
 }
+
+/**
+ * Разбор ручного ввода адреса релея (общий для входа, оверлея и настроек).
+ * Схема из вставленного URL (`http://host:8000/path`) возвращается отдельно,
+ * чтобы переключатель протокола подстроился, а не молча её отрезал.
+ * В отличие от parseRelayParam, протокол не форсируется: ручной ввод —
+ * осознанный выбор пользователя.
+ */
+export function parseRelayInput(input: string): { host: string; protocol: "http" | "https" | null } {
+  let raw = input.trim()
+  let protocol: "http" | "https" | null = null
+  const m = raw.match(/^(https?):\/\/(.*)$/i)
+  if (m) {
+    protocol = m[1].toLowerCase() as "http" | "https"
+    raw = m[2]
+  }
+  const host = raw.split(/[/?#]/)[0].trim()
+  return { host, protocol }
+}
+
+/** http-релей со страницы, открытой по https, браузер заблокирует (mixed content). */
+export function isMixedContentBlocked(protocol: "http" | "https"): boolean {
+  try {
+    return protocol === "http" && typeof window !== "undefined" && window.location.protocol === "https:"
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Проверяет /health и только при успехе сохраняет выбор. Нерабочий адрес
+ * не должен оседать в localStorage: после reload пользователь упёрся бы
+ * в оверлей «Сервер недоступен» без понятной причины.
+ */
+export async function applyRelayIfHealthy(
+  config: RelayConfig,
+  timeoutMs = 8000,
+): Promise<{ ok: true } | { ok: false; status?: number; error?: unknown }> {
+  try {
+    const res = await fetch(`${config.protocol}://${config.host}/health`, { signal: AbortSignal.timeout(timeoutMs) })
+    if (!res.ok) return { ok: false, status: res.status }
+  } catch (error) {
+    return { ok: false, error }
+  }
+  setRelayConfig(config)
+  return { ok: true }
+}

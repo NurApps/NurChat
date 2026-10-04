@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api, csrfHeader, apiErrorMessage } from "../services/api"
 import { getAccessToken } from "../services/tokenVault"
-import { BASE_URL, getRelayConfig, setRelayConfig, resetRelayConfig } from "../config"
+import { BASE_URL, getRelayConfig, resetRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
 import { hasKeys, clearKeys } from "../services/e2e"
 import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
 import { performLogout, releaseLocalKeys } from "../services/localSession"
@@ -13,6 +13,7 @@ import { getSettings, setSetting, clearSettings } from "../services/userSettings
 import { useTheme, LIGHT_THEMES, DARK_THEMES, type Theme, type ThemeMode } from "../context/ThemeContext"
 import { AlertTriangle, ArrowLeft, Bell, Database, Info, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
 import ProfileEditor from "../components/ProfileEditor"
+import RelayAddressInput from "../components/RelayAddressInput"
 import type { UserResponse } from "../types"
 
 type SettingsTab = "profile" | "appearance" | "notifications" | "privacy" | "storage" | "security" | "account" | "about"
@@ -67,6 +68,8 @@ export default function SettingsPage() {
   const [relayHost, setRelayHost] = useState("")
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("http")
   const [relaySaved, setRelaySaved] = useState(false)
+  const [relayApplying, setRelayApplying] = useState(false)
+  const [relayError, setRelayError] = useState("")
   const [settings, setSettings] = useState(getSettings)
   const profileDirtyRef = useRef(false)
 
@@ -265,17 +268,28 @@ export default function SettingsPage() {
     setMsg(t("settings.cacheCleared"))
   }
 
-  const handleSaveRelay = () => {
-    const host = relayHost.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
-    if (!host) {
-      resetRelayConfig()
-    } else {
-      setRelayConfig({ host, protocol: relayProtocol })
-    }
+  const handleSaveRelay = async () => {
+    if (relayApplying) return
+    const host = parseRelayInput(relayHost).host
+    setRelayError("")
     // BASE_URL/WS_BASE are frozen at module load — a relay switch only takes
     // effect after reload (same as ServerBootOverlay). Sessions/tokens belong
     // to one relay anyway, so a fresh boot on the new host is correct.
-    window.location.reload()
+    if (!host) {
+      resetRelayConfig()
+      window.location.reload()
+      return
+    }
+    // Save only a reachable relay: a typo would otherwise strand the next
+    // boot on the "server unavailable" overlay.
+    setRelayApplying(true)
+    const res = await applyRelayIfHealthy({ host, protocol: relayProtocol })
+    if (res.ok) {
+      window.location.reload()
+      return
+    }
+    setRelayError(t("auth.relayCheckFailed"))
+    setRelayApplying(false)
   }
 
   const handleLogout = () => {
@@ -829,34 +843,23 @@ export default function SettingsPage() {
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.relay")}</h3>
                 <p className="settings-info-text">{t("settings.relayDesc")}</p>
-                <label className="settings-label">{t("settings.relayProtocol")}</label>
-                <div className="settings-choices" role="radiogroup" aria-label={t("settings.relayProtocol")} style={{ marginBottom: 8 }}>
-                  {(["http", "https"] as const).map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      role="radio"
-                      aria-checked={relayProtocol === p}
-                      className={`settings-tab settings-choice ${relayProtocol === p ? "active" : ""}`}
-                      onClick={() => setRelayProtocol(p)}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
                 <label className="settings-label">{t("settings.relayHost")}</label>
-                <input
-                  className="settings-input"
-                  placeholder="127.0.0.1:8000"
-                  value={relayHost}
-                  onChange={(e) => { setRelayHost(e.target.value); setRelaySaved(false) }}
-                  style={{ width: "100%", marginBottom: 8 }}
-                />
+                <div style={{ marginBottom: 8 }}>
+                  <RelayAddressInput
+                    protocol={relayProtocol}
+                    host={relayHost}
+                    onProtocolChange={(p) => { setRelayProtocol(p); setRelaySaved(false); setRelayError("") }}
+                    onHostChange={(h) => { setRelayHost(h); setRelaySaved(false); setRelayError("") }}
+                    onSubmit={handleSaveRelay}
+                    placeholder="127.0.0.1:8000"
+                  />
+                </div>
+                {relayError && <p style={{ color: "var(--error)", fontSize: 13, margin: "0 0 8px" }}>{relayError}</p>}
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button className="settings-save-btn" onClick={handleSaveRelay} style={{ width: "auto", padding: "0 16px", height: 40 }}>
-                    {relaySaved ? t("settings.relaySaved") : t("common.save")}
+                  <button className="settings-save-btn" onClick={handleSaveRelay} disabled={relayApplying} style={{ width: "auto", padding: "0 16px", height: 40 }}>
+                    {relayApplying ? t("auth.relayChecking") : relaySaved ? t("settings.relaySaved") : t("common.save")}
                   </button>
-                  <button className="settings-action-btn" onClick={() => { resetRelayConfig(); setRelayHost(getRelayConfig().host); setRelayProtocol(getRelayConfig().protocol); setMsg(t("settings.relayReset")) }}>
+                  <button className="settings-action-btn" onClick={() => { resetRelayConfig(); setRelayHost(getRelayConfig().host); setRelayProtocol(getRelayConfig().protocol); setRelayError(""); setMsg(t("settings.relayReset")) }}>
                     {t("settings.relayReset")}
                   </button>
                 </div>

@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { claimLocalKeys } from "../services/localSession"
 import { hasSession } from "../services/tokenVault"
-import { BASE_URL, getRelayConfig, setRelayConfig } from "../config"
+import { BASE_URL, getRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
 import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
 
 // Свои prekeys должны лежать на реле — иначе собеседники получают
@@ -17,6 +17,7 @@ function healPreKeys(keys: E2EKeys, userId: string, where: string): void {
 }
 import { useTheme } from "../context/useTheme"
 import TurnstileWidget from "../components/TurnstileWidget"
+import RelayAddressInput from "../components/RelayAddressInput"
 
 function ThemeToggle() {
   const { theme, toggle } = useTheme()
@@ -166,20 +167,17 @@ export default function LoginPage() {
   const [relayError, setRelayError] = useState("")
 
   const handleApplyRelay = async () => {
-    const host = relayHost.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
+    const host = parseRelayInput(relayHost).host
     if (!host || relayApplying) return
     setRelayApplying(true)
     setRelayError("")
-    try {
-      const res = await fetch(`${relayProtocol}://${host}/health`, { signal: AbortSignal.timeout(8000) })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setRelayConfig({ host, protocol: relayProtocol })
+    const res = await applyRelayIfHealthy({ host, protocol: relayProtocol })
+    if (res.ok) {
       window.location.reload()
-    } catch {
-      setRelayError(t("auth.relayCheckFailed"))
-    } finally {
-      setRelayApplying(false)
+      return
     }
+    setRelayError(t("auth.relayCheckFailed"))
+    setRelayApplying(false)
   }
 
   const checkServerHealth = () => {
@@ -669,28 +667,16 @@ export default function LoginPage() {
               </span>
             ) : (
               <>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <select
-                    value={relayProtocol}
-                    onChange={(e) => setRelayProtocol(e.target.value as "http" | "https")}
-                    className="login-input"
-                    style={{ width: "auto", padding: "6px 8px", fontSize: 13 }}
-                    aria-label={t("settings.relayProtocol")}
-                  >
-                    <option value="https">https</option>
-                    <option value="http">http</option>
-                  </select>
-                  <input
-                    className="login-input"
-                    style={{ flex: 1, fontSize: 13 }}
-                    placeholder={t("settings.relayHost")}
-                    value={relayHost}
-                    onChange={(e) => setRelayHost(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleApplyRelay() }}
-                    autoFocus
-                    aria-label={t("settings.relayHost")}
-                  />
-                </div>
+                <RelayAddressInput
+                  protocol={relayProtocol}
+                  host={relayHost}
+                  onProtocolChange={setRelayProtocol}
+                  onHostChange={setRelayHost}
+                  onSubmit={handleApplyRelay}
+                  placeholder={t("settings.relayHost")}
+                  inputClassName="login-input"
+                  autoFocus
+                />
                 {relayError && <span style={{ fontSize: 12, color: "var(--error, #f44336)" }}>{relayError}</span>}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="login-btn" type="button" style={{ flex: 1, padding: "8px" }}
@@ -699,7 +685,7 @@ export default function LoginPage() {
                     {relayApplying ? t("auth.relayChecking") : t("auth.relayApply")}
                   </button>
                   <button className="link-btn" type="button" style={{ fontSize: 12 }}
-                    onClick={() => { setRelayEditing(false); setRelayError(""); setRelayHost(getRelayConfig().host) }}>
+                    onClick={() => { setRelayEditing(false); setRelayError(""); setRelayHost(getRelayConfig().host); setRelayProtocol(getRelayConfig().protocol) }}>
                     {t("common.cancel")}
                   </button>
                 </div>

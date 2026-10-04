@@ -443,6 +443,7 @@
     "relaySaved": "Saved",
     "relayReset": "Reset",
     "relayRestart": "Changes apply after the app restarts.",
+    "relayMixedContent": "This page is served over https — the browser will block an http relay. Use https.",
     "status": "Status",
     "statusPlaceholder": "e.g.: online, busy...",
     "bioPlaceholder": "Tell about yourself...",

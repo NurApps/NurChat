@@ -7,11 +7,12 @@ interface Props {
   message: string
   warning?: string
   confirmLabel?: string
+  confirmTone?: "danger" | "primary"
   onConfirm: () => void
   onClose: () => void
 }
 
-export default function ConfirmModal({ title, icon, message, warning, confirmLabel, onConfirm, onClose }: Props) {
+export default function ConfirmModal({ title, icon, message, warning, confirmLabel, confirmTone = "danger", onConfirm, onClose }: Props) {
   const { t } = useTranslation()
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
@@ -25,7 +26,7 @@ export default function ConfirmModal({ title, icon, message, warning, confirmLab
         </div>
         <div className="modal-footer">
           <button className="modal-btn cancel" onClick={onClose}>{t("common.cancel")}</button>
-          <button className="modal-btn danger" onClick={() => { onConfirm(); onClose() }}>
+          <button className={`modal-btn ${confirmTone}`} onClick={() => { onConfirm(); onClose() }}>
             {confirmLabel || t("common.delete")}
           </button>
         </div>

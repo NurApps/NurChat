@@ -858,8 +858,7 @@
 
   /* Нижняя панель плавает поверх контента, поэтому прокручиваемым областям
      под ней нужен нижний запас, чтобы последняя строка не пряталась за ней.
-     Область — только экраны внутри MobileTabsLayout: Profile/Blocked рисуются
-     вне него и панели не имеют. */
+     Область — только экраны внутри MobileTabsLayout. */
   .mobile-tabs-page .settings-layout,
   .mobile-tabs-page .settings-page > .settings-content {
     padding-bottom: calc(var(--bottom-nav-height) + 8px);

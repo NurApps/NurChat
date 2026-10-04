@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api, csrfHeader, apiErrorMessage } from "../services/api"
 import { getAccessToken } from "../services/tokenVault"
-import { BASE_URL, getRelayConfig, resetRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
+import { BASE_URL, avatarUrl, getRelayConfig, resetRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
 import { hasKeys, clearKeys } from "../services/e2e"
 import CustomThemeEditor from "../components/CustomThemeEditor"
 import { customSkinVariant, isCustomSkinId } from "../services/customTheme"
@@ -13,10 +13,12 @@ import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
 import { getSettings, setSetting, clearSettings } from "../services/userSettings"
 import { useTheme, LIGHT_THEMES, DARK_THEMES, type Theme, type ThemeMode } from "../context/ThemeContext"
-import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyhole, Palette, Settings, Shield, User } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyhole, LogOut, Camera, Pencil, Palette, Settings, Shield, User } from "lucide-react"
+import { getAvatarColor } from "../utils/avatar"
 import { useMobile } from "../hooks/useMobile"
 import ProfileEditor from "../components/ProfileEditor"
 import AccountsManager from "../components/AccountsManager"
+import AccountList from "../components/AccountList"
 import RelayAddressInput from "../components/RelayAddressInput"
 import type { UserResponse } from "../types"
 
@@ -44,6 +46,9 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>("profile")
   // На телефоне: false — список разделов, true — открытый раздел.
   const [sectionOpen, setSectionOpen] = useState(false)
+  // Анимируем возврат к списку только после того, как раздел уже открывали.
+  const [everOpened, setEverOpened] = useState(false)
+  const [autoEdit, setAutoEdit] = useState(false)
   const [msg, setMsgText] = useState("")
   const [msgKind, setMsgKind] = useState<"ok" | "err">("ok")
   const setMsg = (text: string) => { setMsgText(text); setMsgKind("ok") }
@@ -405,10 +410,12 @@ export default function SettingsPage() {
     setMsg("")
   }
 
-  const openSection = (id: SettingsTab) => {
+  const openSection = (id: SettingsTab, edit = false) => {
     setTab(id)
+    setAutoEdit(edit)
     setMsg("")
     setSectionOpen(true)
+    setEverOpened(true)
   }
 
   const handleBack = () => {
@@ -420,6 +427,32 @@ export default function SettingsPage() {
       navigate("/chat")
     }
   }
+
+  const formatSize = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes < 0) return "—"
+    if (bytes < 1024) return `${bytes} ${t("files.sizeB")}`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${t("files.sizeKB")}`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} ${t("files.sizeMB")}`
+  }
+
+  const avatarSrc = avatarUrl(user.avatar_path)
+  const displayName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username
+  const initial = (user.first_name?.[0] || user.username[0] || "?").toUpperCase()
+  const modeLabel = mode === "light" ? t("settings.themeModeLight") : mode === "dark" ? t("settings.themeModeDark") : t("settings.themeModeSystem")
+  const sectionMeta: Record<string, { color: string; value?: string }> = {
+    appearance: { color: "#8e6bd8", value: modeLabel },
+    notifications: { color: "#e5534b" },
+    privacy: { color: "#34a853" },
+    storage: { color: "#f29d38", value: storageInfo ? formatSize(storageInfo.total) : undefined },
+    security: { color: "#2a9fd6", value: pinEnabled || totpEnabled ? t("settings.pinEnabled") : t("settings.pinDisabled") },
+    account: { color: "#7d8a99" },
+    about: { color: "#5b7fd6", value: appVersion || FALLBACK_APP_VERSION },
+  }
+  const byId = (ids: SettingsTab[]) => ids.map((id) => {
+    const tb = tabs.find((x) => x.id === id)!
+    return { ...tb, ...sectionMeta[id] }
+  })
+  const listGroups = [byId(["appearance", "notifications", "privacy", "storage"]), byId(["security", "account"]), byId(["about"])]
 
   const showList = isMobile && !sectionOpen
   const showSection = !isMobile || sectionOpen
@@ -437,34 +470,66 @@ export default function SettingsPage() {
     document.getElementById(`settings-tab-${tabs[next].id}`)?.focus()
   }
 
-  const formatSize = (bytes: number) => {
-    if (!Number.isFinite(bytes) || bytes < 0) return "—"
-    if (bytes < 1024) return `${bytes} ${t("files.sizeB")}`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${t("files.sizeKB")}`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} ${t("files.sizeMB")}`
-  }
-
   return (
     <div className="settings-page">
-      <div className="settings-header">
-        <button type="button" className="settings-back" onClick={handleBack} aria-label={t("common.back")}>
-          <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
-        </button>
+      {!showList && <div className="settings-header">
+        {!showList && (
+          <button type="button" className="settings-back" onClick={handleBack} aria-label={t("common.back")}>
+            <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
+          </button>
+        )}
         <h2>{headerTitle}</h2>
-      </div>
+      </div>}
 
       <div className="settings-body">
+       {showList && (
+        <div className="settings-hero" style={{ ["--hero-color" as string]: getAvatarColor(user.id) }}>
+          <button type="button" className="settings-hero__edit" onClick={() => openSection("profile", true)}>{t("settings.editShort")}</button>
+          <div className="settings-hero__main">
+            <span className="settings-hero__avatar">
+              {avatarSrc ? (
+                // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
+                <img src={avatarSrc} alt="" width={96} height={96} />
+              ) : <span aria-hidden="true">{initial}</span>}
+            </span>
+            <span className="settings-hero__name">{displayName}</span>
+            <span className="settings-hero__sub">@{user.username}</span>
+          </div>
+        </div>
+       )}
        <div className="settings-layout">
         {showList && (
-          <nav className="settings-list" aria-label={t("settings.title")}>
-            {tabs.map((it) => (
-              <button key={it.id} type="button" className="settings-item" onClick={() => openSection(it.id)}>
-                <span className="settings-item__icon">{it.icon}</span>
-                <span className="settings-item__label">{it.label}</span>
-                <ChevronRight className="settings-item__arrow" size={18} strokeWidth={2} aria-hidden="true" />
+          <div className={`settings-mobile-home${everOpened ? " settings-slide-back" : ""}`}>
+            <div className="settings-hero-actions settings-list">
+              <button type="button" className="settings-item settings-item--action" onClick={() => openSection("profile")}>
+                <Camera size={22} strokeWidth={1.8} aria-hidden="true" />
+                <span className="settings-item__label">{t("settings.changePhoto")}</span>
               </button>
+              <button type="button" className="settings-item settings-item--action" onClick={() => openSection("profile", true)}>
+                <Pencil size={22} strokeWidth={1.8} aria-hidden="true" />
+                <span className="settings-item__label">{t("profile.editProfile")}</span>
+              </button>
+            </div>
+            <AccountList variant="settings" activeAvatarSrc={avatarSrc} />
+            {listGroups.map((group, gi) => (
+              <nav key={gi} className="settings-list" aria-label={t("settings.title")}>
+                {group.map((it) => (
+                  <button key={it.id} type="button" className="settings-item" onClick={() => openSection(it.id)}>
+                    <span className="settings-item__icon" style={{ background: it.color }}>{it.icon}</span>
+                    <span className="settings-item__label">{it.label}</span>
+                    {it.value && <span className="settings-item__value">{it.value}</span>}
+                    <ChevronRight className="settings-item__arrow" size={18} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                ))}
+              </nav>
             ))}
-          </nav>
+            <div className="settings-list">
+              <button type="button" className="settings-item settings-item--danger" onClick={handleLogout}>
+                <span className="settings-item__icon" style={{ background: "var(--danger)" }}><LogOut size={18} strokeWidth={2} aria-hidden="true" /></span>
+                <span className="settings-item__label">{t("settings.logoutAccount")}</span>
+              </button>
+            </div>
+          </div>
         )}
 
         {!isMobile && (
@@ -492,8 +557,9 @@ export default function SettingsPage() {
 
         {showSection && (
         <div
-          className="settings-content"
+          className={`settings-content${isMobile ? " settings-slide-forward" : ""}`}
           id="settings-panel"
+          key={isMobile ? tab : undefined}
           role={isMobile ? "region" : "tabpanel"}
           aria-labelledby={isMobile ? undefined : `settings-tab-${tab}`}
           aria-label={isMobile ? headerTitle : undefined}
@@ -502,7 +568,7 @@ export default function SettingsPage() {
 
           {/* ─── Profile ─── */}
           {tab === "profile" && (
-            <ProfileEditor user={user} onUserChange={setUser} onDirtyChange={(d) => { profileDirtyRef.current = d }} />
+            <ProfileEditor autoEdit={autoEdit} user={user} onUserChange={setUser} onDirtyChange={(d) => { profileDirtyRef.current = d }} />
           )}
 
           {/* ─── Appearance ─── */}
@@ -809,7 +875,7 @@ export default function SettingsPage() {
                             : t("settings.pinEnterCurrentCode")
                           : t("settings.pinConfirmCode")}
                     </p>
-                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
                       <input
                         className="settings-input"
                         type="password"
@@ -879,7 +945,7 @@ export default function SettingsPage() {
                 <button className="settings-action-btn" onClick={handleLogout}>{t("settings.logoutAccount")}</button>
                 <button className="settings-action-btn danger" onClick={handleDeleteAccount}>{t("settings.deleteAccount")}</button>
               </div>
-              <AccountsManager />
+              <AccountsManager showList={!isMobile} activeAvatarSrc={avatarSrc} />
             </div>
           )}
 

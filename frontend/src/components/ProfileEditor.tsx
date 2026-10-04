@@ -15,12 +15,14 @@ const BIO_MAX = 500
 interface Props {
   user: UserResponse
   onUserChange: (user: UserResponse) => void
-  /** Есть несохранённые правки — страница-владелец спрашивает перед уходом. */
+  /** Есть несохранённые правки — настройки спрашивают перед уходом. */
   onDirtyChange?: (dirty: boolean) => void
+  /** Сразу открыть форму редактирования при показе. */
+  autoEdit?: boolean
 }
 
-/** Профиль: просмотр и редактирование на месте. Общий для /profile и вкладки настроек. */
-export default function ProfileEditor({ user, onUserChange, onDirtyChange }: Props) {
+/** Профиль: просмотр и редактирование на месте. Вкладка «Профиль» настроек. */
+export default function ProfileEditor({ user, onUserChange, onDirtyChange, autoEdit }: Props) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -38,6 +40,8 @@ export default function ProfileEditor({ user, onUserChange, onDirtyChange }: Pro
     setMsg("")
     setEditing(true)
   }
+
+  useEffect(() => { if (autoEdit) startEdit() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cancelEdit = () => {
     setEditing(false)

@@ -444,6 +444,8 @@
     "accountActive": "активен",
     "accountSwitch": "Перейти",
     "accountRemove": "Убрать",
+    "accountAddGo": "Добавить",
+    "accountOptions": "Действия с аккаунтом",
     "accountAdd": "Добавить аккаунт",
     "accountRemoved": "Профиль убран с устройства.",
     "accountRemoveConfirm": "Убрать {{name}} с этого устройства? Локальные ключи и кэши будут стёрты.",

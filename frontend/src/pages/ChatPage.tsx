@@ -825,7 +825,6 @@ export default function ChatPage() {
         avatarUrl={avatarUrl(currentUser.avatar_path)}
         onProfile={handleProfile}
         onLogout={handleLogout}
-        onSwitchAccount={handleLogout}
         onSettings={handleSettings}
       />
 

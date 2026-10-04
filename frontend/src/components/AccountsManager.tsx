@@ -1,17 +1,10 @@
 import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
-import { getRelayConfig, setRelayConfig } from "../config"
-import {
-  ensureActiveProfile,
-  getActiveProfileId,
-  listProfiles,
-  removeProfile,
-  setActiveProfileId,
-  type AccountProfile,
-} from "../services/profiles"
+import { getRelayConfig } from "../config"
+import { ensureActiveProfile, type AccountProfile } from "../services/profiles"
 import { readStoredUserRaw } from "../services/tokenVault"
-import { performLogout, storedAccount } from "../services/localSession"
+import { storedAccount } from "../services/localSession"
+import AccountList from "./AccountList"
 import {
   decryptTransferBundle,
   exportTransferBundle,
@@ -34,11 +27,8 @@ function storedUserId(): string | null {
  * Мультиаккаунт (активен один) + переезд на другое устройство.
  * Один фронт на десктоп и мобайл — отдельная вёрстка не нужна.
  */
-export default function AccountsManager() {
+export default function AccountsManager({ showList = true, activeAvatarSrc }: { showList?: boolean; activeAvatarSrc?: string | null }) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
-  const [profiles, setProfiles] = useState<AccountProfile[]>(() => listProfiles())
-  const [activeId, setActiveId] = useState<string | null>(() => getActiveProfileId())
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState("")
   const [err, setErr] = useState("")
@@ -49,11 +39,6 @@ export default function AccountsManager() {
   const [showImport, setShowImport] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const refresh = () => {
-    setProfiles(listProfiles())
-    setActiveId(getActiveProfileId())
-  }
-
   const fail = (e: unknown, fallback: string) => {
     const code = e instanceof Error ? e.message : ""
     if (code === "bad-password") setErr(t("settings.transferBadPassword"))
@@ -62,37 +47,16 @@ export default function AccountsManager() {
     else setErr(fallback)
   }
 
-  const handleSwitch = (id: string) => {
-    if (id === activeId) return
-    const target = profiles.find((p) => p.id === id)
-    if (!target) return
-    // Без потерь: все профили уже сохранены. Память умирает перезагрузкой.
-    setActiveProfileId(id)
-    setRelayConfig({ host: target.relayHost, protocol: target.relayProtocol })
-    window.location.reload()
-  }
-
-  const handleRemove = async (id: string) => {
-    const target = profiles.find((p) => p.id === id)
-    if (!target) return
-    if (!window.confirm(t("settings.accountRemoveConfirm", { name: `${target.username}@${target.relayHost}` }))) return
+  const handleRemove = async (p: AccountProfile) => {
     setBusy(true)
     try {
-      await wipeProfileData(id)
-      refresh()
+      await wipeProfileData(p.id)
       setMsg(t("settings.accountRemoved"))
     } catch (e) {
       fail(e, t("settings.accountRemoveFailed"))
     } finally {
       setBusy(false)
     }
-  }
-
-  const handleAdd = () => {
-    // Новый вход = новая сессия: текущую гасим, профиль остаётся в списке.
-    if (!window.confirm(t("settings.accountAddConfirm"))) return
-    performLogout()
-    navigate("/login", { replace: true })
   }
 
   const handleExport = async () => {
@@ -172,34 +136,12 @@ export default function AccountsManager() {
 
   return (
     <div className="settings-sections">
-      <div className="settings-group">
-        <h3 className="settings-group-title">{t("settings.accountsTitle")}</h3>
-        {profiles.length === 0 && <p className="settings-info-text">{t("settings.accountsEmpty")}</p>}
-        {profiles.map((p) => (
-          <div key={p.id} className="settings-field-row">
-            <span className="settings-field-label">
-              @{p.username}
-              <span style={{ opacity: 0.65 }}> · {p.relayProtocol}://{p.relayHost}</span>
-              {p.id === activeId && <span> · {t("settings.accountActive")}</span>}
-            </span>
-            <span style={{ display: "flex", gap: 8 }}>
-              {p.id !== activeId && (
-                <button type="button" className="settings-action-btn" disabled={busy} onClick={() => handleSwitch(p.id)}>
-                  {t("settings.accountSwitch")}
-                </button>
-              )}
-              <button type="button" className="settings-action-btn danger" disabled={busy} onClick={() => handleRemove(p.id)}>
-                {t("settings.accountRemove")}
-              </button>
-            </span>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button type="button" className="settings-action-btn" disabled={busy} onClick={handleAdd}>
-            {t("settings.accountAdd")}
-          </button>
+      {showList && (
+        <div className="settings-group">
+          <h3 className="settings-group-title">{t("settings.accountsTitle")}</h3>
+          <AccountList variant="settings" activeAvatarSrc={activeAvatarSrc} onRemove={handleRemove} />
         </div>
-      </div>
+      )}
 
       <div className="settings-group">
         <h3 className="settings-group-title">{t("settings.transferTitle")}</h3>

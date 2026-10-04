@@ -18,6 +18,7 @@ import { getAvatarColor } from "../utils/avatar"
 import { useMobile } from "../hooks/useMobile"
 import ProfileEditor from "../components/ProfileEditor"
 import AccountsManager from "../components/AccountsManager"
+import AccountList from "../components/AccountList"
 import RelayAddressInput from "../components/RelayAddressInput"
 import type { UserResponse } from "../types"
 
@@ -506,6 +507,7 @@ export default function SettingsPage() {
                 <span className="settings-item__label">{t("profile.editProfile")}</span>
               </button>
             </div>
+            <AccountList variant="settings" activeAvatarSrc={avatarSrc} />
             {listGroups.map((group, gi) => (
               <nav key={gi} className="settings-list" aria-label={t("settings.title")}>
                 {group.map((it) => (
@@ -940,7 +942,7 @@ export default function SettingsPage() {
                 <button className="settings-action-btn" onClick={handleLogout}>{t("settings.logoutAccount")}</button>
                 <button className="settings-action-btn danger" onClick={handleDeleteAccount}>{t("settings.deleteAccount")}</button>
               </div>
-              <AccountsManager />
+              <AccountsManager showList={!isMobile} activeAvatarSrc={avatarSrc} />
             </div>
           )}
 

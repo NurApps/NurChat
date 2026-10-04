@@ -603,3 +603,92 @@
 .custom-theme-picker { display: flex; align-items: center; gap: 8px; }
 .custom-theme-picker input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid var(--border-color); border-radius: 6px; background: var(--surface); cursor: pointer; }
 .custom-theme-picker code { font-size: 12px; color: var(--text-secondary); min-width: 58px; }
+
+/* Переключатель аккаунтов (настройки и меню чата), как в Telegram */
+.account-list { display: flex; flex-direction: column; }
+.account-list__row { display: flex; align-items: center; }
+.account-list__main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.account-list__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  color: #fff;
+  font-weight: 600;
+}
+.account-list__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.account-list__text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.account-list__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-list__relay { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-list__check { color: var(--tg-blue); flex-shrink: 0; }
+.account-list__more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.account-list__remove {
+  padding: 10px 16px 10px 60px;
+  background: none;
+  border: none;
+  color: var(--danger);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.account-list__add {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--tg-blue);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.account-list__add-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  flex-shrink: 0;
+}
+/* Карточка в настройках: как остальные списки */
+.account-list--settings { background: var(--surface); border-radius: 16px; overflow: hidden; }
+.account-list--settings .account-list__row-wrap,
+.account-list--settings .account-list__add { min-height: 56px; }
+.account-list--settings .account-list__row-wrap { border-bottom: 1px solid var(--divider); }
+.account-list--settings .account-list__add { padding: 8px 16px; }
+.account-list--settings .account-list__main { padding: 8px 16px; }
+/* Меню в шапке чата: внутри .topbar-dropdown кнопки уже стилизованы */
+.account-list--menu { max-height: 240px; overflow-y: auto; }
+.account-list--menu .account-list__main { padding: 6px 8px; }
+.account-list--menu .account-list__avatar,
+.account-list--menu .account-list__add-icon { width: 28px; height: 28px; font-size: 13px; }

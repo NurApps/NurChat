@@ -5,6 +5,8 @@ import { api } from "../services/api"
 import { readStoredUserRaw } from "../services/tokenVault"
 import type { UserResponse } from "../types"
 import { getAvatarColor } from "../utils/avatar"
+import { useAvatarStyle } from "../services/avatarStyle"
+import Identicon from "../components/Identicon"
 import { formatTime, formatDateShort } from "../utils/format"
 import { ArrowLeft } from "lucide-react"
 
@@ -44,6 +46,7 @@ function formatCallTime(ts: string): string {
 
 export default function CallHistoryPage() {
   const { t } = useTranslation()
+  const avatarStyle = useAvatarStyle()
   const navigate = useNavigate()
   const [calls, setCalls] = useState<CallLog[]>([])
   const [currentUser, setCurrentUser] = useState<UserResponse | null>(null)
@@ -138,7 +141,7 @@ export default function CallHistoryPage() {
                     width: 40,
                     height: 40,
                     borderRadius: "50%",
-                    background: other ? getAvatarColor(other.id) : "#666",
+                    background: other && avatarStyle === "letter" ? getAvatarColor(other.id) : "transparent",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -146,8 +149,13 @@ export default function CallHistoryPage() {
                     fontWeight: 600,
                     color: "#fff",
                     flexShrink: 0,
+                    overflow: "hidden",
                   }}>
-                    {other?.first_name?.[0]?.toUpperCase() || "?"}
+                    {other && avatarStyle === "identicon" ? (
+                      <Identicon seed={other.id} className="identicon-cover" label={other.username} />
+                    ) : (
+                      other?.first_name?.[0]?.toUpperCase() || "?"
+                    )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

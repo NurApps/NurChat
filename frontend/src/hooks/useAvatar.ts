@@ -18,9 +18,19 @@ export function useAvatar(onUserUpdate?: (user: UserResponse) => void) {
   const setErr = (m: string) => { _setMsg(m); setMsgKind("err") }
 
   const uploadAvatar = useCallback(async (file: File) => {
-    setUploading(true)
     setMsg("")
     setMsgKind("")
+    // Ранняя клиентская проверка — не гоняем мусор на сервер.
+    const allowed = ["image/jpeg", "image/png", "image/webp"]
+    if (!allowed.includes(file.type) && !/\.(jpe?g|png|webp)$/i.test(file.name)) {
+      setErr(t("profile.avatarBadType", "Поддерживаются только JPG, PNG и WebP"))
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErr(t("profile.avatarTooLarge", "Аватар слишком большой. Максимум 5 МБ"))
+      return
+    }
+    setUploading(true)
     try {
       const token = getAccessToken()
       const form = new FormData()

@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { getAvatarColor } from "../utils/avatar"
+import { useAvatarStyle } from "../services/avatarStyle"
+import Identicon from "../components/Identicon"
 import { formatDateShort } from "../utils/format"
 import { ArrowLeft, Ban } from "lucide-react"
 
@@ -17,6 +19,7 @@ interface BlockedUser {
 export default function BlockedUsersPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const avatarStyle = useAvatarStyle()
   const [blocked, setBlocked] = useState<BlockedUser[]>([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState("")
@@ -92,15 +95,21 @@ export default function BlockedUsersPage() {
                     width: 36,
                     height: 36,
                     borderRadius: "50%",
-                    background: getAvatarColor(entry.blocked_user_id),
+                    background: avatarStyle === "letter" ? getAvatarColor(entry.blocked_user_id) : "transparent",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     fontSize: 14,
                     fontWeight: 600,
                     color: "#fff",
+                    flexShrink: 0,
+                    overflow: "hidden",
                   }}>
-                    ?
+                    {avatarStyle === "identicon" ? (
+                      <Identicon seed={entry.blocked_user_id} className="identicon-cover" />
+                    ) : (
+                      entry.blocked_user?.username?.[0]?.toUpperCase() || "?"
+                    )}
                   </div>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next"
-import { getAvatarColor } from "../utils/avatar"
 import type { ContactResponse } from "../types"
+import UserAvatar from "./UserAvatar"
 import { MessageCircle, Trash2 } from "lucide-react"
 
 interface Props {
@@ -12,14 +12,16 @@ interface Props {
 export default function ContactListItem({ contact, onRemove, onStartChat }: Props) {
   const { t } = useTranslation()
   const username = contact.contact_user.username
-  const initial = username[0]?.toUpperCase() || "?"
 
   return (
     <div className="contact-list-item">
       <div className="cli-avatar">
-        <div className="cli-avatar-circle" style={{ background: getAvatarColor(contact.contact_user.id) }}>
-          <span>{initial}</span>
-        </div>
+        <UserAvatar
+          id={contact.contact_user.id}
+          username={username}
+          avatarPath={contact.contact_user.avatar_path}
+          circleClassName="cli-avatar-circle"
+        />
       </div>
       <div className="contact-info">
         <span className="contact-name">{username}</span>

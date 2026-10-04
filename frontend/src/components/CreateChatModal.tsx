@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import { getAvatarColor } from "../utils/avatar"
+import UserAvatar from "./UserAvatar"
 import type { UserResponse } from "../types"
 import { Check, Search, X } from "lucide-react"
 
@@ -129,9 +129,7 @@ export default function CreateChatModal({ currentUserId, onCreate, onClose }: Pr
                       <Check size={14} color="#0e7cb4" strokeWidth={3} aria-hidden="true" />
                     )}
                   </div>
-                  <div className="modal-user-avatar" style={{ background: getAvatarColor(user.id) }}>
-                    <span>{user.username[0]?.toUpperCase() || "?"}</span>
-                  </div>
+                  <UserAvatar id={user.id} username={user.username} avatarPath={user.avatar_path} circleClassName="modal-user-avatar" />
                   <div className="modal-user-info">
                     <span className="modal-user-name">{user.username}</span>
                     <span className="modal-user-sub">{user.first_name}</span>

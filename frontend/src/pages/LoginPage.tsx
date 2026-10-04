@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from "react"
+import { useState, useEffect, useLayoutEffect, useRef, type JSX } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"

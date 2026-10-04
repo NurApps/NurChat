@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import type { MessageResponse, ReactionRow, UserResponse } from "../types"
 import { api } from "../services/api"
-import { getAvatarColor } from "../utils/avatar"
+import UserAvatar from "./UserAvatar"
 import { formatTime, formatFull } from "../utils/format"
 import { renderMarkdown } from "../utils/markdown"
 import MediaViewer from "./MediaViewer"
@@ -90,10 +90,8 @@ export default function MessageBubble({
   }, [menuOpen, isMyMessage, message.id])
 
   const senderName = message.user?.username || "User"
-  const avatarChar = senderName[0]?.toUpperCase() || "?"
-  // Цвет — от стабильного user_id, как в списке чатов (см. ChatListItem):
-  // по username один и тот же юзер красился по-разному в разных местах.
-  const avatarColor = getAvatarColor(message.user_id || senderName)
+  const senderAvatarPath = message.user?.avatar_path
+  const senderId = message.user?.id || message.user_id || senderName
 
   const handleEditSave = () => {
     if (editText.trim() && editText !== message.content) {
@@ -402,7 +400,7 @@ export default function MessageBubble({
       <>
       <div className={`msg-row ${isMyMessage ? "my-row" : "other-row"}`}>
         {!isMyMessage && (
-          <div className="msg-avatar" style={{ background: avatarColor }}>{avatarChar}</div>
+          <UserAvatar id={senderId} username={senderName} avatarPath={senderAvatarPath} circleClassName="msg-avatar" />
         )}
         {bubble}
         {isMyMessage && <div className="msg-spacer" />}
@@ -444,13 +442,13 @@ export default function MessageBubble({
     return (
       <>
       <div className="msg-row other-row">
-        <div
-          className="msg-avatar clickable"
-          style={{ background: avatarColor }}
+        <UserAvatar
+          id={senderId}
+          username={senderName}
+          avatarPath={senderAvatarPath}
+          circleClassName="msg-avatar clickable"
           onClick={() => message.user && onViewProfile?.(message.user)}
-        >
-          {avatarChar}
-        </div>
+        />
         {bubble}
         <div className="msg-menu-area" ref={menuRef}>
           <button className="msg-menu-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label={t("chat.messageMenu")} aria-expanded={menuOpen} aria-haspopup="menu">

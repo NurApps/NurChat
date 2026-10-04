@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { avatarUrl } from "../config"
+import { useAvatarStyle } from "../services/avatarStyle"
+import Identicon from "./Identicon"
 import type { UserResponse } from "../types"
 import { formatDateShort, formatFull } from "../utils/format"
 import { getAvatarColor } from "../utils/avatar"
@@ -39,6 +41,7 @@ export default function UserProfileModal({ user, currentUserId, onClose, onWrite
   const avatarChar = name[0]?.toUpperCase() || "?"
   const avatarColor = getAvatarColor(user.id)
   const avatar = avatarUrl(user.avatar_path)
+  const avatarStyle = useAvatarStyle()
   const isSelf = !!currentUserId && currentUserId === user.id
   const dialogRef = useRef<HTMLDivElement>(null)
 
@@ -73,6 +76,10 @@ export default function UserProfileModal({ user, currentUserId, onClose, onWrite
           {avatar ? (
             // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
             <img src={avatar} alt={name} className="upm-avatar-img" />
+          ) : avatarStyle === "identicon" ? (
+            <div className="upm-avatar-img" style={{ overflow: "hidden" }}>
+              <Identicon seed={user.id} className="identicon-cover" label={name} />
+            </div>
           ) : (
             <div className="upm-avatar-circle" style={{ background: avatarColor }}>
               {avatarChar}

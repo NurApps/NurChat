@@ -19,6 +19,7 @@ from server.routes import (
     files,
     keys,
     push,
+    webauthn,
 )
 from server.utils.file_cleanup import file_cleanup_service
 from server.utils.logger import generate_request_id, logger, request_id_var
@@ -109,6 +110,8 @@ app.add_middleware(
         "/api/auth/captcha",
         "/api/auth/login",
         "/api/auth/register",
+        # Passkey-вход — публичный флоу до сессии (как login).
+        "/api/webauthn/login",
         # /api/files/upload НЕ exempt: аплоад всегда идёт через XHR/fetch
         # (api.uploadFile ставит X-CSRF-Token), а скачивание — GET (CSRF
         # не применяется к GET). JWT в заголовке — основная защита.
@@ -326,6 +329,7 @@ app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])
 app.include_router(files.router, prefix="/api/files", tags=["Files"])
 app.include_router(contacts_groups.router, prefix="/api/contacts-groups", tags=["Contacts and Groups"])
 app.include_router(keys.router, prefix="/api/keys", tags=["Keys"])
+app.include_router(webauthn.router, prefix="/api/webauthn", tags=["Passkeys"])
 app.include_router(push.router)
 app.include_router(contact_requests.router, tags=["Contact Requests"])
 

@@ -67,6 +67,27 @@ export function clearPlaintextCache(): void {
   try { localStorage.removeItem(storageKey()) } catch { /* ignore */ }
 }
 
+/**
+ * Полная замена кэша (импорт переезда). Принимает только плоский
+ * объект string→string с лимитом, иначе — игнорирует (чужой файл).
+ */
+export function replacePlaintextCache(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false
+  const clean: PlaintextCache = {}
+  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+    if (typeof k === "string" && typeof v === "string" && k && v) clean[k] = v
+  }
+  const keys = Object.keys(clean).slice(-MAX_ENTRIES)
+  const bounded: PlaintextCache = {}
+  for (const k of keys) bounded[k] = clean[k]
+  try {
+    localStorage.setItem(storageKey(), JSON.stringify(bounded))
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function getPlaintext(messageId: string): string | null {
   if (!messageId) return null
   return loadPlaintextCache()[messageId] ?? null

@@ -19,6 +19,7 @@ import { getAvatarColor } from "../utils/avatar"
 import { useMobile } from "../hooks/useMobile"
 import ProfileEditor from "../components/ProfileEditor"
 import AccountsManager from "../components/AccountsManager"
+import PasskeyManager from "../components/PasskeyManager"
 import AccountList from "../components/AccountList"
 import RelayAddressInput from "../components/RelayAddressInput"
 import type { UserResponse } from "../types"
@@ -838,6 +839,12 @@ export default function SettingsPage() {
                     </button>
                   </div>
                 )}
+              </div>
+
+              <div className="settings-group">
+                <h3 className="settings-group-title">{t("settings.passkeyTitle")}</h3>
+                <p className="settings-info-text">{t("settings.passkeyDesc")}</p>
+                <PasskeyManager />
               </div>
               
               <div className="settings-group">

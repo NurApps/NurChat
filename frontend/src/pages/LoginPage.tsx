@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { claimLocalKeys, performRelaySwitch, storedAccount } from "../services/localSession"
+import { isPasskeySupported, loginWithPasskey } from "../services/webauthn"
 import { upsertProfile } from "../services/profiles"
 import { hasSession, writeStoredUserRaw } from "../services/tokenVault"
 import { BASE_URL, getRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
@@ -166,6 +167,8 @@ export default function LoginPage() {
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">(() => getRelayConfig().protocol)
   const [relayApplying, setRelayApplying] = useState(false)
   const [relayError, setRelayError] = useState("")
+  // Passkey-кнопка только там, где браузер реально умеет WebAuthn.
+  const [passkeySupported] = useState(() => isPasskeySupported())
 
   const handleApplyRelay = async () => {
     const host = parseRelayInput(relayHost).host
@@ -368,6 +371,46 @@ export default function LoginPage() {
       const msg = err?.message || err?.toString() || ""
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("ERR_CONNECTION_REFUSED")) {
         setError(`${t("errors.network")}: ${BASE_URL}`)
+      } else {
+        setError(msg || t("auth.wrongCredentials"))
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handlePasskeyLogin() {
+    setError("")
+    if (!loginUsername.trim()) {
+      setError(t("auth.enterUsername"))
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await loginWithPasskey(loginUsername.trim())
+      if (res.requires_2fa) {
+        // Passkey не обходит TOTP: дальше обычный код из аутентификатора.
+        api.setToken(res.access_token)
+        setAwaiting2fa(true)
+        setError("")
+        return
+      }
+      api.setToken(res.access_token, res.refresh_token)
+      if (!res.user) throw new Error(t("auth.wrongCredentials"))
+      writeStoredUserRaw(JSON.stringify(res.user))
+      {
+        const relay = getRelayConfig()
+        upsertProfile(relay.protocol, relay.host, res.user.id, res.user.username)
+      }
+      await claimLocalKeys(res.user.id)
+      const keys = await loadKeys()
+      if (keys) healPreKeys(keys, res.user.id, "passkey")
+      navigate("/chat", { replace: true })
+    } catch (err: unknown) {
+      const name = (err as { name?: string })?.name ?? ""
+      const msg = err instanceof Error ? err.message : String(err ?? "")
+      if (name === "NotAllowedError" || msg === "ceremony-cancelled") {
+        setError(t("auth.passkeyCancelled"))
       } else {
         setError(msg || t("auth.wrongCredentials"))
       }
@@ -690,6 +733,17 @@ export default function LoginPage() {
               </span>
             )}
           </button>
+          {tab === "login" && !awaiting2fa && passkeySupported && (
+            <button
+              className="login-btn"
+              type="button"
+              disabled={loading}
+              onClick={() => void handlePasskeyLogin()}
+              style={{ marginTop: 8 }}
+            >
+              {t("auth.passkeyLogin")}
+            </button>
+          )}
         </div>
 
         <div className="login-links">

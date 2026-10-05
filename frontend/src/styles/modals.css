@@ -548,6 +548,8 @@
   animation: fadeIn 0.15s ease;
 }
 
+.media-viewer-overlay.media-viewer-morph { animation: none; }
+
 .media-viewer {
   position: relative;
   max-width: 92vw;

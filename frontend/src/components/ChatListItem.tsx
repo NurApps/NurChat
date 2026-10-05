@@ -6,11 +6,13 @@ import { formatFull, formatRelativeTime } from "../utils/format"
 import { LockKeyhole, MoreVertical, Pin, Users, VolumeX } from "lucide-react"
 import UserAvatar from "./UserAvatar"
 import { userDisplayName } from "../utils/userName"
+import { viewTransitionName } from "../utils/viewTransition"
 
 interface Props {
   chat: ChatResponse
   currentUser: UserResponse
   selected?: boolean
+  transitionToWindow?: boolean
   onClick: (chatId: string) => void
   onPin?: (chatId: string, isPinned: boolean) => void
   onMute?: (chatId: string, isMuted: boolean) => void
@@ -38,7 +40,7 @@ function getLastMessagePreview(chat: ChatResponse, t: (key: string) => string): 
   return c
 }
 
-export default function ChatListItem({ chat, currentUser, selected = false, onClick, onPin, onMute, onDelete }: Props) {
+export default function ChatListItem({ chat, currentUser, selected = false, transitionToWindow = false, onClick, onPin, onMute, onDelete }: Props) {
   const { t } = useTranslation()
   const displayName = getDisplayName(chat, currentUser, t)
   // Цвет — от стабильного id (пир или чат), а не от отображаемого имени:
@@ -89,6 +91,7 @@ export default function ChatListItem({ chat, currentUser, selected = false, onCl
   return (
     <div
       className={`chat-list-item${selected ? " active" : ""}`}
+      style={!selected && transitionToWindow ? { viewTransitionName: viewTransitionName("chat-window", chat.id) } : undefined}
       role="button"
       tabIndex={0}
       aria-current={selected ? "true" : undefined}
@@ -98,7 +101,7 @@ export default function ChatListItem({ chat, currentUser, selected = false, onCl
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleActivate() }
       }}
     >
-      <div className="cli-avatar">
+      <div className="cli-avatar" style={!selected && !chat.is_group && otherPeer ? { viewTransitionName: viewTransitionName("chat-avatar", otherPeer.id) } : undefined}>
         {otherPeer && !chat.is_group ? (
           <UserAvatar id={otherPeer.id} username={displayName} avatarPath={otherPeer.avatar_path} circleClassName="cli-avatar-circle" />
         ) : (

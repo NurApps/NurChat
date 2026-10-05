@@ -34,6 +34,7 @@ import ChatModals from "../components/ChatModals"
 
 import { getDraft, saveDraft, removeDraft } from "../utils/drafts"
 import { userDisplayName } from "../utils/userName"
+import { viewTransitionName, withViewTransition } from "../utils/viewTransition"
 
 function hexToBytesLocal(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
@@ -481,12 +482,14 @@ export default function ChatPage() {
     }
 
     if (selectedChat) saveDraft(selectedChat.id, input)
-    setSelectedChat(chat)
-    setMessages([])
-    setReplyTo(null)
-    setShowEmoji(false)
-    setHasMore(true)
-    setInput(getDraft(chatId))
+    withViewTransition(() => {
+      setSelectedChat(chat)
+      setMessages([])
+      setReplyTo(null)
+      setShowEmoji(false)
+      setHasMore(true)
+      setInput(getDraft(chatId))
+    })
     api.markAsRead(chatId).catch(() => {})
     loadChats()
     loadMessages(chat)
@@ -797,7 +800,7 @@ export default function ChatPage() {
     setIncomingCall(null)
   }, [incomingCall, setIncomingCall, wsRef])
 
-  const handleViewProfile = useCallback((user: UserResponse) => setProfileUser(user), [setProfileUser])
+  const handleViewProfile = useCallback((user: UserResponse) => withViewTransition(() => setProfileUser(user)), [setProfileUser])
 
   const handleProfile = useCallback(() => navigate("/settings"), [navigate])
   const handleLogout = useCallback(() => { performLogout(); navigate("/login", { replace: true }) }, [navigate])
@@ -915,15 +918,16 @@ export default function ChatPage() {
               <p>{t("chat.placeholder")}</p>
             </div>
           ) : (
-            <div className="chat-window">
+            <div className="chat-window" style={isMobile ? { viewTransitionName: viewTransitionName("chat-window", selectedChat.id) } : undefined}>
               {/* Header */}
               <div className="chat-header">
                 {isMobile && (
-                  <button className="ch-btn mobile-back" onClick={() => setSelectedChat(null)} aria-label={t("common.back", "Назад")}>
+                  <button className="ch-btn mobile-back" onClick={() => withViewTransition(() => setSelectedChat(null))} aria-label={t("common.back", "Назад")}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
                   </button>
                 )}
                 <div className="ch-avatar clickable"
+                  style={selectedChatPeer && (!profileUser || profileUser.id === selectedChatPeer.id) ? { viewTransitionName: viewTransitionName("chat-avatar", selectedChatPeer.id) } : undefined}
                   onClick={() => { if (!isSelectedGroup) { const peer = selectedChat.participants.find(p => p.id !== currentUser.id); if (peer) handleViewProfile(peer) } }}>
                   {(() => {
                     const src = selectedChatPeer ? avatarUrl(selectedChatPeer.avatar_path) : null
@@ -1192,7 +1196,7 @@ export default function ChatPage() {
         onAddContact={handleAddContact} onCloseAddContact={() => setShowAddContact(false)}
         showCreateChat={showCreateChat} onCreateChat={handleCreateChat}
         onCloseCreateChat={() => setShowCreateChat(false)}
-        profileUser={profileUser} onCloseProfile={() => setProfileUser(null)} onWriteToUser={handleStartChat}
+        profileUser={profileUser} onCloseProfile={() => withViewTransition(() => setProfileUser(null))} onWriteToUser={handleStartChat}
         showGroupSettings={showGroupSettings} selectedChat={selectedChat}
         onCloseGroupSettings={() => setShowGroupSettings(false)} onGroupUpdated={loadChats}
         showMessageInfo={showMessageInfo} onCloseMessageInfo={() => setShowMessageInfo(null)}

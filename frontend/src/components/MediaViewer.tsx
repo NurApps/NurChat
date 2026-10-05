@@ -4,6 +4,7 @@ import { api } from "../services/api"
 import { getAccessToken } from "../services/tokenVault"
 import { platform } from "../services/platform"
 import { ArrowDownToLine, FileText, X } from "lucide-react"
+import { viewTransitionName } from "../utils/viewTransition"
 
 interface MediaViewerProps {
   type: "image" | "video" | "document"
@@ -11,9 +12,10 @@ interface MediaViewerProps {
   filename?: string
   fileId?: string
   onClose: () => void
+  viewTransitionId?: string
 }
 
-export default function MediaViewer({ type, url, filename, fileId, onClose }: MediaViewerProps) {
+export default function MediaViewer({ type, url, filename, fileId, onClose, viewTransitionId }: MediaViewerProps) {
   const { t } = useTranslation()
   const overlayRef = useRef<HTMLDivElement>(null)
   const [docError, setDocError] = useState(false)
@@ -66,12 +68,12 @@ export default function MediaViewer({ type, url, filename, fileId, onClose }: Me
 
   if (type === "image") {
     return (
-      <div className="media-viewer-overlay" role="dialog" aria-modal="true" aria-label="Просмотр медиа" ref={overlayRef} onClick={handleOverlayClick}>
+      <div className="media-viewer-overlay media-viewer-morph" role="dialog" aria-modal="true" aria-label="Просмотр медиа" ref={overlayRef} onClick={handleOverlayClick}>
         <div className="media-viewer media-viewer-image">
           <button className="media-viewer-close" onClick={onClose} title={t("common.close")}>
             <X size={24} strokeWidth={2} aria-hidden="true" />
           </button>
-          <img src={url} alt={filename || t("chat.photo")} className="media-viewer-img" />
+          <img src={url} alt={filename || t("chat.photo")} className="media-viewer-img" style={viewTransitionId ? { viewTransitionName: viewTransitionName("media", viewTransitionId) } : undefined} />
           <div className="media-viewer-toolbar">
             {filename && <span className="media-viewer-name">{filename}</span>}
             <button className="media-viewer-action" onClick={handleDownload} title={t("chat.download")}>

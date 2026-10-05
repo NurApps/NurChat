@@ -11,6 +11,7 @@ import { useFileBlobUrl } from "../hooks/useFileBlobUrl"
 import { useFavoritesStore } from "../store/favoritesStore"
 import { Check, CheckCheck, Clock3, FileText, Image, Mic, Music2, MoreVertical, Play, Video, X } from "lucide-react"
 import { userDisplayName } from "../utils/userName"
+import { viewTransitionName, withViewTransition } from "../utils/viewTransition"
 
 interface Props {
   message: MessageResponse
@@ -267,8 +268,8 @@ export default function MessageBubble({
             alt={content}
             className="msg-image"
             loading="lazy"
-            onClick={() => setMediaViewer({ type: "image", url: imageUrl, filename: content || undefined })}
-            style={{ cursor: "pointer" }}
+            onClick={() => withViewTransition(() => setMediaViewer({ type: "image", url: imageUrl, filename: content || undefined }))}
+            style={{ cursor: "pointer", viewTransitionName: mediaViewer ? "none" : viewTransitionName("media", message.id) }}
           />
         </div>
       )
@@ -411,7 +412,8 @@ export default function MessageBubble({
           type={mediaViewer.type}
           url={mediaViewer.url}
           filename={mediaViewer.filename}
-          onClose={() => setMediaViewer(null)}
+          onClose={() => withViewTransition(() => setMediaViewer(null))}
+          viewTransitionId={mediaViewer.type === "image" ? message.id : undefined}
         />
       )}
       </>
@@ -481,7 +483,8 @@ export default function MessageBubble({
           type={mediaViewer.type}
           url={mediaViewer.url}
           filename={mediaViewer.filename}
-          onClose={() => setMediaViewer(null)}
+          onClose={() => withViewTransition(() => setMediaViewer(null))}
+          viewTransitionId={mediaViewer.type === "image" ? message.id : undefined}
         />
       )}
       </>
@@ -522,7 +525,8 @@ export default function MessageBubble({
         type={mediaViewer.type}
         url={mediaViewer.url}
         filename={mediaViewer.filename}
-        onClose={() => setMediaViewer(null)}
+        onClose={() => withViewTransition(() => setMediaViewer(null))}
+        viewTransitionId={mediaViewer.type === "image" ? message.id : undefined}
       />
     )}
     </>

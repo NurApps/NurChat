@@ -391,7 +391,7 @@ export default function ChatSidebar({
                   <p className="list-empty">{t("chat.noChats")}</p>
                 )}
                 {filteredChats.map((chat) => (
-                  <ChatListItem key={chat.id} chat={chat} currentUser={currentUser}
+                  <ChatListItem key={chat.id} chat={chat} currentUser={currentUser} transitionToWindow={isMobile}
                     selected={chat.id === selectedChatId}
                     onClick={handleSelectChat} onPin={handlePin}
                     onMute={(id) => handleMute(id, !chat.is_muted)}

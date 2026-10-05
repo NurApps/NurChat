@@ -179,6 +179,19 @@ class Settings(BaseSettings):
     # включать на публичном relay: регистрация без капчи = спам-аккаунты.
     DISABLE_CAPTCHA: bool = False
 
+    # Passkeys (WebAuthn). RP ID обязан быть суффиксом хоста СТРАНИЦЫ
+    # фронтенда (церемония идёт в браузере, релей только проверяет):
+    # localhost-дев покрыт дефолтом; прод-хосты фронта — дописать.
+    # В десктопной сборке (tauri://) платформенный аутентификатор может
+    # быть недоступен — клиент прячет кнопку, TOTP остаётся фолбэком.
+    WEBAUTHN_RP_NAME: str = "NurChat"
+    WEBAUTHN_RP_IDS: str = "localhost,127.0.0.1,tauri.localhost"
+    WEBAUTHN_ORIGINS: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:8000,http://127.0.0.1:8000,"
+        "tauri://localhost,https://tauri.localhost"
+    )
+
     WS_CONNECTIONS_WARN: int = 100
     ERROR_RATE_WARN: float = 5.0
 

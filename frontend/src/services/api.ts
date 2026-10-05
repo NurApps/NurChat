@@ -126,6 +126,7 @@ function isAuthPath(path: string): boolean {
     || path.startsWith("/api/auth/refresh")
     || path.startsWith("/api/auth/captcha")
     || path.startsWith("/api/auth/2fa")
+    || path.startsWith("/api/webauthn/login")
 }
 
 async function request<T>(
@@ -204,6 +205,24 @@ export const api = {
 
   getCaptcha: () =>
     request<{ provider: "turnstile" | "none"; sitekey?: string }>("GET", "/api/auth/captcha"),
+
+  webauthnRegisterOptions: (origin: string) =>
+    request<Record<string, unknown>>("POST", "/api/webauthn/register/options", { origin }),
+
+  webauthnRegisterVerify: (credential: Record<string, unknown>, origin: string, name: string) =>
+    request<unknown>("POST", "/api/webauthn/register/verify", { credential, origin, name }),
+
+  webauthnLoginOptions: (username: string, origin: string) =>
+    request<Record<string, unknown>>("POST", "/api/webauthn/login/options", { username, origin }),
+
+  webauthnLoginVerify: (username: string, credential: Record<string, unknown>, origin: string) =>
+    request<unknown>("POST", "/api/webauthn/login/verify", { username, credential, origin }),
+
+  webauthnList: () =>
+    request<{ credentials: { id: number; name: string; created_at: string | null }[] }>("GET", "/api/webauthn/credentials"),
+
+  webauthnDelete: (id: number, password: string) =>
+    request<{ message: string }>("DELETE", `/api/webauthn/credentials/${id}`, { password }),
 
   getCurrentUser: () =>
     request<UserResponse>("GET", "/api/auth/me"),

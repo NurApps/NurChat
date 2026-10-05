@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   TRANSFER_FORMAT,
   TRANSFER_VERSION,
@@ -6,6 +6,11 @@ import {
   encryptTransferPayload,
   type TransferPayload,
 } from '../services/transferBundle'
+import { replacePlaintextCache, loadPlaintextCache } from '../services/plaintextCache'
+
+beforeEach(() => {
+  localStorage.clear()
+})
 
 function samplePayload(): TransferPayload {
   return {
@@ -51,5 +56,22 @@ describe('transferBundle crypto', () => {
     await expect(decryptTransferBundle(null, 'x')).rejects.toThrow('bad-format')
     await expect(decryptTransferBundle({ format: TRANSFER_FORMAT, version: 999 }, 'x')).rejects.toThrow('bad-format')
     await expect(decryptTransferBundle('not-json', 'x')).rejects.toThrow('bad-format')
+  })
+
+  it('carries own-message history and accepts legacy bundles', async () => {
+    const payload = { ...samplePayload(), plaintext: { msg_1: 'hello', msg_2: 'world' } }
+    const back = await decryptTransferBundle(await encryptTransferPayload(payload, 'pw-12345678'), 'pw-12345678')
+    expect(back.plaintext).toEqual({ msg_1: 'hello', msg_2: 'world' })
+    // Bundle without plaintext (created before history support) still imports.
+    const { plaintext: _dropped, ...legacy } = payload
+    const backLegacy = await decryptTransferBundle(await encryptTransferPayload(legacy as TransferPayload, 'pw-12345678'), 'pw-12345678')
+    expect(backLegacy.plaintext).toBeUndefined()
+  })
+
+  it('replacePlaintextCache validates shape', () => {
+    expect(replacePlaintextCache({ a: 'x', b: 1, c: null })).toBe(true)
+    expect(loadPlaintextCache()).toEqual({ a: 'x' })
+    expect(replacePlaintextCache(['not', 'an', 'object'])).toBe(false)
+    expect(replacePlaintextCache(null)).toBe(false)
   })
 })

@@ -51,6 +51,8 @@ class CSRFMiddleware:
             "/api/auth/captcha",
             "/api/auth/login",
             "/api/auth/register",
+            # Passkey-вход — публичный флоу до сессии (как login).
+            "/api/webauthn/login",
         ]
 
 

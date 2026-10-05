@@ -8,7 +8,21 @@ from shared.config import settings
 
 SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 SIGNUP_ACTION = "signup"
-_MAX_TOKEN_LEN = 2048
+# Токены Turnstile длинные (JWT-подобные, обычно ~2 КБ, бывают больше).
+# Слишком низкий кап молча отбивал РЕАЛЬНЫЕ решения: виджет «успешно»,
+# а сервер отвечал «Неверная CAPTCHA» без единой строки в логе.
+_MAX_TOKEN_LEN = 8192
+
+# Официальные тестовые секреты Cloudflare (доки: troubleshooting/testing).
+# Их siteverify принимает ЛЮБОЙ токен и отвечает success БЕЗ action/hostname
+# реальной страницы (hostname всегда example.com) — проверять action/hostname
+# там нечего. Это не дыра: тестовый secret НЕ валидирует настоящие токены
+# и наоборот, так что в проде с настоящим секретом ветка недостижима.
+# См. баг: «виджет успешен, сервер отвечает Неверная CAPTCHA».
+_TEST_SECRETS = frozenset({
+    "1x0000000000000000000000000000000AA",  # always passes
+    "2x0000000000000000000000000000000AA",  # always fails (через success=False)
+})
 
 
 class LockoutManager:
@@ -62,6 +76,13 @@ async def verify_turnstile(token: str, expected_action: str) -> bool:
         logger.error("Turnstile not configured: TURNSTILE_SECRET and TURNSTILE_HOSTNAMES are required")
         return False
     if not isinstance(token, str) or not token or len(token) > _MAX_TOKEN_LEN:
+        # Длину — в лог (не содержимое): иначе повтор бага с тихим отказом
+        # недиагностируем. Пустой токен = виджет не решали/протух на клиенте.
+        logger.warning(
+            "Turnstile token rejected before siteverify: len=%d (empty=%s)",
+            len(token) if isinstance(token, str) else -1,
+            not token,
+        )
         return False
 
     # remoteip не передаём: глухой релей не хранит и не раздаёт IP клиентов.
@@ -79,6 +100,15 @@ async def verify_turnstile(token: str, expected_action: str) -> bool:
 
     if not isinstance(result, dict):
         return False
+    if settings.TURNSTILE_SECRET in _TEST_SECRETS:
+        # Тестовый режим Cloudflare: привязки к странице нет, верим success.
+        ok = result.get("success") is True
+        if not ok:
+            logger.warning(
+                "Turnstile TEST-KEY rejected: success=%s errors=%s",
+                result.get("success"), result.get("error-codes"),
+            )
+        return ok
     ok = (
         result.get("success") is True
         and result.get("action") == expected_action

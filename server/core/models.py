@@ -278,6 +278,27 @@ class OneTimePreKey(Base):
     user = relationship("User")
 
 
+class WebAuthnCredential(Base):
+    """Passkey пользователя: сервер хранит только публичную часть."""
+
+    __tablename__ = "webauthn_credentials"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # base64url credential.id (без паддинга) — уникален глобально.
+    credential_id = Column(String, unique=True, index=True, nullable=False)
+    # COSE public key (байты) в base64 — для verify_authentication_response.
+    public_key = Column(Text, nullable=False)
+    sign_count = Column(Integer, default=0, nullable=False)
+    # Человекочитаемое имя ("Pixel 8", "Windows Hello"), задаёт пользователь.
+    name = Column(String, nullable=True)
+    # rp_id, под которым регистрировали (нужен тот же при verify).
+    rp_id = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+
+
 class KeyRotationLog(Base):
     __tablename__ = "key_rotation_log"
 

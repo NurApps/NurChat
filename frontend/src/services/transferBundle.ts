@@ -29,6 +29,7 @@ import {
   type StoredOPK,
 } from "./secureStorage"
 import { upsertProfile, namespaceOf, setActiveProfileId } from "./profiles"
+import { loadPlaintextCache, replacePlaintextCache } from "./plaintextCache"
 import { setRelayConfig } from "../config"
 import { performLogout } from "./localSession"
 
@@ -54,6 +55,8 @@ export interface TransferPayload {
   sessions: Record<string, unknown> | null
   groupStates: unknown
   outbox: unknown
+  /** Кэш своих отправленных (история, которую relay уже стёр). null = нет. */
+  plaintext: Record<string, string> | null
 }
 
 export interface TransferEnvelope {
@@ -126,6 +129,7 @@ export async function exportTransferBundle(
 ): Promise<TransferEnvelope> {
   const identity = await loadIdentityKeys()
   if (!identity) throw new Error("no-identity")
+  const plaintext = loadPlaintextCache()
   const payload: TransferPayload = {
     format: TRANSFER_FORMAT,
     version: TRANSFER_VERSION,
@@ -140,6 +144,7 @@ export async function exportTransferBundle(
     sessions: await loadSessions(),
     groupStates: await loadSecureValue(GROUP_RATCHET_KEY),
     outbox: await loadSecureValue(OUTBOX_KEY),
+    plaintext: Object.keys(plaintext).length ? plaintext : null,
   }
   return encryptTransferPayload(payload, password)
 }
@@ -173,6 +178,8 @@ export async function exportCompactTransferBundle(
     sessions: await loadSessions(),
     groupStates: await loadSecureValue(GROUP_RATCHET_KEY),
     outbox: null,
+    // QR не тянет историю: она переезжает только файлом (см. предупреждение в UI).
+    plaintext: null,
   }
   return encryptTransferPayload(payload, password)
 }
@@ -186,16 +193,21 @@ export const QR_MAX_CHARS = 2200
 function isPayload(v: unknown): v is TransferPayload {
   if (typeof v !== "object" || v === null) return false
   const p = v as Record<string, unknown>
-  return (
-    p.format === TRANSFER_FORMAT &&
-    p.version === TRANSFER_VERSION &&
-    typeof p.relayHost === "string" &&
-    (p.relayProtocol === "http" || p.relayProtocol === "https") &&
-    typeof p.username === "string" &&
-    typeof p.userId === "string" &&
-    typeof p.identity === "object" &&
-    p.identity !== null
-  )
+  if (
+    p.format !== TRANSFER_FORMAT ||
+    p.version !== TRANSFER_VERSION ||
+    typeof p.relayHost !== "string" ||
+    (p.relayProtocol !== "http" && p.relayProtocol !== "https") ||
+    typeof p.username !== "string" ||
+    typeof p.userId !== "string" ||
+    typeof p.identity !== "object" ||
+    p.identity === null
+  ) {
+    return false
+  }
+  // plaintext опционален: бандлы, созданные до истории в формате, его не имеют.
+  if (p.plaintext !== undefined && p.plaintext !== null && typeof p.plaintext !== "object") return false
+  return true
 }
 
 /** Расшифровать и проверить бандл (без записи). Ошибка пароля = "bad-password". */
@@ -248,6 +260,9 @@ export async function importTransferBundle(payload: TransferPayload): Promise<vo
   if (payload.outbox !== null && payload.outbox !== undefined) {
     await storeSecureValue(OUTBOX_KEY, payload.outbox)
   }
+  // История своих: активный профиль уже новый — пишем в его неймспейс.
+  // replace валидирует форму (плоский string→string), чужое отбрасывает.
+  if (payload.plaintext) replacePlaintextCache(payload.plaintext)
   setActiveProfileId(profile.id)
   setRelayConfig({ host: payload.relayHost, protocol: payload.relayProtocol })
   // Токенов нового профиля ещё нет — вход по паролю/2FA после перезагрузки.

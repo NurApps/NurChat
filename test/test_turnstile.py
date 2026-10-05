@@ -45,6 +45,38 @@ def _verify(token="tok", action="signup") -> bool:
     return asyncio.run(captcha.verify_turnstile(token, action))
 
 
+def test_test_secret_accepts_cloudflare_test_response(monkeypatch):
+    """Реальный ответ test-secret: success без action/hostname страницы.
+
+    Баг: виджет зелёный, сервер отвечал «Неверная CAPTCHA», потому что
+    строгая проверка требовала action/hostname, которых в test-ответе нет.
+    """
+    monkeypatch.setattr(captcha.settings, "TURNSTILE_SECRET",
+                        "1x0000000000000000000000000000000AA")
+    _siteverify(monkeypatch, _reply(success=True))
+    assert _verify(token="XXXX.DUMMY.TOKEN.XXXX") is True
+
+
+def test_test_secret_still_rejects_failure(monkeypatch):
+    monkeypatch.setattr(captcha.settings, "TURNSTILE_SECRET",
+                        "1x0000000000000000000000000000000AA")
+    _siteverify(monkeypatch, _reply(success=False, **{"error-codes": ["invalid-input-response"]}))
+    assert _verify(token="XXXX.DUMMY.TOKEN.XXXX") is False
+
+
+def test_prod_secret_rejects_actionless_response(monkeypatch):
+    """С настоящим секретом послабления нет: строгая проверка как раньше."""
+    _siteverify(monkeypatch, _reply(success=True))
+    assert _verify(token="tok") is False
+
+
+def test_long_realistic_token_reaches_cloudflare(monkeypatch):
+    """Реальные токены Turnstile ~2+ КБ: кап не должен их отбивать молча."""
+    seen = _siteverify(monkeypatch, _reply(success=True, action="signup", hostname="tauri.localhost"))
+    assert _verify(token="y" * 3000) is True
+    assert len(seen) == 1
+
+
 def test_accepts_valid_response(monkeypatch):
     seen = _siteverify(monkeypatch, _reply(success=True, action="signup", hostname="tauri.localhost"))
     assert _verify() is True
@@ -82,7 +114,7 @@ def test_rejects_network_error(monkeypatch):
     assert _verify() is False
 
 
-@pytest.mark.parametrize("token", ["", "x" * 2049])
+@pytest.mark.parametrize("token", ["", "x" * 8193])
 def test_rejects_bad_token_without_calling_cloudflare(monkeypatch, token):
     seen = _siteverify(monkeypatch, _reply(success=True, action="signup", hostname="tauri.localhost"))
     assert _verify(token=token) is False

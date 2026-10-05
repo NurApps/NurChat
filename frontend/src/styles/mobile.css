@@ -34,6 +34,11 @@
   --bottom-nav-height: calc(76px + var(--safe-bottom));
   --status-bar-height: 24px;
 
+  /* Виртуальная клавиатура (выставляет useMobileBehavior через
+     visualViewport; вне мобилы всегда 0). */
+  --keyboard-height: 0px;
+  --viewport-height: 100dvh;
+
   /* Mobile font sizes */
   --font-mobile-xs: 11px;
   --font-mobile-sm: 13px;
@@ -129,9 +134,15 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
-    height: 100dvh;
+    height: var(--viewport-height, 100dvh);
     padding-top: var(--safe-top);
     padding-bottom: var(--safe-bottom);
+  }
+
+  /* Зона свайпа-назад: вертикальный скролл свой, горизонтальный жест
+     отдаём JS (useSwipeBack), иначе браузер его съедает. */
+  .swipe-back-area {
+    touch-action: pan-y;
   }
 
   .app-header {
@@ -785,7 +796,7 @@
 
   .chat-body {
     flex-direction: column;
-    height: calc(100dvh - 56px);
+    height: calc(var(--viewport-height, 100dvh) - 56px);
   }
 
   .chat-sidebar {
@@ -841,7 +852,7 @@
   }
 
   .chat-window {
-    height: 100dvh;
+    height: var(--viewport-height, 100dvh);
   }
 
   .messages-list {
@@ -852,8 +863,9 @@
     max-width: 85% !important;
   }
 
-  .input-bar {
-    padding-bottom: env(safe-area-inset-bottom, 0);
+  .input-bar,
+  .chat-input-area {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--keyboard-height, 0px));
   }
 
   /* Нижняя панель плавает поверх контента, поэтому прокручиваемым областям

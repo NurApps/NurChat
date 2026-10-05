@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type TouchEvent as ReactTouchEvent } from 'react';
 
 interface MobileInfo {
   isMobile: boolean;
@@ -135,36 +135,107 @@ export function useMobileBehavior() {
     return () => document.removeEventListener('touchmove', preventPullToRefresh);
   }, [mobile.isMobile]);
 
-  // Handle virtual keyboard
+  // Handle virtual keyboard via visualViewport: выставляем --keyboard-height
+  // и --viewport-height, чтобы инпут не перекрывался на Android/iOS.
+  // Фолбэк для старых браузеров — focusin/scrollIntoView.
   useEffect(() => {
     if (!mobile.isMobile) return;
 
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+
+    const update = () => {
+      // Высота, съеденная клавиатурой (только положительная часть).
+      const keyboardHeight = vv
+        ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+        : 0;
+      root.style.setProperty('--keyboard-height', `${Math.round(keyboardHeight)}px`);
+      root.style.setProperty(
+        '--viewport-height',
+        `${Math.round(vv ? vv.height : window.innerHeight)}px`,
+      );
+    };
+
     const handleFocus = () => {
-      // Scroll input into view when keyboard opens
-      setTimeout(() => {
-        const activeElement = document.activeElement;
-        if (activeElement && activeElement !== document.body) {
-          (activeElement as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 300);
+      // Фолбэк, если visualViewport недоступен.
+      if (!vv) {
+        setTimeout(() => {
+          const activeElement = document.activeElement;
+          if (activeElement && activeElement !== document.body) {
+            (activeElement as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 300);
+      }
     };
 
-    const handleBlur = () => {
-      // Reset scroll position when keyboard closes
-      window.scrollTo(0, 0);
-    };
-
+    update();
+    vv?.addEventListener('resize', update);
+    vv?.addEventListener('scroll', update);
     document.addEventListener('focusin', handleFocus);
-    document.addEventListener('focusout', handleBlur);
 
     return () => {
+      vv?.removeEventListener('resize', update);
+      vv?.removeEventListener('scroll', update);
       document.removeEventListener('focusin', handleFocus);
-      document.removeEventListener('focusout', handleBlur);
+      root.style.setProperty('--keyboard-height', '0px');
+      root.style.removeProperty('--viewport-height');
     };
   }, [mobile.isMobile]);
 
   return {
     ...mobile,
     tauri,
+  };
+}
+
+/** Короткий haptic-отклик (Android; на iOS/desktop — no-op). */
+export function hapticTick(pattern: number | number[] = 10): void {
+  try {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate(pattern);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+interface SwipeBackHandlers {
+  onTouchStart: (e: ReactTouchEvent) => void;
+  onTouchEnd: (e: ReactTouchEvent) => void;
+}
+
+/**
+ * Свайп-назад: старт от левого края (< 40px) + движение вправо (> 80px).
+ * Возвращает пропсы для контейнера (напр. .chat-window на мобиле).
+ */
+export function useSwipeBack(enabled: boolean, onBack: () => void): SwipeBackHandlers {
+  const startX = { current: null as number | null };
+  const startY = { current: null as number | null };
+
+  return {
+    onTouchStart: (e: ReactTouchEvent) => {
+      if (!enabled || e.touches.length !== 1) return;
+      // Жест только от левого края — иначе конфликтует со скроллом/каруселями.
+      if (e.touches[0].clientX > 40) {
+        startX.current = null;
+        startY.current = null;
+        return;
+      }
+      startX.current = e.touches[0].clientX;
+      startY.current = e.touches[0].clientY;
+    },
+    onTouchEnd: (e: ReactTouchEvent) => {
+      if (!enabled || startX.current === null || startY.current === null) return;
+      const end = e.changedTouches[0];
+      const dx = end.clientX - startX.current;
+      const dy = Math.abs(end.clientY - startY.current);
+      startX.current = null;
+      startY.current = null;
+      // Только явный жест от края, не диагональ и не скролл.
+      if (dx > 80 && dy < 60) {
+        hapticTick(10);
+        onBack();
+      }
+    },
   };
 }

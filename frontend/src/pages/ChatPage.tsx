@@ -11,7 +11,7 @@ import { useChatTyping } from "../hooks/useChatTyping"
 import { useAvatarStyle } from "../services/avatarStyle"
 import Identicon from "../components/Identicon"
 
-import { useMobile } from "../hooks/useMobile"
+import { useMobile, useSwipeBack } from "../hooks/useMobile"
 import OfflineBanner from "../components/OfflineBanner"
 import { loadKeys as loadE2EKeys, decryptMessage, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
 import { initGroupKey, fetchGroupKey, decryptGroupMessageRatcheted } from "../services/groupE2E"
@@ -155,6 +155,12 @@ export default function ChatPage() {
   const [wsUp, setWsUp] = useState(true)
   const [ephemeralSeconds, setEphemeralSeconds] = useState<number | null>(null)
   const [showEphemeralMenu, setShowEphemeralMenu] = useState(false)
+
+  // Свайп-назад на мобиле: жест от левого края закрывает открытый чат.
+  const swipeBack = useSwipeBack(
+    isMobile && !!(selectedChat || showFavoritesChat),
+    () => withViewTransition(() => { setSelectedChat(null); setShowFavoritesChat(false) }),
+  )
 
   // Чаты, для которых уже показывали «нет ключей пира» (раз за сессию).
   const peerWarnedRef = useRef<Set<string>>(new Set())
@@ -918,7 +924,8 @@ export default function ChatPage() {
               <p>{t("chat.placeholder")}</p>
             </div>
           ) : (
-            <div className="chat-window" style={isMobile ? { viewTransitionName: viewTransitionName("chat-window", selectedChat.id) } : undefined}>
+            <div className="chat-window swipe-back-area" style={isMobile ? { viewTransitionName: viewTransitionName("chat-window", selectedChat.id) } : undefined}
+              onTouchStart={swipeBack.onTouchStart} onTouchEnd={swipeBack.onTouchEnd}>
               {/* Header */}
               <div className="chat-header">
                 {isMobile && (
@@ -1170,7 +1177,8 @@ export default function ChatPage() {
                   </div>
                 ) : (
                   <textarea ref={inputRef} className="chat-input" placeholder={t("chat.messagePlaceholder")} rows={1}
-                    value={input} onChange={(e) => handleInputChange(e.target.value)} onKeyDown={handleKeyDown} />
+                    value={input} onChange={(e) => handleInputChange(e.target.value)} onKeyDown={handleKeyDown}
+                    enterKeyHint="send" autoComplete="off" autoCorrect="off" autoCapitalize="sentences" />
                 )}
 
                 {!recording && !uploading && (

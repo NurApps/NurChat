@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MessageCircle, Phone, Settings, Users } from 'lucide-react';
+import { hapticTick } from '../../hooks/useMobile';
 
 interface Tab {
   id: string;
@@ -51,8 +52,10 @@ export function BottomTabs({ tabs = defaultTabs, activeTab, onTabChange, badges 
       {tabs.map((tab) => (
         <button
           key={tab.id}
+          type="button"
           className={`bottom-nav__item ${isActive(tab) ? 'bottom-nav__item--active' : ''}`}
           onClick={() => {
+            hapticTick(10)
             if (onTabChange) onTabChange(tab.id)
             else navigate(tab.path)
           }}

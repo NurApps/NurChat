@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { withViewTransition } from "../utils/viewTransition"
 import {
   applyCustomTheme,
   clearCustomTheme,
@@ -108,16 +109,6 @@ function readInitial(): { mode: ThemeMode; lightTheme: Theme; darkTheme: Theme }
   return { mode: "system", lightTheme: "light", darkTheme: "dark" }
 }
 
-/** Плавный переход цветов (аналог "растекания" темы в Telegram), с фолбэком. */
-function applyWithTransition(apply: () => void) {
-  const anyDoc = document as Document & { startViewTransition?: (cb: () => void) => unknown }
-  if (typeof anyDoc.startViewTransition === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    anyDoc.startViewTransition(apply)
-  } else {
-    apply()
-  }
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const initial = readInitial()
   const [mode, setModeState] = useState<ThemeMode>(initial.mode)
@@ -159,17 +150,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(LEGACY_KEY)
   }, [mode, lightTheme, darkTheme])
 
-  const setMode = (m: ThemeMode) => applyWithTransition(() => setModeState(m))
-  const setLightTheme = (t: Theme) => applyWithTransition(() => setLightThemeState(t))
-  const setDarkTheme = (t: Theme) => applyWithTransition(() => setDarkThemeState(t))
+  const setMode = (m: ThemeMode) => withViewTransition(() => setModeState(m))
+  const setLightTheme = (t: Theme) => withViewTransition(() => setLightThemeState(t))
+  const setDarkTheme = (t: Theme) => withViewTransition(() => setDarkThemeState(t))
 
   const setCustomTheme = (v: CustomVariant, vars: ThemeVars) => {
     saveCustomTheme(v, vars)
-    applyWithTransition(() => (v === "dark" ? setCustomDarkState(vars) : setCustomLightState(vars)))
+    withViewTransition(() => (v === "dark" ? setCustomDarkState(vars) : setCustomLightState(vars)))
   }
   const resetCustomTheme = (v: CustomVariant) => {
     resetCustomThemeStorage(v)
-    applyWithTransition(() => (v === "dark" ? setCustomDarkState(null) : setCustomLightState(null)))
+    withViewTransition(() => (v === "dark" ? setCustomDarkState(null) : setCustomLightState(null)))
   }
 
   const toggle = () => {

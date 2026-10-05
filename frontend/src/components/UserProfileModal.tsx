@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { avatarUrl } from "../config"
 import { useAvatarStyle } from "../services/avatarStyle"
+import { viewTransitionName } from "../utils/viewTransition"
 import Identicon from "./Identicon"
 import type { UserResponse } from "../types"
 import { formatDateShort, formatFull } from "../utils/format"
@@ -76,13 +77,13 @@ export default function UserProfileModal({ user, currentUserId, onClose, onWrite
         <div className="upm-avatar-section">
           {avatar ? (
             // codeql[js/xss-through-dom]: src собран avatarUrl() (config.ts: BASE_URL + allowlist-путь), javascript:-схема невозможна
-            <img src={avatar} alt={name} className="upm-avatar-img" />
+            <img src={avatar} alt={name} className="upm-avatar-img" style={{ viewTransitionName: viewTransitionName("chat-avatar", user.id) }} />
           ) : avatarStyle === "identicon" ? (
-            <div className="upm-avatar-img" style={{ overflow: "hidden" }}>
+            <div className="upm-avatar-img" style={{ overflow: "hidden", viewTransitionName: viewTransitionName("chat-avatar", user.id) }}>
               <Identicon seed={user.id} className="identicon-cover" label={name} />
             </div>
           ) : (
-            <div className="upm-avatar-circle" style={{ background: avatarColor }}>
+            <div className="upm-avatar-circle" style={{ background: avatarColor, viewTransitionName: viewTransitionName("chat-avatar", user.id) }}>
               {avatarChar}
             </div>
           )}

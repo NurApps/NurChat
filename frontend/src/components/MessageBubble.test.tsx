@@ -4,7 +4,6 @@ import '@testing-library/jest-dom'
 
 vi.mock('../services/api', () => ({
   api: {
-    getFileUrl: vi.fn((id: string) => `http://test/files/${id}?token=mock`),
     getReadCount: vi.fn(() => Promise.resolve({ read_count: 2, total_participants: 5 })),
   },
 }))

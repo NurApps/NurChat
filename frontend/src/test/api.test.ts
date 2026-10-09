@@ -33,11 +33,25 @@ describe('api', () => {
     expect(api.isAuthenticated()).toBe(false)
   })
 
-  it('should generate correct file URLs', async () => {
-    const { api } = await import('../services/api')
-    const url = api.getFileUrl('file_123')
-    expect(url).toContain('file_123')
-    expect(url).toContain('token=')
+  it('should build scoped download URLs without leaking the access JWT', async () => {
+    // Pentest #3: в URL светится только 60-секундный file_token, access-JWT — никогда.
+    const fetchMock = vi.fn(async (input: unknown) => {
+      expect(String(input)).toContain('/api/files/token')
+      return {
+        ok: true,
+        json: async () => ({ file_token: 'scoped123', expires_in: 60 }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      const { api } = await import('../services/api')
+      const url = await api.getScopedFileUrl('file_123')
+      expect(url).toContain('file_123')
+      expect(url).toContain('scoped123')
+      expect(url).not.toContain('test-token')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 

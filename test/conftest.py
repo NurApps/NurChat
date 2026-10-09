@@ -1,25 +1,21 @@
 import os
 
-# Isolate tests from the developer's .env: the suite must run against
-# a throwaway SQLite DB, never against a real Postgres/Supabase URL
-# (which may be unreachable, require secrets, or get polluted).
+# Force (override, NOT setdefault): the developer's .env (e.g. DISABLE_CAPTCHA=true,
+# real Postgres/Supabase URL) must never leak into the suite — pydantic reads
+# the .env FILE too, but explicit os.environ wins over dotenv source.
 # MUST stay above all server imports (conftest loads first).
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault(
-    "ENCRYPTION_KEY",
-    "test-key-for-ci-only-000000000000000000000000000000",
-)
-os.environ.setdefault(
-    "JWT_SECRET_KEY",
-    "test-jwt-key-for-ci-only-000000000000000000000000000",
-)
-os.environ.setdefault(
-    "TOTP_MASTER_KEY",
-    "test-totp-key-for-ci-only-0000000000000000000000",
-)
-os.environ.setdefault("USE_REDIS", "false")
+os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+os.environ["ENCRYPTION_KEY"] = "test-key-for-ci-only-000000000000000000000000000000"
+os.environ["JWT_SECRET_KEY"] = "test-jwt-key-for-ci-only-000000000000000000000000000"
+os.environ["TOTP_MASTER_KEY"] = "test-totp-key-for-ci-only-0000000000000000000000"
+os.environ["USE_REDIS"] = "false"
+# Captcha fail-closed in tests: DISABLE_CAPTCHA must be false, otherwise
+# forged tokens pass and lockout/fail-closed tests go green-wrong (200).
+os.environ["DISABLE_CAPTCHA"] = "false"
 # Публичный тестовый sitekey Cloudflare — только чтобы /captcha отвечал 200.
-os.environ.setdefault("TURNSTILE_SITEKEY", "1x00000000000000000000AA")
+os.environ["TURNSTILE_SITEKEY"] = "1x00000000000000000000AA"
+os.environ["TURNSTILE_SECRET"] = "test-secret-for-ci-only"
+os.environ["TURNSTILE_HOSTNAMES"] = "tauri.localhost,127.0.0.1,localhost"
 
 import pytest
 

@@ -917,6 +917,47 @@ async def get_2fa_status(
     )
 
 
+# Reuse detection для ротации refresh (Auth0-style): украденный refresh,
+# предъявленный ПОСЛЕ легитимной ротации, убивает всю цепочку (logout-all).
+# Grace-окно — против гонки вкладок: два таба делят один refresh из
+# localStorage, проигравший гонку тоже предъявит отозванный токен, но это
+# не кража. Без grace каждая такая гонка разлогинивала бы пользователя.
+REFRESH_REUSE_GRACE_SECONDS = 120
+
+
+def _kill_chain_on_refresh_reuse(refresh_token_str: str, db: Session) -> None:
+    """Проверить, является ли невалидный refresh повтором уже ротированного.
+
+    Повтор в пределах grace — тихо 401 (гонка вкладок, цепочка жива).
+    Повтор старого отозванного — вероятная кража: tokens_valid_after=now.
+    """
+    import jwt as _jwt
+
+    try:
+        peek = _jwt.decode(refresh_token_str, options={"verify_signature": False})
+    except Exception:
+        return
+    if peek.get("type") != "refresh" or not peek.get("jti") or not peek.get("sub"):
+        return
+    row = db.query(models.RevokedToken).filter(models.RevokedToken.jti == peek["jti"]).first()
+    if row is None or row.revoked_at is None:
+        return  # не ротация (протух/подделка/чужой) — просто 401
+    revoked_at = row.revoked_at
+    if revoked_at.tzinfo is None:
+        revoked_at = revoked_at.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - revoked_at).total_seconds()
+    if age <= REFRESH_REUSE_GRACE_SECONDS:
+        return
+    user = db.query(models.User).filter(models.User.id == peek["sub"]).first()
+    if user is None:
+        return
+    cutoff = int(datetime.now(timezone.utc).timestamp())
+    user.tokens_valid_after = cutoff
+    db.commit()
+    remember_tokens_valid_after(user.id, cutoff)
+    logger.warning(f"Refresh reuse detected for user {user.id}: token chain killed")
+
+
 @router.post("/refresh")
 @limiter.limit("10/minute")
 async def refresh_token(
@@ -950,6 +991,9 @@ async def refresh_token(
             "token_type": "bearer",
         }
     except AuthenticationError:
+        # Повтор отозванного refresh = возможно кража: старый повтор
+        # (вне grace) убивает цепочку, свежий — просто 401 (гонка вкладок).
+        _kill_chain_on_refresh_reuse(refresh_token_str, db)
         raise HTTPException(status_code=401, detail="Невалидный refresh токен")
     except HTTPException:
         raise

@@ -430,14 +430,6 @@ export const api = {
     return res.json()
   },
 
-  getFileUrl: (fileId: string) => {
-    // DEPRECATED (pentest #3): светит полный access-JWT в URL. Оставлен для
-    // совместимости тестов/моков; живой код качает через scoped-токены
-    // (getScopedFileUrl/fetchFileBlob/downloadFile → blob:-URL без токена).
-    const token = getToken()
-    return `${BASE_URL}/api/files/download/${fileId}?token=${encodeURIComponent(token || "")}`
-  },
-
   /** Mint a 60s single-file download token (POST /api/files/token). */
   mintFileToken: async (fileId: string): Promise<string | null> => {
     try {

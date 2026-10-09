@@ -262,28 +262,17 @@ async def download_file(
         if not token:
             raise HTTPException(status_code=401, detail="Требуется токен")
 
-        import jwt as _jwt
-
         from server.core.security import AuthenticationError
         from server.core.security import security as sec
 
+        # Только узкий scoped file_token (60s, один файл): полный access-JWT
+        # в URL больше не принимаем — утечка download-ссылки (логи прокси,
+        # история) давала 30 минут полного доступа к API (pentest #3).
+        # Клиент минтит токен через POST /api/files/token.
         try:
-            peek = _jwt.decode(token, options={"verify_signature": False})
-        except Exception:
-            raise HTTPException(status_code=401, detail="Неверный токен")
-        try:
-            if peek.get("type") == "file_token":
-                # Scoped file-токен предпочтительнее: узкий, короткоживущий.
-                payload = sec.verify_file_token(token, file_id)
-            else:
-                # Полный access-JWT — fallback для старых клиентов.
-                payload = sec.verify_token(token)
+            payload = sec.verify_file_token(token, file_id)
         except AuthenticationError:
-            raise HTTPException(status_code=401, detail="Неверный токен")
-        if payload.get("2fa_pending"):
-            raise HTTPException(status_code=401, detail="Требуется завершить двухфакторную аутентификацию")
-        if "type" in payload and payload.get("type") not in ("access", "file_token"):
-            raise HTTPException(status_code=401, detail="Требуется access-токен")
+            raise HTTPException(status_code=401, detail="Требуется file-токен")
         user_id = payload.get("sub")
 
         logger.info(f"File download requested by user: {user_id}, file_id: {file_id}")

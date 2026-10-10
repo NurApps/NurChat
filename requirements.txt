@@ -1,12 +1,12 @@
 # requirements.txt
 aiofiles==25.1.0
-alembic==1.18.5
+alembic==1.20.0
 argon2-cffi==25.1.0
 apscheduler==3.11.3
-cryptography==50.0.1
-fastapi==0.141.1
+cryptography==50.0.2
+fastapi==0.142.2
 httpx>=0.28.1
-hypothesis>=6.168.0
+hypothesis>=6.168.5
 Pillow==12.3.0
 prometheus-client==0.26.0
 psutil==7.2.2
@@ -17,7 +17,7 @@ pydantic==2.13.5
 pydantic_settings==2.15.0
 pytest>=9.1.1
 pytest-timeout>=2.4.0
-PyJWT==2.14.0
+PyJWT==2.15.1
 psycopg2-binary==2.9.13
 python-multipart==0.0.32
 qrcode[pil]==8.2
@@ -29,7 +29,7 @@ slowapi==0.1.10
 # Не наша прямая зависимость — тянется через limits (зависимость slowapi).
 Deprecated<3.0
 SQLAlchemy==2.0.54
-ruff>=0.16.8
-mypy>=2.3.1
-uvicorn==0.53.0
+ruff>=0.16.10
+mypy>=2.4.0
+uvicorn==0.54.0
 websockets==16.1.1

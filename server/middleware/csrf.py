@@ -170,13 +170,18 @@ class CSRFMiddleware:
                 return True
         return False
 
+async def _noop_app(scope: Scope, receive: Receive, send: Send) -> None:
+    """Заглушка ASGI-приложения для утилит, которым нужен только секрет middleware."""
+    return None
+
+
 def generate_csrf_token() -> str:
     """Utility function to generate CSRF token"""
-    middleware = CSRFMiddleware(app=lambda: None)
+    middleware = CSRFMiddleware(app=_noop_app)
     return middleware._generate_token()
 
 
 def validate_csrf_token(token: str) -> bool:
     """Utility function to validate CSRF token"""
-    middleware = CSRFMiddleware(app=lambda: None)
+    middleware = CSRFMiddleware(app=_noop_app)
     return middleware._validate_token(token)

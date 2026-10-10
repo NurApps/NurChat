@@ -419,7 +419,7 @@ class CallManager:
         other_user = call["callee_id"] if user_id == call["caller_id"] else call["caller_id"]
         await self._send_to_user(other_user, call_ended)
 
-        duration = None
+        duration: float | None = None
         if call["status"] == CALL_STATUS["ACTIVE"] and call.get("started_at"):
             duration = int((datetime.now(timezone.utc) - call["started_at"]).total_seconds())
 
@@ -502,9 +502,9 @@ class CallManager:
             return None
 
         if user_id == call["caller_id"]:
-            return call["callee_id"]
+            return str(call["callee_id"])
         else:
-            return call["caller_id"]
+            return str(call["caller_id"])
 
     async def _send_to_user(self, user_id: str, message: dict) -> bool:
         """Отправка сообщения пользователю через WebSocket.
@@ -556,7 +556,7 @@ class CallManager:
                     except Exception:
                         break
 
-    async def _save_call_to_db(self, call_id: str, action: str, reason: str = None, duration: float = None, ended_by: str = None):
+    async def _save_call_to_db(self, call_id: str, action: str, reason: str | None = None, duration: float | None = None, ended_by: str | None = None):
         from shared.config import settings as _cfg
         if _cfg.CALLS_MINIMAL_METADATA:
             # Deaf relay for calls: don't persist CallLog rows; history stays on devices.

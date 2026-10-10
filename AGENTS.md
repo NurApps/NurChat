@@ -67,7 +67,7 @@ Tauri (Rust shell) ── wraps ──> React frontend ── HTTP/WS ──> Fa
 
 ## Non-Obvious Quirks (доказанные кодом)
 
-1. **Token в query для медиа и WS.** `<img>/<audio>/<video>` и WebSocket не умеют Authorization-заголовки: файлы — `?token=`, сокеты — `/ws/chat/{user_id}?token=`. JWT сверяется с `sub == user_id`. Mitigations: только `wss/https` в проде, короткий TTL.
+1. **Токены вне заголовков: файлы — scoped `?token=`, WS — subprotocol.** `<img>/<audio>/<video>` и WebSocket не умеют Authorization-заголовки: файлы качаются по 60-секундному `file_token` (`POST /api/files/token`, полный JWT отклоняется), сокеты — JWT в `Sec-WebSocket-Protocol` (`?token=` отклоняется с 4001, см. `server/ws/subprotocol.py`). JWT сверяется с `sub == user_id`. Refresh: ротация + reuse detection (старый повтор убивает цепочку), cross-tab single-flight через `refreshSync.ts`. Mitigations: только `wss/https` в проде, короткий TTL.
 2. **WS-эндпоинты (4 штуки):** `/ws/chat/{user_id}` — сообщения (`{"event": ...}`), `/ws/calls/{user_id}` и `/ws/signaling/{user_id}` — синонимы сигналинга (`{"type": ...}`), `/ws/notifications/{user_id}` — уведомления. Лимит 10 соединений/IP, 1 МБ/сообщение, ping при простое 120с, разрыв после 300с тишины.
 3. **Форматы событий разные — это нормально:** chat-WS шлёт `{"event": ...}`, signaling-WS — `{"type": ...}`. Не «унифицировать» без обновления обоих клиентов (`useChatSocket.ts`, `CallPage.tsx`).
 4. **Python imports — абсолютные от корня репо.** `from shared.config import settings`, `from server.core.models import User`.

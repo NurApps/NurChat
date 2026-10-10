@@ -409,16 +409,12 @@ export default function CallPage() {
 
     let reconnectAttempts = 0
     const MAX_RECONNECT = 5
-    // Запоминаем, что relay старый (subprotocol не поднялся): повторные
-    // реконнекты сразу идут legacy-путём, без лишнего 1006-цикла.
-    let legacyWs = false
 
     // Единый источник правды — WS-сигналинг. REST /start-call больше не
     // дёргаем: он слал дублирующее уведомление, а его call_id гонялся
     // с локальным (два ID одного звонка).
 
-    function connectWs(forceLegacy?: boolean) {
-      const queryFallback = forceLegacy ?? legacyWs
+    function connectWs() {
       // Fresh token on every (re)connect: the effect captured it once at
       // mount, but access TTL is 30 min — a stale token 4001-loops here.
       const freshToken = getAccessToken()
@@ -430,7 +426,7 @@ export default function CallPage() {
         return
       }
       // Pentest #3: JWT via Sec-WebSocket-Protocol, not ?token= in the URL.
-      const ws = openAuthedSocket(`/calls/${currentUser!.id}`, queryFallback)
+      const ws = openAuthedSocket(`/calls/${currentUser!.id}`)
       if (!ws) {
         setMediaError(t("call.authError"))
         setStatus("failed")
@@ -439,10 +435,8 @@ export default function CallPage() {
       }
       console.log("[CALL] Connecting (subprotocol auth)")
       wsRef.current = ws
-      let opened = false
 
       ws.onopen = () => {
-        opened = true
         console.log("[CALL] WS connected, isIncoming:", isIncoming)
         reconnectAttempts = 0
 
@@ -690,14 +684,6 @@ export default function CallPage() {
 
       ws.onclose = (ev: CloseEvent) => {
         console.log("[CALL] WS closed:", ev.code, ev.reason)
-        // Pre-fix relay + subprotocol attempt: handshake fails with 1006
-        // before ever opening. One legacy retry, then normal backoff.
-        if (!opened && !queryFallback && ev.code === 1006) {
-          console.warn("[CALL] subprotocol handshake failed — retrying with legacy ?token=")
-          legacyWs = true
-          connectWs(true)
-          return
-        }
         const currentStatus = statusRef.current
 
         const isAbnormal = ev.code === 1006 || ev.code === 1001 || ev.code === 1005

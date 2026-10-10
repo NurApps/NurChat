@@ -54,7 +54,7 @@ class NotificationManager:
 
         await self._send_notification_to_user(target_user_id, notification)
 
-    async def send_system_notification(self, user_id: str, title: str, body: str, data: dict = None):
+    async def send_system_notification(self, user_id: str, title: str, body: str, data: dict | None = None):
         """Отправка системного уведомления"""
         notification = {
             "id": security.generate_message_id(),

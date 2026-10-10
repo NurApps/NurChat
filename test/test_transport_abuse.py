@@ -8,6 +8,7 @@ Covers vulns found in the 2026-09 transport audit:
 - LIKE wildcards unescaped in search (over-matching)
 """
 import io
+from contextlib import contextmanager
 
 import pytest
 from fastapi.testclient import TestClient
@@ -61,15 +62,22 @@ def _chat_and_msg():
     return u1, u2, h1, h2, chat_id, r.json()["id"]
 
 
-def _ws_url(user, token_key="access_token"):
-    return f"/ws/chat/{user['user']['id']}?token={user[token_key]}"
+def _ws_url(user):
+    return f"/ws/chat/{user['user']['id']}"
+
+
+@contextmanager
+def _ws(user, token_key="access_token"):
+    """Connect like production clients: JWT via subprotocol, never ?token=."""
+    with client.websocket_connect(_ws_url(user), subprotocols=[user[token_key]]) as ws:
+        yield ws
 
 
 class TestWSDeleteGuards:
     def test_outsider_cannot_hide_message(self):
         u1, u2, h1, h2, chat_id, msg_id = _chat_and_msg()
         u3 = _register_user("outsider", "Pass1234", "Out")
-        with client.websocket_connect(_ws_url(u3)) as ws:
+        with _ws(u3) as ws:
             ws.send_json({"event": "delete_message", "data": {
                 "message_id": msg_id, "chat_id": chat_id, "delete_for_all": True,
             }})
@@ -82,7 +90,7 @@ class TestWSDeleteGuards:
 
     def test_author_can_delete_own_message(self):
         u1, u2, h1, h2, chat_id, msg_id = _chat_and_msg()
-        with client.websocket_connect(_ws_url(u1)) as ws:
+        with _ws(u1) as ws:
             ws.send_json({"event": "delete_message", "data": {
                 "message_id": msg_id, "chat_id": chat_id, "delete_for_all": True,
             }})
@@ -94,7 +102,7 @@ class TestWSDeleteGuards:
     def test_participant_cannot_delete_others_message(self):
         u1, u2, h1, h2, chat_id, msg_id = _chat_and_msg()
         # u2 IS a participant but NOT the author: must not delete u1's message.
-        with client.websocket_connect(_ws_url(u2)) as ws:
+        with _ws(u2) as ws:
             ws.send_json({"event": "delete_message", "data": {
                 "message_id": msg_id, "chat_id": chat_id, "delete_for_all": False,
             }})
@@ -114,7 +122,7 @@ class TestWSEditGuards:
     def test_phantom_edit_changes_nothing(self):
         u1, u2, h1, h2, chat_id, msg_id = _chat_and_msg()
         u3 = _register_user("outsider2", "Pass1234", "Out")
-        with client.websocket_connect(_ws_url(u3)) as ws:
+        with _ws(u3) as ws:
             ws.send_json({"event": "edit_message", "data": {
                 "message_id": msg_id, "chat_id": chat_id,
                 "new_content": "PWNED",
@@ -137,7 +145,7 @@ class TestWSTypingGuards:
     def test_typing_foreign_chat_no_crash(self):
         u1, u2, h1, h2, chat_id, msg_id = _chat_and_msg()
         u3 = _register_user("outsider3", "Pass1234", "Out")
-        with client.websocket_connect(_ws_url(u3)) as ws:
+        with _ws(u3) as ws:
             ws.send_json({"event": "typing", "data": {
                 "chat_id": chat_id, "is_typing": True,
             }})
@@ -180,7 +188,7 @@ class TestSendLinkValidation:
     def test_ws_send_foreign_file_dropped(self):
         u1, u2, h1, h2, chat_id, msg_id = _chat_and_msg()
         fid = self._upload_as(u2)
-        with client.websocket_connect(_ws_url(u1)) as ws:
+        with _ws(u1) as ws:
             ws.send_json({"event": "message", "data": {
                 "chat_id": chat_id, "content": "x", "message_type": "image",
                 "encrypted_content": "eA==", "signature": "cw==", "file_id": fid,

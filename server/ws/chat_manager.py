@@ -200,7 +200,7 @@ class ConnectionManager:
             pass
         return delivered
 
-    async def broadcast_local(self, message: dict, chat_id: str, exclude_user: str = None):
+    async def broadcast_local(self, message: dict, chat_id: str, exclude_user: str | None = None):
         """Доставка только локальным сокетам этого инстанса — O(K)."""
         sent_to = []
         members = self.chat_users.get(chat_id, set())
@@ -222,7 +222,7 @@ class ConnectionManager:
             logger.debug(f"Broadcast to chat {chat_id[:6]}*** to {len(sent_to)} users")
         return sent_to
 
-    async def broadcast_to_chat(self, message: dict, chat_id: str, exclude_user: str = None):
+    async def broadcast_to_chat(self, message: dict, chat_id: str, exclude_user: str | None = None):
         """Отправка всем участникам чата: локально + шина другим инстансам."""
         sent_to = await self.broadcast_local(message, chat_id, exclude_user=exclude_user)
         try:

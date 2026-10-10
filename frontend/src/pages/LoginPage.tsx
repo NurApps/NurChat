@@ -5,9 +5,11 @@ import { api } from "../services/api"
 import { claimLocalKeys, performRelaySwitch, storedAccount } from "../services/localSession"
 import { isPasskeySupported, loginWithPasskey } from "../services/webauthn"
 import { upsertProfile } from "../services/profiles"
-import { hasSession, writeStoredUserRaw } from "../services/tokenVault"
+import { hasSession, vaultReady, writeStoredUserRaw } from "../services/tokenVault"
 import { BASE_URL, getRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
-import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, type E2EKeys } from "../services/e2e"
+import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, initSecureStorage, type E2EKeys } from "../services/e2e"
+import { isStorageLocked } from "../services/pinLock"
+import PinLock from "../components/PinLock"
 
 // Свои prekeys должны лежать на реле — иначе собеседники получают
 // «нет ключей шифрования» при создании чата. setupPreKeys чинит локал,
@@ -115,6 +117,10 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
   const [checking, setChecking] = useState(true)
+  // PIN-gate: keystore is PIN-wrapped and loadKeys() reads null-locked as
+  // "no keys" — registration would then CLOBBER the identity with fresh
+  // keys. Block all crypto-touching flows until unlockWithPin() ran.
+  const [pinLocked, setPinLocked] = useState(() => isStorageLocked())
   const [tab, setTab] = useState<Tab>("register")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -222,25 +228,42 @@ export default function LoginPage() {
 
   // Auto-login or check server health
   useEffect(() => {
-    // tokenVault: access живёт в памяти — после reload его нет, но есть
-    // refresh: getCurrentUser → 401 → silent refresh → вход без логина.
-    if (hasSession()) {
-      api.getCurrentUser()
-        .then(async (user) => {
-          writeStoredUserRaw(JSON.stringify(user))
-          const keys = await loadKeys()
-          if (keys) healPreKeys(keys, user.id, "auto-login")
-          navigate("/chat", { replace: true })
-        })
-        .catch(() => {
-          api.clearToken()
-          setChecking(false)
-        })
-      return
+    // Locked keystore: no auto-login, no key reads — wait for PIN unlock
+    // (the effect re-runs when pinLocked flips).
+    if (pinLocked) return
+    // Vault unlock is async (IndexedDB): without waiting, a persisted
+    // refresh reads as "no session" and the user lands on forms needlessly.
+    vaultReady.then(() => {
+      // tokenVault: access живёт в памяти — после reload его нет, но есть
+      // refresh: getCurrentUser → 401 → silent refresh → вход без логина.
+      if (hasSession()) {
+        api.getCurrentUser()
+          .then(async (user) => {
+            writeStoredUserRaw(JSON.stringify(user))
+            const keys = await loadKeys()
+            if (keys) healPreKeys(keys, user.id, "auto-login")
+            navigate("/chat", { replace: true })
+          })
+          .catch(() => {
+            api.clearToken()
+            setChecking(false)
+          })
+        return
+      }
+      // No token — check if server is reachable before showing register/login
+      checkServerHealth()
+    })
+  }, [navigate, pinLocked])
+
+  // Deferred secure-storage init (no-op while PIN-locked at boot).
+  const handlePinUnlock = async () => {
+    try {
+      await initSecureStorage()
+    } catch (err) {
+      console.error("[Login] Secure storage init after unlock failed:", err)
     }
-    // No token — check if server is reachable before showing register/login
-    checkServerHealth()
-  }, [navigate])
+    setPinLocked(false)
+  }
 
   useEffect(() => {
     if (tab !== "register" || captchaSitekey || captchaDisabled) return
@@ -306,7 +329,7 @@ export default function LoginPage() {
         e2eKeys.publicKeyHex,
         e2eKeys.signingPublicHex
       )
-      api.setToken(res.access_token, res.refresh_token)
+      await api.setToken(res.access_token, res.refresh_token)
       writeStoredUserRaw(JSON.stringify(res.user))
 
       // Мультиаккаунт: фиксируем профиль (релей+пользователь) до работы
@@ -351,13 +374,13 @@ export default function LoginPage() {
       // 2FA enabled: keep the pending token and ask for the code instead of
       // navigating — the pending token does not grant API access.
       if (res.requires_2fa) {
-        api.setToken(res.access_token)
+        await api.setToken(res.access_token)
         setAwaiting2fa(true)
         setError("")
         return
       }
 
-      api.setToken(res.access_token, res.refresh_token)
+      await api.setToken(res.access_token, res.refresh_token)
       writeStoredUserRaw(JSON.stringify(res.user))
       {
         const relay = getRelayConfig()
@@ -390,12 +413,12 @@ export default function LoginPage() {
       const res = await loginWithPasskey(loginUsername.trim())
       if (res.requires_2fa) {
         // Passkey не обходит TOTP: дальше обычный код из аутентификатора.
-        api.setToken(res.access_token)
+        await api.setToken(res.access_token)
         setAwaiting2fa(true)
         setError("")
         return
       }
-      api.setToken(res.access_token, res.refresh_token)
+      await api.setToken(res.access_token, res.refresh_token)
       if (!res.user) throw new Error(t("auth.wrongCredentials"))
       writeStoredUserRaw(JSON.stringify(res.user))
       {
@@ -428,7 +451,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const res = await api.verify2faLogin(code)
-      api.setToken(res.access_token, res.refresh_token)
+      await api.setToken(res.access_token, res.refresh_token)
       writeStoredUserRaw(JSON.stringify(res.user))
       {
         const relay = getRelayConfig()
@@ -446,6 +469,10 @@ export default function LoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (pinLocked) {
+    return <PinLock onUnlock={handlePinUnlock} />
   }
 
   if (checking) {

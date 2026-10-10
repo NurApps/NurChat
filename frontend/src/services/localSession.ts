@@ -10,7 +10,7 @@ import { api } from "./api"
 import { setRelayConfig, type RelayConfig } from "../config"
 import { readStoredUserRaw } from "./tokenVault"
 import { namespacedLSKey } from "./profiles"
-import { clearPin } from "./pinLock"
+import { lockCrypto } from "./pinLock"
 import { clearKeys, resetMemoryCaches } from "./e2e"
 import { clearPlaintextCache } from "./plaintextCache"
 import { useFavoritesStore } from "../store/favoritesStore"
@@ -23,10 +23,12 @@ function ownerKey(): string {
   return namespacedLSKey(KEYS_OWNER_BASE)
 }
 
-/** Обычный выход: токены, PIN, память. Ключи и ratchet-сессии на диске остаются. */
+/** Обычный выход: токены и память. PIN остаётся (device-уровень): ключи
+ * лежат PIN-зашифрованными, следующий вход — через PinLock. Из памяти
+ * падает только passphrase (lockCrypto), хранилище НЕ перешифровывается. */
 export function performLogout(): void {
   api.clearToken()
-  clearPin()
+  lockCrypto()
   resetMemoryCaches()
   useChatStore.getState().reset()
 }

@@ -87,8 +87,13 @@ class TestCSRFProtection:
         # Should NOT be 403 CSRF error — might be 401/400 instead
         assert r.status_code != 403 or "CSRF" not in r.json().get("detail", "")
 
-    def test_csrf_cookie_is_not_httponly(self):
-        """C1: CSRF cookie must be readable by JavaScript (not HttpOnly)."""
+    def test_csrf_cookie_is_httponly(self):
+        """C1: CSRF cookie must be HttpOnly (XSS can't scrape it).
+
+        Clients take the token from the X-CSRF-Token response header
+        (cached client-side, primed from /health when cold) — never from
+        document.cookie.
+        """
         r = client.get("/health")
         cookie = None
         for c in client.cookies.jar:
@@ -96,10 +101,9 @@ class TestCSRFProtection:
                 cookie = c
                 break
         assert cookie is not None, "csrf_token cookie not found"
-        # HttpOnly cookies don't have explicit flags in jar, but we check the Set-Cookie header
         set_cookie = r.headers.get("set-cookie", "")
-        if "csrf_token" in set_cookie:
-            assert "httponly" not in set_cookie.lower() or "httponly=false" in set_cookie.lower()
+        assert "csrf_token" in set_cookie
+        assert "httponly" in set_cookie.lower()
 
     def test_csrf_token_reused_across_requests(self):
         """C6: Same CSRF token should be reused if still valid."""

@@ -21,7 +21,7 @@ describe.skipIf(!relayUp || !turnstileToken)("registration flow (live relay)", (
       keys.publicKeyHex, keys.signingPublicHex,
     )
     expect(reg.access_token).toBeTruthy()
-    api.setToken(reg.access_token)
+    await api.setToken(reg.access_token)
 
     await saveKeys(keys)
     const loaded = await loadKeys()

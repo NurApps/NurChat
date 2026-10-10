@@ -75,11 +75,14 @@ class CSRFMiddleware:
             if message["type"] == "http.response.start":
                 message.setdefault("headers", [])
                 headers = list(message["headers"])
-                # Set CSRF token in cookie (non-HttpOnly so JS can read it for X-CSRF-Token header)
+                # Set CSRF token in an HttpOnly cookie (JS must NOT read it:
+                # XSS scraping document.cookie would steal the token — clients
+                # take it from the X-CSRF-Token response header instead, which
+                # is also readable cross-origin where document.cookie isn't).
                 set_cookie = (
                     f"{self.cookie_name}={new_token};"
                     f" Max-Age={int(self.token_lifetime.total_seconds())};"
-                    " Path=/; SameSite=lax"
+                    " Path=/; SameSite=lax; HttpOnly"
                 )
                 if not settings.DEBUG:
                     set_cookie += "; Secure"

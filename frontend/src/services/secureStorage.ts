@@ -224,6 +224,21 @@ async function decryptAtRest(encodedData: string): Promise<string> {
   return new TextDecoder().decode(decrypted)
 }
 
+/**
+ * Encrypt an arbitrary short secret (e.g. the refresh token vault) with the
+ * SAME wrapping key as everything else — so PIN/unlock/rewrap semantics
+ * apply uniformly. Format `v1$<iv-b64>$<ct-b64>`.
+ */
+export async function encryptWithWrappingKey(plaintext: string): Promise<string> {
+  return `v1$${await encryptAtRest(plaintext)}`
+}
+
+/** Inverse of encryptWithWrappingKey. Throws on bad format or wrong key. */
+export async function decryptWithWrappingKey(payload: string): Promise<string> {
+  if (!payload.startsWith("v1$")) throw new Error("unknown vault format")
+  return decryptAtRest(payload.slice(3))
+}
+
 // ─── Zeroize ───
 
 /**
@@ -451,6 +466,55 @@ export async function clearNamespace(ns: string): Promise<void> {
     wrappingKeyCache = null
     devicePassphrase = null
   }
+}
+
+/**
+ * Re-wrap EVERYTHING with a new passphrase (PIN set/change/disable).
+ *
+ * Two-phase, failure-atomic: phase 1 decrypts all records with the CURRENT
+ * key into memory; only then the passphrase switches and phase 2 writes
+ * everything back. If any record fails to decrypt (locked/corrupt), nothing
+ * is written and the old data stays intact — caller shows an error instead
+ * of bricking the keystore.
+ *
+ * Covers all namespaces (PIN is device-wide, profiles share the device).
+ * `device_secret` itself is never re-wrapped (it seeds the derivation).
+ */
+export async function rewrapSecureStorage(newPassphrase: string | null): Promise<void> {
+  const db = await getDB()
+  const stores = [STORE_KEYS, STORE_SESSIONS, STORE_META] as const
+  // Phase 1 (read-only): collect ciphertext. Each get is its own auto-tx.
+  const raws: { store: string; key: string; raw: string }[] = []
+  for (const store of stores) {
+    const keys = await db.getAllKeys(store)
+    for (const k of keys) {
+      if (typeof k !== "string") continue
+      if (store === STORE_META && k === DEVICE_SECRET_KEY) continue
+      const raw: unknown = await db.get(store, k)
+      if (typeof raw !== "string") continue
+      raws.push({ store, key: k, raw })
+    }
+  }
+  // Phase 2 (memory only): decrypt with the CURRENT key. Any failure throws
+  // BEFORE anything is written — old data stays intact.
+  const plaintexts: { store: string; key: string; plaintext: string }[] = []
+  for (const item of raws) {
+    plaintexts.push({ ...item, plaintext: await decryptAtRest(item.raw) })
+  }
+  // Phase 3 (memory only): switch key, re-encrypt.
+  setDevicePassphrase(newPassphrase)
+  const ciphers: { store: string; key: string; cipher: string }[] = []
+  for (const item of plaintexts) {
+    ciphers.push({ ...item, cipher: await encryptAtRest(item.plaintext) })
+  }
+  // Phase 4 (single write tx): all puts issued synchronously (no crypto
+  // awaits between them — an IDB transaction would auto-commit on yield),
+  // then one commit. No mixed old/new keystore on crash.
+  const tx = db.transaction([...stores], "readwrite")
+  for (const item of ciphers) {
+    tx.objectStore(item.store).put(item.cipher, item.key)
+  }
+  await tx.done
 }
 
 // ─── Device Secret ───

@@ -15,6 +15,7 @@ import {
   peekRefreshToken,
   setSession,
   updateAfterRefresh,
+  unlockVault,
   writeStoredUserRaw,
 } from "./tokenVault"
 import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse, ContactRequestResponse } from "../types"
@@ -78,7 +79,10 @@ let refreshPromise: Promise<boolean> | null = null
 // CSRFMiddleware требует X-CSRF-Token и на /refresh (он не в exempt_paths).
 // После перезагрузки страницы кэша нет, а document.cookie не видит cookie чужого
 // хоста реле — берём токен из заголовка любого ответа (GET /health).
-async function ensureCsrfToken(): Promise<string | null> {
+// CSRF cookie is HttpOnly (XSS can't scrape it) — the usable token comes
+// from the X-CSRF-Token response header. Prime it from /health when the
+// cache is cold (first POST after reload), same as the refresh flow.
+export async function ensureCsrfToken(): Promise<string | null> {
   const known = csrfTokenCache || getCsrfToken()
   if (known) return known
   try {
@@ -94,6 +98,9 @@ export function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
+      // Vault unlock is async (IndexedDB key derivation) — without it the
+      // persisted refresh is unreadable and we'd bounce to /login on reload.
+      await unlockVault()
       const rt = peekRefreshToken()
       if (!rt) return false
       if (!tryAcquireRefreshLock()) {
@@ -101,7 +108,7 @@ export function refreshAccessToken(): Promise<boolean> {
         // (a race would revoke the winner and log THIS tab out).
         const sib = await waitForSiblingTokens()
         if (sib) {
-          updateAfterRefresh(sib.access, sib.refresh)
+          await updateAfterRefresh(sib.access, sib.refresh)
           return true
         }
         // Stale lock and nobody delivered — try ourselves, once.
@@ -129,7 +136,7 @@ export function refreshAccessToken(): Promise<boolean> {
           if (readRefreshSeq() !== seqBefore || isSiblingRefreshing()) {
             const sib = await waitForSiblingTokens(REFRESH_SYNC_TIMINGS.siblingShortWaitMs)
             if (sib) {
-              updateAfterRefresh(sib.access, sib.refresh)
+              await updateAfterRefresh(sib.access, sib.refresh)
               return true
             }
           }
@@ -137,7 +144,7 @@ export function refreshAccessToken(): Promise<boolean> {
         }
         const data = await res.json()
         if (!data.access_token) return false
-        updateAfterRefresh(data.access_token, data.refresh_token ?? null)
+        await updateAfterRefresh(data.access_token, data.refresh_token ?? null)
         announceRefresh(data.access_token, data.refresh_token ?? null)
         return true
       } finally {
@@ -265,11 +272,11 @@ export const api = {
   updateProfile: async (fields: { first_name: string; last_name: string; status: string; bio: string }): Promise<UserResponse> => {
     // Пустые status/bio отправляем как есть: сервер трактует "" как очистку,
     // а отсутствие поля как «не менять».
+    const csrf = csrfHeader() || await ensureCsrfToken()
     const send = () => {
       const form = new FormData()
       for (const [k, v] of Object.entries(fields)) form.append(k, v)
       const token = getToken()
-      const csrf = csrfHeader()
       return fetch(`${BASE_URL}/api/auth/profile/update`, {
         method: "POST",
         headers: {
@@ -421,7 +428,7 @@ export const api = {
 
   uploadFile: async (file: File, fileType: string, onProgress?: (percent: number) => void, isEncrypted = false): Promise<FileUploadResponse> => {
     const token = getToken()
-    const csrf = getCsrfToken()
+    const csrf = getCsrfToken() || await ensureCsrfToken()
     const form = new FormData()
     form.append("file", file)
     form.append("file_type", fileType)
@@ -469,7 +476,7 @@ export const api = {
   mintFileToken: async (fileId: string): Promise<string | null> => {
     try {
       const token = getToken()
-      const csrf = getCsrfToken()
+      const csrf = getCsrfToken() || await ensureCsrfToken()
       const form = new FormData()
       form.append("file_id", fileId)
       const res = await fetch(`${BASE_URL}/api/files/token`, {
@@ -600,8 +607,8 @@ export const api = {
   getIdentityKeys: (userId: string) =>
     request<{ user_id: string; identity_key: string; public_key: string }>("GET", `/api/auth/user/${userId}/identity-keys`),
 
-  setToken: (token: string, refreshToken?: string) => {
-    setSession(token, refreshToken ?? null)
+  setToken: async (token: string, refreshToken?: string) => {
+    await setSession(token, refreshToken ?? null)
   },
 
   isAuthenticated: () => {

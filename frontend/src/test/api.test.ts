@@ -7,7 +7,7 @@ beforeEach(async () => {
   vi.resetModules()
   // Pentest #1: access token lives in memory (tokenVault), never on disk.
   const { setSession } = await import('../services/tokenVault')
-  setSession('test-token')
+  await setSession('test-token')
   localStorage.setItem('user', JSON.stringify(mockUser))
 })
 
@@ -15,10 +15,14 @@ describe('api', () => {
   it('should set and clear session via vault (access never on disk)', async () => {
     const { api } = await import('../services/api')
     const { getAccessToken } = await import('../services/tokenVault')
-    api.setToken('new-token', 'new-refresh')
+    await api.setToken('new-token', 'new-refresh')
     expect(getAccessToken()).toBe('new-token')
     expect(localStorage.getItem('token')).toBeNull()
-    expect(localStorage.getItem('refresh_token')).toBe('new-refresh')
+    expect(localStorage.getItem('refresh_token')).toBeNull()
+    // Encrypted at rest: no plaintext refresh anywhere on disk.
+    const cipher = localStorage.getItem('refresh_token_enc')
+    expect(cipher).toMatch(/^v1\$/)
+    expect(cipher).not.toContain('new-refresh')
     api.clearToken()
     expect(getAccessToken()).toBeNull()
     expect(api.isAuthenticated()).toBe(false)

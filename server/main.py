@@ -383,13 +383,16 @@ async def _verify_ws_token(websocket: WebSocket, token: str | None, client_ip: s
         return None
 
 @app.websocket("/ws/chat/{user_id}")
-async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str = ""):
+async def websocket_chat_endpoint(websocket: WebSocket, user_id: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    from server.ws.subprotocol import extract_ws_token
-    effective_token, _ = extract_ws_token(websocket, token or None)
+    from server.ws.subprotocol import extract_ws_token, reject_legacy_query_token
+    if await reject_legacy_query_token(websocket):
+        await release_ws_connection(client_ip)
+        return
+    effective_token, _ = extract_ws_token(websocket)
     if not await _verify_ws_token(websocket, effective_token, client_ip, user_id):
         await release_ws_connection(client_ip)
         return
@@ -399,13 +402,16 @@ async def websocket_chat_endpoint(websocket: WebSocket, user_id: str, token: str
         await release_ws_connection(client_ip)
 
 @app.websocket("/ws/calls/{user_id}")
-async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: str = ""):
+async def websocket_calls_endpoint(websocket: WebSocket, user_id: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    from server.ws.subprotocol import extract_ws_token
-    effective_token, _ = extract_ws_token(websocket, token or None)
+    from server.ws.subprotocol import extract_ws_token, reject_legacy_query_token
+    if await reject_legacy_query_token(websocket):
+        await release_ws_connection(client_ip)
+        return
+    effective_token, _ = extract_ws_token(websocket)
     if not await _verify_ws_token(websocket, effective_token, client_ip, user_id):
         await release_ws_connection(client_ip)
         return
@@ -415,13 +421,16 @@ async def websocket_calls_endpoint(websocket: WebSocket, user_id: str, token: st
         await release_ws_connection(client_ip)
 
 @app.websocket("/ws/signaling/{user_id}")
-async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token: str = ""):
+async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    from server.ws.subprotocol import extract_ws_token
-    effective_token, _ = extract_ws_token(websocket, token or None)
+    from server.ws.subprotocol import extract_ws_token, reject_legacy_query_token
+    if await reject_legacy_query_token(websocket):
+        await release_ws_connection(client_ip)
+        return
+    effective_token, _ = extract_ws_token(websocket)
     if not await _verify_ws_token(websocket, effective_token, client_ip, user_id):
         await release_ws_connection(client_ip)
         return
@@ -432,13 +441,16 @@ async def websocket_signaling_endpoint(websocket: WebSocket, user_id: str, token
         await release_ws_connection(client_ip)
 
 @app.websocket("/ws/notifications/{user_id}")
-async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str, token: str = ""):
+async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str):
     client_ip = websocket.client.host if websocket.client else "unknown"
     if not await check_ws_rate_limit(client_ip):
         await websocket.close(code=4008)
         return
-    from server.ws.subprotocol import extract_ws_token
-    effective_token, _ = extract_ws_token(websocket, token or None)
+    from server.ws.subprotocol import extract_ws_token, reject_legacy_query_token
+    if await reject_legacy_query_token(websocket):
+        await release_ws_connection(client_ip)
+        return
+    effective_token, _ = extract_ws_token(websocket)
     if not await _verify_ws_token(websocket, effective_token, client_ip, user_id):
         await release_ws_connection(client_ip)
         return

@@ -1,5 +1,14 @@
 import { BASE_URL } from "../config"
 import {
+  announceRefresh,
+  isSiblingRefreshing,
+  readRefreshSeq,
+  REFRESH_SYNC_TIMINGS,
+  releaseRefreshLock,
+  tryAcquireRefreshLock,
+  waitForSiblingTokens,
+} from "./refreshSync"
+import {
   clearSession,
   getAccessToken,
   hasSession,
@@ -62,7 +71,8 @@ function notifyAuthExpired(): void {
 
 // Single-flight refresh: concurrent 401s share one POST /refresh
 // (the endpoint is rate-limited 10/min AND rotates the refresh token,
-// so parallel refreshes would revoke each other).
+// so parallel refreshes would revoke each other). Cross-tab: only the
+// lock holder POSTs, siblings adopt via BroadcastChannel (refreshSync).
 let refreshPromise: Promise<boolean> | null = null
 
 // CSRFMiddleware требует X-CSRF-Token и на /refresh (он не в exempt_paths).
@@ -86,6 +96,18 @@ export function refreshAccessToken(): Promise<boolean> {
     try {
       const rt = peekRefreshToken()
       if (!rt) return false
+      if (!tryAcquireRefreshLock()) {
+        // Sibling tab is refreshing: adopt its tokens instead of racing
+        // (a race would revoke the winner and log THIS tab out).
+        const sib = await waitForSiblingTokens()
+        if (sib) {
+          updateAfterRefresh(sib.access, sib.refresh)
+          return true
+        }
+        // Stale lock and nobody delivered — try ourselves, once.
+        if (!tryAcquireRefreshLock()) return false
+      }
+      const seqBefore = readRefreshSeq()
       const csrf = await ensureCsrfToken()
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 30000)
@@ -101,10 +123,22 @@ export function refreshAccessToken(): Promise<boolean> {
           body: JSON.stringify({ refresh_token_str: rt }),
           signal: controller.signal,
         })
-        if (!res.ok) return false
+        if (!res.ok) {
+          // Lost the race after all (parallel tab won first)? Adopt the
+          // sibling win before giving up — avoids a bogus logout.
+          if (readRefreshSeq() !== seqBefore || isSiblingRefreshing()) {
+            const sib = await waitForSiblingTokens(REFRESH_SYNC_TIMINGS.siblingShortWaitMs)
+            if (sib) {
+              updateAfterRefresh(sib.access, sib.refresh)
+              return true
+            }
+          }
+          return false
+        }
         const data = await res.json()
         if (!data.access_token) return false
         updateAfterRefresh(data.access_token, data.refresh_token ?? null)
+        announceRefresh(data.access_token, data.refresh_token ?? null)
         return true
       } finally {
         clearTimeout(timer)
@@ -112,6 +146,7 @@ export function refreshAccessToken(): Promise<boolean> {
     } catch {
       return false
     } finally {
+      releaseRefreshLock()
       refreshPromise = null
     }
   })()

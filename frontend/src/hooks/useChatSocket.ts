@@ -286,20 +286,15 @@ export function useChatSocket({
     let reconnectTimer: ReturnType<typeof setTimeout>
     let reconnectAttempts = 0
     const MAX_RECONNECT = 10
-    // Старый relay (без subprotocol-auth): запоминаем после первого 1006,
-    // дальше реконнектимся сразу legacy-путём.
-    let legacyWs = false
 
-    function connect(forceLegacy?: boolean) {
-      const queryFallback = forceLegacy ?? legacyWs
+    function connect() {
       if (stopped) return
       // Pentest #3: JWT via Sec-WebSocket-Protocol, not ?token= in the URL.
-      const ws = openAuthedSocket(`/chat/${userId}`, queryFallback)
+      // Query auth was removed server-side — no legacy retry path remains.
+      const ws = openAuthedSocket(`/chat/${userId}`)
       if (!ws) return
       wsRef.current = ws
-      let opened = false
       ws.onopen = () => {
-        opened = true
         const hadGap = reconnectAttempts > 0
         reconnectAttempts = 0
         console.log("WS connected")
@@ -321,14 +316,6 @@ export function useChatSocket({
       ws.onclose = async (event) => {
         if (stopped) return
         setWsUp(false)
-        // Pre-fix relay + subprotocol attempt: handshake fails with 1006
-        // before ever opening (server demands ?token=). One legacy retry.
-        if (!opened && !queryFallback && event.code === 1006) {
-          console.warn("WS subprotocol handshake failed — retrying with legacy ?token=")
-          legacyWs = true
-          connect(true)
-          return
-        }
         // Диагностика туннеля: 1006 = сеть/прокси рвал молча (cloudflared),
         // 4001/4003/4008 = сервер отбил осознанно. Без кода в логе все
         // обрывы выглядят одинаково («closed before established»).

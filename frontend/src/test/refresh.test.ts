@@ -40,7 +40,7 @@ describe('api refresh cycle', () => {
     vi.resetModules()
     // Pentest #1: session seeds memory (vault), refresh persists for reload.
     const { setSession } = await import('../services/tokenVault')
-    setSession('old-access', 'good-refresh')
+    await setSession('old-access', 'good-refresh')
   })
 
   afterEach(() => {
@@ -120,8 +120,10 @@ describe('api cross-tab refresh', () => {
     vi.stubGlobal('BroadcastChannel', FakeBC)
     localStorage.clear()
     vi.resetModules()
+    const { resetRefreshSyncForTests } = await import('../services/refreshSync')
+    resetRefreshSyncForTests()
     const { setSession } = await import('../services/tokenVault')
-    setSession('old-access', 'good-refresh')
+    await setSession('old-access', 'good-refresh')
   })
 
   it('adopts sibling tokens without POSTing /refresh', async () => {
@@ -139,6 +141,9 @@ describe('api cross-tab refresh', () => {
     const { refreshAccessToken } = await import('../services/api')
     const { getAccessToken, peekRefreshToken } = await import('../services/tokenVault')
     const p = refreshAccessToken()
+    // Subscription happens after an async vault check — yield so the
+    // winner message below can't land before anyone listens.
+    await new Promise((r) => setTimeout(r, 0))
     // Winner delivers while we wait.
     new FakeBC('nurchat:refresh').postMessage(winnerMsg('sib-access', 'sib-refresh'))
     expect(await p).toBe(true)

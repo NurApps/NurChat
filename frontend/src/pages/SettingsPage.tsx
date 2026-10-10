@@ -7,7 +7,7 @@ import { BASE_URL, avatarUrl, getRelayConfig, resetRelayConfig, parseRelayInput,
 import { hasKeys, clearKeys } from "../services/e2e"
 import CustomThemeEditor from "../components/CustomThemeEditor"
 import { customSkinVariant, isCustomSkinId } from "../services/customTheme"
-import { isPinEnabled, setPin, clearPin, verifyPin } from "../services/pinLock"
+import { isPinEnabled, verifyPin, enablePin, changePin, disablePin } from "../services/pinLock"
 import { performLogout, performRelaySwitch, releaseLocalKeys, storedAccount } from "../services/localSession"
 import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
@@ -66,6 +66,7 @@ export default function SettingsPage() {
   const [pinSetup, setPinSetup] = useState<"idle" | "set" | "change" | "remove">("idle")
   const [pinInput, setPinInput] = useState("")
   const [pinConfirm, setPinConfirm] = useState("")
+  const [pinCurrent, setPinCurrent] = useState("")
   const [pinStep, setPinStep] = useState<"enter" | "confirm">("enter")
   
   // TOTP 2FA state
@@ -224,6 +225,14 @@ export default function SettingsPage() {
     setMsg(t("settings.e2eKeysDeleted"))
   }
 
+  const resetPinForm = () => {
+    setPinSetup("idle")
+    setPinInput("")
+    setPinConfirm("")
+    setPinCurrent("")
+    setPinStep("enter")
+  }
+
   const handlePinSetup = () => {
     if (pinStep === "enter") {
       if (pinInput.length < 4) { setErr(t("settings.pinMinLength")); return }
@@ -232,13 +241,15 @@ export default function SettingsPage() {
       setMsg("")
     } else {
       if (pinInput !== pinConfirm) { setErr(t("settings.pinMismatch")); return }
-      setPin(pinInput).then(() => {
+      // Re-wrap keystore (null → pin) BEFORE storing the gate: on failure
+      // the gate stays off and storage keeps working as before.
+      enablePin(pinInput).then(() => {
         setPinEnabled(true)
-        setPinSetup("idle")
-        setPinInput("")
-        setPinConfirm("")
-        setPinStep("enter")
+        resetPinForm()
         setMsg(t("settings.pinSetSuccess"))
+      }).catch((e) => {
+        console.error("[Settings] enablePin failed:", e)
+        setErr(t("settings.pinCryptoError"))
       })
     }
   }
@@ -247,32 +258,37 @@ export default function SettingsPage() {
     if (pinStep === "enter") {
       const ok = await verifyPin(pinInput)
       if (!ok) { setErr(t("settings.pinWrongCurrent")); return }
+      setPinCurrent(pinInput)
       setPinStep("confirm")
       setPinInput("")
       setMsg("")
     } else {
       if (pinInput.length < 4) { setErr(t("settings.pinMinLength")); return }
-      setPin(pinInput).then(() => {
+      try {
+        const ok = await changePin(pinCurrent, pinInput)
+        if (!ok) { setErr(t("settings.pinWrongCurrent")); resetPinForm(); return }
         setPinEnabled(true)
-        setPinSetup("idle")
-        setPinInput("")
-        setPinConfirm("")
-        setPinStep("enter")
+        resetPinForm()
         setMsg(t("settings.pinChanged"))
-      })
+      } catch (e) {
+        console.error("[Settings] changePin failed:", e)
+        setErr(t("settings.pinCryptoError"))
+      }
     }
   }
 
   const handlePinRemove = async () => {
     if (pinStep === "enter") {
-      const ok = await verifyPin(pinInput)
-      if (!ok) { setErr(t("settings.pinWrong")); return }
-      clearPin()
-      setPinEnabled(false)
-      setPinSetup("idle")
-      setPinInput("")
-      setPinStep("enter")
-      setMsg(t("settings.pinRemoved"))
+      try {
+        const ok = await disablePin(pinInput)
+        if (!ok) { setErr(t("settings.pinWrong")); return }
+        setPinEnabled(false)
+        resetPinForm()
+        setMsg(t("settings.pinRemoved"))
+      } catch (e) {
+        console.error("[Settings] disablePin failed:", e)
+        setErr(t("settings.pinCryptoError"))
+      }
     }
   }
 

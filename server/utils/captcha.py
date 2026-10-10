@@ -29,9 +29,12 @@ class LockoutManager:
     """Брутфорс-защита уровня IP/аккаунта (pentest #5/#6): после серии
     неудач (неверная капча, неверный пароль) ключ блокируется.
 
-    In-memory per-process — как весь slowapi здесь; для мульти-инстанса
-    нужен Redis (см. USE_REDIS).
+    Хранилище — Redis sorted-set при USE_REDIS (общий счётчик на
+    мульти-инстанс, переживает рестарт), иначе in-memory dict.
+    Любая ошибка Redis — тихий fallback на память, не 500.
     """
+
+    _REDIS_PREFIX = "nurchat:lockout:"
 
     def __init__(self) -> None:
         self._failures: dict[str, list[datetime]] = {}
@@ -39,7 +42,41 @@ class LockoutManager:
         self.lockout_window = timedelta(minutes=15)
         self.lockout_seconds = 300
 
+    def _rkey(self, key: str) -> str:
+        return self._REDIS_PREFIX + key
+
+    def _redis(self):
+        try:
+            from server.core.redis_manager import get_redis
+            return get_redis()
+        except Exception:
+            return None
+
     def is_locked_out(self, key: str) -> bool:
+        if self._is_locked_out_redis(key):
+            return True
+        return self._is_locked_out_mem(key)
+
+    def _is_locked_out_redis(self, key: str) -> bool:
+        r = self._redis()
+        if r is None:
+            return False
+        try:
+            import time
+            now = time.time()
+            rk = self._rkey(key)
+            window_start = now - self.lockout_window.total_seconds()
+            r.zremrangebyscore(rk, 0, window_start)
+            if r.zcard(rk) < self.lockout_threshold:
+                return False
+            latest = r.zrevrange(rk, 0, 0, withscores=True)
+            if not latest:
+                return False
+            return bool((now - latest[0][1]) < self.lockout_seconds)
+        except Exception:
+            return False
+
+    def _is_locked_out_mem(self, key: str) -> bool:
         now = datetime.now(timezone.utc)
         hits = [t for t in self._failures.get(key, []) if now - t < self.lockout_window]
         self._failures[key] = hits
@@ -49,12 +86,37 @@ class LockoutManager:
         return (now - hits[-1]).total_seconds() < self.lockout_seconds
 
     def record_failure(self, key: str) -> None:
+        self._record_failure_redis(key)
+        self._record_failure_mem(key)
+
+    def _record_failure_redis(self, key: str) -> None:
+        r = self._redis()
+        if r is None:
+            return
+        try:
+            import time
+            import uuid
+            now = time.time()
+            rk = self._rkey(key)
+            r.zadd(rk, {uuid.uuid4().hex: now})
+            r.zremrangebyscore(rk, 0, now - self.lockout_window.total_seconds())
+            r.expire(rk, int(self.lockout_window.total_seconds()) + self.lockout_seconds)
+        except Exception:
+            pass
+
+    def _record_failure_mem(self, key: str) -> None:
         now = datetime.now(timezone.utc)
         hits = [t for t in self._failures.get(key, []) if now - t < self.lockout_window]
         hits.append(now)
         self._failures[key] = hits
 
     def record_success(self, key: str) -> None:
+        try:
+            r = self._redis()
+            if r is not None:
+                r.delete(self._rkey(key))
+        except Exception:
+            pass
         self._failures.pop(key, None)
 
 

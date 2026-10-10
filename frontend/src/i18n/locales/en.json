@@ -450,6 +450,7 @@
     "pinRemoved": "PIN code disabled",
     "pinWrongCurrent": "Wrong current PIN",
     "pinWrong": "Wrong PIN",
+    "pinCryptoError": "Could not re-encrypt storage — PIN unchanged",
     "sessions": "Sessions",
     "logoutAllDevices": "Log out of all devices",
     "logoutAllDesc": "Ends every session of this account on all devices, including this one. You will need to sign in again.",

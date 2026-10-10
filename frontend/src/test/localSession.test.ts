@@ -51,6 +51,16 @@ describe('localSession', () => {
     expect(s.input).toBe('')
   })
 
+  it('performLogout keeps the PIN gate but drops the passphrase', async () => {
+    const pin = await import('../services/pinLock')
+    await pin.setPin('1234')
+    expect(await pin.unlockWithPin('1234')).toBe(true)
+    expect(pin.isStorageLocked()).toBe(false)
+    performLogout()
+    // Device-level PIN survives logout; memory secret does not.
+    expect(pin.isStorageLocked()).toBe(true)
+  })
+
   it('releaseLocalKeys forgets the owner and the plaintext cache', async () => {
     await claimLocalKeys('a')
     savePlaintext('m1', 'hello')

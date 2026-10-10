@@ -173,3 +173,15 @@ export const REFRESH_SYNC_TIMINGS = {
   siblingWaitMs: SIBLING_WAIT_MS,
   siblingShortWaitMs: SIBLING_SHORT_WAIT_MS,
 }
+
+/**
+ * Test seam: cancel a pending announce repeat so one test's winner
+ * broadcast can't leak into the next test's subscriber. Production
+ * never calls this (the repeat is intentional there).
+ */
+export function resetRefreshSyncForTests(): void {
+  if (announceTimer) {
+    clearTimeout(announceTimer)
+    announceTimer = null
+  }
+}

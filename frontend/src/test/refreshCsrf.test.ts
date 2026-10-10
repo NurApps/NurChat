@@ -19,7 +19,7 @@ describe("refreshAccessToken", () => {
       return json({ access_token: "new-access", refresh_token: "new-refresh" })
     }))
     const { setSession } = await import("../services/tokenVault")
-    setSession("old-access", "old-refresh")
+    await setSession("old-access", "old-refresh")
     const { refreshAccessToken } = await import("../services/api")
 
     expect(await refreshAccessToken()).toBe(true)

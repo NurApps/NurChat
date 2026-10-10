@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
-import { verifyPin, isPinEnabled, resetAttempts, recordFailedAttempt, getLockoutTimeRemaining, isLockedOut } from "../services/pinLock"
+import { unlockWithPin, isPinEnabled, resetAttempts, recordFailedAttempt, getLockoutTimeRemaining, isLockedOut, lockCrypto } from "../services/pinLock"
 import { Delete, LockKeyhole } from "lucide-react"
 
 interface Props {
@@ -41,7 +41,7 @@ export default function PinLock({ onUnlock }: Props) {
     setPin((prev) => {
       const next = prev + d
       if (next.length >= 4) {
-        verifyPin(next).then((ok) => {
+        unlockWithPin(next).then((ok) => {
           if (ok) {
             resetAttempts()
             onUnlock()
@@ -49,6 +49,7 @@ export default function PinLock({ onUnlock }: Props) {
             const rem = recordFailedAttempt()
             setPin("")
             if (rem <= 0) {
+              lockCrypto()
               setLocked(true)
               setLockoutRemaining(getLockoutTimeRemaining())
               setError(t("chat.tooManyAttempts"))

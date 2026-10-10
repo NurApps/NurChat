@@ -56,6 +56,7 @@ import {
   hexToBytesSecure,
   bytesToHex,
 } from "./secureStorage"
+import { isStorageLocked } from "./pinLock"
 
 // ─── Padding (hide plaintext length from relay) ───
 // Before encryption we pad to the next 512B bucket: [4B BE len][plain][random tail].
@@ -944,6 +945,15 @@ export async function initSecureStorage(): Promise<{
   keys: E2EKeys | null
 }> {
   const result = { migrated: false, keys: null as E2EKeys | null }
+
+  // PIN-locked: without the passphrase every decrypt fails and loadKeys()
+  // returns null — which callers read as "no keys, generate fresh ones" and
+  // would CLOBBER the PIN-wrapped identity. Do nothing; the unlock sites
+  // (LoginPage gate, AuthGuard) re-run this after unlockWithPin().
+  if (isStorageLocked()) {
+    console.log("[E2E] Secure storage PIN-locked, init deferred until unlock")
+    return result
+  }
 
   // Check for legacy keys
   if (hasLegacyKeys()) {

@@ -58,27 +58,46 @@ jobs:
         run: npx --yes tauri android build --apk --target aarch64 armv7 --ci
 
       - name: Sign APK
-        # Без keystore Gradle отдаёт unsigned APK — на устройство он не встанет.
-        # Если секреты заданы, подписываем; иначе просто выкладываем unsigned.
+        # Без подписи Android отвечает «пакет недействителен» при установке.
+        # Если заданы релизные секреты — подписываем ими (NurChat-signed.apk).
+        # Иначе — одноразовым DEBUG-ключом (NurChat-debug.apk): ставится на
+        # устройство для тестов, но ключ каждый раз новый (обновление поверх
+        # не встанет — только переустановка; для стабильного ключа задайте
+        # секреты). Unsigned-оригинал тоже выкладываем для диагностики.
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           OUT=src-tauri/gen/android/app/build/outputs/apk/universal/release
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "::warning::ANDROID_KEYSTORE_BASE64 не задан — APK остаётся unsigned"
-            exit 0
-          fi
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          "$BT/zipalign" -f -p 4 "$OUT/app-universal-release-unsigned.apk" "$OUT/app-aligned.apk"
-          "$BT/apksigner" sign \
-            --ks "$RUNNER_TEMP/release.jks" \
-            --ks-key-alias "$ANDROID_KEY_ALIAS" \
-            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
-            --out "$OUT/NurChat-signed.apk" "$OUT/app-aligned.apk"
-          rm -f "$RUNNER_TEMP/release.jks" "$OUT/app-aligned.apk"
+          APK_IN="$OUT/app-universal-release-unsigned.apk"
+          "$BT/zipalign" -f -p 4 "$APK_IN" "$OUT/app-aligned.apk"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            "$BT/apksigner" sign \
+              --ks "$RUNNER_TEMP/release.jks" \
+              --ks-key-alias "$ANDROID_KEY_ALIAS" \
+              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --out "$OUT/NurChat-signed.apk" "$OUT/app-aligned.apk"
+            "$BT/apksigner" verify --print-certs "$OUT/NurChat-signed.apk"
+            rm -f "$RUNNER_TEMP/release.jks" "$OUT/app-aligned.apk"
+          elif command -v keytool >/dev/null 2>&1; then
+            echo "::notice::Релизного keystore нет — подписываю одноразовым DEBUG-ключом (только для тестовой установки)"
+            keytool -genkeypair -keystore "$RUNNER_TEMP/debug.jks" \
+              -alias androiddebugkey -storepass android -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10950 \
+              -dname "CN=NurChat Debug, OU=Dev, O=NurApps" -noprompt
+            "$BT/apksigner" sign \
+              --ks "$RUNNER_TEMP/debug.jks" \
+              --ks-key-alias androiddebugkey \
+              --ks-pass:android --key-pass:android \
+              --out "$OUT/NurChat-debug.apk" "$OUT/app-aligned.apk"
+            "$BT/apksigner" verify --print-certs "$OUT/NurChat-debug.apk"
+            rm -f "$RUNNER_TEMP/debug.jks" "$OUT/app-aligned.apk"
+          else
+            echo "::warning::Нет ни keystore, ни keytool — APK остаётся unsigned (не установится)"
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v7

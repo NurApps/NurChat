@@ -91,7 +91,7 @@ jobs:
             "$BT/apksigner" sign \
               --ks "$RUNNER_TEMP/debug.jks" \
               --ks-key-alias androiddebugkey \
-              --ks-pass:android --key-pass:android \
+              --ks-pass pass:android --key-pass pass:android \
               --out "$OUT/NurChat-debug.apk" "$OUT/app-aligned.apk"
             "$BT/apksigner" verify --print-certs "$OUT/NurChat-debug.apk"
             rm -f "$RUNNER_TEMP/debug.jks" "$OUT/app-aligned.apk"

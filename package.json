@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "tauri": "tauri"
+  },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",
     "tailwindcss": "^4.3.1"

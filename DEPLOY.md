@@ -273,7 +273,7 @@ cloudflared tunnel login            # один раз: привяжет твой
 cloudflared tunnel create nurchat   # один раз: lava id + credentials
 # в дашборде Cloudflare: DNS relay.example.com → CNAME <tunnel-id>.cfargotunnel.com
 cloudflared tunnel route dns nurchat relay.example.com
-cloudflared tunnel run --url http://localhost:8000 nurchat
+cloudflared tunnel run --url http://127.0.0.1:8000 nurchat
 # как служба (чтобы жил после перезагрузки):
 cloudflared service install; Start-Service cloudflared
 ```
@@ -285,7 +285,7 @@ tunnel: nurchat
 credentials-file: C:\Users\<ты>\.cloudflared\<tunnel-id>.json
 ingress:
   - hostname: relay.example.com
-    service: http://localhost:8000
+    service: http://127.0.0.1:8000
   - service: http_status:404
 ```
 
@@ -315,7 +315,7 @@ Alibaba Cloud периодически даёт free tier без карты (1 C
 pkg install python cloudflared
 # склонируйте репо, затем:
 python -m uvicorn server.main:app --port 8000 &
-cloudflared tunnel --url http://localhost:8000
+cloudflared tunnel --url http://127.0.0.1:8000
 ```
 
 SQLite вместо Postgres, `USE_REDIS=false`. Минусы: звонки только через

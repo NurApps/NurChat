@@ -165,6 +165,7 @@ else:
         "http://localhost:8000",
         "http://127.0.0.1:8000",
         "tauri://localhost",
+        "http://tauri.localhost",
         "https://tauri.localhost",
     ]
 # Туннели (run.bat tunnel): quick-URL случаен при каждом рестарте, заранее

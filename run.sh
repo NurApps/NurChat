@@ -150,7 +150,7 @@ act_tunnel() {
   echo "[..] NOTE: quick-tunnel URL changes on every restart. Stable address = named tunnel."
   # http2 (TCP 443) вместо QUIC (UDP 7844): QUIC часто режется провайдером
   # и плохо проходит через VPN.
-  cloudflared tunnel --protocol http2 --url http://localhost:8000
+  cloudflared tunnel --protocol http2 --url http://127.0.0.1:8000
   stop_relay_if_mine
 }
 

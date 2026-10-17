@@ -139,7 +139,7 @@ if %errorlevel% neq 0 (
 echo [..] NOTE: quick-tunnel URL changes on every restart. Stable address = named tunnel.
 :: http2 (TCP 443) РІРјРµСЃС‚Рѕ QUIC (UDP 7844): QUIC С‡Р°СЃС‚Рѕ СЂРµР¶РµС‚СЃСЏ РїСЂРѕРІР°Р№РґРµСЂРѕРј
 :: Рё РїР»РѕС…Рѕ РїСЂРѕС…РѕРґРёС‚ С‡РµСЂРµР· VPN РІ TUN-СЂРµР¶РёРјРµ.
-cloudflared tunnel --protocol http2 --url http://localhost:8000
+cloudflared tunnel --protocol http2 --url http://127.0.0.1:8000
 call :stop_relay_if_mine
 goto :eof
 

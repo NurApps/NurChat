@@ -27,7 +27,7 @@ cloudflared --version
 ## 3) Быстрый туннель (без домена, на 1 сессию)
 
 ```powershell
-cloudflared tunnel --url http://localhost:8000
+cloudflared tunnel --url http://127.0.0.1:8000
 ```
 
 Если у друга рвётся соединение, хотя URL живой (таймауты, обрывы каждые
@@ -35,7 +35,7 @@ cloudflared tunnel --url http://localhost:8000
 переключить транспорт туннеля на HTTP/2:
 
 ```powershell
-cloudflared tunnel --protocol http2 --url http://localhost:8000
+cloudflared tunnel --protocol http2 --url http://127.0.0.1:8000
 ```
 
 Вывод содержит:
@@ -93,7 +93,7 @@ tunnel: nurchat
 credentials-file: C:\Users\<ты>\.cloudflared\<id>.json
 ingress:
   - hostname: relay.example.com
-    service: http://localhost:8000
+    service: http://127.0.0.1:8000
   - service: http_status:404
 ```
 

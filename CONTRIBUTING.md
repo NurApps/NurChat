@@ -70,7 +70,7 @@ npx tauri dev
 2. Создай ветку `feature/имя-фичи`
 3. Сделай изменения
 4. Проверь: `cd frontend && npm run build`
-5. Отправь PR с описанием изменений
+5. Отправь PR и заполни шаблон `.github/pull_request_template.md` (особенно «Проверка» и «После мержа»)
 
 ## Issues
 

@@ -142,7 +142,20 @@ async def together_exception_handler(request: Request, exc: TogetherException):
 
 import os
 
-_cors_origins_env = os.getenv("CORS_ORIGINS", "")
+
+def _resolve_cors_origins() -> str:
+    """CORS_ORIGINS: явные переменные окружения (run.bat tunnel) важнее
+    settings (.env/.env-файл). os.getenv-only было БАГОМ: pydantic-settings
+    кладёт .env в settings, но не экспортирует в os.environ —
+    задокументированный «CORS_ORIGINS в .env» молча игнорировался."""
+    return os.getenv("CORS_ORIGINS", "").strip() or settings.CORS_ORIGINS.strip()
+
+
+def _resolve_cors_regex() -> str:
+    return os.getenv("CORS_ORIGIN_REGEX", "").strip() or settings.CORS_ORIGIN_REGEX.strip()
+
+
+_cors_origins_env = _resolve_cors_origins()
 if _cors_origins_env:
     _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
 else:
@@ -159,7 +172,7 @@ else:
 # браузер игнорирует. Поэтому regex — только для https-поддоменов
 # trycloudflare. Прод: именованный туннель + явный CORS_ORIGINS, regex
 # не задавать (любой trycloudflare-поддомен — чужой, ключ всё равно JWT).
-_cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip() or None
+_cors_origin_regex = _resolve_cors_regex() or None
 # Штатный trycloudflare-regex — его ставит run.bat (см. .env.example).
 # CSP ниже раскрывает поддомены только при строгом равенстве с эталоном.
 _TRYCLOUDFLARE_ORIGIN_REGEX = r"https://[a-z0-9-]+\.trycloudflare\.com"

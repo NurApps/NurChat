@@ -104,6 +104,14 @@ class Settings(BaseSettings):
     SERVER_PORT: int = 8000
     DEBUG: bool = False
 
+    # CORS из .env/.env-файла: server/main.py не может читать их через
+    # os.getenv — pydantic-settings кладёт .env в settings, но НЕ
+    # экспортирует в os.environ (задокументированный путь «CORS_ORIGINS
+    # в .env» раньше молча не работал). Явные переменные окружения
+    # (run.bat tunnel) приоритетнее — main.py берёт os.getenv первым.
+    CORS_ORIGINS: str = ""
+    CORS_ORIGIN_REGEX: str = ""
+
     # E2E-only транспорт: никакого P2P/LAN/IPFS в ядре нет.
     # Удалены 2026-09 как мёртвые флаги: USE_P2P, P2P_*,
     # USE_IPFS/IPFS_API_URL, USE_FEDERATED_BACKUP/FEDERATED_BACKUP_URL

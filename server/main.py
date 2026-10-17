@@ -243,6 +243,17 @@ async def validate_host_header(request: Request, call_next):
         except _re.error:
             pass
     logger.warning("Rejected request with unexpected Host header: %s", host)
+    # Отлуп 400 без ACAO браузер показывает как «CORS-ошибку с 5173» и
+    # прячет реальную причину: релей вписан вручную, но CORS_ORIGIN_REGEX
+    # не задан (туннель создан без run.bat tunnel). Отражаем разрешённый
+    # Origin, чтобы фронт увидел реальный 400 (и его detail) вместо шума про CORS.
+    _origin = request.headers.get("origin")
+    if _origin in _cors_origins:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Invalid Host header"},
+            headers={"access-control-allow-origin": _origin, "vary": "Origin"},
+        )
     return JSONResponse(status_code=400, content={"detail": "Invalid Host header"})
 
 @app.middleware("http")

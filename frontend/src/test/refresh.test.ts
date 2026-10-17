@@ -1,5 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
+// Флак-фикс: успешный refresh анонсирует токены с 1c-повтором
+// (refreshSync.announceTimer). vi.resetModules() убивает модуль, но не
+// таймер: повтор выстреливает в окно подписки следующего теста и
+// подсовывает чужие токены ('new-access' из предыдущего дескрайба) —
+// так интермитентно падал 'adopts a sibling win after losing the POST
+// race'. Отменяем повтор ПОКА жив текущий модульный граф (afterEach
+// выполняется до resetModules в следующем beforeEach).
+afterEach(async () => {
+  vi.unstubAllGlobals()
+  const { resetRefreshSyncForTests } = await import('../services/refreshSync')
+  resetRefreshSyncForTests()
+})
+
 // Refresh cycle: 401 → POST /refresh → retry once; dead refresh → logout.
 describe('api refresh cycle', () => {
   const calls: string[] = []
@@ -41,10 +54,6 @@ describe('api refresh cycle', () => {
     // Pentest #1: session seeds memory (vault), refresh persists for reload.
     const { setSession } = await import('../services/tokenVault')
     await setSession('old-access', 'good-refresh')
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
   })
 
   it('retries once after refresh on 401', async () => {

@@ -9,7 +9,13 @@ describe("refreshAccessToken", () => {
     document.cookie = "csrf_token=; Max-Age=0"
     vi.resetModules()
   })
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(async () => {
+    vi.unstubAllGlobals()
+    // Отменяем 1с-повтор анонса успешного refresh, пока жив модульный
+    // граф (тот же корень флака, что в refresh.test.ts).
+    const { resetRefreshSyncForTests } = await import("../services/refreshSync")
+    resetRefreshSyncForTests()
+  })
 
   it("sends X-CSRF-Token on /refresh, fetching one from /health after a reload", async () => {
     const calls: { url: string; headers: Record<string, string> }[] = []

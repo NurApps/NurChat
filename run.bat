@@ -111,6 +111,10 @@ call :stop_relay_if_mine
 goto :eof
 
 :act_relay
+:: Ручной quick-туннель (cloudflared tunnel --url, не через пункт 4) без
+:: CORS_ORIGIN_REGEX резался валидацией Host («Invalid Host header») —
+:: тот же дефолт, что и в tunnel-режиме. Явную настройку не затираем.
+if not defined CORS_ORIGIN_REGEX set CORS_ORIGIN_REGEX=https://[a-z0-9-]+\.trycloudflare\.com
 echo [..] Relay foreground, .env as-is. Ctrl+C to stop.
 :: Show resolved DB (pydantic: environment shadows .env). A stale system-wide
 :: DATABASE_URL=sqlite looks exactly like "run.bat ignores .env".

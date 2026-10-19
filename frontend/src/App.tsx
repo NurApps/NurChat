@@ -9,6 +9,7 @@ import ErrorBoundary from "./components/ErrorBoundary"
 import UpdateBanner from "./components/UpdateBanner"
 import MobileTabsLayout from "./components/mobile/MobileTabsLayout"
 import { platform } from "./services/platform"
+import { RELAY_UNREACHABLE_EVENT } from "./services/api"
 import { e2eWorkerService } from "./services/e2eWorkerService"
 import { initSecureStorage } from "./services/e2e"
 import { setRecordNamespace } from "./services/secureStorage"
@@ -56,6 +57,14 @@ function App() {
 
   useEffect(() => {
     platform.showMainWindow()
+  }, [])
+
+  // Relay пропал уже после успешного старта (рестарт/смена quick-tunnel URL).
+  // Показываем экран переподключения вместо молчаливых «Failed to fetch».
+  useEffect(() => {
+    const handler = () => setServerReady(false)
+    window.addEventListener(RELAY_UNREACHABLE_EVENT, handler)
+    return () => window.removeEventListener(RELAY_UNREACHABLE_EVENT, handler)
   }, [])
 
   useEffect(() => {

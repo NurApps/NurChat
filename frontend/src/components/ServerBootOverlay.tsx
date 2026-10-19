@@ -35,7 +35,10 @@ export default function ServerBootOverlay({ onReady }: Props) {
     const target = url || BASE_URL
     setAttemptUrl(target)
     try {
-      const res = await fetch(`${target}/health`, { signal: AbortSignal.timeout(5000) })
+      const res = await fetch(`${target}/health`, {
+        signal: AbortSignal.timeout(5000),
+        cache: "no-store",
+      })
       if (res.ok) {
         setPhase("ready")
         return true
@@ -171,8 +174,33 @@ export default function ServerBootOverlay({ onReady }: Props) {
             <p style={{ opacity: 0.5, fontSize: 11, marginBottom: 16 }}>
               {t("serverBoot.corsHint")}
             </p>
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ opacity: 0.7, fontSize: 12, marginBottom: BASE_URL.includes(".trycloudflare.com") ? 8 : 0, fontFamily: "monospace", wordBreak: "break-word" }}>
+                {t("serverBoot.currentRelay")}: {BASE_URL}
+              </p>
+              {BASE_URL.includes(".trycloudflare.com") && (
+                <p style={{ opacity: 0.7, fontSize: 12 }}>
+                  {t("serverBoot.quickTunnelHint")}
+                </p>
+              )}
+            </div>
 
             <div className="server-boot-options">
+              {/* Локальный relay на этом же устройстве — самый частый случай,
+                  когда сохранённый quick-tunnel URL уже умер. */}
+              {BASE_URL !== "http://127.0.0.1:8000" && (
+                <div className="server-boot-option server-boot-option-wide">
+                  <p className="server-boot-option-label">{t("serverBoot.localRelay")}</p>
+                  <button
+                    onClick={() => connectTo("127.0.0.1:8000", "http")}
+                    className="settings-action-btn"
+                    style={{ width: "100%", textAlign: "left" }}
+                  >
+                    http://127.0.0.1:8000
+                  </button>
+                </div>
+              )}
+
               {/* Try public relays */}
               {PUBLIC_RELAYS.length > 0 && (
                 <div className="server-boot-option server-boot-option-wide">

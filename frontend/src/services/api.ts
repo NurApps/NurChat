@@ -20,6 +20,10 @@ import {
 } from "./tokenVault"
 import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse, ContactRequestResponse } from "../types"
 
+/** Сеть до relay пропала: App возвращает экран переподключения вместо
+ *  молчаливого «всё сломалось» после остановки/рестарта релея. */
+export const RELAY_UNREACHABLE_EVENT = "nurchat:relay-unreachable"
+
 class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -229,6 +233,11 @@ async function request<T>(
     const elapsed = Math.round(performance.now() - startedAt)
     const kind = err instanceof DOMException && err.name === "AbortError" ? "timeout-abort" : "network-error"
     console.error("[api] request failed:", kind, method, path, `after ${elapsed}ms`, err)
+    // Не оставляем UI в полуживом состоянии: App вернёт экран переподключения,
+    // где можно выбрать локальный relay/другой адрес.
+    if (kind === "network-error" && typeof window !== "undefined") {
+      window.dispatchEvent(new Event(RELAY_UNREACHABLE_EVENT))
+    }
     throw err
   } finally {
     clearTimeout(timeout)

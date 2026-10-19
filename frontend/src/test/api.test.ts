@@ -37,6 +37,21 @@ describe('api', () => {
     expect(api.isAuthenticated()).toBe(false)
   })
 
+  it('should signal relay loss on a network error', async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new TypeError('Failed to fetch')))
+    vi.stubGlobal('fetch', fetchMock)
+    const { api, RELAY_UNREACHABLE_EVENT } = await import('../services/api')
+    const handler = vi.fn()
+    window.addEventListener(RELAY_UNREACHABLE_EVENT, handler)
+    try {
+      await expect(api.getCurrentUser()).rejects.toThrow('Failed to fetch')
+      expect(handler).toHaveBeenCalledTimes(1)
+    } finally {
+      window.removeEventListener(RELAY_UNREACHABLE_EVENT, handler)
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('should build scoped download URLs without leaking the access JWT', async () => {
     // Pentest #3: в URL светится только 60-секундный file_token, access-JWT — никогда.
     const fetchMock = vi.fn(async (input: unknown) => {

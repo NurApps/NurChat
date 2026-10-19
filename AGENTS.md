@@ -43,7 +43,7 @@ npx tauri dev
 ## Known Issues & Workarounds
 
 1. **ENCRYPTION_KEY / JWT_SECRET_KEY / TOTP_MASTER_KEY not set.** Автогенерятся при пустом `.env`, но временные ключи = потеря данных / разлогин всех при рестарте. Для продакшена — стабильные значения в `.env`.
-2. **CORS origins.** По умолчанию `localhost:5173, localhost:8000, tauri://localhost, https://tauri.localhost`. Прод-домен — через `CORS_ORIGINS` (comma-separated). Wildcard `*` нет даже в DEBUG. CSP собирается из того же whitelist — см. `server/main.py: add_security_headers`.
+2. **CORS origins.** По умолчанию `localhost:5173, localhost:8000, tauri://localhost, http://tauri.localhost, https://tauri.localhost`. Прод-домен — через `CORS_ORIGINS` (comma-separated). Wildcard `*` нет даже в DEBUG. CSP собирается из того же whitelist — см. `server/main.py: add_security_headers`.
 3. **Server dies when terminal closes.** `run.bat` держит сервер через `start /B` и ждёт `/health`. Остановка только своего релея: по порту `:8000` (внутри `run.bat`).
 4. **Звонки за NAT не соединяются без TURN.** По умолчанию только Google STUN. Прод: coturn (`infra/coturn.conf`) + `TURN_USERNAME`/`TURN_CREDENTIAL` в `.env`. Сервер пишет warning в лог, если TURN не настроен.
 5. **`PUBLIC_RELAYS` пуст.** `frontend/src/config.ts` — некуда резолвиться, клиенты default'ят на `127.0.0.1:8000`. Вписать свой relay при деплое.

@@ -208,7 +208,7 @@ USE_REDIS=false
 ENCRYPTION_KEY=<hex 64>               # openssl rand -hex 32
 JWT_SECRET_KEY=<hex 64>
 TOTP_MASTER_KEY=<token_urlsafe 32>
-CORS_ORIGINS=http://localhost:5173,tauri://localhost,https://tauri.localhost
+CORS_ORIGINS=http://localhost:5173,tauri://localhost,http://tauri.localhost,https://tauri.localhost
 ```
 
 Миграции применяются вручную: `docker-compose exec nurchat alembic upgrade head`.

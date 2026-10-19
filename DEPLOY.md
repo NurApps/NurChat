@@ -363,9 +363,10 @@ TURN_USERNAME=<не nurchat>
 TURN_CREDENTIAL=<длинный случайный>
 # и те же TURN-значения в infra/coturn.conf (user=...), затем пересобрать coturn
 # ВАЖНО: CORS_ORIGINS ЗАМЕНЯЕТ дефолтный whitelist целиком. Десктоп-клиенты
-# ходят с Origin tauri://localhost — без этих двух значений все Tauri-сборки
-# отвалятся с CORS-блоком (в UI это выглядит как обычный "Relay unavailable").
-CORS_ORIGINS=https://ваш-домен,tauri://localhost,https://tauri.localhost
+# ходят с Origin tauri://localhost (macOS/iOS) или http://tauri.localhost
+# (Windows/Android) — без всех трёх значений Tauri-сборки останутся с
+# CORS-блоком (в UI он выглядит как "Relay unavailable").
+CORS_ORIGINS=https://ваш-домен,tauri://localhost,http://tauri.localhost,https://tauri.localhost
 ```
 
 Проверка: `docker compose exec nurchat python -c "from shared.config import settings; assert not settings.DEBUG"`.

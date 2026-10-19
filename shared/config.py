@@ -197,7 +197,7 @@ class Settings(BaseSettings):
     WEBAUTHN_ORIGINS: str = (
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:8000,http://127.0.0.1:8000,"
-        "tauri://localhost,https://tauri.localhost"
+        "tauri://localhost,http://tauri.localhost,https://tauri.localhost"
     )
 
     WS_CONNECTIONS_WARN: int = 100

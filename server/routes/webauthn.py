@@ -72,9 +72,11 @@ def _pick_rp_id(origin: str) -> tuple[str, str]:
             status_code=400,
             detail=f"Origin не разрешён для passkeys: {origin}",
         )
-    for rp_id in allowed_ids:
-        if host == rp_id or host.endswith(f".{rp_id}"):
-            return rp_id, origin
+    # Самый длинный suffix: для tauri.localhost это «tauri.localhost», а не
+    # «localhost» (localhost — TLD, такой RP ID браузер отклонит SecurityError).
+    matches = [rp for rp in allowed_ids if host == rp or host.endswith(f".{rp}")]
+    if matches:
+        return max(matches, key=len), origin
     raise HTTPException(
         status_code=400,
         detail=f"Хост {host} не покрыт WEBAUTHN_RP_IDS",

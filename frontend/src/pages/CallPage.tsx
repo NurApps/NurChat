@@ -528,6 +528,10 @@ export default function CallPage() {
       ws.onmessage = async (event) => {
         try {
           let msg = JSON.parse(event.data)
+          if (msg.type === "ping") {
+            try { ws.send(JSON.stringify({ type: "pong" })) } catch { /* socket gone */ }
+            return
+          }
           // E2E-сигналинг: расшифровываем тело (sdp/candidate), если есть `enc`.
           // Plaintext-поля старых клиентов проходят как есть.
           if (msg.type === "offer" || msg.type === "answer" || msg.type === "ice-candidate") {

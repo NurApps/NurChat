@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { BASE_URL, setRelayConfig, PUBLIC_RELAYS, isRelayExplicit, parseRelayInput, getRelayConfig } from "../config"
 import RelayAddressInput from "./RelayAddressInput"
+import HostModePanel from "./HostModePanel"
 import { performRelaySwitch, storedAccount } from "../services/localSession"
 import { AlertTriangle, Power } from "lucide-react"
 
@@ -274,29 +275,7 @@ export default function ServerBootOverlay({ onReady }: Props) {
         {phase === "setup" && (
           <>
             <h2 style={{ marginBottom: 12 }}>{t("serverBoot.setupTitle")}</h2>
-            <div style={{ fontSize: 13, lineHeight: 1.7, textAlign: "left", opacity: 0.85 }}>
-              <p style={{ marginBottom: 12 }}>{t("serverBoot.setupDocker")}</p>
-              <pre style={{
-                background: "var(--input-bg)", padding: 12, borderRadius: 8,
-                fontSize: 12, overflow: "auto", border: "1px solid var(--border)",
-              }}>
-{`# 1. Clone the repo
-git clone https://github.com/NurApps/NurChat
-cd NurChat
-
-# 2. Copy env file
-cp .env.example .env
-
-# 3. Start with Docker
-docker-compose up -d
-
-# 4. Your relay is now at:
-# http://YOUR_IP:8000`}
-              </pre>
-              <p style={{ marginTop: 12, opacity: 0.6 }}>
-                {t("serverBoot.setupThen")}
-              </p>
-            </div>
+            <HostModePanel compact />
             <button
               onClick={() => setPhase("failed")}
               style={{

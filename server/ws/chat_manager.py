@@ -506,19 +506,6 @@ class ChatManager:
             exclude_user=user_id
         )
 
-        if settings.USE_FEDERATION:
-            try:
-                db = SessionLocal()
-                chat_obj = db.query(models.Chat).filter(models.Chat.id == data["chat_id"]).first()
-                if chat_obj and chat_obj.name and "@" in chat_obj.name:
-                    from server.routes.federation import send_federated_typing
-                    user_obj = db.query(models.User).filter(models.User.id == user_id).first()
-                    if user_obj:
-                        await send_federated_typing(user_obj, chat_obj.name)
-                db.close()
-            except Exception:
-                pass
-
         logger.debug(f"Typing event from {user_id} in chat {data['chat_id']}: {data['is_typing']}")
 
     async def _handle_read_receipt(self, user_id: str, data: dict):
@@ -745,8 +732,11 @@ async def handle_websocket_connection(websocket: WebSocket, user_id: str, token:
     await connection_manager.connect(websocket, user_id)
 
     last_alive = time.monotonic()
-    idle_timeout = 120       # probe after 2 min of silence
-    dead_after = 300         # drop if silent for 5 min total
+    # Cloudflare (and most reverse proxies) close idle WebSockets after ~100s.
+    # Probe every 25s so a tunnel never sees a silent socket; drop after ~2min
+    # of unanswered pings instead of holding a dead peer forever.
+    idle_timeout = 25
+    dead_after = 120
     last_token_check = 0.0
     token_check_interval = 10  # verify JWT every 10 seconds (on active messages)
 

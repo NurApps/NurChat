@@ -7,7 +7,7 @@ export interface UpdateInfo {
   body: string
 }
 
-const WEB_APP_VERSION = "0.15.0"
+const WEB_APP_VERSION = "0.16.2"
 
 function detectRuntime(): Runtime {
   if (typeof window === "undefined") return "unknown"
@@ -54,24 +54,6 @@ export class Platform {
     await navigator.clipboard.writeText(uri)
   }
 
-  async downloadAndOpenFile(url: string, token: string, filename: string): Promise<void> {
-    if (this.isTauri) {
-      await this.invoke("download_and_open_file", { url, token, filename })
-      return
-    }
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-    if (!res.ok) throw new Error("Download failed")
-    const blob = await res.blob()
-    const objectUrl = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = objectUrl
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(objectUrl)
-  }
-
   async getAppVersion(): Promise<string> {
     if (this.isTauri) {
       try {
@@ -85,10 +67,14 @@ export class Platform {
   }
 
   async openExternal(url: string): Promise<void> {
+    if (!/^(https?:|mailto:)/i.test(url.trim())) return
     if (this.isTauri) {
-      const { open } = await import("@tauri-apps/plugin-shell")
-      await open(url)
-      return
+      try {
+        await this.invoke("open_external", { url })
+        return
+      } catch {
+        /* fall through to window.open */
+      }
     }
     window.open(url, "_blank", "noopener")
   }

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -17,6 +17,7 @@ from server.routes import (
     contact_requests,
     contacts_groups,
     files,
+    host,
     keys,
     push,
     webauthn,
@@ -249,6 +250,14 @@ async def validate_host_header(request: Request, call_next):
     _allowed_hosts.add(settings.SERVER_HOST.lower())
     if hostname in _allowed_hosts:
         return await call_next(request)
+    # Quick Tunnel (хост-режим): поддомен случаен и заранее неизвестен, поэтому
+    # allowlist по точному имени невозможен. Требуем заголовки Cloudflare
+    # (CF-Ray/CF-Connecting-IP) — их ставит edge на каждый проксированный
+    # запрос, а прямой клиент с поддельным Host их не пришлёт.
+    if hostname.endswith(".trycloudflare.com") and (
+        request.headers.get("cf-ray") or request.headers.get("cf-connecting-ip")
+    ):
+        return await call_next(request)
     # Туннельный regex (run.bat tunnel): пускаем только то, что ему матчится.
     if _cors_origin_regex:
         try:
@@ -328,7 +337,6 @@ async def limit_body_size(request: Request, call_next):
     if request.method in ("POST", "PUT", "PATCH"):
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > MAX_BODY_SIZE:
-            from fastapi.responses import JSONResponse
             max_mb = MAX_BODY_SIZE // (1024 * 1024)
             return JSONResponse(status_code=413, content={"detail": f"Тело запроса слишком большое (макс. {max_mb}MB)"})
     return await call_next(request)
@@ -349,6 +357,7 @@ _avatar_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/media/avatars", _StaticFiles(directory=_avatar_dir), name="avatars")
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(host.router)
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])
 app.include_router(files.router, prefix="/api/files", tags=["Files"])
@@ -484,6 +493,18 @@ async def websocket_notifications_endpoint(websocket: WebSocket, user_id: str):
     finally:
         await release_ws_connection(client_ip)
 
+def _relay_id() -> str:
+    """Стабильный отпечаток релея (не секрет: усечённый хеш ключа).
+
+    Нужен приглашению, чтобы клиент мог отличить «тот самый релей» от
+    подменённого адреса. При эфемерных ключах меняется вместе с ними — что
+    честно отражает потерю идентичности после рестарта.
+    """
+    import hashlib
+
+    return hashlib.sha256(f"{settings.ENCRYPTION_KEY}|nurchat-relay".encode()).hexdigest()[:16]
+
+
 @app.get("/health")
 async def health_check():
     db_ok = False
@@ -525,11 +546,13 @@ async def health_check():
             "turn_configured": settings.turn_configured,
             "service": "NurChat Server",
             "version": "1.0.0",
+            "relay_id": _relay_id(),
+            "registration_mode": settings.REGISTRATION_MODE,
         },
     )
 
 if settings.ENABLE_METRICS:
-    from prometheus_client import Counter, Gauge, Histogram
+    from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
     http_requests = Counter("nurchat_http_requests_total", "Total HTTP requests", ["method", "endpoint"])
     http_duration = Histogram("nurchat_http_request_duration_seconds", "HTTP request duration", ["endpoint"])
@@ -544,4 +567,4 @@ if settings.ENABLE_METRICS:
 
     @app.get("/metrics")
     async def metrics():
-        return JSONResponse(content={"metrics": "prometheus"})
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

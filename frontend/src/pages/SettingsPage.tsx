@@ -22,6 +22,7 @@ import AccountsManager from "../components/AccountsManager"
 import PasskeyManager from "../components/PasskeyManager"
 import AccountList from "../components/AccountList"
 import RelayAddressInput from "../components/RelayAddressInput"
+import HostModePanel from "../components/HostModePanel"
 import type { UserResponse } from "../types"
 
 type SettingsTab = "profile" | "appearance" | "notifications" | "privacy" | "storage" | "security" | "account" | "about"
@@ -1051,6 +1052,7 @@ export default function SettingsPage() {
                 </div>
                 <p className="settings-info-text">{t("settings.relayRestart")}</p>
               </div>
+              {platform.isTauri && <HostModePanel />}
             </div>
           )}
         </div>

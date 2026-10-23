@@ -12,6 +12,7 @@ from server.core import models, schemas
 from server.core.audit import client_ip, log_audit
 from server.core.database import get_db
 from server.core.security import security, verify_pending_2fa_dependency, verify_token_dependency
+from server.services.registration import invite_required, verify_invite_code
 from server.utils.captcha import SIGNUP_ACTION, lockout_manager, verify_turnstile
 from server.utils.logger import logger
 from server.utils.security import (
@@ -69,6 +70,12 @@ async def get_captcha(request: Request):
     return {"provider": "turnstile", "sitekey": settings.TURNSTILE_SITEKEY}
 
 
+@router.get("/policy")
+async def registration_policy():
+    """Публичная политика: нужен ли инвайт-код при регистрации."""
+    return {"registration_mode": "invite" if invite_required() else "open"}
+
+
 @router.post("/register")
 @limiter.limit("5/minute")
 async def register(
@@ -80,6 +87,7 @@ async def register(
     turnstile_token: str = Body(default=""),
     public_key: str = Body(default=""),
     signing_public_key: str = Body(default=""),
+    invite_code: str = Body(default=""),
     db: Session = Depends(get_db)
 ):
     """Регистрация пользователя с именем и фамилией"""
@@ -89,6 +97,13 @@ async def register(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Слишком много попыток. Повторите через несколько минут",
+        )
+    if invite_required() and not verify_invite_code(invite_code):
+        lockout_manager.record_failure(reg_lock_key)
+        logger.warning(f"Registration: invalid invite code from {client_ip(request)}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Регистрация по приглашению: неверный или отсутствует код",
         )
     if not settings.DISABLE_CAPTCHA and not await verify_turnstile(turnstile_token, SIGNUP_ACTION):
         lockout_manager.record_failure(reg_lock_key)

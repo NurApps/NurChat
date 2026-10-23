@@ -1,11 +1,12 @@
+use log::{info, warn};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
-use log::{info, warn};
 
 const PYTHON_VERSION: &str = "3.12.8";
-const PYTHON_EMBED_URL_WIN: &str = "https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip";
+const PYTHON_EMBED_URL_WIN: &str =
+    "https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip";
 
 pub struct ServerManager {
     child: Mutex<Option<Child>>,
@@ -40,11 +41,21 @@ impl ServerManager {
         // (был баг: pip падал с "No such file or directory").
         let server_root = find_server_root(app_dir, res_dir);
 
+        // Если рядом с кодом уже есть .env (dev/portable), дозаполняем его —
+        // иначе pydantic прочитает именно этот файл и оставит TOTP ephemeral.
+        if let Some(root) = &server_root {
+            if root.join(".env").is_file() {
+                ensure_env(root);
+            }
+        }
+
         // Strategy 1: bundled server binary (PyInstaller)
         if let Some(exe) = find_server_exe(app_dir, res_dir) {
             info!("Found bundled server binary: {:?}", exe);
             let mut cmd = Command::new(&exe);
             cmd.current_dir(app_dir)
+                // Лучше не стартовать, чем молча менять ключи каждый запуск.
+                .env("REQUIRE_STABLE_SECRETS", "true")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
             #[cfg(windows)]
@@ -54,7 +65,9 @@ impl ServerManager {
                 cmd.creation_flags(CREATE_NO_WINDOW);
             }
 
-            let process = cmd.spawn().map_err(|e| format!("Failed to start server: {e}"))?;
+            let process = cmd
+                .spawn()
+                .map_err(|e| format!("Failed to start server: {e}"))?;
             Self::setup_logging(process, &mut child);
             return Ok(());
         }
@@ -63,7 +76,7 @@ impl ServerManager {
         if let Some(python) = find_venv_python(app_dir, res_dir, server_root.as_deref()) {
             info!("Found venv Python: {:?}", python);
             let work_dir = server_root.as_deref().unwrap_or(app_dir);
-            return self.start_with_python(&python, work_dir, &mut child);
+            return self.start_with_python(&python, work_dir, app_dir, &mut child);
         }
 
         // Strategy 3: System Python
@@ -71,7 +84,7 @@ impl ServerManager {
             info!("Found system Python: {:?}", python);
             let python_path = PathBuf::from(&python);
             let work_dir = server_root.as_deref().unwrap_or(app_dir);
-            return self.start_with_python(&python_path, work_dir, &mut child);
+            return self.start_with_python(&python_path, work_dir, app_dir, &mut child);
         }
 
         // Strategy 4: Download embeddable Python (Windows only)
@@ -97,23 +110,62 @@ impl ServerManager {
             let work_dir = server_root.as_deref().unwrap_or(app_dir);
             install_deps(&python_dir, req_file.as_deref(), work_dir)?;
             info!("Using downloaded Python: {:?}", python_exe);
-            return self.start_with_python(&python_exe, work_dir, &mut child);
+            return self.start_with_python(&python_exe, work_dir, app_dir, &mut child);
         }
 
-        Err("Python not found. Install Python 3.10+ or place server.exe next to the app.".to_string())
+        Err(
+            "Python not found. Install Python 3.10+ or place server.exe next to the app."
+                .to_string(),
+        )
     }
 
     fn start_with_python(
         &self,
         python: &Path,
         work_dir: &Path,
+        app_dir: &Path,
         child: &mut std::sync::MutexGuard<Option<Child>>,
     ) -> Result<(), String> {
+        // .env с ключами создаётся в app_dir. Если рядом с кодом своего .env
+        // нет (установленная сборка: код в ресурсах, данные в %APPDATA%), работаем
+        // из app_dir — иначе pydantic прочитает чужой/пустой .env и ключи будут
+        // эфемерными (разлогин и сломанная 2FA после каждого запуска).
+        let cwd = if work_dir.join(".env").is_file() {
+            work_dir
+        } else {
+            app_dir
+        };
+
         let mut cmd = Command::new(python);
-        cmd.args(["-m", "uvicorn", "server.main:app", "--host", "127.0.0.1", "--port", "8000"])
-            .current_dir(work_dir)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        cmd.args([
+            "-m",
+            "uvicorn",
+            "server.main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8000",
+            // Cloudflare-туннель приходит с 127.0.0.1: доверяем XFF только ему,
+            // иначе все друзья делят один IP (лимиты и WS-кап на всех).
+            "--proxy-headers",
+            "--forwarded-allow-ips",
+            "127.0.0.1",
+        ])
+        .current_dir(cwd)
+        // Лучше не стартовать, чем молча менять ключи каждый запуск.
+        .env("REQUIRE_STABLE_SECRETS", "true")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+        if cwd != work_dir {
+            let mut paths = vec![work_dir.to_path_buf()];
+            if let Some(existing) = std::env::var_os("PYTHONPATH") {
+                paths.extend(std::env::split_paths(&existing));
+            }
+            if let Ok(joined) = std::env::join_paths(paths) {
+                cmd.env("PYTHONPATH", joined);
+            }
+        }
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -121,7 +173,9 @@ impl ServerManager {
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
 
-        let process = cmd.spawn().map_err(|e| format!("Failed to start server: {e}"))?;
+        let process = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to start server: {e}"))?;
         Self::setup_logging(process, child);
         Ok(())
     }
@@ -169,15 +223,13 @@ impl ServerManager {
                 return Err("Server did not start in time".to_string());
             }
 
-            match client.get("http://127.0.0.1:8000/health").send() {
-                Ok(resp) if resp.status().is_success() => {
+            if let Ok(resp) = client.get("http://127.0.0.1:8000/health").send() {
+                if is_nurchat_health(resp) {
                     info!("Server is ready");
                     return Ok(());
                 }
-                _ => {
-                    std::thread::sleep(Duration::from_millis(500));
-                }
             }
+            std::thread::sleep(Duration::from_millis(500));
         }
     }
 
@@ -269,18 +321,32 @@ fn find_server_exe(app_dir: &Path, res_dir: Option<&Path>) -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.is_file())
 }
 
+/// A foreign service can occupy :8000 too. Only reuse the port when
+/// /health reports our relay, otherwise we would spawn a tunnel in front of
+/// an unrelated local app.
+fn is_nurchat_health(resp: reqwest::blocking::Response) -> bool {
+    if !resp.status().is_success() {
+        return false;
+    }
+    resp.text()
+        .map(|body| body.contains("\"service\":\"NurChat Server\""))
+        .unwrap_or(false)
+}
+
 /// Ждём здоровый relay на :8000 до `timeout` (poll 500мс).
 /// Одна попытка давала гонку: run.bat уже поднял relay, но /health
 /// ещё не отвечает — Tauri качал embed-Python вместо reuse.
 fn wait_for_server(timeout: Duration) -> bool {
+    let Ok(client) = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+    else {
+        return false;
+    };
     let start = std::time::Instant::now();
     while start.elapsed() < timeout {
-        if let Ok(resp) = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(2))
-            .build()
-            .and_then(|c| c.get("http://127.0.0.1:8000/health").send())
-        {
-            if resp.status().is_success() {
+        if let Ok(resp) = client.get("http://127.0.0.1:8000/health").send() {
+            if is_nurchat_health(resp) {
                 return true;
             }
         }
@@ -324,7 +390,11 @@ fn find_server_root(app_dir: &Path, res_dir: Option<&Path>) -> Option<PathBuf> {
     None
 }
 
-fn find_venv_python(app_dir: &Path, res_dir: Option<&Path>, server_root: Option<&Path>) -> Option<PathBuf> {
+fn find_venv_python(
+    app_dir: &Path,
+    res_dir: Option<&Path>,
+    server_root: Option<&Path>,
+) -> Option<PathBuf> {
     let mut bases: Vec<PathBuf> = Vec::new();
     if let Some(r) = server_root {
         bases.push(r.to_path_buf());
@@ -369,29 +439,51 @@ fn find_system_python() -> Option<String> {
 // ── .env generation ──
 
 fn ensure_env(app_dir: &Path) {
-    let env_path = app_dir.join(".env");
-    if env_path.exists() {
-        return;
-    }
-
-    use std::io::Write;
     use rand::RngExt;
 
+    const KEYS: [&str; 3] = ["ENCRYPTION_KEY", "JWT_SECRET_KEY", "TOTP_MASTER_KEY"];
+    let env_path = app_dir.join(".env");
+    let existing = std::fs::read_to_string(&env_path).unwrap_or_default();
+
+    // Дописываем/заменяем недостающие ключи, а не только создаём файл: старые
+    // сборки успели записать .env без TOTP_MASTER_KEY (или с пустым значением),
+    // и 2FA ломалась после рестарта.
+    let mut lines: Vec<String> = existing.lines().map(str::to_string).collect();
+    let mut changed: Vec<&str> = Vec::new();
     let mut rng = rand::rng();
-    let enc_key: String = (0..64).map(|_| format!("{:02x}", rng.random::<u8>())).collect();
-    let jwt_key: String = (0..64).map(|_| format!("{:02x}", rng.random::<u8>())).collect();
 
-    let content = format!(
-        "ENCRYPTION_KEY={}\nJWT_SECRET_KEY={}\n",
-        enc_key, jwt_key,
-    );
-
-    match std::fs::File::create(&env_path) {
-        Ok(mut f) => {
-            let _ = f.write_all(content.as_bytes());
-            info!("Generated .env in {:?}", env_path);
+    for name in KEYS {
+        let has_value = lines.iter().any(|line| {
+            line.split_once('=').is_some_and(|(k, v)| {
+                let v = v.trim();
+                k.trim() == name && !v.is_empty() && v != "your_default_encryption_key_here"
+            })
+        });
+        if has_value {
+            continue;
         }
-        Err(e) => warn!("Failed to create .env: {}", e),
+
+        let key: String = (0..64)
+            .map(|_| format!("{:02x}", rng.random::<u8>()))
+            .collect();
+        if let Some(line) = lines
+            .iter_mut()
+            .find(|line| line.split_once('=').is_some_and(|(k, _)| k.trim() == name))
+        {
+            *line = format!("{name}={key}");
+        } else {
+            lines.push(format!("{name}={key}"));
+        }
+        changed.push(name);
+    }
+
+    if changed.is_empty() {
+        return;
+    }
+    let content = lines.join("\n") + "\n";
+    match std::fs::write(&env_path, content) {
+        Ok(()) => info!("Wrote missing keys {:?} to {:?}", changed, env_path),
+        Err(e) => warn!("Failed to write .env: {}", e),
     }
 }
 
@@ -417,7 +509,9 @@ fn download_embeddable_python(target_dir: &Path) -> Result<(), String> {
     // Extract
     let zip_file = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(zip_file).map_err(|e| format!("Invalid zip: {e}"))?;
-    archive.extract(target_dir).map_err(|e| format!("Extract failed: {e}"))?;
+    archive
+        .extract(target_dir)
+        .map_err(|e| format!("Extract failed: {e}"))?;
     drop(archive);
 
     // Cleanup zip
@@ -476,12 +570,10 @@ fn install_deps(python_dir: &Path, req_file: Option<&Path>, work_dir: &Path) -> 
         let req_file = match req_file {
             Some(p) => p.to_path_buf(),
             None => {
-                return Err(
-                    "requirements.txt not found next to the app sources. \
+                return Err("requirements.txt not found next to the app sources. \
                      Run via run.bat (it uses .venv), install Python 3.10+ with \
                      dependencies, or place the bundled server binary next to the app."
-                        .to_string(),
-                )
+                    .to_string())
             }
         };
         info!("Installing dependencies from {:?}...", req_file);

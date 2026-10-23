@@ -1,8 +1,6 @@
-import { useEffect, useCallback, useRef, useState } from "react"
+import { useEffect, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
-import { getAccessToken } from "../services/tokenVault"
-import { platform } from "../services/platform"
 import { ArrowDownToLine, FileText, X } from "lucide-react"
 import { viewTransitionName } from "../utils/viewTransition"
 
@@ -18,8 +16,6 @@ interface MediaViewerProps {
 export default function MediaViewer({ type, url, filename, fileId, onClose, viewTransitionId }: MediaViewerProps) {
   const { t } = useTranslation()
   const overlayRef = useRef<HTMLDivElement>(null)
-  const [docError, setDocError] = useState(false)
-  const [opening, setOpening] = useState(false)
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === "Escape") onClose()
@@ -32,20 +28,6 @@ export default function MediaViewer({ type, url, filename, fileId, onClose, view
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === overlayRef.current) onClose()
-  }
-
-  const handleOpenExternal = async () => {
-    const token = getAccessToken()
-    if (!token) { setDocError(true); return }
-    setOpening(true)
-    try {
-      await platform.downloadAndOpenFile(url, token, filename || "file")
-    } catch (e) {
-      console.error("Open file failed:", e)
-      setDocError(true)
-    } finally {
-      setOpening(false)
-    }
   }
 
   const handleDownload = async () => {
@@ -119,18 +101,10 @@ export default function MediaViewer({ type, url, filename, fileId, onClose, view
           <div className="media-viewer-doc-icon"><FileText size={48} strokeWidth={1.5} aria-hidden="true" /></div>
           <p className="media-viewer-doc-name">{filename || t("chat.documentLabel")}</p>
           <div className="media-viewer-doc-actions">
-            <button className="media-viewer-btn primary" onClick={handleOpenExternal} disabled={opening}>
-              {opening ? t("chat.opening") : t("chat.openInApp")}
-            </button>
-            <button className="media-viewer-btn" onClick={handleDownload} disabled={opening}>
+            <button className="media-viewer-btn primary" onClick={handleDownload}>
               {t("chat.download")}
             </button>
           </div>
-          {docError && (
-            <p className="media-viewer-doc-error">
-              {t("errors.openFileFailed")}
-            </p>
-          )}
         </div>
       </div>
     </div>

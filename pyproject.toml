@@ -75,7 +75,16 @@ module = ["server.core.redis_manager"]
 disable_error_code = ["unreachable"]
 
 [[tool.mypy.overrides]]
-module = ["jose.*", "aiofiles.*", "apscheduler.*", "qrcode", "pyaudio"]
+module = [
+    "jose.*",
+    "aiofiles.*",
+    "apscheduler.*",
+    "qrcode",
+    "pyaudio",
+    "py_vapid.*",
+    "pywebpush.*",
+    "psycopg2.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

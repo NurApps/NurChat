@@ -22,17 +22,6 @@ class User(Base):
     status = Column(String, default="", nullable=True)  # Статус пользователя
     totp_secret = Column(String, nullable=True)  # TOTP секрет для 2FA (зашифрован мастер-ключом)
     backup_codes = Column(Text, nullable=True)  # JSON список хешей резервных кодов восстановления
-
-    first_name = Column(String, nullable=False)
-    last_name = Column(String, nullable=True)
-    bio = Column(String, nullable=True)
-    hashed_password = Column(String)
-    public_key = Column(Text)
-    signing_public_key = Column(Text, nullable=True)
-    avatar_path = Column(String, nullable=True)
-    status = Column(String, default="", nullable=True)
-    totp_secret = Column(String, nullable=True)
-    backup_codes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_seen = Column(DateTime(timezone=True), server_default=func.now())
     is_online = Column(Boolean, default=False)

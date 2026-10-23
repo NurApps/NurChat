@@ -251,8 +251,11 @@ export const api = {
   verify2faLogin: (code: string) =>
     request<{ access_token: string; refresh_token?: string; token_type: string; user: UserResponse }>("POST", "/api/auth/2fa/verify-login", { code }),
 
-  register: (username: string, password: string, first_name: string, last_name: string, turnstile_token: string, public_key: string, signing_public_key: string) =>
-    request<{ access_token: string; refresh_token?: string; token_type: string; user: UserResponse }>("POST", "/api/auth/register", { username, password, first_name, last_name, turnstile_token, public_key, signing_public_key }),
+  register: (username: string, password: string, first_name: string, last_name: string, turnstile_token: string, public_key: string, signing_public_key: string, invite_code = "") =>
+    request<{ access_token: string; refresh_token?: string; token_type: string; user: UserResponse }>("POST", "/api/auth/register", { username, password, first_name, last_name, turnstile_token, public_key, signing_public_key, invite_code }),
+
+  getRegistrationPolicy: () =>
+    request<{ registration_mode: "open" | "invite" }>("GET", "/api/auth/policy"),
 
   getCaptcha: () =>
     request<{ provider: "turnstile" | "none"; sitekey?: string }>("GET", "/api/auth/captcha"),

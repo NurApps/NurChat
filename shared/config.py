@@ -175,6 +175,12 @@ class Settings(BaseSettings):
     LOG_TO_FILE: bool = True
     TOTP_MASTER_KEY: str = ""
 
+    # Регистрация: "open" — любой желающий, "invite" — только по коду.
+    # Хост-режим (relay на своём устройстве через туннель) выставляет invite:
+    # публичный адрес не должен превращаться в открытую регистрацию.
+    REGISTRATION_MODE: str = "open"
+    REGISTRATION_INVITE_CODE: str = ""
+
     # Cloudflare Turnstile на регистрации. Без SECRET/HOSTNAMES регистрация
     # закрыта (fail-closed). HOSTNAMES — хосты страницы фронтенда, не релея:
     # tauri.localhost (сборка Windows), 127.0.0.1/localhost (dev).

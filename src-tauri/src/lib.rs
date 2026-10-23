@@ -1,40 +1,43 @@
 // Встроенный сервер, трей и cloudflared — только десктоп. На Android/iOS
 // приложение — тонкий клиент, релей всегда удалённый.
 #[cfg(desktop)]
+mod host;
+#[cfg(desktop)]
 mod server;
 
 #[cfg(desktop)]
+use host::{HostManager, HostStatus};
+#[cfg(desktop)]
 use server::ServerManager;
+#[cfg(desktop)]
+use tauri::menu::MenuBuilder;
+#[cfg(desktop)]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 #[cfg(desktop)]
 use tauri::{Emitter, State};
-#[cfg(desktop)]
-use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
-#[cfg(desktop)]
-use tauri::menu::{MenuBuilder};
 
 #[cfg(desktop)]
-use tokio::sync::RwLock;
-#[cfg(desktop)]
-use tokio::process::{Child, Command as TokioCommand};
-#[cfg(desktop)]
-use tokio::io::{AsyncBufReadExt, BufReader};
+use std::sync::Arc;
 
 #[cfg(desktop)]
 struct AppState {
-    cloudflared: RwLock<Option<Child>>,
+    host: Arc<HostManager>,
     server: ServerManager,
 }
 
 #[tauri::command]
 async fn get_local_ip() -> Result<String, String> {
     use std::net::ToSocketAddrs;
-    let target = "8.8.8.8:53".to_socket_addrs()
+    let target = "8.8.8.8:53"
+        .to_socket_addrs()
         .map_err(|e| e.to_string())?
         .next()
         .ok_or("no address")?;
     let bind_addr: std::net::SocketAddr = ([0, 0, 0, 0], 0).into();
-    let socket = tokio::net::UdpSocket::bind(bind_addr).await.map_err(|e| e.to_string())?;
+    let socket = tokio::net::UdpSocket::bind(bind_addr)
+        .await
+        .map_err(|e| e.to_string())?;
     if socket.connect(target).await.is_ok() {
         if let Ok(local) = socket.local_addr() {
             return Ok(local.ip().to_string());
@@ -45,60 +48,29 @@ async fn get_local_ip() -> Result<String, String> {
 
 #[cfg(mobile)]
 #[tauri::command]
-async fn download_and_open_file(_url: String, _token: String, _filename: String) -> Result<String, String> {
-    Err("Открытие файлов недоступно на мобильных платформах".to_string())
+fn open_external(_url: String) -> Result<(), String> {
+    Err("Открытие ссылок недоступно на мобильных платформах".to_string())
+}
+
+/// Only web/mail links may reach the OS opener. Blocks `file:`, `javascript:`,
+/// `ms-msdt:` and friends, plus control characters (newline injection).
+#[cfg(desktop)]
+fn is_allowed_external_url(url: &str) -> bool {
+    let trimmed = url.trim();
+    if trimmed.is_empty() || trimmed.len() > 2048 || trimmed.chars().any(char::is_control) {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("mailto:")
 }
 
 #[cfg(desktop)]
 #[tauri::command]
-async fn download_and_open_file(url: String, token: String, filename: String) -> Result<String, String> {
-    let client = reqwest::Client::new();
-    let resp = client.get(&url)
-        .bearer_auth(&token)
-        .send()
-        .await
-        .map_err(|e| format!("Download failed: {e}"))?;
-
-    let bytes = resp.bytes().await.map_err(|e| format!("Read failed: {e}"))?;
-
-    let mut temp = std::env::temp_dir();
-    temp.push("nurchat_files");
-    std::fs::create_dir_all(&temp).ok();
-    temp.push(&filename);
-    std::fs::write(&temp, &bytes).map_err(|e| format!("Write failed: {e}"))?;
-
-    let path_str = temp.to_string_lossy().to_string();
-    open::that(&temp).map_err(|e| format!("Open failed: {e}"))?;
-
-    Ok(path_str)
-}
-
-#[tauri::command]
-async fn fetch_captcha() -> Result<serde_json::Value, String> {
-    let resp = reqwest::get("http://127.0.0.1:8000/api/auth/captcha")
-        .await
-        .map_err(|e| format!("Captcha fetch failed: {e}"))?;
-    resp.json::<serde_json::Value>()
-        .await
-        .map_err(|e| format!("Captcha parse failed: {e}"))
-}
-
-#[tauri::command]
-async fn fetch_register(body: String) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
-    let resp = client
-        .post("http://127.0.0.1:8000/api/auth/register")
-        .header("Content-Type", "application/json")
-        .body(body)
-        .send()
-        .await
-        .map_err(|e| format!("Register request failed: {e}"))?;
-    let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("Read response failed: {e}"))?;
-    if !status.is_success() {
-        return Err(text);
+fn open_external(url: String) -> Result<(), String> {
+    if !is_allowed_external_url(&url) {
+        return Err("Неподдерживаемая ссылка".to_string());
     }
-    serde_json::from_str(&text).map_err(|e| format!("Parse failed: {e}"))
+    open::that(url.trim()).map_err(|e| format!("Failed to open link: {e}"))
 }
 
 #[tauri::command]
@@ -131,131 +103,124 @@ fn share_invite(uri: String) -> Result<(), String> {
     // Open default mail client with invite URI
 
     let body = format!("Присоединяйся ко мне в NurChat!\n\nМоя ссылка: {}\n\nУстанови NurChat: https://github.com/NurApps/NurChat_desktop/releases", uri);
-    let mailto = format!("mailto:?subject=Приглашение в NurChat&body={}", urlencoding(&body));
+    let mailto = format!(
+        "mailto:?subject=Приглашение в NurChat&body={}",
+        urlencoding(&body)
+    );
     open::that(&mailto).map_err(|e| format!("Failed to open mail: {e}"))
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn host_start() -> Result<serde_json::Value, String> {
+    Err("Хост-режим недоступен на мобильных платформах".to_string())
+}
 
-#[cfg(desktop)]
-async fn download_cloudflared(dest: &std::path::Path) -> Result<(), String> {
-    let url = if cfg!(target_os = "windows") {
-        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
-    } else if cfg!(target_os = "macos") {
-        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64"
-    } else {
-        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
-    };
-
-    let response = reqwest::get(url).await.map_err(|e| format!("Failed to download cloudflared: {e}"))?;
-    let bytes = response.bytes().await.map_err(|e| format!("Failed to read cloudflared: {e}"))?;
-
-    if let Some(parent) = dest.parent() {
-        tokio::fs::create_dir_all(parent).await.ok();
-    }
-    tokio::fs::write(dest, &bytes).await.map_err(|e| format!("Failed to write cloudflared: {e}"))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))
-            .await
-            .ok();
-    }
-
+#[cfg(mobile)]
+#[tauri::command]
+async fn host_stop() -> Result<(), String> {
     Ok(())
 }
 
 #[cfg(mobile)]
 #[tauri::command]
-async fn start_cloudflare_tunnel() -> Result<String, String> {
-    Err("Туннель недоступен на мобильных платформах".to_string())
+async fn host_status() -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({ "state": "stopped", "url": null, "error": null }))
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn host_start(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<HostStatus, String> {
+    state.host.start(app.clone());
+    Ok(state.host.status().await)
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn host_stop(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.host.stop().await;
+    state.host.publish_stopped(&app).await;
+    Ok(())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn host_status(state: State<'_, AppState>) -> Result<HostStatus, String> {
+    Ok(state.host.status().await)
 }
 
 #[cfg(mobile)]
 #[tauri::command]
-async fn stop_cloudflare_tunnel() -> Result<(), String> {
-    Ok(())
+fn host_autostart_get() -> Result<bool, String> {
+    Ok(false)
 }
 
 #[cfg(desktop)]
 #[tauri::command]
-async fn start_cloudflare_tunnel(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    {
-        let mut cf = state.cloudflared.write().await;
-        if let Some(child) = cf.as_mut() {
-            if child.try_wait().ok().flatten().is_none() {
-                return Err("Tunnel already running".to_string());
-            }
-        }
-    }
+fn host_autostart_get(app: tauri::AppHandle) -> Result<bool, String> {
+    Ok(host_autostart_enabled(&app))
+}
 
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let binary_name = if cfg!(target_os = "windows") {
-        "cloudflared.exe"
-    } else {
-        "cloudflared"
-    };
-    let binary_path = app_dir.join(binary_name);
-
-    if !binary_path.exists() {
-        download_cloudflared(&binary_path).await?;
-    }
-
-    let mut child = TokioCommand::new(&binary_path)
-        .args(["tunnel", "--url", "http://localhost:8000"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| format!("Failed to start cloudflared: {e}"))?;
-
-    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
-    let reader = BufReader::new(stdout);
-    let mut lines = reader.lines();
-
-    let url = tokio::time::timeout(std::time::Duration::from_secs(30), async {
-        while let Some(line) = lines.next_line().await.map_err(|e| e.to_string())? {
-            if line.contains("trycloudflare.com") || line.contains("https://") {
-                for word in line.split_whitespace() {
-                    if word.starts_with("https://") && word.contains("trycloudflare.com") {
-                        return Ok::<_, String>(word.to_string());
-                    }
-                }
-            }
-        }
-        Err("Tunnel URL not found within timeout".to_string())
-    })
-    .await
-    .map_err(|_| "Timed out waiting for tunnel URL".to_string())??;
-
-    tokio::spawn(async move {
-        use tokio::io::AsyncReadExt;
-        let mut reader = lines.into_inner();
-        let mut buf = [0u8; 1024];
-        loop {
-            match reader.read(&mut buf).await {
-                Ok(0) | Err(_) => break,
-                _ => {}
-            }
-        }
-    });
-
-    {
-        let mut cf = state.cloudflared.write().await;
-        *cf = Some(child);
-    }
-
-    Ok(url)
+#[cfg(mobile)]
+#[tauri::command]
+fn host_autostart_set(_enabled: bool) -> Result<(), String> {
+    Err("Хост-режим недоступен на мобильных платформах".to_string())
 }
 
 #[cfg(desktop)]
 #[tauri::command]
-async fn stop_cloudflare_tunnel(state: State<'_, AppState>) -> Result<(), String> {
-    let mut cf = state.cloudflared.write().await;
-    if let Some(mut child) = cf.take() {
-        child.kill().await.map_err(|e| e.to_string())?;
+fn host_autostart_set(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let mut value = host::read_host_config(&app);
+    value["autostart"] = serde_json::json!(enabled);
+    host::write_host_config(&app, &value)
+}
+
+#[cfg(desktop)]
+fn host_autostart_enabled(app: &tauri::AppHandle) -> bool {
+    host::read_host_config(app)["autostart"]
+        .as_bool()
+        .unwrap_or(false)
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+fn host_cloudflared_get() -> Result<Option<String>, String> {
+    Ok(None)
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn host_cloudflared_get(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    Ok(host::saved_cloudflared_path(&app).map(|path| path.to_string_lossy().into_owned()))
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+fn host_cloudflared_set(_path: Option<String>) -> Result<(), String> {
+    Err("Хост-режим недоступен на мобильных платформах".to_string())
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn host_cloudflared_set(app: tauri::AppHandle, path: Option<String>) -> Result<(), String> {
+    let mut value = host::read_host_config(&app);
+    match path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()) {
+        Some(p) => {
+            if !std::path::Path::new(&p).is_file() {
+                return Err(format!("Файл не найден: {p}"));
+            }
+            value["cloudflared_path"] = serde_json::Value::String(p);
+        }
+        None => {
+            if let Some(object) = value.as_object_mut() {
+                object.remove("cloudflared_path");
+            }
+        }
     }
-    Ok(())
+    host::write_host_config(&app, &value)
 }
 
 #[tauri::command]
@@ -270,12 +235,15 @@ async fn check_update(current_version: String) -> Result<serde_json::Value, Stri
         .send()
         .await
         .map_err(|e| format!("Update check failed: {e}"))?;
-    let data: serde_json::Value = resp.json().await.map_err(|e| format!("Parse failed: {e}"))?;
-    
+    let data: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse failed: {e}"))?;
+
     let tag_name = data["tag_name"].as_str().unwrap_or("").to_string();
     let latest = tag_name.trim_start_matches('v');
     let current = current_version.trim_start_matches('v');
-    
+
     fn parse_semver(v: &str) -> Vec<u64> {
         v.split('.')
             .map(|p| p.split('-').next().unwrap_or("0").parse().unwrap_or(0))
@@ -300,12 +268,16 @@ fn get_app_version() -> String {
 
 #[cfg(desktop)]
 fn urlencoding(s: &str) -> String {
-    s.chars().map(|c| match c {
-        ' ' => "%20".to_string(),
-        '\n' => "%0A".to_string(),
-        _ if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' || c == '~' => c.to_string(),
-        _ => format!("%{:02X}", c as u8),
-    }).collect()
+    s.chars()
+        .map(|c| match c {
+            ' ' => "%20".to_string(),
+            '\n' => "%0A".to_string(),
+            _ if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' || c == '~' => {
+                c.to_string()
+            }
+            _ => format!("%{:02X}", c as u8),
+        })
+        .collect()
 }
 
 #[cfg(all(test, desktop))]
@@ -313,31 +285,44 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_download_and_open_file_validates_url() {
-        let result = std::panic::catch_unwind(|| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                download_and_open_file(
-                    String::new(),
-                    String::new(),
-                    "test.txt".to_string(),
-                ).await
-            })
-        });
-        // Should fail gracefully, not panic
+    fn test_external_url_scheme_allowlist() {
+        assert!(is_allowed_external_url(
+            "https://github.com/NurApps/NurChat"
+        ));
+        assert!(is_allowed_external_url("http://127.0.0.1:8000/health"));
+        assert!(is_allowed_external_url("mailto:?subject=Hi"));
+        assert!(is_allowed_external_url("  HTTPS://example.com/x  "));
 
-        assert!(result.is_err() || result.is_ok());
+        assert!(!is_allowed_external_url(
+            "file:///C:/Windows/System32/calc.exe"
+        ));
+        assert!(!is_allowed_external_url("javascript:alert(1)"));
+        assert!(!is_allowed_external_url("ms-msdt:/id"));
+        assert!(!is_allowed_external_url("https://example.com/\ncalc.exe"));
+        assert!(!is_allowed_external_url(""));
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
+    let builder = tauri::Builder::default();
+
+    // Must be the first plugin: second launch must focus the running instance
+    // instead of spawning a second embedded relay/tunnel on the same port.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }));
+
+    let builder = builder.plugin(tauri_plugin_notification::init());
 
     #[cfg(desktop)]
     let builder = builder
         .manage(AppState {
-            cloudflared: RwLock::new(None),
+            host: Arc::new(HostManager::new()),
             server: ServerManager::new(),
         })
         .plugin(tauri_plugin_process::init())
@@ -346,18 +331,19 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![
             get_local_ip,
-            download_and_open_file,
-            fetch_captcha,
-            fetch_register,
-
+            open_external,
             check_update,
             get_app_version,
             show_main_window,
             minimize_to_tray,
             share_invite,
-
-            start_cloudflare_tunnel,
-            stop_cloudflare_tunnel,
+            host_start,
+            host_stop,
+            host_status,
+            host_autostart_get,
+            host_autostart_set,
+            host_cloudflared_get,
+            host_cloudflared_set,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -386,7 +372,11 @@ fn handle_desktop_event(app_handle: &tauri::AppHandle, event: tauri::RunEvent) {
     let state = app_handle.state::<AppState>();
 
     match event {
-        tauri::RunEvent::WindowEvent { label, event: win_event, .. } => {
+        tauri::RunEvent::WindowEvent {
+            label,
+            event: win_event,
+            ..
+        } => {
             if let tauri::WindowEvent::CloseRequested { api, .. } = win_event {
                 api.prevent_close();
                 if let Some(window) = app_handle.get_webview_window(&label) {
@@ -395,16 +385,8 @@ fn handle_desktop_event(app_handle: &tauri::AppHandle, event: tauri::RunEvent) {
             }
         }
         tauri::RunEvent::Exit => {
+            state.host.kill_now();
             state.server.stop();
-        }
-        tauri::RunEvent::ExitRequested { .. } => {
-            if let Some(state) = app_handle.try_state::<AppState>() {
-                if let Ok(mut cf) = state.cloudflared.try_write() {
-                    if let Some(mut child) = cf.take() {
-                        let _ = child.kill();
-                    }
-                }
-            }
         }
         _ => {}
     }
@@ -416,7 +398,8 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     let state = app.handle().state::<AppState>();
 
     // Use app_data_dir for server files, create if missing
-    let app_dir = app.path()
+    let app_dir = app
+        .path()
         .app_data_dir()
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
     if !app_dir.exists() {
@@ -424,9 +407,7 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     }
 
     // Also try resource dir for Tauri sidecar
-    let res_dir = app.path()
-        .resource_dir()
-        .ok();
+    let res_dir = app.path().resource_dir().ok();
 
     log::info!("Server app_dir: {:?}", app_dir);
     log::info!("Server resource_dir: {:?}", res_dir);
@@ -446,7 +427,10 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
                 }
                 Err(e) => {
                     log::error!("External relay not ready: {}", e);
-                    let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
+                    let _ = handle.emit(
+                        "server-status",
+                        serde_json::json!({"status": "failed", "error": e}),
+                    );
                 }
             }
         });
@@ -462,18 +446,30 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
                     match state.server.wait_ready(60) {
                         Ok(()) => {
                             log::info!("Server is ready");
-                            let _ = handle.emit("server-status", serde_json::json!({"status": "ready"}));
+                            let _ = handle
+                                .emit("server-status", serde_json::json!({"status": "ready"}));
+                            // Хост-режим переживает рестарт приложения: если
+                            // пользователь его включал, туннель поднимается сам.
+                            if host_autostart_enabled(&handle) {
+                                state.host.start(handle.clone());
+                            }
                         }
                         Err(e) => {
                             log::error!("Server failed to start: {}", e);
-                            let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
+                            let _ = handle.emit(
+                                "server-status",
+                                serde_json::json!({"status": "failed", "error": e}),
+                            );
                         }
                     }
                 });
             }
             Err(e) => {
                 log::error!("Failed to start server: {}", e);
-                let _ = handle.emit("server-status", serde_json::json!({"status": "failed", "error": e}));
+                let _ = handle.emit(
+                    "server-status",
+                    serde_json::json!({"status": "failed", "error": e}),
+                );
             }
         }
     }
@@ -513,28 +509,29 @@ fn setup_desktop(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     let _tray = tray_builder
         .menu(&tray_menu)
         .tooltip("NurChat")
-        .on_menu_event(move |app, event| {
-            match event.id().as_ref() {
-                "show" => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+        .on_menu_event(move |app, event| match event.id().as_ref() {
+            "show" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
-                "quit" => {
-                    let state = app.state::<AppState>();
-                    state.server.stop();
-
-                    app.exit(0);
-                }
-                _ => {}
             }
+            "quit" => {
+                let state = app.state::<AppState>();
+                state.host.kill_now();
+                state.server.stop();
+
+                app.exit(0);
+            }
+            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
-                button_state: MouseButtonState::Up, ..
-            } = event {
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
                 let app = tray.app_handle();
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();

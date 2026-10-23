@@ -3,6 +3,9 @@ chcp 65001 >nul 2>&1 & rem UTF-8 консоль для кириллицы
 title NurChat
 cd /d "%~dp0"
 set PYTHONUTF8=1
+:: Relay слушает только loopback: наружу — через cloudflared/reverse-proxy.
+:: Для телефона в той же LAN: set NURCHAT_RELAY_BIND=0.0.0.0
+if not defined NURCHAT_RELAY_BIND set NURCHAT_RELAY_BIND=127.0.0.1
 
 :: Р•РґРёРЅС‹Р№ Р»Р°СѓРЅС‡РµСЂ NurChat (Windows).
 :: Р‘РµР· Р°СЂРіСѓРјРµРЅС‚РѕРІ вЂ” РёРЅС‚РµСЂР°РєС‚РёРІРЅРѕРµ РјРµРЅСЋ. РЎ Р°СЂРіСѓРјРµРЅС‚РѕРј вЂ” РїСЂСЏРјРѕР№ СЂРµР¶РёРј
@@ -119,7 +122,7 @@ echo [..] Relay foreground, .env as-is. Ctrl+C to stop.
 :: Show resolved DB (pydantic: environment shadows .env). A stale system-wide
 :: DATABASE_URL=sqlite looks exactly like "run.bat ignores .env".
 if exist .venv\Scripts\python.exe .venv\Scripts\python.exe scripts\db_info.py
-.venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 --no-access-log --timeout-keep-alive 30
+.venv\Scripts\python.exe -m uvicorn server.main:app --host %NURCHAT_RELAY_BIND% --port 8000 --no-access-log --timeout-keep-alive 30
 goto :eof
 
 :act_tunnel
@@ -207,7 +210,7 @@ if %errorlevel% equ 0 (
 for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /T /PID %%p >nul 2>&1
 echo [..] Starting relay in background...
 if exist .venv\Scripts\python.exe .venv\Scripts\python.exe scripts\db_info.py
-start "NurChat Relay" /B .venv\Scripts\python.exe -m uvicorn server.main:app --host 0.0.0.0 --port 8000 %RELAY_FLAGS% --no-access-log --timeout-keep-alive 30
+start "NurChat Relay" /B .venv\Scripts\python.exe -m uvicorn server.main:app --host %NURCHAT_RELAY_BIND% --port 8000 %RELAY_FLAGS% --no-access-log --timeout-keep-alive 30
 set RELAY_STARTED_BY_ME=1
 set WAIT_RELAY_TRIES=0
 goto wait_relay

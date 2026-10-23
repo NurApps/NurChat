@@ -133,6 +133,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [passwordConfirm, setPasswordConfirm] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+  const [inviteCode, setInviteCode] = useState("")
+  const [inviteRequired, setInviteRequired] = useState(false)
 
   // Login fields
   const [loginUsername, setLoginUsername] = useState("")
@@ -265,6 +267,14 @@ export default function LoginPage() {
     setPinLocked(false)
   }
 
+  // Хост-режим закрывает регистрацию: показываем поле кода только если
+  // relay этого действительно требует (публичная политика, без секретов).
+  useEffect(() => {
+    api.getRegistrationPolicy()
+      .then((p) => setInviteRequired(p.registration_mode === "invite"))
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     if (tab !== "register" || captchaSitekey || captchaDisabled) return
     api.getCaptcha()
@@ -310,6 +320,10 @@ export default function LoginPage() {
       setError(t("auth.passwordsMismatch"))
       return
     }
+    if (inviteRequired && !inviteCode.trim()) {
+      setError(t("auth.inviteRequired"))
+      return
+    }
     if (!captchaDisabled && !captchaToken) {
       setError(t("auth.solveCaptcha"))
       return
@@ -327,7 +341,8 @@ export default function LoginPage() {
         lastName.trim(),
         captchaToken,
         e2eKeys.publicKeyHex,
-        e2eKeys.signingPublicHex
+        e2eKeys.signingPublicHex,
+        inviteRequired ? inviteCode.trim() : ""
       )
       await api.setToken(res.access_token, res.refresh_token)
       writeStoredUserRaw(JSON.stringify(res.user))
@@ -629,6 +644,25 @@ export default function LoginPage() {
                 onChange={(e) => setPasswordConfirm(e.target.value)}
               />
             </div>
+
+            {inviteRequired && (
+              <div className="field-wrapper">
+                <svg className="field-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <input
+                  className="login-input"
+                  type="text"
+                  placeholder={t("auth.inviteCodePlaceholder")}
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+            )}
+            {inviteRequired && (
+              <p style={{ fontSize: 12, opacity: 0.7, margin: "-4px 0 4px" }}>{t("auth.inviteHint")}</p>
+            )}
 
             {captchaFailed ? (
               <div className="captcha-error">

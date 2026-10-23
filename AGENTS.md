@@ -22,6 +22,8 @@ npx tauri dev
 
 Без релея на `:8000` (или удалённого через `VITE_API_HOST`) фронтенд показывает «Сервер недоступен».
 
+`run.bat` слушает только loopback (`NURCHAT_RELAY_BIND`, по умолчанию `127.0.0.1`); наружу — через cloudflared/reverse-proxy. Для телефона в той же LAN: `set NURCHAT_RELAY_BIND=0.0.0.0`.
+
 ## Commands
 
 | Action | Command |
@@ -108,6 +110,18 @@ VITE_API_PROTOCOL=https
 
 Полный референс: `.env.example` и `shared/config.py`.
 
+## Host Mode (релей на своём устройстве)
+
+- Desktop-only: `src-tauri/src/host.rs` (`HostManager`) поднимает локальный relay на `127.0.0.1:8000` и pinned `cloudflared` Quick Tunnel к нему. Quick Tunnel URL случайный и живёт до перезапуска туннеля — это осознанный MVP-компромисс (постоянный домен = именованный туннель + аккаунт CF, см. `docs/RELAY_HOSTING.md`).
+- `cloudflared` версия `2026.10.3`, SHA-256 проверяется перед запуском. Windows/Linux amd64 качаются автоматически; macOS/ARM — путь из UI, `NURCHAT_CLOUDFLARED` или PATH. Приоритет: env → сохранённый в UI путь (`host.json`) → PATH → скачивание.
+- Админ-эндпоинты `server/routes/host.py` (`GET /api/host/config`, `POST /api/host/invite`, `POST /api/host/open`) доступны ТОЛЬКО с loopback и без `X-Forwarded-For`/`X-Real-IP`. Из туннеля они не видны (404), т.к. Cloudflare добавляет эти заголовки.
+- `REGISTRATION_MODE=open|invite` + `REGISTRATION_INVITE_CODE` (`shared/config.py`, гейт в `server/routes/auth.py`). В `invite` пустой код = fail-closed (403). `POST /api/host/invite` генерирует код и пишет его в `.env`, `POST /api/host/open` возвращает открытую регистрацию.
+- `/health` отдаёт `relay_id` и `registration_mode`; клиент показывает их в настройках.
+- `*.trycloudflare.com` в Host разрешён только при наличии `CF-Ray`/`CF-Connecting-IP` (иначе 400, см. `test_pentest_fixes.py`).
+- UI: `HostModePanel.tsx` в настройках (desktop) и в `ServerBootOverlay` (setup-фаза), статус через Tauri-событие `host-status`, автозапуск и ручной путь к `cloudflared` — `host.json` (`host_autostart_get/set`, `host_cloudflared_get/set`).
+- Встроенный uvicorn стартует с `--proxy-headers --forwarded-allow-ips=127.0.0.1`: cloudflared приходит с loopback, реальный IP клиента берётся из XFF (иначе все друзья = один IP и общий лимит WS/HTTP).
+- При включении host-режима клиент должен переключиться на туннельный URL (кнопка в панели); `BASE_URL`/`WS_BASE` заморожены до перезагрузки.
+
 ## Auto-Update (Tauri Updater)
 
 - `tauri-plugin-updater` + `tauri-plugin-process` (Rust) и `@tauri-apps/plugin-updater` + `@tauri-apps/plugin-process` (frontend).
@@ -147,6 +161,7 @@ X3DH (3 DH, подписи Ed25519 обязательны) + Double Ratchet. Л�
 **Отправка/история:** `frontend/src/hooks/useChatActions.ts`, `useChatMessages.ts`
 **Main page:** `frontend/src/pages/ChatPage.tsx`
 **Tauri:** `src-tauri/tauri.conf.json`, `src-tauri/src/lib.rs` (без `mod p2p`)
+**Host mode:** `src-tauri/src/host.rs` (супервизор), `server/routes/host.py`, `server/services/registration.py`, `frontend/src/components/HostModePanel.tsx`, `frontend/src/services/hostMode.ts`, `docs/RELAY_HOSTING.md`
 
 ## Conventions
 

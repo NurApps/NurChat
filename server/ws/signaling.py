@@ -44,8 +44,10 @@ class CallManager:
         logger.info(f"User {user_id} connected to signaling WebSocket")
 
         last_alive = time.monotonic()
-        idle_timeout = 120
-        dead_after = 300
+        # Same envelope as chat WS: keep pings below Cloudflare's ~100s idle
+        # timeout, drop only after several unanswered probes.
+        idle_timeout = 25
+        dead_after = 120
         last_token_check = 0.0
         token_check_interval = 10
 

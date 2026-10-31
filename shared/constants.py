@@ -74,7 +74,7 @@ CRDT_OPS = {
 }
 
 # Reactions (как в Telegram)
-REACTION_LIST = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
+REACTION_LIST = ["👍", "❤️", "😂", "😮", "😢", "💀", "😈"]
 
 # Коды ошибок
 ERROR_CODES = {

@@ -330,6 +330,7 @@ pub fn run() {
     // Строго до любого сетевого запроса: первый TLS-хендшейк без этого упадёт.
     #[cfg(target_os = "android")]
     android_tls_init();
+
     let builder = tauri::Builder::default();
 
     // Must be the first plugin: second launch must focus the running instance

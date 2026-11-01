@@ -6,12 +6,12 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: "Архитектуры. aarch64 — быстро (отладка), обе — полный релиз"
+        description: "Архитектуры. Обе — полный APK; только aarch64 — быстро, для отладки (на 32-бит не встанет)"
         type: choice
-        default: aarch64
+        default: aarch64 armv7
         options:
-          - aarch64
           - aarch64 armv7
+          - aarch64
 
 permissions:
   contents: read

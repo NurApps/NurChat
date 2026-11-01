@@ -320,7 +320,7 @@ fn android_tls_init() {
         // в собственный Global<JObject>.
         let context = unsafe { JObject::from_raw(env, ctx.context().cast()) };
         rustls_platform_verifier::android::init_with_env(env, context)?;
-        Ok(())
+        Ok::<(), rustls_platform_verifier::android::Error>(())
     })
     .expect("rustls-platform-verifier: инициализация TLS не удалась");
 }

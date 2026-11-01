@@ -4,6 +4,14 @@ name: Build Android
 # Автозапуск добавим, когда сборка стабильно проходит (тогда — по тегу).
 on:
   workflow_dispatch:
+    inputs:
+      targets:
+        description: "Архитектуры. aarch64 — быстро (отладка), обе — полный релиз"
+        type: choice
+        default: aarch64
+        options:
+          - aarch64
+          - aarch64 armv7
 
 permissions:
   contents: read
@@ -15,6 +23,7 @@ concurrency:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -37,6 +46,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
 
       - name: Setup Rust (Android targets)
         uses: dtolnay/rust-toolchain@stable
@@ -47,6 +57,9 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          # Упавшая сборка всё равно сохраняет зависимости: следующая попытка
+          # не компилирует их заново.
+          cache-on-failure: true
 
       - name: Setup Android NDK
         # SDK и NDK предустановлены на ubuntu-latest; Tauri ищет NDK через NDK_HOME.
@@ -55,7 +68,10 @@ jobs:
       - name: Build APK
         # gen/android закоммичен, поэтому `tauri android init` не нужен.
         # Собираем aarch64 (все современные телефоны) и armv7 (старые 32-бит).
-        run: npx --yes tauri android build --apk --target aarch64 armv7 --ci
+        env:
+          TARGETS: ${{ inputs.targets }}
+        # $TARGETS без кавычек намеренно: "aarch64 armv7" -> два аргумента.
+        run: npx --yes tauri android build --apk --target $TARGETS --ci
 
       - name: Sign APK
         # Без подписи Android отвечает «пакет недействителен» при установке.

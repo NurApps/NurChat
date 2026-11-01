@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import java.util.Properties
 
 plugins {
@@ -13,7 +14,35 @@ val tauriProperties = Properties().apply {
     }
 }
 
-android {пу
+// rustls-platform-verifier: Kotlin-часть TLS-верификатора поставляется как AAR
+// внутри cargo-крейта rustls-platform-verifier-android (на Maven Central её нет).
+fun rustlsPlatformVerifierMavenUrl(): String {
+    val metadata = providers.exec {
+        // Этот файл лежит в src-tauri/gen/android/app, поэтому ../../../ = src-tauri.
+        workingDir = file("../../../")
+        commandLine(
+            "cargo", "metadata", "--format-version", "1",
+            "--filter-platform", "aarch64-linux-android",
+            "--manifest-path", "Cargo.toml",
+        )
+    }.standardOutput.asText.get()
+
+    @Suppress("UNCHECKED_CAST")
+    val packages = (JsonSlurper().parseText(metadata) as Map<String, Any>)["packages"]
+        as List<Map<String, Any>>
+    val manifestPath = packages
+        .first { it["name"] == "rustls-platform-verifier-android" }["manifest_path"] as String
+    return File(manifestPath).parentFile.resolve("maven").path
+}
+
+repositories {
+    maven {
+        url = uri(rustlsPlatformVerifierMavenUrl())
+        metadataSources.artifact()
+    }
+}
+
+android {
     compileSdk = 36
     namespace = "com.nurapps.nurchat"
     defaultConfig {
@@ -58,6 +87,7 @@ rust {
 }
 
 dependencies {
+    implementation("rustls:rustls-platform-verifier:latest.release")
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.activity:activity-ktx:1.10.1")

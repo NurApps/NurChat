@@ -302,9 +302,34 @@ mod tests {
         assert!(!is_allowed_external_url(""));
     }
 }
+/// Инициализация rustls-platform-verifier (Android).
+///
+/// reqwest 0.13 по умолчанию верифицирует TLS через rustls-platform-verifier:
+/// на Android тот паникует без инициализации — "Expect rustls-platform-verifier
+/// to be initialized" → SIGABRT при первом HTTPS-запросе (crash_log CN).
+#[cfg(target_os = "android")]
+fn android_tls_init() {
+    use jni::objects::JObject;
+
+    let ctx = ndk_context::android_context();
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) };
+
+    vm.attach_current_thread(|env| {
+        // SAFETY: ndk_context хранит глобальную JNI-ссылку на application
+        // context, живущую весь процесс; верификатор сразу заворачивает её
+        // в собственный Global<JObject>.
+        let context = unsafe { JObject::from_raw(env, ctx.context().cast()) };
+        rustls_platform_verifier::android::init_with_env(env, context)?;
+        Ok(())
+    })
+    .expect("rustls-platform-verifier: инициализация TLS не удалась");
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Строго до любого сетевого запроса: первый TLS-хендшейк без этого упадёт.
+    #[cfg(target_os = "android")]
+    android_tls_init();
     let builder = tauri::Builder::default();
 
     // Must be the first plugin: second launch must focus the running instance

@@ -76,10 +76,11 @@ jobs:
       - name: Sign APK
         # Без подписи Android отвечает «пакет недействителен» при установке.
         # Если заданы релизные секреты — подписываем ими (NurChat-signed.apk).
-        # Иначе — одноразовым DEBUG-ключом (NurChat-debug.apk): ставится на
-        # устройство для тестов, но ключ каждый раз новый (обновление поверх
-        # не встанет — только переустановка; для стабильного ключа задайте
-        # секреты). Unsigned-оригинал тоже выкладываем для диагностики.
+        # Иначе — постоянным DEBUG-ключом из репозитория
+        # (src-tauri/gen/android/debug.keystore, пароль android): сборки
+        # обновляются поверх друг друга. Ключ ПУБЛИЧНЫЙ — для тестов, не для
+        # раздачи; для релиза задайте секреты. Unsigned-оригинал тоже
+        # выкладываем для диагностики.
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -98,21 +99,17 @@ jobs:
               --out "$OUT/NurChat-signed.apk" "$OUT/app-aligned.apk"
             "$BT/apksigner" verify --print-certs "$OUT/NurChat-signed.apk"
             rm -f "$RUNNER_TEMP/release.jks" "$OUT/app-aligned.apk"
-          elif command -v keytool >/dev/null 2>&1; then
-            echo "::notice::Релизного keystore нет — подписываю одноразовым DEBUG-ключом (только для тестовой установки)"
-            keytool -genkeypair -keystore "$RUNNER_TEMP/debug.jks" \
-              -alias androiddebugkey -storepass android -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10950 \
-              -dname "CN=NurChat Debug, OU=Dev, O=NurApps" -noprompt
+          elif [ -f src-tauri/gen/android/debug.keystore ]; then
+            echo "::notice::Релизного keystore нет — подписываю постоянным DEBUG-ключом из репозитория (только для тестовой установки; ключ публичный)"
             "$BT/apksigner" sign \
-              --ks "$RUNNER_TEMP/debug.jks" \
+              --ks src-tauri/gen/android/debug.keystore \
               --ks-key-alias androiddebugkey \
               --ks-pass pass:android --key-pass pass:android \
               --out "$OUT/NurChat-debug.apk" "$OUT/app-aligned.apk"
             "$BT/apksigner" verify --print-certs "$OUT/NurChat-debug.apk"
-            rm -f "$RUNNER_TEMP/debug.jks" "$OUT/app-aligned.apk"
+            rm -f "$OUT/app-aligned.apk"
           else
-            echo "::warning::Нет ни keystore, ни keytool — APK остаётся unsigned (не установится)"
+            echo "::warning::Нет ни секретов, ни debug.keystore — APK остаётся unsigned (не установится)"
           fi
 
       - name: Upload APK

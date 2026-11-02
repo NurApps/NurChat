@@ -729,3 +729,32 @@
 .settings-collapse-inner { overflow: hidden; min-height: 0; }
 .settings-collapse .settings-toggle-row { border-bottom: 1px solid var(--divider); }
 .settings-collapse:last-child .settings-toggle-row { border-bottom: none; }
+
+/* Экран «Хранилище»: использование и разбивка по типам файлов. */
+.storage-total { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.storage-total-value { font-size: 24px; font-weight: 600; color: var(--text); }
+.storage-total-of { font-size: 14px; color: var(--text-secondary); }
+.storage-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface-variant);
+  margin-bottom: 14px;
+}
+.storage-bar-seg { height: 100%; flex-shrink: 0; }
+.storage-list { list-style: none; margin: 0; padding: 0; }
+.storage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 14px;
+  color: var(--text);
+  border-bottom: 1px solid var(--divider);
+}
+.storage-row:last-child { border-bottom: none; }
+.storage-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.storage-row-label { flex: 1; min-width: 0; }
+.storage-row-count { color: var(--text-secondary); font-size: 13px; }
+.storage-row-size { min-width: 72px; text-align: right; font-variant-numeric: tabular-nums; }

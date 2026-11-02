@@ -550,7 +550,7 @@ export const api = {
   },
 
   getStorageInfo: () =>
-    request<{ total: number; files: number }>("GET", "/api/files/storage-info"),
+    request<StorageInfo>("GET", "/api/files/storage-info"),
 
   getCallHistory: (skip = 0, limit = 50) =>
     request<{ calls: Array<{

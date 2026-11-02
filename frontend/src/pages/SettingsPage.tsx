@@ -24,7 +24,26 @@ import PasskeyManager from "../components/PasskeyManager"
 import AccountList from "../components/AccountList"
 import RelayAddressInput from "../components/RelayAddressInput"
 import HostModePanel from "../components/HostModePanel"
-import type { UserResponse } from "../types"
+import type { StorageInfo, UserResponse } from "../types"
+
+// Типы файлов сервера → категории экрана «Хранилище» (как «Использование памяти» в Telegram).
+const STORAGE_CATEGORIES = [
+  { key: "Photos", types: ["image"], color: "#43a047" },
+  { key: "Videos", types: ["video"], color: "#e53935" },
+  { key: "Audio", types: ["audio", "voice"], color: "#fb8c00" },
+  { key: "Documents", types: ["document"], color: "#1e88e5" },
+] as const
+
+function buildStorageRows(info: StorageInfo) {
+  const mapped = new Set<string>(STORAGE_CATEGORIES.flatMap((c) => c.types))
+  const rows: { key: string; count: number; size: number; color: string }[] = STORAGE_CATEGORIES.map((c) => {
+    const items = info.files_by_type.filter((f) => (c.types as readonly string[]).includes(f.type))
+    return { key: c.key, color: c.color, count: items.reduce((n, f) => n + f.count, 0), size: items.reduce((n, f) => n + f.size, 0) }
+  })
+  const other = info.files_by_type.filter((f) => !mapped.has(f.type))
+  rows.push({ key: "Other", color: "#9e9e9e", count: other.reduce((n, f) => n + f.count, 0), size: other.reduce((n, f) => n + f.size, 0) })
+  return rows.filter((r) => r.count > 0)
+}
 
 type SettingsTab = "profile" | "appearance" | "notifications" | "privacy" | "storage" | "security" | "account" | "about"
 
@@ -63,7 +82,7 @@ export default function SettingsPage() {
   const [updateUrl, setUpdateUrl] = useState("")
 
   const [e2eEnabled, setE2eEnabled] = useState(false)
-  const [storageInfo, setStorageInfo] = useState<{total: number; files: number} | null>(null)
+  const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null)
   const [pinEnabled, setPinEnabled] = useState(isPinEnabled())
   const [pinSetup, setPinSetup] = useState<"idle" | "set" | "change" | "remove">("idle")
   const [pinInput, setPinInput] = useState("")
@@ -105,7 +124,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     hasKeys().then(setE2eEnabled).catch(() => setE2eEnabled(false))
-    api.getStorageInfo?.().then((info: any) => setStorageInfo(info)).catch(() => {})
+    api.getStorageInfo().then(setStorageInfo).catch(() => {})
     platform.getAppVersion().then(setAppVersion).catch(() => setAppVersion(FALLBACK_APP_VERSION))
     loadTotpStatus()
   }, [])
@@ -461,7 +480,8 @@ export default function SettingsPage() {
     if (!Number.isFinite(bytes) || bytes < 0) return "—"
     if (bytes < 1024) return `${bytes} ${t("files.sizeB")}`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${t("files.sizeKB")}`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} ${t("files.sizeMB")}`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} ${t("files.sizeMB")}`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} ${t("files.sizeGB")}`
   }
 
   const avatarSrc = avatarUrl(user.avatar_path)
@@ -472,7 +492,7 @@ export default function SettingsPage() {
     appearance: { color: "#8e6bd8", value: modeLabel },
     notifications: { color: "#e5534b" },
     privacy: { color: "#34a853" },
-    storage: { color: "#f29d38", value: storageInfo ? formatSize(storageInfo.total) : undefined },
+    storage: { color: "#f29d38", value: storageInfo ? formatSize(storageInfo.total_size) : undefined },
     security: { color: "#2a9fd6", value: pinEnabled || totpEnabled ? t("settings.pinEnabled") : t("settings.pinDisabled") },
     account: { color: "#7d8a99" },
     about: { color: "#5b7fd6", value: appVersion || FALLBACK_APP_VERSION },
@@ -774,18 +794,42 @@ export default function SettingsPage() {
             <div className="settings-sections">
               <div className="settings-group">
                 <h3 className="settings-group-title">{t("settings.usage")}</h3>
-                {storageInfo ? (
-                  <div className="settings-storage-info">
-                    <p>{formatSize(storageInfo.total)} {t("settings.used")} · {t("settings.filesCount", { count: storageInfo.files })}</p>
-                  </div>
-                ) : (
+                {storageInfo ? (() => {
+                  const rows = buildStorageRows(storageInfo)
+                  const of = t("settings.storageOf", { max: formatSize(storageInfo.max_storage) })
+                  return (
+                    <div className="storage-usage">
+                      <div className="storage-total">
+                        <span className="storage-total-value">{formatSize(storageInfo.total_size)}</span>
+                        <span className="storage-total-of">{of}</span>
+                      </div>
+                      <div className="storage-bar" role="img" aria-label={`${formatSize(storageInfo.total_size)} ${of}`}>
+                        {rows.map((r) => (
+                          <span key={r.key} className="storage-bar-seg"
+                            style={{ background: r.color, width: `${Math.max((r.size / storageInfo.max_storage) * 100, r.size > 0 ? 0.6 : 0)}%` }} />
+                        ))}
+                      </div>
+                      {rows.length === 0 ? (
+                        <p className="settings-info-text">{t("settings.storageEmpty")}</p>
+                      ) : (
+                        <ul className="storage-list">
+                          {rows.map((r) => (
+                            <li key={r.key} className="storage-row">
+                              <span className="storage-dot" style={{ background: r.color }} aria-hidden="true" />
+                              <span className="storage-row-label">{t(`settings.storage${r.key}`)}</span>
+                              <span className="storage-row-count">{t("settings.filesCount", { count: r.count })}</span>
+                              <span className="storage-row-size">{formatSize(r.size)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                })() : (
                   <p className="settings-info-text">{t("settings.loadingInfo")}</p>
                 )}
               </div>
               <div className="settings-group">
-                <h3 className="settings-group-title">{t("settings.management")}</h3>
-                <button className="settings-action-btn" onClick={handleClearCache}>{t("settings.clearCache")}</button>
-                <p className="settings-info-text">{t("settings.clearCacheDesc")}</p>
                 <p className="settings-info-text">{t("settings.autoDelete")}</p>
               </div>
             </div>
@@ -1075,6 +1119,8 @@ export default function SettingsPage() {
                   {updateStatus === "error" && (
                     <span style={{ color: "var(--error)", fontSize: "13px" }}>{t("settings.updateError")}</span>
                   )}
+                  <button className="settings-action-btn" onClick={handleClearCache}>{t("settings.clearCache")}</button>
+                  <p className="settings-info-text">{t("settings.clearCacheDesc")}</p>
                 </div>
               </div>
               <div className="settings-group">

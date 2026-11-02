@@ -397,6 +397,13 @@
     "blockingDesc": "Заблокированные пользователи не смогут отправлять вам сообщения.",
     "manageBlocking": "Управление блокировками",
     "usage": "Использование",
+    "storageOf": "из {{max}}",
+    "storagePhotos": "Фото",
+    "storageVideos": "Видео",
+    "storageAudio": "Аудио и голосовые",
+    "storageDocuments": "Документы",
+    "storageOther": "Другое",
+    "storageEmpty": "Загруженных файлов пока нет",
     "used": "использовано",
     "loadingInfo": "Загрузка информации...",
     "management": "Управление",
@@ -793,7 +800,8 @@
     "empty": "Нет файлов",
     "sizeB": "Б",
     "sizeKB": "КБ",
-    "sizeMB": "МБ"
+    "sizeMB": "МБ",
+    "sizeGB": "ГБ"
   },
   "format": {
     "justNow": "только что",

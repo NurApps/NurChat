@@ -396,6 +396,13 @@
     "blockingDesc": "Blocked users won't be able to send you messages.",
     "manageBlocking": "Manage blocking",
     "usage": "Usage",
+    "storageOf": "of {{max}}",
+    "storagePhotos": "Photos",
+    "storageVideos": "Videos",
+    "storageAudio": "Audio & voice",
+    "storageDocuments": "Documents",
+    "storageOther": "Other",
+    "storageEmpty": "No uploaded files yet",
     "used": "used",
     "loadingInfo": "Loading info...",
     "management": "Management",
@@ -792,7 +799,8 @@
     "empty": "No files",
     "sizeB": "B",
     "sizeKB": "KB",
-    "sizeMB": "MB"
+    "sizeMB": "MB",
+    "sizeGB": "GB"
   },
   "format": {
     "justNow": "just now",

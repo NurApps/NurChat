@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react"
+import { Search, UserPlus, Download, FileUp, Timer, Check } from "lucide-react"
+import { useState, useCallback, useRef, useEffect, useMemo, useLayoutEffect } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
@@ -155,12 +156,46 @@ export default function ChatPage() {
   const [wsUp, setWsUp] = useState(true)
   const [ephemeralSeconds, setEphemeralSeconds] = useState<number | null>(null)
   const [showEphemeralMenu, setShowEphemeralMenu] = useState(false)
+  // Мобильная шапка/ввод: второстепенные действия живут в выпадающих меню.
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState<null | "main" | "ephemeral">(null)
+  const ephemeralOptions = [
+    { label: t("chat.ephemeralOff"), value: null },
+    { label: t("chat.ephemeral5s"), value: 5 },
+    { label: t("chat.ephemeral10s"), value: 10 },
+    { label: t("chat.ephemeral30s"), value: 30 },
+    { label: t("chat.ephemeral1m"), value: 60 },
+    { label: t("chat.ephemeral5m"), value: 300 },
+    { label: t("chat.ephemeral1h"), value: 3600 },
+  ]
+  useEffect(() => {
+    if (!showHeaderMenu && !showAttachMenu) return
+    const close = (e: PointerEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest(".popover-menu") && !target.closest("[data-popover-trigger]")) {
+        setShowHeaderMenu(false)
+        setShowAttachMenu(null)
+      }
+    }
+    document.addEventListener("pointerdown", close)
+    return () => document.removeEventListener("pointerdown", close)
+  }, [showHeaderMenu, showAttachMenu])
 
   // Свайп-назад на мобиле: жест от левого края закрывает открытый чат.
   const swipeBack = useSwipeBack(
     isMobile && !!(selectedChat || showFavoritesChat),
     () => withViewTransition(() => { setSelectedChat(null); setShowFavoritesChat(false) }),
   )
+
+  // Открытая переписка на мобиле — признак для CSS: нижняя навигация в ней скрыта
+  // (как в Telegram). Layout-эффект, чтобы атрибут попал в тот же коммит, что и
+  // окно чата, и View Transition увидел панель уже скрытой/показанной.
+  const chatViewOpen = isMobile && !!(selectedChat || showFavoritesChat)
+  useLayoutEffect(() => {
+    if (!chatViewOpen) return
+    document.documentElement.setAttribute("data-chat-open", "")
+    return () => document.documentElement.removeAttribute("data-chat-open")
+  }, [chatViewOpen])
 
   // Чаты, для которых уже показывали «нет ключей пира» (раз за сессию).
   const peerWarnedRef = useRef<Set<string>>(new Set())
@@ -934,7 +969,7 @@ export default function ChatPage() {
                   </button>
                 )}
                 <div className="ch-avatar clickable"
-                  style={selectedChatPeer && (!profileUser || profileUser.id === selectedChatPeer.id) ? { viewTransitionName: viewTransitionName("chat-avatar", selectedChatPeer.id) } : undefined}
+                  style={selectedChatPeer && !profileUser ? { viewTransitionName: viewTransitionName("chat-avatar", selectedChatPeer.id) } : undefined}
                   onClick={() => { if (!isSelectedGroup) { const peer = selectedChat.participants.find(p => p.id !== currentUser.id); if (peer) handleViewProfile(peer) } }}>
                   {(() => {
                     const src = selectedChatPeer ? avatarUrl(selectedChatPeer.avatar_path) : null
@@ -968,12 +1003,16 @@ export default function ChatPage() {
                   </span>
                 </div>
                 <div className="ch-actions">
+                  {!isMobile && (
                   <button className="ch-btn" title={t("chat.searchInChat")} aria-label={t("chat.searchInChat")} onClick={() => setSearchQuery("")}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   </button>
+                  )}
+                  {!isMobile && (
                   <button className="ch-btn" title={t("chat.invite")} aria-label={t("chat.invite")} onClick={() => setShowInviteModal(true)}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
                   </button>
+                  )}
                   {isSelectedGroup && (
                     <>
                       <button className="ch-btn" title={t("common.groupSettings")} aria-label={t("common.groupSettings")} onClick={() => setShowGroupSettings(true)}>
@@ -1001,9 +1040,26 @@ export default function ChatPage() {
                       </button>
                     </>
                   )}
+                  {!isMobile && (
                   <button className="ch-btn" title={t("chat.export")} aria-label={t("chat.export")} onClick={handleExportChat}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                   </button>
+                  )}
+                  {isMobile && (
+                    <div style={{ position: "relative" }}>
+                      <button className="ch-btn" data-popover-trigger aria-label={t("chat.more")} aria-haspopup="menu" aria-expanded={showHeaderMenu}
+                        onClick={() => setShowHeaderMenu((v) => !v)}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="12" cy="19" r="1.8" /></svg>
+                      </button>
+                      {showHeaderMenu && (
+                        <div className="popover-menu popover-menu--down" role="menu">
+                          <button role="menuitem" onClick={() => { setShowHeaderMenu(false); setSearchQuery("") }}><span className="popover-menu__label"><Search size={20} aria-hidden="true" />{t("chat.searchInChat")}</span></button>
+                          <button role="menuitem" onClick={() => { setShowHeaderMenu(false); setShowInviteModal(true) }}><span className="popover-menu__label"><UserPlus size={20} aria-hidden="true" />{t("chat.invite")}</span></button>
+                          <button role="menuitem" onClick={() => { setShowHeaderMenu(false); handleExportChat() }}><span className="popover-menu__label"><Download size={20} aria-hidden="true" />{t("chat.export")}</span></button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1105,6 +1161,8 @@ export default function ChatPage() {
                 <button className="input-btn" title={t("common.emoji")} onClick={() => setShowEmoji(!showEmoji)} disabled={recording || uploading} aria-expanded={showEmoji}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
                 </button>
+                {!isMobile && (
+                <>
                 <button className="input-btn" title={t("common.file")} disabled={recording || uploading} onClick={handleFilePick}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
                 </button>
@@ -1131,15 +1189,7 @@ export default function ChatPage() {
                       padding: "8px 0", zIndex: 1000, minWidth: 160,
                     }}>
                       <div style={{ padding: "6px 16px", fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>{t("chat.ephemeralTitle")}</div>
-                      {[
-                        { label: t("chat.ephemeralOff"), value: null },
-                        { label: t("chat.ephemeral5s"), value: 5 },
-                        { label: t("chat.ephemeral10s"), value: 10 },
-                        { label: t("chat.ephemeral30s"), value: 30 },
-                        { label: t("chat.ephemeral1m"), value: 60 },
-                        { label: t("chat.ephemeral5m"), value: 300 },
-                        { label: t("chat.ephemeral1h"), value: 3600 },
-                      ].map((opt) => (
+                      {ephemeralOptions.map((opt) => (
                         <div key={String(opt.value)} className="ephemeral-option" onClick={() => { setEphemeralSeconds(opt.value); setShowEphemeralMenu(false) }}
                           style={{
                             padding: "8px 16px", cursor: "pointer", fontSize: 14,
@@ -1156,6 +1206,8 @@ export default function ChatPage() {
                     </div>
                   )}
                 </div>
+                </>
+                )}
 
                 {uploading ? (
                   <div className="chat-input-uploading">
@@ -1176,11 +1228,47 @@ export default function ChatPage() {
                     </button>
                   </div>
                 ) : (
-                  <textarea ref={inputRef} className="chat-input" placeholder={t("chat.messagePlaceholder")} rows={1}
+                  <textarea ref={inputRef} className="chat-input" placeholder={isMobile ? t("chat.messagePlaceholderShort") : t("chat.messagePlaceholder")} rows={1}
                     value={input} onChange={(e) => handleInputChange(e.target.value)} onKeyDown={handleKeyDown}
                     enterKeyHint="send" autoComplete="off" autoCorrect="off" autoCapitalize="sentences" />
                 )}
 
+                {isMobile && (
+                  <div style={{ position: "relative" }}>
+                    <button className={`input-btn ${ephemeralSeconds ? "ephemeral-active" : ""}`} data-popover-trigger
+                      title={t("chat.attach")} aria-label={t("chat.attach")} aria-haspopup="menu" aria-expanded={!!showAttachMenu}
+                      disabled={recording || uploading}
+                      onClick={() => setShowAttachMenu((v) => (v ? null : "main"))}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+                      {ephemeralSeconds && <span className="input-btn__dot" aria-hidden="true" />}
+                    </button>
+                    {showAttachMenu && (
+                      <div className="popover-menu popover-menu--up" role="menu">
+                        {showAttachMenu === "main" ? (
+                          <>
+                            <button role="menuitem" onClick={() => { setShowAttachMenu(null); handleFilePick() }}><span className="popover-menu__label"><FileUp size={20} aria-hidden="true" />{t("common.file")}</span></button>
+                            <button role="menuitem" onClick={() => setShowAttachMenu("ephemeral")}>
+                              <span className="popover-menu__label"><Timer size={20} aria-hidden="true" />{t("chat.ephemeralTitle")}</span>
+                              {ephemeralSeconds ? <span className="popover-menu__hint">{ephemeralOptions.find((o) => o.value === ephemeralSeconds)?.label}</span> : null}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="popover-menu__title">{t("chat.ephemeralTitle")}</div>
+                            {ephemeralOptions.map((opt) => (
+                              <button key={String(opt.value)} role="menuitemradio" aria-checked={ephemeralSeconds === opt.value}
+                                className={ephemeralSeconds === opt.value ? "is-active" : undefined}
+                                onClick={() => { setEphemeralSeconds(opt.value); setShowAttachMenu(null) }}>
+                                {opt.label}
+                                {ephemeralSeconds === opt.value && <Check size={18} aria-hidden="true" />}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {!recording && !uploading && (
                   input.trim() ? (
                     <button className="send-btn" onClick={handleSend} aria-label={t("common.send")}>

@@ -6,7 +6,7 @@ import os
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -91,7 +91,13 @@ class PushSubscriptionRequest(BaseModel):
 @router.get("/vapid-public-key")
 async def get_vapid_key():
     """Return the VAPID public key for the browser to use in PushManager.subscribe()."""
-    return {"public_key": get_vapid_public_key()}
+    try:
+        return {"public_key": get_vapid_public_key()}
+    except ImportError:
+        # pywebpush / py-vapid не установлены: Web Push недоступен, но это не 500 —
+        # клиент молча пропускает подписку (иначе в консоли ошибка и CORS-шум).
+        logger.warning("Web Push unavailable: pywebpush/py-vapid not installed")
+        raise HTTPException(status_code=503, detail="Web Push не настроен на сервере") from None
 
 
 @router.post("/subscribe")

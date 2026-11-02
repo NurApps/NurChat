@@ -123,6 +123,12 @@ export default function ChatSidebar({
   // Как в Telegram: категории выезжают, как только поле в фокусе — ещё до
   // ввода текста, а не только когда что-то напечатано.
   const isSearching = tab === "chats" && (searchFocused || hasQuery)
+
+  // Направление смены вкладки (контакты → чаты → приглашения) для анимации только
+  // списка: шапка и поиск при этом стоят на месте.
+  const TAB_ORDER: Record<Tab, number> = { contacts: 0, chats: 1, invites: 2 }
+  const [tabNav, setTabNav] = useState<{ tab: Tab; dir: "none" | "forward" | "back" }>({ tab, dir: "none" })
+  if (tabNav.tab !== tab) setTabNav({ tab, dir: TAB_ORDER[tab] > TAB_ORDER[tabNav.tab] ? "forward" : "back" })
   const [category, setCategory] = useState<SearchCategory>("chats")
   const [msgResults, setMsgResults] = useState<MessageSearchResult[]>([])
   const [msgSearching, setMsgSearching] = useState(false)
@@ -329,7 +335,7 @@ export default function ChatSidebar({
 
       <div className="sidebar-list">
         {tab === "chats" && (
-          <div className="list-scroll" ref={chatListRef} id="sidebar-panel-chats" aria-label={t("chat.chats")}>
+          <div className="list-scroll" data-list-dir={tabNav.dir} ref={chatListRef} id="sidebar-panel-chats" aria-label={t("chat.chats")}>
             {(!isSearching || category === "chats") && (
               <>
                 {!chatsLoaded && <ChatListSkeleton />}
@@ -436,7 +442,7 @@ export default function ChatSidebar({
           </div>
         )}
         {tab === "contacts" && (
-          <div className="list-scroll" id="sidebar-panel-contacts" aria-label={t("chat.contacts")}>
+          <div className="list-scroll" data-list-dir={tabNav.dir} id="sidebar-panel-contacts" aria-label={t("chat.contacts")}>
             {filteredContacts.length === 0 && <p className="list-empty">{t("chat.noContacts")}</p>}
             {filteredContacts.map((contact) => (
               <ContactListItem key={contact.id} contact={contact}
@@ -445,7 +451,7 @@ export default function ChatSidebar({
           </div>
         )}
         {tab === "invites" && (
-          <div className="list-scroll" aria-label={t("chat.invitations")}>
+          <div className="list-scroll" data-list-dir={tabNav.dir} aria-label={t("chat.invitations")}>
             {filteredInvites.length === 0 && <p className="list-empty">{t("chat.noInvites")}</p>}
             {filteredInvites.map((invite) => (
               <GroupInviteItem key={invite.id} invite={invite}

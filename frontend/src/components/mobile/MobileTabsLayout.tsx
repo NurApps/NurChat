@@ -32,8 +32,14 @@ export default function MobileTabsLayout() {
   // Направление считаем один раз при смене вкладки и держим в состоянии, чтобы
   // посторонний ререндер (например, счётчик непрочитанных) не обрывал анимацию.
   // key — индекс вкладки, а не путь: /chat → /chat/:id остаётся одним экраном.
-  const [nav, setNav] = useState<{ index: number; dir: "none" | "forward" | "back" }>({ index, dir: "none" })
-  if (nav.index !== index) setNav({ index, dir: index > nav.index ? "forward" : "back" })
+  // «Контакты» и «Чаты» — один и тот же ChatPage (шапка, поиск, кнопка темы общие):
+  // это один экран, он не пересоздаётся и не анимируется целиком. Сам список
+  // внутри ChatSidebar анимирует смену вкладки.
+  const screen = index === 0 || index === 2 ? 2 : index
+  const [nav, setNav] = useState<{ index: number; screen: number; dir: "none" | "forward" | "back" }>({ index, screen, dir: "none" })
+  if (nav.index !== index) {
+    setNav({ index, screen, dir: screen === nav.screen ? "none" : index > nav.index ? "forward" : "back" })
+  }
   useEffect(() => {
     const idle = window.requestIdleCallback
     if (idle) { const id = idle(preloadTabPages); return () => window.cancelIdleCallback(id) }
@@ -45,7 +51,7 @@ export default function MobileTabsLayout() {
 
   return (
     <>
-      <div key={index} className="mobile-tabs-page" data-tab-dir={nav.dir}>
+      <div key={screen} className="mobile-tabs-page" data-tab-dir={nav.dir}>
         {/* Свой Suspense: пока грузится чанк вкладки, нижнее меню остаётся на месте,
             а не уходит под общий PageLoader из App. */}
         <Suspense fallback={<div className="auth-loading"><div className="spinner" /></div>}>

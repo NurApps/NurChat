@@ -966,6 +966,10 @@
   .mobile-tabs-page[data-tab-dir="forward"] { animation: tab-enter-forward 0.22s ease-out; }
   .mobile-tabs-page[data-tab-dir="back"] { animation: tab-enter-back 0.22s ease-out; }
 
+  /* Чаты ↔ Контакты: въезжает только список, шапка и поиск неподвижны. */
+  .sidebar-list .list-scroll[data-list-dir="forward"] { animation: tab-enter-forward 0.22s ease-out; }
+  .sidebar-list .list-scroll[data-list-dir="back"] { animation: tab-enter-back 0.22s ease-out; }
+
   .mobile-tabs-page .sidebar-list {
     padding-bottom: calc(var(--bottom-nav-height) + 8px);
   }

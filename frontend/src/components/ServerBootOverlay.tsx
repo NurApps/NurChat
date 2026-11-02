@@ -44,12 +44,13 @@ export default function ServerBootOverlay({ onReady }: Props) {
         setPhase("ready")
         return true
       } else {
-        setPhase("failed")
+        // Фоновый опрос не должен закрывать экран инструкции ("setup").
+        setPhase((p) => (p === "setup" ? p : "failed"))
         setErrorMsg(t("errors.relayResponded", { status: res.status }))
         return false
       }
     } catch (err) {
-      setPhase("failed")
+      setPhase((p) => (p === "setup" ? p : "failed"))
       const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
       setErrorMsg(t("serverBoot.connectFailed", { detail }))
       return false

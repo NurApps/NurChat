@@ -794,3 +794,5 @@
 .calls-empty p { margin: 0; }
 .calls-status { display: flex; align-items: center; gap: 4px; }
 .calls-status--missed { color: var(--error); }
+
+.sidebar-list-actions { display: flex; align-items: center; gap: 2px; }

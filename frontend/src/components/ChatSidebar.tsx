@@ -96,6 +96,7 @@ interface Props {
   onRetryChats: () => void
   onSelectSearchMessage: (chatId: string, messageId: string) => void
   onOpenFavorites: () => void
+  onInvite: () => void
   isFavoritesOpen: boolean
 }
 
@@ -110,7 +111,7 @@ export default function ChatSidebar({
   setShowCreateChat, setShowAddContact,
   handleSelectChat, handlePin, handleMute, handleDeleteChat,
   handleRemoveContact, handleStartChat, handleAcceptInvite, handleDeclineInvite,
-  chatsLoaded, chatsError, onRetryChats, onSelectSearchMessage, onOpenFavorites, isFavoritesOpen,
+  chatsLoaded, chatsError, onRetryChats, onSelectSearchMessage, onOpenFavorites, onInvite, isFavoritesOpen,
 }: Props) {
   const { t } = useTranslation()
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -324,12 +325,20 @@ export default function ChatSidebar({
           {tab === "chats" ? t("chat.chats") : tab === "contacts" ? t("chat.contacts") : t("chat.invitations")}
         </span>
         {(tab === "chats" || tab === "contacts") && (
-          <button className="sidebar-add-btn"
-            title={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
-            aria-label={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
-            onClick={() => tab === "chats" ? setShowCreateChat(true) : setShowAddContact(true)}>
-            <Plus size={18} strokeWidth={2} aria-hidden="true" />
-          </button>
+          <div className="sidebar-list-actions">
+            {/* На мобиле «Пригласить» — в меню «⋮» шапки чата. */}
+            {!isMobile && (
+              <button className="sidebar-add-btn" title={t("chat.invite")} aria-label={t("chat.invite")} onClick={onInvite}>
+                <UserPlus size={18} strokeWidth={2} aria-hidden="true" />
+              </button>
+            )}
+            <button className="sidebar-add-btn"
+              title={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
+              aria-label={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
+              onClick={() => tab === "chats" ? setShowCreateChat(true) : setShowAddContact(true)}>
+              <Plus size={18} strokeWidth={2} aria-hidden="true" />
+            </button>
+          </div>
         )}
       </div>
 

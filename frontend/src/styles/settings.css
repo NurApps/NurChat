@@ -692,3 +692,40 @@
 .account-list--menu .account-list__main { padding: 6px 8px; }
 .account-list--menu .account-list__avatar,
 .account-list--menu .account-list__add-icon { width: 28px; height: 28px; font-size: 13px; }
+
+.settings-sound-pick { display: flex; align-items: center; gap: 6px; }
+.settings-sound-pick select {
+  background: var(--surface-variant);
+  color: var(--text);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 14px;
+  max-width: 150px;
+}
+.settings-sound-pick select:disabled { opacity: 0.5; }
+.settings-sound-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-variant);
+  color: var(--text);
+  cursor: pointer;
+}
+.settings-sound-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Выбор звука плавно раскрывается под тумблером. */
+.settings-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.25s ease, opacity 0.2s ease;
+}
+.settings-collapse.open { grid-template-rows: 1fr; opacity: 1; }
+.settings-collapse-inner { overflow: hidden; min-height: 0; }
+.settings-collapse .settings-toggle-row { border-bottom: 1px solid var(--divider); }
+.settings-collapse:last-child .settings-toggle-row { border-bottom: none; }

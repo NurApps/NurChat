@@ -11,10 +11,11 @@ import { isPinEnabled, verifyPin, enablePin, changePin, disablePin } from "../se
 import { performLogout, performRelaySwitch, releaseLocalKeys, storedAccount } from "../services/localSession"
 import { checkForUpdates } from "../services/updateService"
 import { platform } from "../services/platform"
-import { getSettings, setSetting, clearSettings } from "../services/userSettings"
+import { getSettings, setSetting, clearSettings, MESSAGE_SOUND_IDS, RINGTONE_IDS, type BooleanSettingKey, type MessageSoundId, type RingtoneId } from "../services/userSettings"
+import { previewMessageSound, previewRingtone, stopCallRingtone } from "../services/notifications"
 import { useAvatarStyle, setAvatarStyle } from "../services/avatarStyle"
 import { useTheme, LIGHT_THEMES, DARK_THEMES, type Theme, type ThemeMode } from "../context/ThemeContext"
-import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyhole, LogOut, Camera, Pencil, Palette, Settings, Shield, User } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Bell, ChevronRight, Database, Info, LockKeyhole, LogOut, Camera, Pencil, Palette, Play, Settings, Square, Shield, User } from "lucide-react"
 import { getAvatarColor } from "../utils/avatar"
 import { useMobile } from "../hooks/useMobile"
 import ProfileEditor from "../components/ProfileEditor"
@@ -390,8 +391,16 @@ export default function SettingsPage() {
     }
   }
 
-  const handleToggleSetting = (key: keyof typeof settings, value: boolean) => {
+  const handleToggleSetting = (key: BooleanSettingKey, value: boolean) => {
     setSettings(setSetting(key, value))
+  }
+
+  // Рингтон при прослушивании зациклен — останавливаем при уходе со страницы.
+  const [ringPreviewing, setRingPreviewing] = useState(false)
+  useEffect(() => () => stopCallRingtone(), [])
+  const toggleRingPreview = () => {
+    if (ringPreviewing) { stopCallRingtone(); setRingPreviewing(false) }
+    else { previewRingtone(settings.ringtoneId); setRingPreviewing(true) }
   }
 
   if (loadError) {
@@ -685,9 +694,50 @@ export default function SettingsPage() {
                   <span>{t("settings.messageSound")}</span>
                   <label className="settings-toggle"><input type="checkbox" checked={settings.messageSound} onChange={(e) => handleToggleSetting("messageSound", e.target.checked)} /><span className="settings-toggle-slider" /></label>
                 </div>
+                <div className={`settings-collapse${settings.messageSound ? " open" : ""}`} inert={!settings.messageSound}>
+                  <div className="settings-collapse-inner">
+                    <div className="settings-toggle-row">
+                      <span>{t("settings.messageSoundChoice")}</span>
+                      <span className="settings-sound-pick">
+                        <select value={settings.messageSoundId} aria-label={t("settings.messageSoundChoice")}
+                          onChange={(e) => { const id = e.target.value as MessageSoundId; setSettings(setSetting("messageSoundId", id)); previewMessageSound(id) }}>
+                          {MESSAGE_SOUND_IDS.map((id) => <option key={id} value={id}>{t(`settings.sound${id[0].toUpperCase()}${id.slice(1)}`)}</option>)}
+                        </select>
+                        <button type="button" className="settings-sound-btn"
+                          title={t("settings.soundPreview")} aria-label={t("settings.soundPreview")}
+                          onClick={() => previewMessageSound(settings.messageSoundId)}>
+                          <Play size={16} strokeWidth={2} aria-hidden="true" />
+                        </button>
+                      </span>
+                    </div>
+                  </div>
+                </div>
                 <div className="settings-toggle-row">
                   <span>{t("settings.callSound")}</span>
-                  <label className="settings-toggle"><input type="checkbox" checked={settings.callSound} onChange={(e) => handleToggleSetting("callSound", e.target.checked)} /><span className="settings-toggle-slider" /></label>
+                  <label className="settings-toggle"><input type="checkbox" checked={settings.callSound} onChange={(e) => { handleToggleSetting("callSound", e.target.checked); if (!e.target.checked) { stopCallRingtone(); setRingPreviewing(false) } }} /><span className="settings-toggle-slider" /></label>
+                </div>
+                <div className={`settings-collapse${settings.callSound ? " open" : ""}`} inert={!settings.callSound}>
+                  <div className="settings-collapse-inner">
+                    <div className="settings-toggle-row">
+                      <span>{t("settings.ringtoneChoice")}</span>
+                      <span className="settings-sound-pick">
+                        <select value={settings.ringtoneId} aria-label={t("settings.ringtoneChoice")}
+                          onChange={(e) => {
+                            const id = e.target.value as RingtoneId
+                            setSettings(setSetting("ringtoneId", id))
+                            if (ringPreviewing) previewRingtone(id)
+                          }}>
+                          {RINGTONE_IDS.map((id) => <option key={id} value={id}>{t(`settings.sound${id[0].toUpperCase()}${id.slice(1)}`)}</option>)}
+                        </select>
+                        <button type="button" className="settings-sound-btn"
+                          title={ringPreviewing ? t("settings.soundStop") : t("settings.soundPreview")}
+                          aria-label={ringPreviewing ? t("settings.soundStop") : t("settings.soundPreview")}
+                          onClick={toggleRingPreview}>
+                          {ringPreviewing ? <Square size={16} strokeWidth={2} aria-hidden="true" /> : <Play size={16} strokeWidth={2} aria-hidden="true" />}
+                        </button>
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="settings-group">

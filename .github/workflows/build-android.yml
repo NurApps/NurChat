@@ -75,11 +75,8 @@ jobs:
 
       - name: Sign APK
         # Без подписи Android отвечает «пакет недействителен» при установке.
-        # Если заданы релизные секреты — подписываем ими (NurChat-signed.apk).
-        # Иначе — постоянным DEBUG-ключом из репозитория
-        # (src-tauri/gen/android/debug.keystore, пароль android): сборки
-        # обновляются поверх друг друга. Ключ ПУБЛИЧНЫЙ — для тестов, не для
-        # раздачи; для релиза задайте секреты. Unsigned-оригинал тоже
+        # Подписываем ключом из секретов ANDROID_KEYSTORE_* (NurChat-signed.apk).
+        # Без секретов APK остаётся unsigned и не установится. Unsigned-оригинал
         # выкладываем для диагностики.
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -99,17 +96,8 @@ jobs:
               --out "$OUT/NurChat-signed.apk" "$OUT/app-aligned.apk"
             "$BT/apksigner" verify --print-certs "$OUT/NurChat-signed.apk"
             rm -f "$RUNNER_TEMP/release.jks" "$OUT/app-aligned.apk"
-          elif [ -f src-tauri/gen/android/debug.keystore ]; then
-            echo "::notice::Релизного keystore нет — подписываю постоянным DEBUG-ключом из репозитория (только для тестовой установки; ключ публичный)"
-            "$BT/apksigner" sign \
-              --ks src-tauri/gen/android/debug.keystore \
-              --ks-key-alias androiddebugkey \
-              --ks-pass pass:android --key-pass pass:android \
-              --out "$OUT/NurChat-debug.apk" "$OUT/app-aligned.apk"
-            "$BT/apksigner" verify --print-certs "$OUT/NurChat-debug.apk"
-            rm -f "$OUT/app-aligned.apk"
           else
-            echo "::warning::Нет ни секретов, ни debug.keystore — APK остаётся unsigned (не установится)"
+            echo "::warning::Секреты ANDROID_KEYSTORE_* не заданы — APK остаётся unsigned (не установится)"
           fi
 
       - name: Upload APK

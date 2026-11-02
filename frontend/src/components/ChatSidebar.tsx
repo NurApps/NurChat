@@ -5,6 +5,7 @@ import ContactListItem from "./ContactListItem"
 import GroupInviteItem from "./GroupInviteItem"
 import { ChatListSkeleton } from "./Skeleton"
 import { useFavoritesStore } from "../store/favoritesStore"
+import { viewTransitionName } from "../utils/viewTransition"
 import { api } from "../services/api"
 import { formatTime } from "../utils/format"
 import type { UserResponse, ChatResponse, ContactResponse, GroupInviteResponse, MessageResponse } from "../types"
@@ -337,8 +338,10 @@ export default function ChatSidebar({
                     className={`chat-list-item favorites-entry${isFavoritesOpen ? " active" : ""}`}
                     onClick={onOpenFavorites} role="button" tabIndex={0}
                     onKeyDown={(e) => { if (e.key === "Enter") onOpenFavorites() }}
+                    style={isMobile && !isFavoritesOpen ? { viewTransitionName: viewTransitionName("chat-window", "favorites") } : undefined}
                   >
-                    <div className="cli-avatar">
+                    <div className="cli-avatar"
+                      style={isMobile && !isFavoritesOpen ? { viewTransitionName: viewTransitionName("chat-avatar", "favorites") } : undefined}>
                       <div className="cli-avatar-circle favorites-avatar-circle">
                         <Bookmark size={18} strokeWidth={2} aria-hidden="true" />
                       </div>

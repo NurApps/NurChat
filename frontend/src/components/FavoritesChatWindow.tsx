@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from "react"
+import { viewTransitionName } from "../utils/viewTransition"
 import { useTranslation } from "react-i18next"
 import { Bookmark, Trash2 } from "lucide-react"
 import { useFavoritesStore } from "../store/favoritesStore"
@@ -8,9 +9,10 @@ import ConfirmModal from "./ConfirmModal"
 interface Props {
   isMobile: boolean
   onClose: () => void
+  swipeBack?: { onTouchStart: (e: ReactTouchEvent) => void; onTouchEnd: (e: ReactTouchEvent) => void }
 }
 
-export default function FavoritesChatWindow({ isMobile, onClose }: Props) {
+export default function FavoritesChatWindow({ isMobile, onClose, swipeBack }: Props) {
   const { t } = useTranslation()
   const items = useFavoritesStore((s) => s.items)
   const addNote = useFavoritesStore((s) => s.addNote)
@@ -31,14 +33,16 @@ export default function FavoritesChatWindow({ isMobile, onClose }: Props) {
   }
 
   return (
-    <div className="chat-window">
+    <div className={`chat-window${swipeBack ? " swipe-back-area" : ""}`}
+      style={isMobile ? { viewTransitionName: viewTransitionName("chat-window", "favorites") } : undefined}
+      onTouchStart={swipeBack?.onTouchStart} onTouchEnd={swipeBack?.onTouchEnd}>
       <div className="chat-header">
         {isMobile && (
           <button className="ch-btn mobile-back" onClick={onClose} aria-label={t("common.back", "Назад")}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
           </button>
         )}
-        <div className="ch-avatar">
+        <div className="ch-avatar" style={isMobile ? { viewTransitionName: viewTransitionName("chat-avatar", "favorites") } : undefined}>
           <Bookmark size={20} strokeWidth={2} aria-hidden="true" />
         </div>
         <div className="ch-info">

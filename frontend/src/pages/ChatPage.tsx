@@ -181,10 +181,20 @@ export default function ChatPage() {
     return () => document.removeEventListener("pointerdown", close)
   }, [showHeaderMenu, showAttachMenu])
 
+  // Открытие/закрытие «Избранного» идёт тем же переходом, что и обычный чат.
+  const openFavorites = useCallback(
+    () => withViewTransition(() => { setSelectedChat(null); setShowFavoritesChat(true) }),
+    [setSelectedChat],
+  )
+  const closeChatView = useCallback(
+    () => withViewTransition(() => { setSelectedChat(null); setShowFavoritesChat(false) }),
+    [setSelectedChat],
+  )
+
   // Свайп-назад на мобиле: жест от левого края закрывает открытый чат.
   const swipeBack = useSwipeBack(
     isMobile && !!(selectedChat || showFavoritesChat),
-    () => withViewTransition(() => { setSelectedChat(null); setShowFavoritesChat(false) }),
+    closeChatView,
   )
 
   // Открытая переписка на мобиле — признак для CSS: нижняя навигация в ней скрыта
@@ -523,6 +533,8 @@ export default function ChatPage() {
     }
 
     if (selectedChat) saveDraft(selectedChat.id, input)
+    // loadMessages внутри перехода: его setInitialLoading(true) попадает в тот же
+    // коммит, что и смена чата, и новый снимок содержит скелетон, а не пустое окно.
     withViewTransition(() => {
       setSelectedChat(chat)
       setMessages([])
@@ -530,10 +542,10 @@ export default function ChatPage() {
       setShowEmoji(false)
       setHasMore(true)
       setInput(getDraft(chatId))
+      loadMessages(chat)
     })
     api.markAsRead(chatId).catch(() => {})
     loadChats()
-    loadMessages(chat)
   }, [currentUser, loadChats, loadMessages, setMessages, setReplyTo, setHasMore, setSelectedChat, setShowEmoji, setInput, t, filteredChats])
 
   useEffect(() => {
@@ -943,7 +955,7 @@ export default function ChatPage() {
             setScrollToMessageId(messageId)
             setSearch("")
           }}
-          onOpenFavorites={() => { setSelectedChat(null); setShowFavoritesChat(true) }}
+          onOpenFavorites={openFavorites}
           isFavoritesOpen={showFavoritesChat}
         />
         )}
@@ -951,7 +963,8 @@ export default function ChatPage() {
         {/* Main */}
         <div className={`chat-main${isMobile && !(selectedChat || showFavoritesChat) ? " chat-main--empty" : ""}`} role="main" id="main-content">
           {showFavoritesChat ? (
-            <FavoritesChatWindow isMobile={isMobile} onClose={() => setShowFavoritesChat(false)} />
+            <FavoritesChatWindow isMobile={isMobile} onClose={closeChatView}
+              swipeBack={isMobile ? swipeBack : undefined} />
           ) : !selectedChat ? (
             <div className="chat-placeholder" role="status">
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" strokeWidth="1.5" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>

@@ -26,6 +26,17 @@ try {
   lastMessageAt = localStorage.getItem("ws_last_message_at")
 } catch { /* ignore */ }
 
+// «Сигнал жизни» сокета (любой входящий фрейм / open). Модульная переменная,
+// чтобы видимость-хук и health-опрос не поднимали бурю реконнектов там, где
+// сокет жив и молчит просто потому что чатов нет.
+let lastWsAliveAt = 0
+let wsPingStamp: (() => void) | null = null
+export function getWsLastAliveAt(): number { return lastWsAliveAt }
+export function stampWsAlive(): void {
+  lastWsAliveAt = Date.now()
+  if (wsPingStamp) wsPingStamp()
+}
+
 // Троттлинг onChatUpdate (= полный loadChats до 3 попыток) на потоке
 // message/new_message: в активном чате события сыплются пачками, а каждый
 // вызов — GET /api/chat/chats. Без троттлинга: шторм запросов через туннель
@@ -283,7 +294,18 @@ export function useChatSocket({
 
     let reconnectTimer: ReturnType<typeof setTimeout>
     let reconnectAttempts = 0
-    const MAX_RECONNECT = 10
+    // Бесконечный reconnect: раньше после 10 попыток сокет умирал навсегда,
+    // и любой («чихнувший» инет, сон relay-туннеля) обрыв превращался в
+    // вечный dead socket — интерфейс висел, чаты не приходили. Теперь
+    // кап только задержки; UI в это время работает на кэше (как Telegram),
+    // а баннер сверху честно пишет «соединение потеряно».
+    const MAX_RECONNECT_DELAY = 30000
+    // Пауза перед «разбуживающим» health-пингом: туннель (cloudflared/QUIC)
+    // просыпается от любого HTTP-запроса, а WS-handshake на уснувшем релеe
+    // падает мгновенно и зря крутит бэкофф. Пинг поднимает релей, и
+    // следующий коннект проходит.
+    const WAKEUP_AFTER_FAILS = 2
+    const WAKEUP_PING_MS = 4000
 
     function connect() {
       if (stopped) return
@@ -297,6 +319,7 @@ export function useChatSocket({
         reconnectAttempts = 0
         console.log("WS connected")
         setWsUp(true)
+        stampWsAlive()
         // Refetch missed data only after a reconnect gap. On the FIRST
         // connect ChatPage-mount уже грузит чаты сам — лишний onChatUpdate
         // здесь удваивал шторм fetch через рваный туннель (см. loadChats
@@ -314,6 +337,9 @@ export function useChatSocket({
       ws.onclose = async (event) => {
         if (stopped) return
         setWsUp(false)
+        // Мёртвый сокет не может быть «живым» — иначе health-опрос и
+        // visibility-хук поверят устаревшему штампу.
+        lastWsAliveAt = 0
         // Диагностика туннеля: 1006 = сеть/прокси рвал молча (cloudflared),
         // 4001/4003/4008 = сервер отбил осознанно. Без кода в логе все
         // обрывы выглядят одинаково («closed before established»).
@@ -337,9 +363,24 @@ export function useChatSocket({
           console.warn("WS rejected: session expired, re-login required")
           return
         }
-        if (reconnectAttempts >= MAX_RECONNECT) { console.warn("WS max reconnect attempts reached"); return }
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000)
+        // Без лимита попыток: «чихнет инет или сервак» — сокет обязан
+        // дождаться связи сам, а не лечь навсегда (см. комментарий выше).
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY)
         reconnectAttempts++
+        // После нескольких подряд неудач релей, скорее всего, уснул в
+        // туннеле — пингуем /health (обычный fetch поднимает cloudflared),
+        // затем пробуем коннект ещё раз сразу.
+        if (reconnectAttempts > WAKEUP_AFTER_FAILS) {
+          reconnectTimer = setTimeout(async () => {
+            if (stopped) return
+            try {
+              const { BASE_URL } = await import("../config")
+              await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(WAKEUP_PING_MS), cache: "no-store" }).catch(() => {})
+            } catch { /* ignore */ }
+            connect()
+          }, delay)
+          return
+        }
         reconnectTimer = setTimeout(connect, delay)
       }
       ws.onerror = () => ws.close()
@@ -354,6 +395,23 @@ export function useChatSocket({
     // Network recovery: reset backoff and reconnect immediately
     const handleOnline = () => { reconnectAttempts = 0; connect() }
     window.addEventListener("online", handleOnline)
+
+    // Фокс/видимость: сокет мог умереть, пока вкладка была фоновой (мобайл
+    // убивает фоновые сокеты, ОС засыпает). Возврат в приложение должен
+    // сразу проверять живость, а не ждать очередного шага бэкоффа.
+    let lastNetworkPingAt = Date.now()
+    const markAlive = () => { lastNetworkPingAt = Date.now() }
+    wsPingStamp = markAlive
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible" || stopped) return
+      // Свежий сигнал жизни (<15с назад) — переподключение не нужно.
+      if (Date.now() - lastNetworkPingAt < 15000) return
+      reconnectAttempts = 0
+      wsRef.current?.close()
+      connect()
+    }
+    document.addEventListener("visibilitychange", handleVisibility)
+    window.addEventListener("focus", handleVisibility)
 
     // tokenVault: access живёт только в памяти — после reload тянем его
     // silent-refresh'ем до первого коннекта (иначе сокет мёртв до ремаунта).

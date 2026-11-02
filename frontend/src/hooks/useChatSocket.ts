@@ -385,6 +385,9 @@ export function useChatSocket({
       }
       ws.onerror = () => ws.close()
       ws.onmessage = (event) => {
+        // Любой входящий фрейм = сокет жив: обновляем штамп, чтобы
+        // visibility-хук и health-опрос не поднимали ложный reconnect.
+        stampWsAlive()
         try {
           const msg = JSON.parse(event.data)
           handleWsEvent(msg).catch((e) => console.error("WS handler error:", e))
@@ -431,7 +434,11 @@ export function useChatSocket({
       stopped = true
       clearTimeout(reconnectTimer)
       window.removeEventListener("online", handleOnline)
+      document.removeEventListener("visibilitychange", handleVisibility)
+      window.removeEventListener("focus", handleVisibility)
+      if (wsPingStamp === markAlive) wsPingStamp = null
       wsRef.current?.close()
+      setWsUp(false)
     }
   }, [currentUser.id, handleWsEvent])
 

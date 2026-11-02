@@ -8,6 +8,37 @@ import { readStoredUserRaw } from "../services/tokenVault"
 // Дедup параллельных loadChats (см. комментарий внутри loadChats).
 let loadChatsInflight: Promise<void> | null = null
 
+// Кэш списка чатов в localStorage: «чихнет инет или сервак» — интерфейс
+// обязан остаться рабочим (список чатов виден, как в Telegram), а не
+// показывать скелетон/ошибку до возврата связи. Пишется после каждого
+// успешного loadChats, читается при старте и при итоговом провале сети.
+const CHATS_CACHE_KEY = "nurchat_chats_cache"
+
+function readChatsCache(): ChatResponse[] {
+  try {
+    const raw = localStorage.getItem(CHATS_CACHE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as ChatResponse[]) : []
+  } catch {
+    return []
+  }
+}
+
+function writeChatsCache(chats: ChatResponse[]): void {
+  try {
+    // Кап по размеру: последние 200 чатов закрывают реальные списки,
+    // а переполнение quota ломает весь localStorage на странице.
+    localStorage.setItem(CHATS_CACHE_KEY, JSON.stringify(chats.slice(0, 200)))
+  } catch { /* quota / private mode — ignore */ }
+}
+
+function clearChatsCache(): void {
+  try {
+    localStorage.removeItem(CHATS_CACHE_KEY)
+  } catch { /* ignore */ }
+}
+
 interface Toast {
   id: string
   title: string
@@ -89,7 +120,10 @@ function getCurrentUser(): UserResponse {
 
 const initialUiState = () => ({
   tab: "chats" as Tab,
-  chats: [] as ChatResponse[],
+  // Кэш чатов показываем только как старт-состояние; сразу после него
+  // loadChats перетирает его свежими данными (или оставляет жить при
+  // битой сети — см. catch ниже).
+  chats: readChatsCache() as ChatResponse[],
   contacts: [] as ContactResponse[],
   invites: [] as GroupInviteResponse[],
   search: "",
@@ -119,7 +153,8 @@ export const useChatStore = create<ChatState>((set) => ({
 
   reset: () => {
     loadChatsInflight = null
-    set({ ...initialUiState(), currentUser: getCurrentUser() })
+    clearChatsCache()
+    set({ ...initialUiState(), chats: [], currentUser: getCurrentUser() })
   },
 
   setTab: (tab) => set({ tab }),
@@ -158,14 +193,22 @@ export const useChatStore = create<ChatState>((set) => ({
         try {
           const data = await api.getChats()
           set({ chats: data || [], chatsLoaded: true, chatsError: null })
+          writeChatsCache(data || [])
           return
         } catch (err) {
           lastErr = err
           console.error("[chatStore] loadChats failed:", err)
         }
       }
+      // Сеть мертва: НЕ затираем список — на экране остаётся кэш
+      // (start-state из localStorage или данные прошлой сессии), как в
+      // Telegram. Ошибку помечаем для диагностики, UI от неё не зависит.
       const detail = lastErr instanceof Error ? lastErr.message : String(lastErr)
-      set({ chatsLoaded: true, chatsError: detail || "load failed" })
+      set((state) => ({
+        chats: state.chats.length ? state.chats : readChatsCache(),
+        chatsLoaded: true,
+        chatsError: detail || "load failed",
+      }))
     })()
     try {
       await loadChatsInflight

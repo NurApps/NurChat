@@ -36,7 +36,8 @@
     "syncing_few": "Syncing ({{count}} message)...",
     "syncing_many": "Syncing ({{count}} messages)...",
     "syncing_other": "Syncing ({{count}} messages)...",
-    "ok": "OK"
+    "ok": "OK",
+    "connecting": "Connecting…"
   },
   "auth": {
     "login": "Sign In",

@@ -145,6 +145,7 @@
     "keyNew": "New key for {{name}}",
     "voiceMessage": "Voice message",
     "encryptedMessage": "Encrypted message",
+    "encryptedUnavailable": "Message unavailable on this device",
     "stop": "Stop",
     "more": "More",
     "attach": "Attach",

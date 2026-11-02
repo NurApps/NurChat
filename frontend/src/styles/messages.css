@@ -917,3 +917,5 @@
   width: 100%;
   max-width: 100%;
 }
+
+.msg-undecryptable { color: var(--text-secondary); font-size: 14px; }

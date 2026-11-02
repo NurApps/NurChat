@@ -4,11 +4,9 @@ import { useTranslation } from "react-i18next"
 import { api } from "../services/api"
 import { readStoredUserRaw } from "../services/tokenVault"
 import type { UserResponse } from "../types"
-import { getAvatarColor } from "../utils/avatar"
-import { useAvatarStyle } from "../services/avatarStyle"
-import Identicon from "../components/Identicon"
-import { formatTime, formatDateShort } from "../utils/format"
-import { ArrowLeft } from "lucide-react"
+import UserAvatar from "../components/UserAvatar"
+import { formatTime, formatDateShort, formatFull } from "../utils/format"
+import { ArrowLeft, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Video } from "lucide-react"
 import { userDisplayName } from "../utils/userName"
 
 interface CallLog {
@@ -47,7 +45,6 @@ function formatCallTime(ts: string): string {
 
 export default function CallHistoryPage() {
   const { t } = useTranslation()
-  const avatarStyle = useAvatarStyle()
   const navigate = useNavigate()
   const [calls, setCalls] = useState<CallLog[]>([])
   const [currentUser, setCurrentUser] = useState<UserResponse | null>(null)
@@ -78,102 +75,75 @@ export default function CallHistoryPage() {
     return call.caller
   }
 
-  const getCallStatus = (type: string, duration?: number) => {
-    if (!duration || duration === 0) return { color: "#f44336", label: t("call.missedShort") }
-    if (type === "video") return { color: "#4CAF50", label: formatDuration(duration) }
-    return { color: "#4CAF50", label: formatDuration(duration) }
-  }
+  const header = (
+    <div className="sidebar-list-header">
+      <button className="sidebar-add-btn calls-back" onClick={() => navigate("/chat")}
+        title={t("common.back", "Назад")} aria-label={t("common.back", "Назад")}>
+        <ArrowLeft size={18} strokeWidth={2} aria-hidden="true" />
+      </button>
+      <span className="sidebar-list-title">{t("call.history")}</span>
+    </div>
+  )
 
   if (loading) {
     return (
-      <div className="settings-page">
-        <div className="settings-header">
-          <button className="settings-back" onClick={() => navigate("/chat")}>
-            <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
-          </button>
-          <h1>{t("call.history")}</h1>
-        </div>
-        <div style={{ padding: 40, textAlign: "center", color: "#888" }}>{t("common.loading")}</div>
+      <div className="calls-page">
+        {header}
+        <div className="list-empty">{t("common.loading")}</div>
       </div>
     )
   }
 
   return (
-    <div className="settings-page">
-      <div className="settings-header">
-        <button className="settings-back" onClick={() => navigate("/chat")}>
-          <ArrowLeft size={24} strokeWidth={2} aria-hidden="true" />
-        </button>
-          <h1>{t("call.history")}</h1>
-        </div>
-
-      <div className="settings-content">
+    <div className="calls-page">
+      {header}
+      <div className="sidebar-list">
         {calls.length === 0 ? (
-          <div style={{ padding: 40, textAlign: "center", color: "#888" }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.5" style={{ margin: "0 auto 16px" }}>
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-            </svg>
+          <div className="list-empty calls-empty">
+            <Phone size={40} strokeWidth={1.5} aria-hidden="true" />
             <p>{t("call.empty")}</p>
           </div>
         ) : (
-          <div className="settings-fields">
+          <div className="list-scroll">
             {calls.map((call) => {
               const other = getOtherUser(call)
-              const status = getCallStatus(call.call_type, call.duration)
               const wasOutgoing = call.caller_id === currentUser?.id
-              const name = other ? [other.first_name, other.username].filter(Boolean).join(" (@") + (other.username ? ")" : "") : t("call.unknown")
+              const missed = !call.duration
+              const isVideo = call.call_type === "video"
+              const name = other ? userDisplayName(other) : t("call.unknown")
+              const DirIcon = missed ? PhoneMissed : wasOutgoing ? PhoneOutgoing : PhoneIncoming
+              const open = () => { if (other) navigate(`/call/${other.id}/${isVideo ? "video" : "audio"}`) }
 
               return (
                 <div
                   key={call.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "10px 0",
-                    borderBottom: "1px solid var(--border)",
-                    cursor: "pointer",
-                  }}
-                  onClick={() => {
-                    if (other) navigate(`/call/${other.id}/audio`)
-                  }}
+                  className="chat-list-item"
+                  role="button"
+                  tabIndex={0}
+                  onClick={open}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open() } }}
                 >
-                  <div style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: "50%",
-                    background: other && avatarStyle === "letter" ? getAvatarColor(other.id) : "transparent",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 16,
-                    fontWeight: 600,
-                    color: "#fff",
-                    flexShrink: 0,
-                    overflow: "hidden",
-                  }}>
-                    {other && avatarStyle === "identicon" ? (
-                      <Identicon seed={other.id} className="identicon-cover" label={userDisplayName(other)} />
+                  <div className="cli-avatar">
+                    {other ? (
+                      <UserAvatar id={other.id} username={name} circleClassName="cli-avatar-circle" />
                     ) : (
-                      other?.first_name?.[0]?.toUpperCase() || "?"
+                      <div className="cli-avatar-circle">?</div>
                     )}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontWeight: 500, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {name}
-                      </span>
-                      <span style={{ fontSize: 12, color: "#888", flexShrink: 0 }}>
-                        {formatCallTime(call.started_at)}
-                      </span>
+                  <div className="cli-info">
+                    <div className="cli-top-row">
+                      <div className="cli-name-row">
+                        <span className="cli-name">{name}</span>
+                      </div>
+                      <span className="cli-time" title={formatFull(call.started_at)}>{formatCallTime(call.started_at)}</span>
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
-                      <span style={{ fontSize: 12, color: status.color, display: "flex", alignItems: "center", gap: 4 }}>
-                        {wasOutgoing ? "↑" : "↓"} {status.label}
+                    <div className="cli-bottom-row">
+                      <span className={`cli-preview calls-status${missed ? " calls-status--missed" : ""}`}>
+                        <DirIcon size={14} strokeWidth={2} aria-hidden="true" />
+                        {missed ? t("call.missedShort") : formatDuration(call.duration)}
                       </span>
-                      <span style={{ fontSize: 11, color: "#666" }}>
-                        {call.call_type === "video" ? t("call.videoShort") : t("call.audioShort")}
-                      </span>
+                      {isVideo ? <Video size={14} strokeWidth={2} className="cli-icon" aria-label={t("call.videoShort")} />
+                        : <Phone size={14} strokeWidth={2} className="cli-icon" aria-label={t("call.audioShort")} />}
                     </div>
                   </div>
                 </div>

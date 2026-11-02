@@ -782,3 +782,15 @@
   background: rgba(229, 57, 53, 0.1);
   color: #e53935;
 }
+
+/* Вкладка «Звонки»: тот же вид, что у списка чатов. */
+.calls-page {
+  display: flex;
+  flex-direction: column;
+  height: 100svh;
+  background: var(--surface);
+}
+.calls-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 64px; }
+.calls-empty p { margin: 0; }
+.calls-status { display: flex; align-items: center; gap: 4px; }
+.calls-status--missed { color: var(--error); }

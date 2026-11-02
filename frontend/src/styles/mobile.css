@@ -993,3 +993,9 @@
   from { opacity: 1; }
   to { opacity: 0; }
 }
+
+/* «Звонки» — вкладка нижней панели, стрелки «назад» в ней нет. */
+@media (max-width: 768px) {
+  .calls-back { display: none; }
+  .calls-page .sidebar-list { padding-bottom: calc(var(--bottom-nav-height) + 8px); }
+}

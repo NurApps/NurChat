@@ -5,6 +5,7 @@ import ContactListItem from "./ContactListItem"
 import GroupInviteItem from "./GroupInviteItem"
 import { ChatListSkeleton } from "./Skeleton"
 import { useFavoritesStore } from "../store/favoritesStore"
+import { viewTransitionName } from "../utils/viewTransition"
 import { api } from "../services/api"
 import { formatTime } from "../utils/format"
 import type { UserResponse, ChatResponse, ContactResponse, GroupInviteResponse, MessageResponse } from "../types"
@@ -95,6 +96,7 @@ interface Props {
   onRetryChats: () => void
   onSelectSearchMessage: (chatId: string, messageId: string) => void
   onOpenFavorites: () => void
+  onInvite: () => void
   isFavoritesOpen: boolean
 }
 
@@ -109,7 +111,7 @@ export default function ChatSidebar({
   setShowCreateChat, setShowAddContact,
   handleSelectChat, handlePin, handleMute, handleDeleteChat,
   handleRemoveContact, handleStartChat, handleAcceptInvite, handleDeclineInvite,
-  chatsLoaded, chatsError, onRetryChats, onSelectSearchMessage, onOpenFavorites, isFavoritesOpen,
+  chatsLoaded, chatsError, onRetryChats, onSelectSearchMessage, onOpenFavorites, onInvite, isFavoritesOpen,
 }: Props) {
   const { t } = useTranslation()
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -122,6 +124,12 @@ export default function ChatSidebar({
   // Как в Telegram: категории выезжают, как только поле в фокусе — ещё до
   // ввода текста, а не только когда что-то напечатано.
   const isSearching = tab === "chats" && (searchFocused || hasQuery)
+
+  // Направление смены вкладки (контакты → чаты → приглашения) для анимации только
+  // списка: шапка и поиск при этом стоят на месте.
+  const TAB_ORDER: Record<Tab, number> = { contacts: 0, chats: 1, invites: 2 }
+  const [tabNav, setTabNav] = useState<{ tab: Tab; dir: "none" | "forward" | "back" }>({ tab, dir: "none" })
+  if (tabNav.tab !== tab) setTabNav({ tab, dir: TAB_ORDER[tab] > TAB_ORDER[tabNav.tab] ? "forward" : "back" })
   const [category, setCategory] = useState<SearchCategory>("chats")
   const [msgResults, setMsgResults] = useState<MessageSearchResult[]>([])
   const [msgSearching, setMsgSearching] = useState(false)
@@ -317,18 +325,26 @@ export default function ChatSidebar({
           {tab === "chats" ? t("chat.chats") : tab === "contacts" ? t("chat.contacts") : t("chat.invitations")}
         </span>
         {(tab === "chats" || tab === "contacts") && (
-          <button className="sidebar-add-btn"
-            title={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
-            aria-label={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
-            onClick={() => tab === "chats" ? setShowCreateChat(true) : setShowAddContact(true)}>
-            <Plus size={18} strokeWidth={2} aria-hidden="true" />
-          </button>
+          <div className="sidebar-list-actions">
+            {/* На мобиле «Пригласить» — в меню «⋮» шапки чата. */}
+            {!isMobile && (
+              <button className="sidebar-add-btn" title={t("chat.invite")} aria-label={t("chat.invite")} onClick={onInvite}>
+                <UserPlus size={18} strokeWidth={2} aria-hidden="true" />
+              </button>
+            )}
+            <button className="sidebar-add-btn"
+              title={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
+              aria-label={tab === "chats" ? t("chat.newChat") : t("chat.newContact")}
+              onClick={() => tab === "chats" ? setShowCreateChat(true) : setShowAddContact(true)}>
+              <Plus size={18} strokeWidth={2} aria-hidden="true" />
+            </button>
+          </div>
         )}
       </div>
 
       <div className="sidebar-list">
         {tab === "chats" && (
-          <div className="list-scroll" ref={chatListRef} id="sidebar-panel-chats" aria-label={t("chat.chats")}>
+          <div className="list-scroll" data-list-dir={tabNav.dir} ref={chatListRef} id="sidebar-panel-chats" aria-label={t("chat.chats")}>
             {(!isSearching || category === "chats") && (
               <>
                 {!chatsLoaded && <ChatListSkeleton />}
@@ -337,8 +353,10 @@ export default function ChatSidebar({
                     className={`chat-list-item favorites-entry${isFavoritesOpen ? " active" : ""}`}
                     onClick={onOpenFavorites} role="button" tabIndex={0}
                     onKeyDown={(e) => { if (e.key === "Enter") onOpenFavorites() }}
+                    style={isMobile && !isFavoritesOpen ? { viewTransitionName: viewTransitionName("chat-window", "favorites") } : undefined}
                   >
-                    <div className="cli-avatar">
+                    <div className="cli-avatar"
+                      style={isMobile && !isFavoritesOpen ? { viewTransitionName: viewTransitionName("chat-avatar", "favorites") } : undefined}>
                       <div className="cli-avatar-circle favorites-avatar-circle">
                         <Bookmark size={18} strokeWidth={2} aria-hidden="true" />
                       </div>
@@ -433,7 +451,7 @@ export default function ChatSidebar({
           </div>
         )}
         {tab === "contacts" && (
-          <div className="list-scroll" id="sidebar-panel-contacts" aria-label={t("chat.contacts")}>
+          <div className="list-scroll" data-list-dir={tabNav.dir} id="sidebar-panel-contacts" aria-label={t("chat.contacts")}>
             {filteredContacts.length === 0 && <p className="list-empty">{t("chat.noContacts")}</p>}
             {filteredContacts.map((contact) => (
               <ContactListItem key={contact.id} contact={contact}
@@ -442,7 +460,7 @@ export default function ChatSidebar({
           </div>
         )}
         {tab === "invites" && (
-          <div className="list-scroll" aria-label={t("chat.invitations")}>
+          <div className="list-scroll" data-list-dir={tabNav.dir} aria-label={t("chat.invitations")}>
             {filteredInvites.length === 0 && <p className="list-empty">{t("chat.noInvites")}</p>}
             {filteredInvites.map((invite) => (
               <GroupInviteItem key={invite.id} invite={invite}

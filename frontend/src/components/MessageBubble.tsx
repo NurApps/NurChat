@@ -223,9 +223,13 @@ export default function MessageBubble({
       )
     }
     const replyTo = message.reply_to
-    const rendered = highlightQuery
-      ? renderHighlightedMarkdown(content, highlightQuery)
-      : renderMarkdown(content)
+    // Серверная заглушка: свои сообщения без записи в plaintextCache расшифровать нельзя
+    // (Double Ratchet), сырой маркер пользователю не показываем.
+    const rendered = content === "[encrypted]"
+      ? <em className="msg-undecryptable">🔒 {t("chat.encryptedUnavailable")}</em>
+      : highlightQuery
+        ? renderHighlightedMarkdown(content, highlightQuery)
+        : renderMarkdown(content)
     return (
       <div className="msg-reply-wrapper">
         {replyTo && (

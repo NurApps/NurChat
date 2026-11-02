@@ -31,8 +31,13 @@ const Row = ({
 }: RowProps & { index: number; style: React.CSSProperties }) => {
   const msg = messages[index]
   if (!msg) return null
+  // Строки виртуализатора лежат абсолютно, CSS gap контейнера на них не действует.
+  // Как в Telegram: плотно внутри серии одного автора, шире при смене автора.
+  const prev = messages[index - 1]
+  const inSeries = !!prev && prev.user_id === msg.user_id
+  const spacing = index === 0 ? 0 : inSeries ? 2 : 8
   return (
-    <div style={style} id={`msg-${msg.id}`}>
+    <div style={{ ...style, paddingTop: spacing, boxSizing: "border-box" }} id={`msg-${msg.id}`}>
       <MessageBubble
         message={msg}
         currentUser={currentUser}

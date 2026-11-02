@@ -166,9 +166,7 @@ export function useChatSocket({
         break
       }
       case "call_incoming": {
-        const { playMessageSound: playCallSound } = await import("../services/notifications")
-        const callSettings = (await import("../services/userSettings")).getSettings()
-        if (callSettings.callSound) playCallSound()
+        // Звук звонка играет IncomingRinger (рингтон); звук сообщения тут лишний.
         onIncomingCall({
           callId: data.call_id,
           callerId: data.caller_id,

@@ -189,7 +189,30 @@
     display: flex;
     align-items: center;
     gap: 4px;
+    /* Отдельная группа View Transition: иначе панель попадает в снимок root,
+       кросс-фейдится (она полупрозрачная) и прячется под группой chat-window. */
+    view-transition-name: bottom-nav;
   }
+
+  /* В открытой переписке панели нет (как в Telegram). */
+  html[data-chat-open] .app-bottom-nav {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* Панель уезжает вниз при входе в чат и возвращается при выходе. */
+::view-transition-old(bottom-nav):only-child {
+  animation: nav-slide-out 0.28s cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+::view-transition-new(bottom-nav):only-child {
+  animation: nav-slide-in 0.28s cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+@keyframes nav-slide-out {
+  to { transform: translateY(calc(100% + 24px)); opacity: 0; }
+}
+@keyframes nav-slide-in {
+  from { transform: translateY(calc(100% + 24px)); opacity: 0; }
 }
 
 /* ========================================
@@ -577,6 +600,33 @@
     to { transform: translateY(0); }
   }
 
+  /* Профиль пользователя — нижняя шторка как остальные модалки на мобиле:
+     на всю ширину (раньше фикс. 360px по центру, на узких экранах и в
+     ландшафте вылезал/зажимался), скругление только сверху, отступ под
+     жестовую панель Android (Galaxy A55 и т.п.), dvh вместо vh. */
+  .user-profile-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 90vh;
+    max-height: 90dvh;
+    border-radius: var(--radius-mobile-lg, 20px) var(--radius-mobile-lg, 20px) 0 0;
+    padding-bottom: max(12px, var(--safe-bottom));
+    animation: slideUp 0.3s ease;
+    overscroll-behavior: contain;
+  }
+  .modal-overlay--closing { animation: overlayFadeOut 0.22s ease-in forwards; }
+  .user-profile-modal--closing { animation: slideDown 0.22s ease-in forwards; }
+  .upm-header { padding: 8px 8px 0; }
+  .upm-close {
+    width: var(--touch-target, 44px);
+    height: var(--touch-target, 44px);
+    align-items: center;
+    justify-content: center;
+  }
+  /* Три кнопки в ряд на 360–412px не влезают по подписям: колонкой. */
+  .upm-actions { flex-direction: column; }
+  .upm-action-btn { min-height: 48px; font-size: 15px; }
+
   .modal-handle {
     width: 36px;
     height: 4px;
@@ -834,8 +884,40 @@
   }
 
   .chat-header {
-    padding-top: env(safe-area-inset-top, 0);
+    /* Минимум 10px сверху даже без выреза (в эмуляции/на Android env() = 0,
+       и шапка упиралась в край экрана — казалась обрезанной). */
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+    padding-bottom: 10px;
+    gap: 8px;
+    padding-left: 8px;
+    padding-right: 8px;
   }
+
+  /* Зоны касания 44px (раньше 36px в шапке и 38px в поле ввода). */
+  .ch-actions { gap: 0; }
+  .ch-btn {
+    width: var(--touch-target, 44px);
+    height: var(--touch-target, 44px);
+    border-radius: 50%;
+  }
+  .input-btn {
+    width: var(--touch-target, 44px);
+    height: var(--touch-target, 44px);
+  }
+  .chat-input-area { gap: 2px; padding-left: 6px; padding-right: 6px; padding-top: 8px; align-items: flex-end; }
+  /* Поле на одну строку: высота как у кнопок (44px), без вертикального скролла и
+     без переноса плейсхолдера (раньше длинный текст резался по низу пилюли). */
+  .chat-input {
+    min-height: var(--touch-target, 44px);
+    padding: 11px 14px;
+    line-height: 22px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .chat-input::-webkit-scrollbar { display: none; }
+  .chat-input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 
   .mobile-back {
     display: flex;
@@ -865,7 +947,9 @@
 
   .input-bar,
   .chat-input-area {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--keyboard-height, 0px));
+    /* Минимум 8px воздуха снизу даже без выреза/home-indicator (иначе поле ввода
+       прижато к краю экрана и выглядит обрезанным). */
+    padding-bottom: calc(max(8px, env(safe-area-inset-bottom, 0px)) + var(--keyboard-height, 0px));
   }
 
   /* Нижняя панель плавает поверх контента, поэтому прокручиваемым областям
@@ -882,6 +966,10 @@
   .mobile-tabs-page[data-tab-dir="forward"] { animation: tab-enter-forward 0.22s ease-out; }
   .mobile-tabs-page[data-tab-dir="back"] { animation: tab-enter-back 0.22s ease-out; }
 
+  /* Чаты ↔ Контакты: въезжает только список, шапка и поиск неподвижны. */
+  .sidebar-list .list-scroll[data-list-dir="forward"] { animation: tab-enter-forward 0.22s ease-out; }
+  .sidebar-list .list-scroll[data-list-dir="back"] { animation: tab-enter-back 0.22s ease-out; }
+
   .mobile-tabs-page .sidebar-list {
     padding-bottom: calc(var(--bottom-nav-height) + 8px);
   }
@@ -895,4 +983,19 @@
 @keyframes tab-enter-back {
   from { opacity: 0; transform: translateX(-28px); }
   to { opacity: 1; transform: none; }
+}
+
+@keyframes slideDown {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+@keyframes overlayFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* «Звонки» — вкладка нижней панели, стрелки «назад» в ней нет. */
+@media (max-width: 768px) {
+  .calls-back { display: none; }
+  .calls-page .sidebar-list { padding-bottom: calc(var(--bottom-nav-height) + 8px); }
 }

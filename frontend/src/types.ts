@@ -120,3 +120,12 @@ export interface ContactRequestResponse {
   from_user: UserResponse
   to_user: UserResponse
 }
+
+/** Ответ GET /api/files/storage-info (schemas.StorageInfo на сервере). */
+export interface StorageInfo {
+  total_size: number
+  file_count: number
+  files_by_type: { type: string; count: number; size: number }[]
+  max_storage: number
+  storage_used_percent: number
+}

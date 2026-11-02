@@ -1,17 +1,30 @@
 const SETTINGS_KEY = "nurchat_settings"
 
+export const MESSAGE_SOUND_IDS = ["notify", "pop", "chime"] as const
+export const RINGTONE_IDS = ["wave", "nokia"] as const
+export type MessageSoundId = (typeof MESSAGE_SOUND_IDS)[number]
+export type RingtoneId = (typeof RINGTONE_IDS)[number]
+
 export interface UserSettings {
   messageSound: boolean
   callSound: boolean
   messagePreview: boolean
   desktopNotifications: boolean
+  messageSoundId: MessageSoundId
+  ringtoneId: RingtoneId
 }
+
+export type BooleanSettingKey = {
+  [K in keyof UserSettings]: UserSettings[K] extends boolean ? K : never
+}[keyof UserSettings]
 
 const DEFAULTS: UserSettings = {
   messageSound: true,
   callSound: true,
   messagePreview: true,
   desktopNotifications: true,
+  messageSoundId: "notify",
+  ringtoneId: "wave",
 }
 
 let cache: UserSettings | null = null
@@ -23,9 +36,12 @@ export function getSettings(): UserSettings {
     const parsed = raw ? JSON.parse(raw) : {}
     // Только известные ключи: старые showOnline/showLastSeen были пустышками.
     cache = { ...DEFAULTS }
-    for (const k of Object.keys(DEFAULTS) as (keyof UserSettings)[]) {
+    for (const k of Object.keys(DEFAULTS) as BooleanSettingKey[]) {
       if (typeof parsed[k] === "boolean") cache[k] = parsed[k]
     }
+    // Неизвестный id (например, из будущей версии) — остаёмся на стандартном.
+    if ((MESSAGE_SOUND_IDS as readonly unknown[]).includes(parsed.messageSoundId)) cache.messageSoundId = parsed.messageSoundId
+    if ((RINGTONE_IDS as readonly unknown[]).includes(parsed.ringtoneId)) cache.ringtoneId = parsed.ringtoneId
   } catch {
     cache = { ...DEFAULTS }
   }

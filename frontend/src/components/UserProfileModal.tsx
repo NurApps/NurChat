@@ -46,6 +46,18 @@ export default function UserProfileModal({ user, currentUserId, onClose, onWrite
   const avatarStyle = useAvatarStyle()
   const isSelf = !!currentUserId && currentUserId === user.id
   const dialogRef = useRef<HTMLDivElement>(null)
+  // Мобильная шторка уезжает вниз перед закрытием (раньше исчезала мгновенно).
+  const [closing, setClosing] = useState(false)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestClose = () => {
+    const animate = window.matchMedia("(max-width: 768px)").matches &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (!animate) { onClose(); return }
+    if (closing) return
+    setClosing(true)
+    closeTimerRef.current = setTimeout(onClose, 220)
+  }
+  useEffect(() => () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current) }, [])
 
   // APG dialog pattern: фокус внутрь при открытии, Tab зациклен, фокус возвращается на вызвавший элемент.
   useEffect(() => {
@@ -66,10 +78,10 @@ export default function UserProfileModal({ user, currentUserId, onClose, onWrite
   }, [])
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={`${t("profile.userProfile")}: ${fullName}`} onClick={onClose}>
-      <div ref={dialogRef} className="user-profile-modal" onClick={(e) => e.stopPropagation()}>
+    <div className={`modal-overlay${closing ? " modal-overlay--closing" : ""}`} role="dialog" aria-modal="true" aria-label={`${t("profile.userProfile")}: ${fullName}`} onClick={requestClose}>
+      <div ref={dialogRef} className={`user-profile-modal${closing ? " user-profile-modal--closing" : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="upm-header">
-          <button type="button" className="upm-close" onClick={onClose} aria-label={t("common.close")}>
+          <button type="button" className="upm-close" onClick={requestClose} aria-label={t("common.close")}>
             <X size={20} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>

@@ -30,6 +30,15 @@ const CallHistoryPage = lazy(() => import("./pages/CallHistoryPage"))
 const BlockedUsersPage = lazy(() => import("./pages/BlockedUsersPage"))
 
 
+// Чанки страниц грузим заранее, пока приложение простаивает: иначе первое
+// открытие настроек ждёт загрузку и разбор ~200 КБ под полноэкранным спиннером.
+// (В мобильной раскладке то же делает MobileTabsLayout.)
+function preloadPages() {
+  void import("./pages/SettingsPage")
+  void import("./pages/CallHistoryPage")
+  void import("./pages/BlockedUsersPage")
+}
+
 function PageLoader() {
   return (
     <div className="auth-loading">
@@ -58,6 +67,15 @@ function App() {
   useEffect(() => {
     platform.showMainWindow()
   }, [])
+
+  // Мобильная раскладка предзагружает вкладки сама (MobileTabsLayout).
+  useEffect(() => {
+    if (isMobile || !serverReady) return
+    const idle = window.requestIdleCallback
+    if (idle) { const id = idle(preloadPages); return () => window.cancelIdleCallback(id) }
+    const id = window.setTimeout(preloadPages, 500)
+    return () => window.clearTimeout(id)
+  }, [isMobile, serverReady])
 
   // Relay пропал уже после успешного старта (рестарт/смена quick-tunnel URL).
   // Показываем экран переподключения вместо молчаливых «Failed to fetch».

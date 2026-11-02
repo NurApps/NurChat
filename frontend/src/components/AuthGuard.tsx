@@ -12,9 +12,15 @@ interface Props {
   children: React.ReactNode
 }
 
+// Сессия уже подтверждена сервером в этом запуске. У каждого маршрута свой
+// экземпляр AuthGuard, и без этого флага каждый переход (например, в настройки)
+// заново ждал сетевой getCurrentUser() под полноэкранным спиннером — на медленном
+// релее это 0,5–1 с белого экрана. Проверка при этом всё равно идёт в фоне.
+let sessionVerified = false
+
 export default function AuthGuard({ children }: Props) {
   const navigate = useNavigate()
-  const [checking, setChecking] = useState(true)
+  const [checking, setChecking] = useState(!(sessionVerified && hasSession()))
   const [locked, setLocked] = useState(false)
 
   // initSecureStorage at boot is a no-op while PIN-locked (anti-clobber);
@@ -38,6 +44,7 @@ export default function AuthGuard({ children }: Props) {
       }
       api.getCurrentUser()
       .then((user) => {
+        sessionVerified = true
         writeStoredUserRaw(JSON.stringify(user))
         useChatStore.getState().refreshCurrentUser()
         if (isPinEnabled()) {
@@ -51,6 +58,7 @@ export default function AuthGuard({ children }: Props) {
         // остаётся, иначе любая перезагрузка (HMR, F5) при лимите выкидывает из аккаунта.
         const status = (err as { status?: unknown } | null)?.status
         if (status === 401 || status === 403) {
+          sessionVerified = false
           performLogout()
           navigate("/login", { replace: true })
         } else {

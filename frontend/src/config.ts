@@ -203,6 +203,12 @@ export function setRelayConfig(config: RelayConfig) {
   // Пересчитываем live-адреса и оповещаем потребителей (REST/WS):
   // переключение релея больше не требует перезагрузки страницы.
   refreshLiveUrls()
+  // Замороженные константы обновляем мутацией: их читают через live-binding
+  // ES-модуля, поэтому после смены релея любой потребитель (даже тот, кто
+  // запросил fetch ДО ивента RELAY_CHANGED_EVENT) уходит на новый хост.
+  BASE_URL = liveBase
+  WS_BASE = liveWs
+  MEDIA_URL = liveBase
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(RELAY_CHANGED_EVENT))
   }
@@ -270,13 +276,11 @@ if (!import.meta.env.VITE_API_HOST) {
   }
 }
 
-export const BASE_URL = `${apiProtocol}://${apiHost}`
-export const WS_BASE = `${WS_PROTOCOL_FOR(apiProtocol)}://${apiHost}/ws`
-export const MEDIA_URL = BASE_URL
-
-function WS_PROTOCOL_FOR(p: "http" | "https"): "ws" | "wss" {
-  return p === "https" ? "wss" : "ws"
-}
+// Экспортируемые адреса: потребители читают их через live-binding ES-модуля,
+// setRelayConfig() мутацией обновляет значения при смене релея без перезагрузки.
+export let BASE_URL = `${apiProtocol}://${apiHost}`
+export let WS_BASE = `${wsProtoFor(apiProtocol)}://${apiHost}/ws`
+export let MEDIA_URL = BASE_URL
 
 export function avatarUrl(path: string | null | undefined): string | null {
   if (!path) return null

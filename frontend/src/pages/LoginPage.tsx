@@ -7,6 +7,7 @@ import { isPasskeySupported, loginWithPasskey } from "../services/webauthn"
 import { upsertProfile } from "../services/profiles"
 import { hasSession, vaultReady, writeStoredUserRaw } from "../services/tokenVault"
 import { BASE_URL, getRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
+import { RELAY_CHANGED_EVENT } from "../config"
 import { generateKeys, loadKeys, saveKeys, setupPreKeys, ensurePreKeysUploaded, initSecureStorage, type E2EKeys } from "../services/e2e"
 import { isStorageLocked } from "../services/pinLock"
 import PinLock from "../components/PinLock"
@@ -168,13 +169,21 @@ export default function LoginPage() {
   }, [])
 
   // Смена релея прямо с экрана входа: тестер получает ссылку/адрес релея
-  // и не должен лезть в настройки или ?relay=. После смены — reload,
-  // т.к. BASE_URL/WS_BASE заморожены на старте модуля (см. config.ts).
+  // и не должен лезть в настройки или ?relay=. Смена без перезагрузки:
+  // setRelayConfig() обновляет live-адреса и шлёт RELAY_CHANGED_EVENT.
   const [relayEditing, setRelayEditing] = useState(false)
   const [relayHost, setRelayHost] = useState(() => getRelayConfig().host)
   const [relayProtocol, setRelayProtocol] = useState<"http" | "https">(() => getRelayConfig().protocol)
   const [relayApplying, setRelayApplying] = useState(false)
   const [relayError, setRelayError] = useState("")
+  // Живой адрес текущего релея (обновляется через RELAY_CHANGED_EVENT при
+  // смене без reload — BASE_URL больше не «заморожен» на старте модуля).
+  const [, forceRelayRerender] = useState(0)
+  useEffect(() => {
+    const h = () => forceRelayRerender((n) => n + 1)
+    window.addEventListener(RELAY_CHANGED_EVENT, h)
+    return () => window.removeEventListener(RELAY_CHANGED_EVENT, h)
+  }, [])
   // Passkey-кнопка только там, где браузер реально умеет WebAuthn.
   const [passkeySupported] = useState(() => isPasskeySupported())
 
@@ -204,10 +213,16 @@ export default function LoginPage() {
     const res = await applyRelayIfHealthy(next)
     if (res.ok) {
       if (needLogout) {
+        // Смена релея с активной сессией: чистый старт неизбежен (аккаунт и
+        // ключи живут на ОДНОМ реле) — performRelaySwitch сам всё почистит.
         performRelaySwitch(next)
         return
       }
-      window.location.reload()
+      // Без перезагрузки: релей применён, формы входа сразу работают на нём.
+      setRelayEditing(false)
+      setServerUnavailable(false)
+      checkServerHealth()
+      setRelayApplying(false)
       return
     }
     setRelayError(t("auth.relayCheckFailed"))

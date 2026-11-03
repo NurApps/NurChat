@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api, csrfHeader, apiErrorMessage } from "../services/api"
 import { getAccessToken } from "../services/tokenVault"
-import { BASE_URL, avatarUrl, getRelayConfig, resetRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
+import { BASE_URL, RELAY_CHANGED_EVENT, avatarUrl, getRelayConfig, resetRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
 import { hasKeys, clearKeys } from "../services/e2e"
 import CustomThemeEditor from "../components/CustomThemeEditor"
 import { customSkinVariant, isCustomSkinId } from "../services/customTheme"
@@ -114,6 +114,17 @@ export default function SettingsPage() {
     const cfg = getRelayConfig()
     setRelayHost(cfg.host)
     setRelayProtocol(cfg.protocol)
+  }, [])
+
+  // Смена релея без reload (оверлей/вход/host-режим): синхронизируем поля.
+  useEffect(() => {
+    const h = () => {
+      const cfg = getRelayConfig()
+      setRelayHost(cfg.host)
+      setRelayProtocol(cfg.protocol)
+    }
+    window.addEventListener(RELAY_CHANGED_EVENT, h)
+    return () => window.removeEventListener(RELAY_CHANGED_EVENT, h)
   }, [])
 
   useEffect(() => {
@@ -324,9 +335,8 @@ export default function SettingsPage() {
     if (relayApplying) return
     const host = parseRelayInput(relayHost).host
     setRelayError("")
-    // BASE_URL/WS_BASE are frozen at module load — a relay switch only takes
-    // effect after reload (same as ServerBootOverlay). Sessions/tokens belong
-    // to one relay anyway, so a fresh boot on the new host is correct.
+    // Смена релея без перезагрузки: setRelayConfig() обновляет live-адреса
+    // и шлёт RELAY_CHANGED_EVENT — REST/WS сами переезжают на новый хост.
     if (!host) {
       resetRelayConfig()
       window.location.reload()
@@ -355,10 +365,14 @@ export default function SettingsPage() {
     const res = await applyRelayIfHealthy(next)
     if (res.ok) {
       if (needLogout) {
+        // Смена релея с активным аккаунтом: чистый старт неизбежен
+        // (аккаунт и ключи живут на ОДНОМ реле) — performRelaySwitch сам
+        // применит конфиг; reload здесь — единственный осознанный случай.
         performRelaySwitch(next)
         return
       }
-      window.location.reload()
+      setMsg(t("settings.relaySaved"))
+      setRelayApplying(false)
       return
     }
     setRelayError(t("auth.relayCheckFailed"))

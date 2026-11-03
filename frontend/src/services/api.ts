@@ -26,6 +26,28 @@ export const RELAY_UNREACHABLE_EVENT = "nurchat:relay-unreachable"
 /** Первый успешный запрос после обрыва: скрываем экран переподключения. */
 export const RELAY_RECOVERED_EVENT = "nurchat:relay-recovered"
 
+// UX «как в Telegram»: единичный сетевой сбой (чихнул интернет/туннель) НЕ
+// должен выкидывать на экран «Подключение к relay». Истинно недоступный релей
+// узнаётся по повторным network-error: событие шлётся только когда хотя бы
+// два сбоя произошли в пределах окна — App тогда показывает выбор релея
+// (только при активной сессии), во всех остальных случаях UI остаётся
+// внутри, сверху горит плашка «Соединение…».
+const UNREACHABLE_WINDOW_MS = 15_000
+let lastNetworkErrorAt = 0
+
+/** Сброс детектора (успешный запрос / смена релея): следующее одиночное
+ *  сетевое падение снова считается разовым сбоем. */
+export function resetRelayUnreachableDetection(): void {
+  lastNetworkErrorAt = 0
+}
+
+function noteNetworkError(): boolean {
+  const now = Date.now()
+  const repeated = now - lastNetworkErrorAt < UNREACHABLE_WINDOW_MS
+  lastNetworkErrorAt = now
+  return repeated
+}
+
 class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -218,6 +240,7 @@ async function request<T>(
     if (res.ok) {
       // Соединение с релеем снова живёт: снимаем экран переподключения,
       // если он вдруг был показан (рестарт релея, смена quick-tunnel URL).
+      resetRelayUnreachableDetection()
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event(RELAY_RECOVERED_EVENT))
       }
@@ -242,9 +265,10 @@ async function request<T>(
     const elapsed = Math.round(performance.now() - startedAt)
     const kind = err instanceof DOMException && err.name === "AbortError" ? "timeout-abort" : "network-error"
     console.error("[api] request failed:", kind, method, path, `after ${elapsed}ms`, err)
-    // Не оставляем UI в полуживом состоянии: App вернёт экран переподключения,
-    // где можно выбрать локальный relay/другой адрес.
-    if (kind === "network-error" && typeof window !== "undefined") {
+    // Экран переподключения — только для ПОВТОРНЫХ сетевых сбоев в коротком
+    // окне (релей реально мёртв). Единичный «чих» сети игнорируется: сокет и
+    // плашка «Соединение…» разберутся сами, UI остаётся внутри.
+    if (kind === "network-error" && noteNetworkError() && typeof window !== "undefined") {
       window.dispatchEvent(new Event(RELAY_UNREACHABLE_EVENT))
     }
     throw err

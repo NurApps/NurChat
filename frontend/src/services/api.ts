@@ -20,9 +20,11 @@ import {
 } from "./tokenVault"
 import type { UserResponse, ChatResponse, MessageResponse, ContactResponse, GroupInviteResponse, FileUploadResponse, ReactionResponse, ContactRequestResponse } from "../types"
 
-/** Сеть до relay пропала: App возвращает экран переподключения вместо
- *  молчаливого «всё сломалось» после остановки/рестарта релея. */
+/** Сеть до relay пропала: App решает, показывать ли экран выбора релея
+ *  (только при активной сессии) или оставить UI живым на кэше. */
 export const RELAY_UNREACHABLE_EVENT = "nurchat:relay-unreachable"
+/** Первый успешный запрос после обрыва: скрываем экран переподключения. */
+export const RELAY_RECOVERED_EVENT = "nurchat:relay-recovered"
 
 class ApiError extends Error {
   status: number
@@ -213,6 +215,13 @@ async function request<T>(
     }
     const headerToken = res.headers.get("X-CSRF-Token")
     if (headerToken) csrfTokenCache = headerToken
+    if (res.ok) {
+      // Соединение с релеем снова живёт: снимаем экран переподключения,
+      // если он вдруг был показан (рестарт релея, смена quick-tunnel URL).
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event(RELAY_RECOVERED_EVENT))
+      }
+    }
     if (!res.ok) {
       // Access TTL is 30 min and the server rechecks JWTs on live sockets:
       // a 401 here usually means expiry, not logout — refresh once and retry.

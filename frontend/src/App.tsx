@@ -9,7 +9,9 @@ import ErrorBoundary from "./components/ErrorBoundary"
 import UpdateBanner from "./components/UpdateBanner"
 import MobileTabsLayout from "./components/mobile/MobileTabsLayout"
 import { platform } from "./services/platform"
-import { RELAY_UNREACHABLE_EVENT } from "./services/api"
+import { RELAY_UNREACHABLE_EVENT, RELAY_RECOVERED_EVENT } from "./services/api"
+import { hasSession } from "./services/tokenVault"
+import { storedAccount } from "./services/localSession"
 import { e2eWorkerService } from "./services/e2eWorkerService"
 import { initSecureStorage } from "./services/e2e"
 import { setRecordNamespace } from "./services/secureStorage"
@@ -59,14 +61,46 @@ function AuthExpiredListener() {
   return null
 }
 
+// Ключ явного «выбери релей»: ставит ServerBootOverlay после сохранения
+// адреса, снимает App при входе. Пока ключа нет и сессии тоже нет, экран
+// выбора релея не показываем — LoginPage сам спросит адрес (RelayAddressInput).
+const RELAY_SETUP_REQUESTED_KEY = "relay_setup_requested"
+
+export function markRelaySetupRequested(): void {
+  try { localStorage.setItem(RELAY_SETUP_REQUESTED_KEY, "1") } catch { /* ignore */ }
+}
+function clearRelaySetupRequested(): void {
+  try { localStorage.removeItem(RELAY_SETUP_REQUESTED_KEY) } catch { /* ignore */ }
+}
+function relaySetupRequested(): boolean {
+  try { return localStorage.getItem(RELAY_SETUP_REQUESTED_KEY) === "1" } catch { return false }
+}
+
 function App() {
   const { t } = useTranslation()
-  const [serverReady, setServerReady] = useState(false)
+  // UX «как в Telegram»: один раз выбрал релей — дальше всегда внутрь
+  // (регистрация/чаты). Обрыв сети НЕ выкидывает на экран «Подключение к
+  // relay» — поверх рабочего интерфейса горит только плашка «Соединение…».
+  // Поэтому оверлей стартует скрытым; виден он лишь когда:
+  //  - пользователь явно попросил выбрать релей (кнопка в настройках /
+  //    вход без адреса);
+  //  - релей пропал после успешного старта И внутри есть сессия — тогда
+  //    чатов показать нечем, нужен выбор адреса (сработает только после
+  //    перезагрузки; само соединение восстанавливается в фоне).
+  const [serverReady, setServerReady] = useState(
+    () => !relaySetupRequested() && (!hasSession() || !!storedAccount()),
+  )
   const { isMobile } = useMobile()
 
   useEffect(() => {
     platform.showMainWindow()
   }, [])
+
+  // Вход выполнен (есть сохранённый профиль) — экран выбора релея больше
+  // не нужен, снимаем явный запрос.
+  useEffect(() => {
+    if (serverReady) clearRelaySetupRequested()
+  }, [serverReady])
 
   // Мобильная раскладка предзагружает вкладки сама (MobileTabsLayout).
   useEffect(() => {
@@ -78,11 +112,23 @@ function App() {
   }, [isMobile, serverReady])
 
   // Relay пропал уже после успешного старта (рестарт/смена quick-tunnel URL).
-  // Показываем экран переподключения вместо молчаливых «Failed to fetch».
+  // Экран выбора релея показываем ТОЛЬКО когда внутри есть активная сессия —
+  // иначе пользователь просто остаётся на месте и видит плашку
+  // «Соединение…» (как в Telegram): сокет и REST сами добирают соединение.
   useEffect(() => {
-    const handler = () => setServerReady(false)
-    window.addEventListener(RELAY_UNREACHABLE_EVENT, handler)
-    return () => window.removeEventListener(RELAY_UNREACHABLE_EVENT, handler)
+    const handleUnreachable = () => {
+      if (hasSession() && storedAccount()) {
+        markRelaySetupRequested()
+        setServerReady(false)
+      }
+    }
+    const handleRecovered = () => setServerReady(true)
+    window.addEventListener(RELAY_UNREACHABLE_EVENT, handleUnreachable)
+    window.addEventListener(RELAY_RECOVERED_EVENT, handleRecovered)
+    return () => {
+      window.removeEventListener(RELAY_UNREACHABLE_EVENT, handleUnreachable)
+      window.removeEventListener(RELAY_RECOVERED_EVENT, handleRecovered)
+    }
   }, [])
 
   useEffect(() => {

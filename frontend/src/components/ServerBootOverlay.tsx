@@ -4,6 +4,7 @@ import { BASE_URL, setRelayConfig, PUBLIC_RELAYS, isRelayExplicit, parseRelayInp
 import RelayAddressInput from "./RelayAddressInput"
 import HostModePanel from "./HostModePanel"
 import { performRelaySwitch, storedAccount } from "../services/localSession"
+import { RELAY_RECOVERED_EVENT } from "../services/api"
 import { AlertTriangle, Power } from "lucide-react"
 
 interface Props {
@@ -13,13 +14,9 @@ interface Props {
 export default function ServerBootOverlay({ onReady }: Props) {
   const { t } = useTranslation()
   const [phase, setPhase] = useState<"checking" | "ready" | "failed" | "setup">("checking")
-  const [dots, setDots] = useState("")
-  const [elapsed, setElapsed] = useState(0)
-  const [errorMsg, setErrorMsg] = useState("")
-
-  // Relay setup state
-  const [relayHost, setRelayHost] = useState("")
-  const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("https")
+  // После сохранения нового адреса релей перезагружаем страницу:
+  // BASE_URL/WS_BASE заморожены на старте модуля (см. config.ts).
+  const [reloadPending, setReloadPending] = useState(false)
   // Неявный localhost-дефолт никого никуда не ведёт: если релей не выбран
   // явно (?relay/env/ручной ввод) и недоступен — требуем адрес прямо
   // заголовком, а не generic «недоступен».
@@ -68,6 +65,15 @@ export default function ServerBootOverlay({ onReady }: Props) {
     }, 5000)
     return () => clearInterval(interval)
   }, [checkHealth, onReady])
+
+  // Любая страница под оверлеем продолжает жить и дёргает REST/WS: если
+  // запрос вдруг прошёл (туннель ожил), закрываем экран сразу, не дожидаясь
+  // следующего цикла опроса /health.
+  useEffect(() => {
+    const handler = () => onReady()
+    window.addEventListener(RELAY_RECOVERED_EVENT, handler)
+    return () => window.removeEventListener(RELAY_RECOVERED_EVENT, handler)
+  }, [onReady])
 
   // Animate dots
   useEffect(() => {

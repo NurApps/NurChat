@@ -14,9 +14,13 @@ interface Props {
 export default function ServerBootOverlay({ onReady }: Props) {
   const { t } = useTranslation()
   const [phase, setPhase] = useState<"checking" | "ready" | "failed" | "setup">("checking")
-  // После сохранения нового адреса релей перезагружаем страницу:
-  // BASE_URL/WS_BASE заморожены на старте модуля (см. config.ts).
-  const [reloadPending, setReloadPending] = useState(false)
+  const [dots, setDots] = useState("")
+  const [elapsed, setElapsed] = useState(0)
+  const [errorMsg, setErrorMsg] = useState("")
+
+  // Relay setup state
+  const [relayHost, setRelayHost] = useState("")
+  const [relayProtocol, setRelayProtocol] = useState<"http" | "https">("https")
   // Неявный localhost-дефолт никого никуда не ведёт: если релей не выбран
   // явно (?relay/env/ручной ввод) и недоступен — требуем адрес прямо
   // заголовком, а не generic «недоступен».
@@ -100,8 +104,10 @@ export default function ServerBootOverlay({ onReady }: Props) {
     checkHealth().then((ok) => { if (ok) onReady() })
   }
 
-  // NOTE: BASE_URL/WS_BASE are frozen at module load, so after switching
-  // relay we must reload — otherwise api.* keeps hitting the old host.
+  // Смена релея больше НЕ требует перезагрузки: setRelayConfig() обновляет
+  // live-адреса (getBaseUrl/getWsBase) и шлёт RELAY_CHANGED_EVENT — REST и
+  // WS сами переезжают на новый хост. UX «как в Telegram»: ввёл адрес →
+  // сразу внутрь, без фликера через экран «Подключение к relay».
   // Config is persisted only after /health succeeds: a dead address must
   // not stick in localStorage and trap the next boot on it.
   const connectTo = async (host: string, protocol: "http" | "https") => {
@@ -127,12 +133,14 @@ export default function ServerBootOverlay({ onReady }: Props) {
           setPhase("failed")
           return
         }
-        // Сессия принадлежит чужому релею — гасим перед уходом.
+        // Смена релея с активным аккаунтом: чистый старт неизбежен
+        // (аккаунт и ключи живут на ОДНОМ реле). performRelaySwitch сам
+        // применит конфиг; reload здесь — единственный осознанный случай.
         performRelaySwitch({ host, protocol })
         return
       }
       setRelayConfig({ host, protocol })
-      window.location.reload()
+      onReady()
     }
   }
 

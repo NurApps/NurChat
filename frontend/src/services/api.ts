@@ -1,4 +1,4 @@
-import { BASE_URL } from "../config"
+import { getBaseUrl } from "../config"
 import {
   announceRefresh,
   isSiblingRefreshing,
@@ -92,7 +92,7 @@ export async function ensureCsrfToken(): Promise<string | null> {
   const known = csrfTokenCache || getCsrfToken()
   if (known) return known
   try {
-    const res = await fetch(`${BASE_URL}/health`, { credentials: "include" })
+    const res = await fetch(`${getBaseUrl()}/health`, { credentials: "include" })
     const token = res.headers.get("X-CSRF-Token")
     if (token) csrfTokenCache = token
     return token
@@ -125,7 +125,7 @@ export function refreshAccessToken(): Promise<boolean> {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 30000)
       try {
-        const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+        const res = await fetch(`${getBaseUrl()}/api/auth/refresh`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) },
           // credentials:include — на будущее: если relay начнёт ставить
@@ -196,7 +196,7 @@ async function request<T>(
   // и сколько реально отвечал релей — без этого чинить вслепую.
   const startedAt = performance.now()
   try {
-    const res = await fetch(`${BASE_URL}${path}`, {
+    const res = await fetch(`${getBaseUrl()}${path}`, {
       method,
       headers: {
         "Content-Type": "application/json",
@@ -298,7 +298,7 @@ export const api = {
       const form = new FormData()
       for (const [k, v] of Object.entries(fields)) form.append(k, v)
       const token = getToken()
-      return fetch(`${BASE_URL}/api/auth/profile/update`, {
+      return fetch(`${getBaseUrl()}/api/auth/profile/update`, {
         method: "POST",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -458,7 +458,7 @@ export const api = {
     if (onProgress) {
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest()
-        xhr.open("POST", `${BASE_URL}/api/files/upload`)
+        xhr.open("POST", `${getBaseUrl()}/api/files/upload`)
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`)
         if (csrf) xhr.setRequestHeader("X-CSRF-Token", csrf)
         xhr.upload.onprogress = (e) => {
@@ -478,7 +478,7 @@ export const api = {
       })
     }
 
-    const res = await fetch(`${BASE_URL}/api/files/upload`, {
+    const res = await fetch(`${getBaseUrl()}/api/files/upload`, {
       method: "POST",
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -500,7 +500,7 @@ export const api = {
       const csrf = getCsrfToken() || await ensureCsrfToken()
       const form = new FormData()
       form.append("file_id", fileId)
-      const res = await fetch(`${BASE_URL}/api/files/token`, {
+      const res = await fetch(`${getBaseUrl()}/api/files/token`, {
         method: "POST",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -520,7 +520,7 @@ export const api = {
   getScopedFileUrl: async (fileId: string): Promise<string> => {
     const scoped = await api.mintFileToken(fileId)
     const token = scoped || getToken() || ""
-    return `${BASE_URL}/api/files/download/${fileId}?token=${encodeURIComponent(token)}`
+    return `${getBaseUrl()}/api/files/download/${fileId}?token=${encodeURIComponent(token)}`
   },
 
   // Stable blob URL via blobManager (cached, revocable, decrypt-aware)
@@ -639,7 +639,7 @@ export const api = {
   clearToken: () => {
     const token = getToken()
     if (token) {
-      fetch(`${BASE_URL}/api/auth/logout`, {
+      fetch(`${getBaseUrl()}/api/auth/logout`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({}),

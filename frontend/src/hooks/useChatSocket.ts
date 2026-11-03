@@ -1,6 +1,7 @@
 import { useCallback, useRef, useEffect } from "react"
 import { getAccessToken, hasSession } from "../services/tokenVault"
 import { openAuthedSocket } from "../services/wsAuth"
+import { RELAY_CHANGED_EVENT } from "../config"
 import { showNotification, playMessageSound } from "../services/notifications"
 import type { MessageResponse, UserResponse, ChatResponse } from "../types"
 
@@ -374,8 +375,8 @@ export function useChatSocket({
           reconnectTimer = setTimeout(async () => {
             if (stopped) return
             try {
-              const { BASE_URL } = await import("../config")
-              await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(WAKEUP_PING_MS), cache: "no-store" }).catch(() => {})
+              const { getBaseUrl } = await import("../config")
+              await fetch(`${getBaseUrl()}/health`, { signal: AbortSignal.timeout(WAKEUP_PING_MS), cache: "no-store" }).catch(() => {})
             } catch { /* ignore */ }
             connect()
           }, delay)
@@ -398,6 +399,17 @@ export function useChatSocket({
     // Network recovery: reset backoff and reconnect immediately
     const handleOnline = () => { reconnectAttempts = 0; connect() }
     window.addEventListener("online", handleOnline)
+
+    // Смена релея без перезагрузки (ввели адрес на экране выбора): старый
+    // сокет рвём, бэкофф обнуляем — connect() уже возьмёт новый WS_BASE.
+    const handleRelayChanged = () => {
+      if (stopped) return
+      reconnectAttempts = 0
+      clearTimeout(reconnectTimer)
+      wsRef.current?.close()
+      connect()
+    }
+    window.addEventListener(RELAY_CHANGED_EVENT, handleRelayChanged)
 
     // Фокс/видимость: сокет мог умереть, пока вкладка была фоновой (мобайл
     // убивает фоновые сокеты, ОС засыпает). Возврат в приложение должен
@@ -434,6 +446,7 @@ export function useChatSocket({
       stopped = true
       clearTimeout(reconnectTimer)
       window.removeEventListener("online", handleOnline)
+      window.removeEventListener(RELAY_CHANGED_EVENT, handleRelayChanged)
       document.removeEventListener("visibilitychange", handleVisibility)
       window.removeEventListener("focus", handleVisibility)
       if (wsPingStamp === markAlive) wsPingStamp = null

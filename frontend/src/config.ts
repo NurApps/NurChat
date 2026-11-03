@@ -200,6 +200,12 @@ export function setRelayConfig(config: RelayConfig) {
   } catch { /* ignore */ }
   markRelayExplicit()
   apply(config)
+  // Пересчитываем live-адреса и оповещаем потребителей (REST/WS):
+  // переключение релея больше не требует перезагрузки страницы.
+  refreshLiveUrls()
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(RELAY_CHANGED_EVENT))
+  }
 }
 
 export function resetRelayConfig() {
@@ -223,6 +229,32 @@ let apiProtocol: "http" | "https" = _initialRelay.protocol
 
 export function getApiHost(): string { return apiHost }
 export function getApiProtocol(): "http" | "https" { return apiProtocol }
+
+// Смена релея без перезагрузки страницы (UX «как в Telegram»: ввёл адрес —
+// сразу внутрь, без фликера через экран «Подключение к relay»).
+// setRelayConfig() пересчитывает live-адреса и шлёт этот ивент; потребители
+// (api.ts, useChatSocket, wsAuth) читают getBaseUrl()/getWsBase() —
+// экспортированные константы ниже остаются замороженными на значении из
+// момента импорта модуля и для запросов после переключения НЕ используются.
+export const RELAY_CHANGED_EVENT = "nurchat:relay-changed"
+
+function wsProtoFor(p: "http" | "https"): "ws" | "wss" {
+  return p === "https" ? "wss" : "ws"
+}
+
+let liveBase = `${apiProtocol}://${apiHost}`
+let liveWs = `${wsProtoFor(apiProtocol)}://${apiHost}/ws`
+
+/** Live REST base — использовать внутри функций, чтобы запрос после
+ *  переключения релея без reload уходил на новый хост. */
+export function getBaseUrl(): string { return liveBase }
+/** Live WS url — тот же смысл для переподключения сокета. */
+export function getWsBase(): string { return liveWs }
+
+function refreshLiveUrls(): void {
+  liveBase = `${apiProtocol}://${apiHost}`
+  liveWs = `${wsProtoFor(apiProtocol)}://${apiHost}/ws`
+}
 
 // Top-level await: relay probing completes BEFORE any consumer computes
 // BASE_URL, so the whole app uses the resolved relay from the first render.

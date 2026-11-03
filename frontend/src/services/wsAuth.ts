@@ -1,4 +1,4 @@
-import { WS_BASE } from "../config"
+import { getWsBase } from "../config"
 import { getAccessToken } from "./tokenVault"
 
 /**
@@ -13,5 +13,5 @@ import { getAccessToken } from "./tokenVault"
 export function openAuthedSocket(path: string): WebSocket | null {
   const token = getAccessToken()
   if (!token) return null
-  return new WebSocket(`${WS_BASE}${path}`, [token])
+  return new WebSocket(`${getWsBase()}${path}`, [token])
 }

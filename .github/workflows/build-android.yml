@@ -103,7 +103,10 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
-          name: nurchat-android
+          # archive: false — выкладываем .apk как есть, без zip и вложенных папок
+          # (артефакт скачивается сразу как NurChat-signed.apk; name при этом
+          # игнорируется, именем служит имя файла).
+          archive: false
           path: src-tauri/gen/android/app/build/outputs/apk/universal/release/NurChat-signed.apk
           if-no-files-found: error
           retention-days: 3

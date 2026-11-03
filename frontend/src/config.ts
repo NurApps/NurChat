@@ -239,9 +239,9 @@ export function getApiProtocol(): "http" | "https" { return apiProtocol }
 // Смена релея без перезагрузки страницы (UX «как в Telegram»: ввёл адрес —
 // сразу внутрь, без фликера через экран «Подключение к relay»).
 // setRelayConfig() пересчитывает live-адреса и шлёт этот ивент; потребители
-// (api.ts, useChatSocket, wsAuth) читают getBaseUrl()/getWsBase() —
-// экспортированные константы ниже остаются замороженными на значении из
-// момента импорта модуля и для запросов после переключения НЕ используются.
+// (api.ts, useChatSocket, wsAuth) читают getBaseUrl()/getWsBase().
+// Экспортированные константы (BASE_URL/WS_BASE/MEDIA_URL) тоже обновляются
+// мутацией — кто читает их через live-binding ES-модуля, увидит новый хост.
 export const RELAY_CHANGED_EVENT = "nurchat:relay-changed"
 
 function wsProtoFor(p: "http" | "https"): "ws" | "wss" {

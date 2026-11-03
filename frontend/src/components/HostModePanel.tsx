@@ -181,8 +181,9 @@ export default function HostModePanel({ compact = false }: Props) {
     if (!status.url) return
     const host = status.url.replace(/^https?:\/\//, "")
     if (!window.confirm(t("hostMode.switchConfirm", { host }))) return
+    // Смена релея без перезагрузки: setRelayConfig() обновляет live-адреса
+    // и шлёт RELAY_CHANGED_EVENT — REST/WS сами переезжают на новый хост.
     setRelayConfig({ host, protocol: "https" })
-    window.location.reload()
   }
 
   if (!hostModeSupported()) {

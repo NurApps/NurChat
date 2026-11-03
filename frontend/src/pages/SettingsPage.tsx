@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { api, csrfHeader, apiErrorMessage } from "../services/api"
 import { getAccessToken } from "../services/tokenVault"
-import { BASE_URL, RELAY_CHANGED_EVENT, avatarUrl, getRelayConfig, resetRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
+import { getBaseUrl, RELAY_CHANGED_EVENT, avatarUrl, getRelayConfig, resetRelayConfig, parseRelayInput, applyRelayIfHealthy } from "../config"
+import { markRelaySetupRequested } from "../App"
 import { hasKeys, clearKeys } from "../services/e2e"
 import CustomThemeEditor from "../components/CustomThemeEditor"
 import { customSkinVariant, isCustomSkinId } from "../services/customTheme"
@@ -142,7 +143,7 @@ export default function SettingsPage() {
 
   const loadTotpStatus = async () => {
     try {
-      const res = await fetch(`${BASE_URL}/api/auth/2fa/status`, {
+      const res = await fetch(`${getBaseUrl()}/api/auth/2fa/status`, {
         headers: { Authorization: `Bearer ${getAccessToken()}` },
       })
       if (res.ok) {
@@ -159,7 +160,7 @@ export default function SettingsPage() {
     setTotpLoading(true)
     setMsg("")
     try {
-      const res = await fetch(`${BASE_URL}/api/auth/2fa/setup`, {
+      const res = await fetch(`${getBaseUrl()}/api/auth/2fa/setup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -192,7 +193,7 @@ export default function SettingsPage() {
     setTotpLoading(true)
     setMsg("")
     try {
-      const res = await fetch(`${BASE_URL}/api/auth/2fa/enable`, {
+      const res = await fetch(`${getBaseUrl()}/api/auth/2fa/enable`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -225,7 +226,7 @@ export default function SettingsPage() {
     setTotpLoading(true)
     setMsg("")
     try {
-      const res = await fetch(`${BASE_URL}/api/auth/2fa/disable`, {
+      const res = await fetch(`${getBaseUrl()}/api/auth/2fa/disable`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -338,7 +339,10 @@ export default function SettingsPage() {
     // Смена релея без перезагрузки: setRelayConfig() обновляет live-адреса
     // и шлёт RELAY_CHANGED_EVENT — REST/WS сами переезжают на новый хост.
     if (!host) {
+      // Сброс к дефолту: релей будет заново определён при следующем старте;
+      // сейчас перезагрузка неизбежна — живой сессии без адреса нет.
       resetRelayConfig()
+      markRelaySetupRequested()
       window.location.reload()
       return
     }

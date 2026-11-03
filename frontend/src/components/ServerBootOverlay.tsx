@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { BASE_URL, setRelayConfig, PUBLIC_RELAYS, isRelayExplicit, parseRelayInput, getRelayConfig } from "../config"
+import { setRelayConfig, PUBLIC_RELAYS, isRelayExplicit, parseRelayInput, getRelayConfig, getBaseUrl } from "../config"
 import RelayAddressInput from "./RelayAddressInput"
 import HostModePanel from "./HostModePanel"
 import { performRelaySwitch, storedAccount } from "../services/localSession"
-import { RELAY_RECOVERED_EVENT } from "../services/api"
+import { RELAY_RECOVERED_EVENT, RELAY_UNREACHABLE_EVENT } from "../services/api"
 import { AlertTriangle, Power } from "lucide-react"
 
 interface Props {
@@ -26,15 +26,15 @@ export default function ServerBootOverlay({ onReady }: Props) {
   // заголовком, а не generic «недоступен».
   const [relayRequired] = useState(() => !isRelayExplicit())
   // URL actually being probed right now — shown on the "checking" screen.
-  // Separate from BASE_URL (frozen at module load) so a manual/custom
-  // connect attempt displays its own target instead of the stale default.
-  const [attemptUrl, setAttemptUrl] = useState(BASE_URL)
+  // Separate from getBaseUrl() (the live relay) so a manual/custom connect
+  // attempt displays its own target instead of the currently saved host.
+  const [attemptUrl, setAttemptUrl] = useState(() => getBaseUrl())
   // Guards the background poll below from clobbering a manual attempt's
-  // phase/errorMsg with a stale BASE_URL result while it's in flight.
+  // phase/errorMsg with a stale live-relay result while it's in flight.
   const manualAttemptRef = useRef(false)
 
   const checkHealth = useCallback(async (url?: string): Promise<boolean> => {
-    const target = url || BASE_URL
+    const target = url || getBaseUrl()
     setAttemptUrl(target)
     try {
       const res = await fetch(`${target}/health`, {
@@ -72,12 +72,20 @@ export default function ServerBootOverlay({ onReady }: Props) {
 
   // Любая страница под оверлеем продолжает жить и дёргает REST/WS: если
   // запрос вдруг прошёл (туннель ожил), закрываем экран сразу, не дожидаясь
-  // следующего цикла опроса /health.
+  // следующего цикла опроса /health. RELAY_UNREACHABLE_EVENT пересобирает
+  // фоновый опрос на актуальном live-адресе (getBaseUrl() читается в момент
+  // проверки, а не заморожен на старте модуля).
   useEffect(() => {
     const handler = () => onReady()
     window.addEventListener(RELAY_RECOVERED_EVENT, handler)
     return () => window.removeEventListener(RELAY_RECOVERED_EVENT, handler)
   }, [onReady])
+
+  useEffect(() => {
+    const handler = () => setPhase((p) => (p === "ready" ? p : "checking"))
+    window.addEventListener(RELAY_UNREACHABLE_EVENT, handler)
+    return () => window.removeEventListener(RELAY_UNREACHABLE_EVENT, handler)
+  }, [])
 
   // Animate dots
   useEffect(() => {
@@ -96,6 +104,10 @@ export default function ServerBootOverlay({ onReady }: Props) {
   }, [phase])
 
   if (phase === "ready") return null
+
+  // Live-адрес релея на момент рендера: после смены релея без перезагрузки
+  // замороженная константа модуля показала бы старый хост.
+  const currentBase = getBaseUrl()
 
   const handleRetry = () => {
     setPhase("checking")
@@ -191,10 +203,10 @@ export default function ServerBootOverlay({ onReady }: Props) {
               {t("serverBoot.corsHint")}
             </p>
             <div style={{ marginBottom: 16 }}>
-              <p style={{ opacity: 0.7, fontSize: 12, marginBottom: BASE_URL.includes(".trycloudflare.com") ? 8 : 0, fontFamily: "monospace", wordBreak: "break-word" }}>
-                {t("serverBoot.currentRelay")}: {BASE_URL}
+              <p style={{ opacity: 0.7, fontSize: 12, marginBottom: currentBase.includes(".trycloudflare.com") ? 8 : 0, fontFamily: "monospace", wordBreak: "break-word" }}>
+                {t("serverBoot.currentRelay")}: {currentBase}
               </p>
-              {BASE_URL.includes(".trycloudflare.com") && (
+              {currentBase.includes(".trycloudflare.com") && (
                 <p style={{ opacity: 0.7, fontSize: 12 }}>
                   {t("serverBoot.quickTunnelHint")}
                 </p>
@@ -204,7 +216,7 @@ export default function ServerBootOverlay({ onReady }: Props) {
             <div className="server-boot-options">
               {/* Локальный relay на этом же устройстве — самый частый случай,
                   когда сохранённый quick-tunnel URL уже умер. */}
-              {BASE_URL !== "http://127.0.0.1:8000" && (
+              {currentBase !== "http://127.0.0.1:8000" && (
                 <div className="server-boot-option server-boot-option-wide">
                   <p className="server-boot-option-label">{t("serverBoot.localRelay")}</p>
                   <button

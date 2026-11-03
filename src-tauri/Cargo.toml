@@ -27,7 +27,7 @@ tauri-plugin-notification = "2"
 reqwest = { version = "0.13", features = ["json", "multipart", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 rand = "0.10"
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Только десктоп: автообновление, перезапуск, открытие файлов, встроенный Python-сервер.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -35,7 +35,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-single-instance = "2"
 open = "5"
-zip = "8.6"
+zip = "9.1"
 
 # Android: TLS-верификатор платформы для reqwest (см. android_tls_init в lib.rs).
 [target.'cfg(target_os = "android")'.dependencies]

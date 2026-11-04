@@ -75,10 +75,9 @@ export function storedAccount(): { username: string } | null {
 /**
  * Смена релея: аккаунт живёт на ОДНОМ реле (история и ключи на новом
  * будут пустыми), поэтому молча переключаться нельзя. Выход + забыть
- * локальный профиль + релей + перезагрузка (BASE_URL заморожен на старте).
+ * локальный профиль + релей (память чистится).
  */
 export function performRelaySwitch(config: RelayConfig): void {
   performLogout()
   setRelayConfig(config)
-  window.location.reload()
 }

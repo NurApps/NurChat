@@ -182,7 +182,6 @@ export default function HostModePanel({ compact = false }: Props) {
     const host = status.url.replace(/^https?:\/\//, "")
     if (!window.confirm(t("hostMode.switchConfirm", { host }))) return
     setRelayConfig({ host, protocol: "https" })
-    window.location.reload()
   }
 
   if (!hostModeSupported()) {

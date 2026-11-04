@@ -238,9 +238,14 @@ if (!import.meta.env.VITE_API_HOST) {
   }
 }
 
-export const BASE_URL = `${apiProtocol}://${apiHost}`
-export const WS_BASE = `${WS_PROTOCOL_FOR(apiProtocol)}://${apiHost}/ws`
-export const MEDIA_URL = BASE_URL
+export function getApiBaseUrl(): string { return `${apiProtocol}://${apiHost}` }
+export function getWsBase(): string { return `${WS_PROTOCOL_FOR(apiProtocol)}://${apiHost}/ws` }
+export function getMediaUrl(): string { return getApiBaseUrl() }
+
+/** Backward-compatible snapshots (frozen at module load). Prefer getApiBaseUrl()/getWsBase() for live values. */
+export const BASE_URL = getApiBaseUrl()
+export const WS_BASE = getWsBase()
+
 
 function WS_PROTOCOL_FOR(p: "http" | "https"): "ws" | "wss" {
   return p === "https" ? "wss" : "ws"
@@ -258,7 +263,7 @@ export function avatarUrl(path: string | null | undefined): string | null {
   // javascript:-схема невозможна, а React ставит src как DOM-свойство
   // без парсинга HTML.
   if (!/^media\/avatars\/[A-Za-z0-9_-]+\/avatar_\d+\.(jpg|jpeg|png|webp)$/i.test(normalized)) return null
-  return `${BASE_URL}/${normalized}`
+  return `${getApiBaseUrl()}/${normalized}`
 }
 
 /**

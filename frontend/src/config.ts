@@ -1,5 +1,4 @@
 const DEFAULT_API_HOST = "127.0.0.1:8000"
-const DEFAULT_API_PROTOCOL = "http"
 
 const RELAY_HOST_KEY = "nurchat_relay_host"
 const RELAY_PROTOCOL_KEY = "nurchat_relay_protocol"

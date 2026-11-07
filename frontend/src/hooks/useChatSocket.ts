@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect } from "react"
 import { getAccessToken, hasSession } from "../services/tokenVault"
 import { openAuthedSocket } from "../services/wsAuth"
 import { showNotification, playMessageSound } from "../services/notifications"
+import { RELAY_UNREACHABLE_EVENT } from "../services/api"
 import type { MessageResponse, UserResponse, ChatResponse } from "../types"
 
 type TypingUsers = Record<string, Record<string, boolean>>
@@ -397,7 +398,9 @@ export function useChatSocket({
 
     // Network recovery: reset backoff and reconnect immediately
     const handleOnline = () => { reconnectAttempts = 0; connect() }
+    const handleUnreachable = () => setWsUp(false)
     window.addEventListener("online", handleOnline)
+    window.addEventListener(RELAY_UNREACHABLE_EVENT, handleUnreachable)
 
     // Фокс/видимость: сокет мог умереть, пока вкладка была фоновой (мобайл
     // убивает фоновые сокеты, ОС засыпает). Возврат в приложение должен
@@ -434,6 +437,7 @@ export function useChatSocket({
       stopped = true
       clearTimeout(reconnectTimer)
       window.removeEventListener("online", handleOnline)
+      window.removeEventListener(RELAY_UNREACHABLE_EVENT, handleUnreachable)
       document.removeEventListener("visibilitychange", handleVisibility)
       window.removeEventListener("focus", handleVisibility)
       if (wsPingStamp === markAlive) wsPingStamp = null

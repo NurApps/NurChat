@@ -842,14 +842,18 @@ export default function ChatPage() {
 
   const handleAcceptCall = useCallback(() => {
     if (!incomingCall) return
-    wsRef.current?.send(JSON.stringify({ event: "call_accept", data: { call_id: incomingCall.callId } }))
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ event: "call_accept", data: { call_id: incomingCall.callId } }))
+    }
     setIncomingCall(null)
     navigate(`/call/${incomingCall.callerId}/${incomingCall.callType}?call_id=${incomingCall.callId}`)
   }, [incomingCall, navigate, setIncomingCall, wsRef])
 
   const handleRejectCall = useCallback(() => {
     if (!incomingCall) return
-    wsRef.current?.send(JSON.stringify({ event: "call_reject", data: { call_id: incomingCall.callId } }))
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ event: "call_reject", data: { call_id: incomingCall.callId } }))
+    }
     setIncomingCall(null)
   }, [incomingCall, setIncomingCall, wsRef])
 

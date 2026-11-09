@@ -476,10 +476,12 @@ export default function CallPage() {
           setStatus("ringing")
           statusRef.current = "ringing"
 
-          sock.send(JSON.stringify({
-            type: "call-join",
-            call_id: incomingCallId,
-          }))
+          if (sock.readyState === WebSocket.OPEN) {
+            sock.send(JSON.stringify({
+              type: "call-join",
+              call_id: incomingCallId,
+            }))
+          }
 
           startMedia().then((stream) => {
             if (stream) {
@@ -503,12 +505,14 @@ export default function CallPage() {
           }
           const generatedCallId = callIdRef.current
 
-          sock.send(JSON.stringify({
-            type: "call-request",
-            call_id: generatedCallId,
-            target_user_id: targetUserId,
-            call_type: callType,
-          }))
+          if (sock.readyState === WebSocket.OPEN) {
+            sock.send(JSON.stringify({
+              type: "call-request",
+              call_id: generatedCallId,
+              target_user_id: targetUserId,
+              call_type: callType,
+            }))
+          }
           setStatus("ringing")
           statusRef.current = "ringing"
 
@@ -529,7 +533,9 @@ export default function CallPage() {
         try {
           let msg = JSON.parse(event.data)
           if (msg.type === "ping") {
-            try { ws.send(JSON.stringify({ type: "pong" })) } catch { /* socket gone */ }
+            if (ws.readyState === WebSocket.OPEN) {
+              try { ws.send(JSON.stringify({ type: "pong" })) } catch { /* socket gone */ }
+            }
             return
           }
           // E2E-сигналинг: расшифровываем тело (sdp/candidate), если есть `enc`.
@@ -582,10 +588,12 @@ export default function CallPage() {
 
               if (!createPeerConnection(false)) return
 
-              ws.send(JSON.stringify({
-                type: "call-accept",
-                call_id: incomingCallIdMsg,
-              }))
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: "call-accept",
+                  call_id: incomingCallIdMsg,
+                }))
+              }
               break
             }
 

@@ -347,6 +347,13 @@ export function useChatSocket({
         if (event.code !== 1000) {
           console.warn(`WS closed: code=${event.code} reason=${event.reason || "-"} attempt=${reconnectAttempts}`)
         }
+        // 4000 = replaced by new connection (server closed old socket when
+        // a fresh one connected for the same user). This is NOT an error —
+        // the new connection is already being established. Don't backoff,
+        // just let the new connection take over.
+        if (event.code === 4000) {
+          return
+        }
         // 4001 = token rejected/expired (server rechecks JWT every 10s,
         // access TTL is 30 min). Retrying with the same token is futile —
         // refresh once and reconnect; only give up when refresh is dead.

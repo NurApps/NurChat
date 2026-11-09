@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect } from "react"
 import { getAccessToken, hasSession } from "../services/tokenVault"
 import { openAuthedSocket } from "../services/wsAuth"
 import { showNotification, playMessageSound } from "../services/notifications"
+import { RELAY_UNREACHABLE_EVENT } from "../services/api"
 import type { MessageResponse, UserResponse, ChatResponse } from "../types"
 
 type TypingUsers = Record<string, Record<string, boolean>>
@@ -346,6 +347,13 @@ export function useChatSocket({
         if (event.code !== 1000) {
           console.warn(`WS closed: code=${event.code} reason=${event.reason || "-"} attempt=${reconnectAttempts}`)
         }
+        // 4000 = replaced by new connection (server closed old socket when
+        // a fresh one connected for the same user). This is NOT an error —
+        // the new connection is already being established. Don't backoff,
+        // just let the new connection take over.
+        if (event.code === 4000) {
+          return
+        }
         // 4001 = token rejected/expired (server rechecks JWT every 10s,
         // access TTL is 30 min). Retrying with the same token is futile —
         // refresh once and reconnect; only give up when refresh is dead.
@@ -397,7 +405,9 @@ export function useChatSocket({
 
     // Network recovery: reset backoff and reconnect immediately
     const handleOnline = () => { reconnectAttempts = 0; connect() }
+    const handleUnreachable = () => setWsUp(false)
     window.addEventListener("online", handleOnline)
+    window.addEventListener(RELAY_UNREACHABLE_EVENT, handleUnreachable)
 
     // Фокс/видимость: сокет мог умереть, пока вкладка была фоновой (мобайл
     // убивает фоновые сокеты, ОС засыпает). Возврат в приложение должен
@@ -434,6 +444,7 @@ export function useChatSocket({
       stopped = true
       clearTimeout(reconnectTimer)
       window.removeEventListener("online", handleOnline)
+      window.removeEventListener(RELAY_UNREACHABLE_EVENT, handleUnreachable)
       document.removeEventListener("visibilitychange", handleVisibility)
       window.removeEventListener("focus", handleVisibility)
       if (wsPingStamp === markAlive) wsPingStamp = null

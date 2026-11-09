@@ -9,15 +9,15 @@
   --text-primary: #000000;
   --text-secondary: #65656a;
   --border-color: #e0e0e0;
-  --divider: #e0e0e0;
-  --tg-blue: #0e7cb4;
-  --tg-green: #3c843b;
   --error: #e22622;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 
   --input-bg: #ffffff;
   --accent: #0e7cb4;
   --accent-hover: #197bb7;
+  /* Прозрачный фон для свиток и чатов */
+  --overlay-bg: rgba(255, 255, 255, 0.75);
+
   --success: #3c843b;
   --error: #e22622;
   --warning: #a96500;
@@ -78,6 +78,20 @@
   --msg-mine-bg: #1b5e20;
   --card-bg: #161b22;
 
+  /* Продвинутые визуальные эффекты (NEVERSON) — стек полупрозрачных слоёв поверх ландшафта */
+  --backdrop-blur: 16px;
+  --frosted-bg: rgba(255, 255, 255, 0.6);
+  --frosted-bg-dark: rgba(20, 25, 32, 0.7);
+  --floating-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  --floating-shadow-dark: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --glow-primary: 0 0 32px rgba(14, 124, 180, 0.35);
+  --glow-primary-dark: 0 0 48px rgba(42, 171, 238, 0.4);
+  --card-elevated: 0 12px 48px -2px rgba(0, 0, 0, 0.18);
+  --dialog-backdrop: rgba(0, 0, 0, 0.45);
+  --tooltip-bg: #111416;
+  --tooltip-border: #2f353a;
+  --alert-border: #b20000;
+
   --tg-blue: #2aabee;
   --tg-green: #4caf50;
   --text: #e6edf3;
@@ -112,6 +126,20 @@
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   --msg-mine-bg: #c8d5e3;
   --card-bg: #e5e9f0;
+
+  /* Продвинутые визуальные эффекты (NEVERSON) — стек полупрозрачных слоёв поверх ландшафта */
+  --backdrop-blur: 16px;
+  --frosted-bg: rgba(255, 255, 255, 0.6);
+  --frosted-bg-dark: rgba(20, 25, 32, 0.7);
+  --floating-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  --floating-shadow-dark: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --glow-primary: 0 0 32px rgba(77, 109, 149, 0.35);
+  --glow-primary-dark: 0 0 48px rgba(77, 109, 149, 0.4);
+  --card-elevated: 0 12px 48px -2px rgba(0, 0, 0, 0.18);
+  --dialog-backdrop: rgba(0, 0, 0, 0.45);
+  --tooltip-bg: #111416;
+  --tooltip-border: #2f353a;
+  --alert-border: #b20000;
 
   --tg-blue: #4d6d95;
   --tg-green: #587341;

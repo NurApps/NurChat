@@ -123,10 +123,16 @@ def get_user_chats(
             logger.error(f"Error processing chat {chat.id}: {e}")
             continue
 
+    def _normalize_dt(dt: datetime | None) -> datetime:
+        if dt is None:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+
     def get_sort_key(c):
-        if c.last_message and c.last_message.created_at:
-            return (not c.is_pinned, c.last_message.created_at)
-        return (not c.is_pinned, datetime.min.replace(tzinfo=None))
+        dt = c.last_message.created_at if (c.last_message and c.last_message.created_at) else c.created_at
+        return (not c.is_pinned, _normalize_dt(dt))
 
     chats_response.sort(key=get_sort_key, reverse=True)
     return chats_response

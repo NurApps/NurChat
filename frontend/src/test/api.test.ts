@@ -37,17 +37,26 @@ describe('api', () => {
     expect(api.isAuthenticated()).toBe(false)
   })
 
-  it('should signal relay loss on a network error', async () => {
+  it('should signal relay loss on a network error (grace, not instant)', async () => {
     const fetchMock = vi.fn(() => Promise.reject(new TypeError('Failed to fetch')))
     vi.stubGlobal('fetch', fetchMock)
-    const { api, RELAY_UNREACHABLE_EVENT } = await import('../services/api')
-    const handler = vi.fn()
-    window.addEventListener(RELAY_UNREACHABLE_EVENT, handler)
+    const { api, RELAY_UNREACHABLE_EVENT, RELAY_CONNECTION_STATE_EVENT } = await import('../services/api')
+    const stateHandler = vi.fn()
+    const unreachableHandler = vi.fn()
+    window.addEventListener(RELAY_CONNECTION_STATE_EVENT, stateHandler)
+    window.addEventListener(RELAY_UNREACHABLE_EVENT, unreachableHandler)
     try {
       await expect(api.getCurrentUser()).rejects.toThrow('Failed to fetch')
-      expect(handler).toHaveBeenCalledTimes(1)
+      // Сразу: состояние связи = отключено, баннер «Соединение…» покажем в UI.
+      expect(stateHandler).toHaveBeenCalledTimes(1)
+      expect(stateHandler).toHaveBeenLastCalledWith(
+        expect.objectContaining({ detail: { connected: false } }),
+      )
+      // Оверлей переподключения — не мгновенно, а после grace-таймаута.
+      expect(unreachableHandler).not.toHaveBeenCalled()
     } finally {
-      window.removeEventListener(RELAY_UNREACHABLE_EVENT, handler)
+      window.removeEventListener(RELAY_CONNECTION_STATE_EVENT, stateHandler)
+      window.removeEventListener(RELAY_UNREACHABLE_EVENT, unreachableHandler)
       vi.unstubAllGlobals()
     }
   })

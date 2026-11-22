@@ -186,7 +186,10 @@ class Settings(BaseSettings):
     # tauri.localhost (сборка Windows), 127.0.0.1/localhost (dev).
     TURNSTILE_SITEKEY: str = ""
     TURNSTILE_SECRET: str = ""
-    TURNSTILE_HOSTNAMES: str = ""
+    # Дефолт покрывает оба способа открыть локальный(dev) фронтенд:
+    # localhost и 127.0.0.1 — иначе Turnstile отвергнет токен на одном из них
+    # (Cloudflare шлёт hostname страницы, а не хост релея).
+    TURNSTILE_HOSTNAMES: str = "localhost,127.0.0.1"
     # Локальная разработка без аккаунта Cloudflare: DISABLE_CAPTCHA=true
     # отдаёт /captcha как {"provider": "none"} и пропускает проверку токена
     # в /register. Дефолт false — прод остаётся fail-closed. НИКОГДА не

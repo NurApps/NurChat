@@ -35,7 +35,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-single-instance = "2"
 open = "5"
-zip = "8.6"
+zip = "9.0"
 
 # Android: TLS-верификатор платформы для reqwest (см. android_tls_init в lib.rs).
 [target.'cfg(target_os = "android")'.dependencies]
